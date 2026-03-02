@@ -29,39 +29,39 @@ interface BlockingSection {
 const blockingSections: BlockingSection[] = [
   {
     id: 'restricted',
-    title: 'Restricted roster',
+    title: 'Blocked roster',
     description:
-      'When you place someone\'s account on your Restricted roster, they won\'t view publications you share exclusively with Companions. They might still glimpse items you share as Public or on a mutual companion\'s profile, and posts where their account is tagged. You won\'t alert your companions when you place them on your Restricted roster.',
+      'When you place someone\'s account on your Blocked roster, they won\'t view publications you share exclusively with Companions. They might still glimpse items you share as Public or on a mutual companion\'s profile, and posts where their account is tagged. You won\'t alert your companions when you place them on your Blocked roster.',
   },
   {
     id: 'block-profiles',
-    title: 'Restrict profiles and Pages',
+    title: 'Block profiles and Pages',
     description:
-      'Once you restrict a profile or Page, you can no longer engage with each other\'s profiles, publications, remarks, or correspondence. This doesn\'t encompass applications, games, or communities you both participate in. If you\'re currently linked to that profile or Page, restricting it will remove the connection, unlike, and unfollow it.',
+      'Once you block a profile or Page, you can no longer engage with each other\'s profiles, publications, remarks, or correspondence. This doesn\'t encompass applications, games, or communities you both participate in. If you\'re currently linked to that profile or Page, blocking it will remove the connection, unlike, and unfollow it.',
   },
   {
     id: 'blocked-aliases',
-    title: 'Restricted aliases',
+    title: 'Blocked aliases',
     description:
-      'They can\'t tag you or engage with your content. In some situations, they may still be able to view your content. Restricting may not prevent all communications or engagements.',
+      'They can\'t tag you or engage with your content. In some situations, they may still be able to view your content. Blocking may not prevent all communications or engagements.',
   },
   {
     id: 'block-messages',
-    title: 'Restrict correspondence',
+    title: 'Block correspondence',
     description:
-      'If you restrict someone\'s profile, they won\'t be able to reach you in Messenger either. Unless you restrict someone\'s profile and any others they may establish, they may be able to publish on your timeline, tag you, and remark on your publications or remarks.',
+      'If you block someone\'s profile, they won\'t be able to reach you in Messenger either. Unless you block someone\'s profile and any others they may establish, they may be able to publish on your timeline, tag you, and remark on your publications or remarks.',
   },
   {
     id: 'block-app-invites',
-    title: 'Restrict application invitations',
+    title: 'Block application invitations',
     description:
-      'Once you restrict application invitations from someone\'s profile, you\'ll automatically disregard future application requests from that individual\'s profile. To restrict invitations from a specific companion\'s profile, click the "Disregard All Invitations From This Profile" link under your latest request.',
+      'Once you block application invitations from someone\'s profile, you\'ll automatically disregard future application requests from that individual\'s profile. To block invitations from a specific companion\'s profile, click the "Disregard All Invitations From This Profile" link under your latest request.',
   },
   {
     id: 'block-event-invites',
-    title: 'Restrict occasion invitations',
+    title: 'Block occasion invitations',
     description:
-      'Once you restrict occasion invitations from someone\'s profile, you\'ll automatically disregard future occasion requests from that profile.',
+      'Once you block occasion invitations from someone\'s profile, you\'ll automatically disregard future occasion requests from that profile.',
   },
 ];
 
@@ -115,7 +115,7 @@ const BlockedUsersManager = () => {
       console.error('Error fetching blocked users:', error);
       toast({
         title: 'Error',
-        description: 'Failed to load restricted users',
+        description: 'Failed to load blocked users',
         variant: 'destructive',
       });
     } finally {
@@ -135,13 +135,13 @@ const BlockedUsersManager = () => {
       setBlockedUsers(prev => prev.filter(block => block.id !== blockId));
 
       toast({
-        title: 'User unrestricted',
-        description: `@${username} has been unrestricted successfully.`,
+        title: 'User unblocked',
+        description: `@${username} has been unblocked successfully.`,
       });
     } catch (error: any) {
       toast({
         title: 'Error',
-        description: 'Failed to unrestrict user.',
+        description: 'Failed to unblock user.',
         variant: 'destructive',
       });
     }
@@ -157,7 +157,7 @@ const BlockedUsersManager = () => {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-foreground">Blocking</h2>
+      <h2 className="text-2xl font-bold text-foreground">Blocked Users</h2>
 
       <Card className="border-border/50">
         <CardHeader className="pb-3">
@@ -188,9 +188,9 @@ const BlockedUsersManager = () => {
                     {section.id === 'block-profiles' && expandedSection === 'block-profiles' && (
                       <div className="mt-3 space-y-2">
                         {loading ? (
-                          <p className="text-xs text-muted-foreground">Loading restricted users...</p>
+                          <p className="text-xs text-muted-foreground">Loading blocked users...</p>
                         ) : blockedUsers.length === 0 ? (
-                          <p className="text-xs text-muted-foreground">You haven't restricted anyone yet.</p>
+                          <p className="text-xs text-muted-foreground">You haven't blocked anyone yet.</p>
                         ) : (
                           <AnimatePresence>
                             {blockedUsers.map(block => (
@@ -224,7 +224,7 @@ const BlockedUsersManager = () => {
                                   onClick={() => unblockUser(block.id, block.blocked_user.username)}
                                   className="text-xs hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20"
                                 >
-                                  Unrestrict
+                                  Unblock
                                 </Button>
                               </motion.div>
                             ))}
