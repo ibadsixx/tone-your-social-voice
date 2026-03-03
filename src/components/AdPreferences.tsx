@@ -1,17 +1,37 @@
 import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronRight, Bookmark, Eye, Target, Database, Shield, Users, Building2, Info } from 'lucide-react';
+import { ChevronRight, Target, Database, Users, Building2, Info, Shield, ExternalLink } from 'lucide-react';
 import { useAdActivity, useAdTopics, useAdAdvertisers, useAdSettings } from '@/hooks/useAdPreferences';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 const AdPreferences = () => {
   const [activeTab, setActiveTab] = useState('customize');
   const { data: adActivity, isLoading: loadingActivity } = useAdActivity();
   const { data: adTopics, isLoading: loadingTopics } = useAdTopics();
   const { data: adAdvertisers, isLoading: loadingAdvertisers } = useAdAdvertisers();
-  const { data: adSettings } = useAdSettings();
+  const { data: adSettings, isLoading: loadingSettings } = useAdSettings();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  const updateSetting = async (field: string, value: boolean | string) => {
+    if (!user) return;
+    const { error } = await supabase
+      .from('ad_settings')
+      .upsert({ user_id: user.id, [field]: value }, { onConflict: 'user_id' });
+    if (error) {
+      toast.error('Failed to update setting');
+    } else {
+      toast.success('Setting updated');
+      queryClient.invalidateQueries({ queryKey: ['ad-settings'] });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -30,7 +50,6 @@ const AdPreferences = () => {
 
         {/* ========== CUSTOMIZE ADS TAB ========== */}
         <TabsContent value="customize" className="space-y-8">
-
           {/* --- Ad activity --- */}
           <Section title="Ad activity" action="See all">
             {loadingActivity ? (
@@ -118,7 +137,6 @@ const AdPreferences = () => {
               </div>
             ) : adTopics && adTopics.length > 0 ? (
               <div className="space-y-3">
-                {/* Banner placeholder */}
                 <div className="h-36 rounded-lg bg-gradient-to-br from-primary/20 via-accent/30 to-secondary/40 flex items-center justify-center">
                   <Target className="w-10 h-10 text-primary/60" />
                 </div>
@@ -143,8 +161,110 @@ const AdPreferences = () => {
         </TabsContent>
 
         {/* ========== MANAGE INFO TAB ========== */}
-        <TabsContent value="manage" className="space-y-6">
-          <ManageInfoList settings={adSettings} />
+        <TabsContent value="manage" className="space-y-8">
+          {loadingSettings ? (
+            <div className="space-y-4">
+              {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
+            </div>
+          ) : (
+            <>
+              {/* --- Information used to display your ads --- */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-primary">Information used to display your ads</h3>
+                <div className="border border-border rounded-lg divide-y divide-border">
+                  <RowItem
+                    title="Categories used to reach you"
+                    description="Details you share on your profile or other classifications used to reach you."
+                    titleColor="text-green-400"
+                  />
+                  <RowItem
+                    title="Activity data from ad partners"
+                    description="Select whether to utilize this data to present you ads that are more relevant to you."
+                    subtitle="View more details"
+                    titleColor="text-green-400"
+                    toggle
+                    checked={adSettings?.use_partner_data ?? false}
+                    onToggle={(val) => updateSetting('use_partner_data', val)}
+                  />
+                  <RowItem
+                    title="Audience-based advertising"
+                    description="Advertisers leveraging your activity or data."
+                    titleColor="text-green-400"
+                  />
+                </div>
+              </div>
+
+              {/* --- Ads displayed outside of Tone --- */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-yellow-400">Ads displayed outside of Tone</h3>
+                <div className="border border-border rounded-lg divide-y divide-border">
+                  <RowItem
+                    title="Ads in external apps"
+                    description="Select whether you see ads from Tone Audience Network in third-party apps."
+                    subtitle="View more details"
+                    titleColor="text-yellow-400"
+                    toggle
+                    checked={adSettings?.show_ads_in_external_apps ?? false}
+                    onToggle={(val) => updateSetting('show_ads_in_external_apps', val)}
+                  />
+                  <RowItem
+                    title="Promotions about Tone"
+                    description="Select whether we leverage your activity to display you ads about Tone on other platforms."
+                    subtitle="Usage information"
+                    titleColor="text-yellow-400"
+                    toggle
+                    checked={adSettings?.use_activity_for_external_ads ?? false}
+                    onToggle={(val) => updateSetting('use_activity_for_external_ads', val)}
+                  />
+                </div>
+              </div>
+
+              {/* --- Other settings --- */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-foreground">Other settings</h3>
+                <div className="border border-border rounded-lg">
+                  <RowItem
+                    title="Social interactions"
+                    description="Select who can view your social interactions alongside ads."
+                  />
+                </div>
+              </div>
+
+              {/* --- Learn more about ads privacy --- */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-foreground">Learn more about ads privacy</h3>
+                <p className="text-xs text-muted-foreground">
+                  Find out more about what data is utilized to display you ads, and how you can manage your privacy.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="border border-border rounded-lg p-4 space-y-2">
+                    <h4 className="text-sm font-semibold text-foreground">What data is utilized to display me ads?</h4>
+                    <p className="text-xs text-muted-foreground">
+                      We present you ads based on your details and activity. You get to manage these settings.
+                    </p>
+                    <Button variant="default" size="sm" className="w-full text-xs mt-2">More details</Button>
+                  </div>
+                  <div className="border border-border rounded-lg p-4 space-y-2">
+                    <h4 className="text-sm font-semibold text-foreground">Does Tone sell my data?</h4>
+                    <p className="text-xs text-muted-foreground">
+                      No. We never sell your personal information.
+                    </p>
+                    <Button variant="default" size="sm" className="w-full text-xs mt-2">More details</Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* --- Bottom links --- */}
+              <div className="space-y-3">
+                <Button variant="outline" className="w-full text-sm justify-center">
+                  Learn more in Privacy Center
+                </Button>
+                <Button variant="outline" className="w-full text-sm justify-center">
+                  Learn more about Tone Ads
+                </Button>
+              </div>
+            </>
+          )}
         </TabsContent>
       </Tabs>
     </div>
@@ -165,38 +285,38 @@ const Section = ({ title, subtitle, action, children }: { title: string; subtitl
   </div>
 );
 
-/* ---------- Manage Info list ---------- */
-const ManageInfoList = ({ settings }: { settings: any }) => {
-  const items = [
-    { icon: Target, label: 'Categories used to reach you', description: 'View the categories advertisers rely on to target ads based on your behavior.' },
-    { icon: Database, label: 'Activity data from ad partners', description: 'Control how partner-shared information personalizes your ad experience.', toggle: settings?.use_partner_data },
-    { icon: Users, label: 'Audience-based advertising', description: 'Adjust how you are grouped into ad audiences by your preferences.' },
-    { icon: Building2, label: 'Ads from partnered networks', description: 'Oversee advertisements delivered through our trusted partner channels.' },
-    { icon: Info, label: 'Promotions about Tone', description: 'Manage promotional content for Tone products and services shown to you.' },
-    { icon: Shield, label: 'Social interactions', description: 'Decide how your social activity shapes the ads displayed to you.', toggle: settings?.social_interactions_visibility },
-  ];
-
-  return (
-    <div className="border border-border rounded-lg divide-y divide-border">
-      {items.map((item, i) => {
-        const Icon = item.icon;
-        return (
-          <button key={i} className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors text-left">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <Icon className="w-4 h-4 text-primary" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">{item.label}</p>
-                <p className="text-xs text-muted-foreground truncate">{item.description}</p>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-2" />
-          </button>
-        );
-      })}
+/* ---------- Row item for Manage Info ---------- */
+const RowItem = ({
+  title,
+  description,
+  subtitle,
+  titleColor,
+  toggle,
+  checked,
+  onToggle,
+}: {
+  title: string;
+  description: string;
+  subtitle?: string;
+  titleColor?: string;
+  toggle?: boolean;
+  checked?: boolean;
+  onToggle?: (val: boolean) => void;
+}) => (
+  <div className="flex items-start justify-between p-4 hover:bg-muted/50 transition-colors">
+    <div className="flex-1 min-w-0 space-y-0.5">
+      <p className={`text-sm font-medium ${titleColor || 'text-foreground'}`}>{title}</p>
+      <p className="text-xs text-muted-foreground">{description}</p>
+      {subtitle && (
+        <button className="text-xs text-primary hover:underline mt-1">{subtitle}</button>
+      )}
     </div>
-  );
-};
+    {toggle ? (
+      <Switch checked={checked} onCheckedChange={onToggle} className="ml-3 mt-1" />
+    ) : (
+      <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-2 mt-1" />
+    )}
+  </div>
+);
 
 export default AdPreferences;
