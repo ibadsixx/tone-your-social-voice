@@ -19,6 +19,7 @@ const AdPreferences = () => {
   const [showPartnerDataDialog, setShowPartnerDataDialog] = useState(false);
   const [showReviewSettingDialog, setShowReviewSettingDialog] = useState(false);
   const [showAudienceAdDialog, setShowAudienceAdDialog] = useState(false);
+  const [showExternalAdsDialog, setShowExternalAdsDialog] = useState(false);
   const [audienceShowAll, setAudienceShowAll] = useState(false);
   const { data: adActivity, isLoading: loadingActivity } = useAdActivity();
   const { data: adTopics, isLoading: loadingTopics } = useAdTopics();
@@ -221,13 +222,10 @@ const AdPreferences = () => {
                 <h3 className="text-sm font-semibold text-yellow-400">Ads displayed outside of Tone</h3>
                 <div className="border border-border rounded-lg divide-y divide-border">
                   <RowItem
-                    title="Ads in external apps"
-                    description="Select whether you see ads from Tone Audience Network in third-party apps."
-                    subtitle="View more details"
+                    title="Advertisements in other applications"
+                    description="Decide whether you encounter ads from Tone Audience Network in other applications."
                     titleColor="text-yellow-400"
-                    toggle
-                    checked={adSettings?.show_ads_in_external_apps ?? false}
-                    onToggle={(val) => updateSetting('show_ads_in_external_apps', val)}
+                    onClick={() => setShowExternalAdsDialog(true)}
                   />
                   <RowItem
                     title="Promotions about Tone"
@@ -586,6 +584,87 @@ const AdPreferences = () => {
             ) : (
               <p className="text-sm text-muted-foreground py-4">No advertisers have included you in their audiences yet.</p>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Ads in External Apps Dialog */}
+      <Dialog open={showExternalAdsDialog} onOpenChange={setShowExternalAdsDialog}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-foreground">Advertisements in other applications</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              You can decide whether you encounter ads from Tone Audience Network in other applications.
+            </p>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              For instance, we can present you an ad from one of our ad partners in a different company's gaming application.{' '}
+              <button className="text-primary hover:underline font-medium">Discover more</button>
+            </p>
+
+            {/* Option: Allow */}
+            <div
+              className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                (adSettings?.show_ads_in_external_apps ?? false)
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:bg-muted/50'
+              }`}
+              onClick={() => updateSetting('show_ads_in_external_apps', true)}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0 space-y-1">
+                  <p className="text-sm font-medium text-foreground">Permit us to display you ads in other applications</p>
+                  <p className="text-xs text-muted-foreground">
+                    Explore products and brands via ads in other applications.
+                  </p>
+                  {(adSettings?.show_ads_in_external_apps ?? false) && (
+                    <p className="text-xs text-green-500 font-medium">Your current preference</p>
+                  )}
+                </div>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-1 ${
+                  (adSettings?.show_ads_in_external_apps ?? false)
+                    ? 'border-primary'
+                    : 'border-muted-foreground'
+                }`}>
+                  {(adSettings?.show_ads_in_external_apps ?? false) && (
+                    <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Option: Don't allow */}
+            <div
+              className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                !(adSettings?.show_ads_in_external_apps ?? false)
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:bg-muted/50'
+              }`}
+              onClick={() => updateSetting('show_ads_in_external_apps', false)}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0 space-y-1">
+                  <p className="text-sm font-medium text-foreground">Do not permit us to display you ads in other applications</p>
+                  <p className="text-xs text-muted-foreground">
+                    You may still encounter the same volume of ads, but these ads won't be presented by Tone.
+                  </p>
+                  {!(adSettings?.show_ads_in_external_apps ?? false) && (
+                    <p className="text-xs text-green-500 font-medium">Your current preference</p>
+                  )}
+                </div>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-1 ${
+                  !(adSettings?.show_ads_in_external_apps ?? false)
+                    ? 'border-primary'
+                    : 'border-muted-foreground'
+                }`}>
+                  {!(adSettings?.show_ads_in_external_apps ?? false) && (
+                    <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
