@@ -579,4 +579,12 @@ const RowItem = ({
   </div>
 );
 
+/* ---------- Info bullet ---------- */
+const InfoBullet = ({ icon, text }: { icon: string; text: React.ReactNode }) => (
+  <div className="flex items-start gap-3">
+    <span className="text-base flex-shrink-0 mt-0.5">{icon}</span>
+    <p className="text-xs text-muted-foreground leading-relaxed">{text}</p>
+  </div>
+);
+
 export default AdPreferences;
