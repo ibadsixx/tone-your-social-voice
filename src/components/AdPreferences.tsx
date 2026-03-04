@@ -208,9 +208,10 @@ const AdPreferences = () => {
                     onClick={() => setShowPartnerDataDialog(true)}
                   />
                   <RowItem
-                    title="Audience-based advertising"
+                    title="Audience-driven promotions"
                     description="Advertisers leveraging your activity or data."
                     titleColor="text-green-400"
+                    onClick={() => setShowAudienceAdDialog(true)}
                   />
                 </div>
               </div>
