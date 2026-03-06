@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { UserX, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { UserX, X, PlusCircle, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -35,6 +36,7 @@ const BlockedUsersManager = () => {
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [searchInputs, setSearchInputs] = useState<Record<string, string>>({});
+  const [restrictedDialogOpen, setRestrictedDialogOpen] = useState(false);
 
   const sections: BlockingSection[] = [
     {
@@ -195,7 +197,7 @@ const BlockedUsersManager = () => {
                   variant="secondary"
                   size="sm"
                   className="shrink-0"
-                  onClick={() => toggleSection(section.id)}
+                  onClick={() => section.id === 'restricted' ? setRestrictedDialogOpen(true) : toggleSection(section.id)}
                 >
                   Edit
                 </Button>
@@ -211,19 +213,7 @@ const BlockedUsersManager = () => {
                     className="overflow-hidden"
                   >
                     <div className="mt-4 space-y-3">
-                      {section.id === 'restricted' && (
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder="Type a name"
-                            value={searchInputs[section.id] || ''}
-                            onChange={(e) => setSearchInputs(prev => ({ ...prev, [section.id]: e.target.value }))}
-                            className="flex-1"
-                          />
-                          <Button variant="default" size="sm">
-                            Submit
-                          </Button>
-                        </div>
-                      )}
+                      {section.id === 'restricted' && null}
 
                       {section.id === 'profiles' && (
                         <>
@@ -306,6 +296,39 @@ const BlockedUsersManager = () => {
           </div>
         ))}
       </div>
+
+      {/* Restricted List Dialog */}
+      <Dialog open={restrictedDialogOpen} onOpenChange={setRestrictedDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-center text-lg font-semibold">Restricted list</DialogTitle>
+          </DialogHeader>
+          <Separator />
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            When you place someone's profile on your Restricted list, they won't be able to view posts
+            that you share exclusively with Friends. They may still notice things you
+            share to Public or on a mutual friend's timeline, and posts their profile is
+            mentioned in. The platform doesn't alert your friends when you place them on your
+            Restricted list.
+          </p>
+          <div className="space-y-1">
+            <button
+              className="flex items-center gap-3 w-full p-3 rounded-lg hover:bg-accent transition-colors text-left"
+              onClick={() => {/* TODO: Add to restricted list */}}
+            >
+              <PlusCircle className="h-6 w-6 text-primary" />
+              <span className="text-sm font-medium text-foreground">Add to restricted list</span>
+            </button>
+            <button
+              className="flex items-center gap-3 w-full p-3 rounded-lg hover:bg-accent transition-colors text-left"
+              onClick={() => {/* TODO: See restricted list */}}
+            >
+              <Users className="h-6 w-6 text-muted-foreground" />
+              <span className="text-sm font-medium text-foreground">View your restricted list</span>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
