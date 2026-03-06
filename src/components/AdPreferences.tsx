@@ -666,6 +666,90 @@ const AdPreferences = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Promotions about Tone on alternate platforms Dialog */}
+      <Dialog open={showToneAdsDialog} onOpenChange={setShowToneAdsDialog}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-foreground">Ads regarding Tone on alternate platforms</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-1">
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                You can decide if we harness your activity on Tone technologies to present you advertisements
+                regarding Tone on alternate platforms.
+              </p>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                If you opt not to allow us to harness this activity, you may still encounter ads regarding Tone on
+                alternate platforms, but they won't be presented to you by leveraging this activity.
+              </p>
+            </div>
+
+            {/* Option: Use activity */}
+            <div
+              className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                (adSettings?.use_activity_for_external_ads ?? false)
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:bg-muted/50'
+              }`}
+              onClick={() => updateSetting('use_activity_for_external_ads', true)}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0 space-y-1">
+                  <p className="text-sm font-medium text-foreground">Harness my activity to present me ads regarding Tone</p>
+                  <p className="text-xs text-muted-foreground">
+                    Harness my activity on Tone technologies to present me advertisements regarding Tone on alternate platforms.
+                  </p>
+                  {(adSettings?.use_activity_for_external_ads ?? false) && (
+                    <p className="text-xs text-green-500 font-medium">This is your current preference</p>
+                  )}
+                </div>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-1 ${
+                  (adSettings?.use_activity_for_external_ads ?? false)
+                    ? 'border-primary'
+                    : 'border-muted-foreground'
+                }`}>
+                  {(adSettings?.use_activity_for_external_ads ?? false) && (
+                    <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Option: Don't use activity */}
+            <div
+              className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                !(adSettings?.use_activity_for_external_ads ?? false)
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:bg-muted/50'
+              }`}
+              onClick={() => updateSetting('use_activity_for_external_ads', false)}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0 space-y-1">
+                  <p className="text-sm font-medium text-foreground">Do not harness my activity to present me ads regarding Tone</p>
+                  <p className="text-xs text-muted-foreground">
+                    Do not harness my activity on Tone technologies to present me advertisements regarding Tone on alternate platforms.
+                  </p>
+                  {!(adSettings?.use_activity_for_external_ads ?? false) && (
+                    <p className="text-xs text-green-500 font-medium">This is your current preference</p>
+                  )}
+                </div>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-1 ${
+                  !(adSettings?.use_activity_for_external_ads ?? false)
+                    ? 'border-primary'
+                    : 'border-muted-foreground'
+                }`}>
+                  {!(adSettings?.use_activity_for_external_ads ?? false) && (
+                    <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
