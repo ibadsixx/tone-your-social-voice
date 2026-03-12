@@ -18,6 +18,44 @@ const YourInformationAndPermissions: React.FC = () => {
   const { profile } = useProfile();
   const { user } = useAuth();
 
+  const toneActivityItems = [
+    { key: 'saved_items', label: 'Bookmarked items and collections' },
+    { key: 'voting', label: 'Voting' },
+    { key: 'messages', label: 'Conversations', subtitle: 'May require additional time to export' },
+    { key: 'posts', label: 'Publications', subtitle: 'May require additional time to export' },
+    { key: 'pages', label: 'Pages' },
+    { key: 'polls', label: 'Surveys' },
+    { key: 'events', label: 'Occasions' },
+    { key: 'gaming', label: 'Tone Gaming' },
+    { key: 'places', label: 'Your Locations' },
+    { key: 'payments', label: 'Tone payments' },
+    { key: 'marketplace', label: 'Tone Marketplace' },
+    { key: 'comments_reactions', label: 'Remarks and reactions', subtitle: 'May require additional time to export' },
+    { key: 'stories', label: 'Stories' },
+    { key: 'bug_bounty', label: 'Bug Bounty' },
+    { key: 'reels', label: 'Reels' },
+    { key: 'fundraisers', label: 'Fundraisers' },
+    { key: 'groups', label: 'Communities' },
+  ];
+
+  useEffect(() => {
+    if (Object.keys(exportCategories).length === 0) {
+      const initial: Record<string, boolean> = {};
+      toneActivityItems.forEach(item => { initial[item.key] = true; });
+      setExportCategories(initial);
+    }
+  }, []);
+
+  const toggleCategory = (key: string) => {
+    setExportCategories(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const clearAllCategories = () => {
+    const cleared: Record<string, boolean> = {};
+    toneActivityItems.forEach(item => { cleared[item.key] = false; });
+    setExportCategories(cleared);
+  };
+
   const topItems = [
     { id: 'download' as SubView, label: 'Download your data' },
     { id: 'view-data' as SubView, label: 'View your data' },
