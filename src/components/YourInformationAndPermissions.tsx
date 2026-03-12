@@ -358,6 +358,114 @@ const YourInformationAndPermissions: React.FC = () => {
           </div>
         </DialogContent>
       </Dialog>
+      {/* Confirm your export dialog */}
+      <Dialog open={showConfirmExport} onOpenChange={setShowConfirmExport}>
+        <DialogContent className="sm:max-w-[500px] p-0 gap-0 max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center gap-3 p-4 border-b border-border">
+            <button
+              onClick={() => {
+                setShowConfirmExport(false);
+                setShowExportDestination(true);
+              }}
+              className="hover:bg-accent/50 rounded-full p-1 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h2 className="text-lg font-semibold flex-1">Verify your export</h2>
+          </div>
+          <div className="p-4 space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Once your export is prepared, we'll dispatch a notification. For safety purposes, you'll have a four-day window to retrieve your files.
+            </p>
+
+            {/* Profile card */}
+            <div className="border border-border rounded-lg overflow-hidden">
+              <div className="flex items-center gap-3 px-4 py-3.5">
+                <div className="w-10 h-10 rounded-full bg-muted overflow-hidden flex-shrink-0">
+                  {profile?.profile_pic ? (
+                    <img src={profile.profile_pic} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm font-semibold">
+                      {profile?.display_name?.[0] || '?'}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">{profile?.display_name || profile?.username}</p>
+                  <p className="text-xs text-muted-foreground">Tone</p>
+                  <p className="text-xs text-muted-foreground">Export to Device · Once</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Settings list */}
+            <div className="border border-border rounded-lg divide-y divide-border overflow-hidden">
+              <button className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-accent/50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <Bell className="w-5 h-5 text-muted-foreground" />
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-foreground">Alert</p>
+                    <p className="text-xs text-muted-foreground">{user?.email || 'No email configured'}</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <button className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-accent/50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <FileText className="w-5 h-5 text-muted-foreground" />
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-foreground">Tailor information</p>
+                    <p className="text-xs text-muted-foreground">All obtainable information excluding data logs</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <button className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-accent/50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-5 h-5 text-muted-foreground" />
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-foreground">Date interval</p>
+                    <p className="text-xs text-muted-foreground">Previous year</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <button className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-accent/50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <File className="w-5 h-5 text-muted-foreground" />
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-foreground">File type</p>
+                    <p className="text-xs text-muted-foreground">HTML</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <button className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-accent/50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <Maximize2 className="w-5 h-5 text-muted-foreground" />
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-foreground">Media fidelity</p>
+                    <p className="text-xs text-muted-foreground">Medium fidelity</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              To incorporate data logs in your export, choose this option when you tailor your information.{' '}
+              <span className="text-primary cursor-pointer hover:underline">What are data logs?</span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              This file may contain confidential information. You should keep it protected and exercise caution when exporting it.
+            </p>
+
+            <button className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors">
+              Initiate export
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
