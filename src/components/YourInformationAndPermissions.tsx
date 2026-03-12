@@ -34,8 +34,27 @@ const YourInformationAndPermissions: React.FC = () => {
     { key: 'stories', label: 'Stories' },
     { key: 'bug_bounty', label: 'Bug Bounty' },
     { key: 'reels', label: 'Reels' },
-    { key: 'fundraisers', label: 'Fundraisers' },
-    { key: 'groups', label: 'Communities' },
+    { key: 'fundraisers', label: 'Charitable drives' },
+    { key: 'groups', label: 'Communities', subtitle: 'May require additional time to export' },
+    { key: 'reviews', label: 'Appraisals' },
+    { key: 'tone_spark', label: 'Tone Spark' },
+    { key: 'navigation_bar', label: 'Navigation panel' },
+    { key: 'shops', label: 'Storefronts' },
+    { key: 'tagged_activity', label: 'Engagement you\'re identified in' },
+    { key: 'tone_support', label: 'Tone assistance' },
+    { key: 'live_videos', label: 'Live Broadcasts' },
+    { key: 'ai', label: 'AI' },
+    { key: 'other_activity', label: 'Miscellaneous engagement' },
+  ];
+
+  const personalInfoItems = [
+    { key: 'tone_portal', label: 'Tone Portal' },
+    { key: 'profile_information', label: 'Profile details' },
+    { key: 'tone_assistant', label: 'Tone Assistant' },
+    { key: 'health_professional', label: 'Health specialist' },
+    { key: 'avatars_store', label: 'Avatars Gallery' },
+    { key: 'tone_accounts_center', label: 'Tone Accounts Hub' },
+    { key: 'other_personal_info', label: 'Additional personal details' },
   ];
 
   useEffect(() => {
