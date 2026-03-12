@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronRight, ArrowLeft, Instagram, Facebook, Bell, FileText, Calendar, File, Maximize2 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import YourActivity from './YourActivity';
@@ -13,8 +13,48 @@ const YourInformationAndPermissions: React.FC = () => {
   const [showExportDestination, setShowExportDestination] = useState(false);
   const [showConfirmExport, setShowConfirmExport] = useState(false);
   const [showNotifyEmail, setShowNotifyEmail] = useState(false);
+  const [showTailorInfo, setShowTailorInfo] = useState(false);
+  const [exportCategories, setExportCategories] = useState<Record<string, boolean>>({});
   const { profile } = useProfile();
   const { user } = useAuth();
+
+  const toneActivityItems = [
+    { key: 'saved_items', label: 'Bookmarked items and collections' },
+    { key: 'voting', label: 'Voting' },
+    { key: 'messages', label: 'Conversations', subtitle: 'May require additional time to export' },
+    { key: 'posts', label: 'Publications', subtitle: 'May require additional time to export' },
+    { key: 'pages', label: 'Pages' },
+    { key: 'polls', label: 'Surveys' },
+    { key: 'events', label: 'Occasions' },
+    { key: 'gaming', label: 'Tone Gaming' },
+    { key: 'places', label: 'Your Locations' },
+    { key: 'payments', label: 'Tone payments' },
+    { key: 'marketplace', label: 'Tone Marketplace' },
+    { key: 'comments_reactions', label: 'Remarks and reactions', subtitle: 'May require additional time to export' },
+    { key: 'stories', label: 'Stories' },
+    { key: 'bug_bounty', label: 'Bug Bounty' },
+    { key: 'reels', label: 'Reels' },
+    { key: 'fundraisers', label: 'Fundraisers' },
+    { key: 'groups', label: 'Communities' },
+  ];
+
+  useEffect(() => {
+    if (Object.keys(exportCategories).length === 0) {
+      const initial: Record<string, boolean> = {};
+      toneActivityItems.forEach(item => { initial[item.key] = true; });
+      setExportCategories(initial);
+    }
+  }, []);
+
+  const toggleCategory = (key: string) => {
+    setExportCategories(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const clearAllCategories = () => {
+    const cleared: Record<string, boolean> = {};
+    toneActivityItems.forEach(item => { cleared[item.key] = false; });
+    setExportCategories(cleared);
+  };
 
   const topItems = [
     { id: 'download' as SubView, label: 'Download your data' },
@@ -414,7 +454,10 @@ const YourInformationAndPermissions: React.FC = () => {
                 </div>
                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
               </button>
-              <button className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-accent/50 transition-colors">
+              <button
+                onClick={() => setShowTailorInfo(true)}
+                className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-accent/50 transition-colors"
+              >
                 <div className="flex items-center gap-3">
                   <FileText className="w-5 h-5 text-muted-foreground" />
                   <div className="text-left">
@@ -506,6 +549,82 @@ const YourInformationAndPermissions: React.FC = () => {
             <button
               onClick={() => {
                 setShowNotifyEmail(false);
+                setShowConfirmExport(true);
+              }}
+              className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors"
+            >
+              Preserve
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Tailor information dialog */}
+      <Dialog open={showTailorInfo} onOpenChange={setShowTailorInfo}>
+        <DialogContent className="sm:max-w-[500px] p-0 gap-0 max-h-[90vh] flex flex-col">
+          <div className="flex items-center gap-3 p-4 border-b border-border">
+            <button
+              onClick={() => {
+                setShowTailorInfo(false);
+                setShowConfirmExport(true);
+              }}
+              className="hover:bg-accent/50 rounded-full p-1 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h2 className="text-lg font-semibold flex-1">Select precise data to export</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div>
+              <p className="text-sm text-muted-foreground font-medium">
+                {profile?.display_name || profile?.username} • Tone
+              </p>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Your Tone engagement</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Details and engagement from various sections of Tone, such as publications you've authored, images you're identified in, communities you participate in and beyond
+                </p>
+              </div>
+              <button
+                onClick={clearAllCategories}
+                className="text-xs text-primary hover:underline whitespace-nowrap ml-3"
+              >
+                Remove all
+              </button>
+            </div>
+            <div className="border border-border rounded-lg divide-y divide-border overflow-hidden">
+              {toneActivityItems.map(item => (
+                <button
+                  key={item.key}
+                  onClick={() => toggleCategory(item.key)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-accent/50 transition-colors"
+                >
+                  <div className="text-left">
+                    <p className="text-sm text-foreground">{item.label}</p>
+                    {item.subtitle && (
+                      <p className="text-xs text-muted-foreground">{item.subtitle}</p>
+                    )}
+                  </div>
+                  <div className={`w-5 h-5 rounded flex-shrink-0 flex items-center justify-center border ${
+                    exportCategories[item.key]
+                      ? 'bg-primary border-primary'
+                      : 'border-muted-foreground'
+                  }`}>
+                    {exportCategories[item.key] && (
+                      <svg className="w-3 h-3 text-primary-foreground" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 6L5 9L10 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="p-4 border-t border-border">
+            <button
+              onClick={() => {
+                setShowTailorInfo(false);
                 setShowConfirmExport(true);
               }}
               className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors"
