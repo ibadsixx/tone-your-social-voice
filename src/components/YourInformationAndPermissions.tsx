@@ -340,7 +340,13 @@ const YourInformationAndPermissions: React.FC = () => {
               </p>
             </div>
             <div className="border border-border rounded-lg divide-y divide-border overflow-hidden">
-              <button className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-accent/50 transition-colors">
+              <button
+                onClick={() => {
+                  setShowExportDestination(false);
+                  setShowConfirmExport(true);
+                }}
+                className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-accent/50 transition-colors"
+              >
                 <span className="text-sm text-foreground">Save to device</span>
                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
               </button>
