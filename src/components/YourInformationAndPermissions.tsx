@@ -11,7 +11,9 @@ const YourInformationAndPermissions: React.FC = () => {
   const [subView, setSubView] = useState<SubView>(null);
   const [showChooseProfile, setShowChooseProfile] = useState(false);
   const [showExportDestination, setShowExportDestination] = useState(false);
+  const [showConfirmExport, setShowConfirmExport] = useState(false);
   const { profile } = useProfile();
+  const { user } = useAuth();
 
   const topItems = [
     { id: 'download' as SubView, label: 'Download your data' },
