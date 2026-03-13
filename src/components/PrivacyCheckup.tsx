@@ -335,9 +335,9 @@ const PrivacyCheckup = () => {
       <h3 className="text-xl font-bold text-foreground">How to maintain your account protected</h3>
 
       <div className="space-y-4">
-        <h4 className="font-semibold text-foreground">Restricted Users</h4>
+        <h4 className="font-semibold text-foreground">Barred Users</h4>
         {blockedUsers.length === 0 ? (
-          <p className="text-muted-foreground">No restricted users at this time</p>
+          <p className="text-muted-foreground">No barred users currently</p>
         ) : (
           <div className="space-y-3">
             {blockedUsers.map(blocked => (
