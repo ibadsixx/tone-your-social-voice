@@ -379,9 +379,9 @@ const PrivacyCheckup = () => {
   const renderAdsView = () => (
     <div className="space-y-6">
       {renderBackButton()}
-      <h3 className="text-xl font-bold text-foreground">Your promotion choices on Tone</h3>
+      <h3 className="text-xl font-bold text-foreground">Your advertisement preferences on Tone</h3>
       <p className="text-muted-foreground text-sm">
-        Manage how promotions are tailored for you. Visit the Ad Preferences section in Preferences for comprehensive controls.
+        Oversee how advertisements are customized for you. Navigate to the Ad Preferences area in Preferences for thorough controls.
       </p>
     </div>
   );
