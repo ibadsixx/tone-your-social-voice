@@ -183,7 +183,7 @@ const PrivacyCheckup = () => {
 
       <div className="space-y-4">
         <div>
-          <Label>Who can view your upcoming posts?</Label>
+          <Label>Who can observe your forthcoming posts?</Label>
           <Select value={privacySettings.future_posts_visibility || 'friends'} onValueChange={v => updatePrivacySetting('future_posts_visibility', v)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>{privacyOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
