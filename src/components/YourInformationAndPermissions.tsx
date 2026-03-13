@@ -57,6 +57,29 @@ const YourInformationAndPermissions: React.FC = () => {
     { key: 'other_personal_info', label: 'Additional personal details' },
   ];
 
+  const connectionsItems = [
+    { key: 'friends_export', label: 'Companions' },
+    { key: 'followers_export', label: 'Subscribers' },
+    { key: 'supervision', label: 'Oversight' },
+  ];
+
+  const loggedInfoItems = [
+    { key: 'recommendations', label: 'Suggestions' },
+    { key: 'location_log', label: 'Whereabouts' },
+    { key: 'search_log', label: 'Lookups' },
+    { key: 'notifications_log', label: 'Alerts' },
+    { key: 'interactions', label: 'Engagements' },
+    { key: 'activity_messages', label: 'Engagement dispatches' },
+    { key: 'form_submissions', label: 'Form entries' },
+    { key: 'in_app_messages', label: 'In-app dispatches' },
+    { key: 'bonuses', label: 'Rewards' },
+    { key: 'other_logged_info', label: 'Additional logged details' },
+  ];
+
+  const securityItems = [
+    { key: 'security_login_info', label: 'Protection and access details' },
+  ];
+
   useEffect(() => {
     if (Object.keys(exportCategories).length === 0) {
       const initial: Record<string, boolean> = {};
