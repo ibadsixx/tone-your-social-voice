@@ -87,6 +87,73 @@ export type Database = {
           },
         ]
       }
+      ad_associated_categories: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_associated_categories_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ad_profile_categories: {
+        Row: {
+          category_type: string
+          created_at: string | null
+          id: string
+          is_used: boolean | null
+          label: string
+          user_id: string
+        }
+        Insert: {
+          category_type: string
+          created_at?: string | null
+          id?: string
+          is_used?: boolean | null
+          label: string
+          user_id: string
+        }
+        Update: {
+          category_type?: string
+          created_at?: string | null
+          id?: string
+          is_used?: boolean | null
+          label?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_profile_categories_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ad_settings: {
         Row: {
           created_at: string
