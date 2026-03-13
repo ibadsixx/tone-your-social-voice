@@ -294,7 +294,7 @@ const PrivacyCheckup = () => {
   const renderDataView = () => (
     <div className="space-y-6">
       {renderBackButton()}
-      <h3 className="text-xl font-bold text-foreground">Your information preferences on Tone</h3>
+      <h3 className="text-xl font-bold text-foreground">Your data configurations on Tone</h3>
 
       <div className="space-y-4">
         <div>
