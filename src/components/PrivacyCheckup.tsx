@@ -222,11 +222,11 @@ const PrivacyCheckup = () => {
       <Separator />
 
       <div className="space-y-4">
-        <h4 className="font-semibold text-foreground">Tag Oversight</h4>
+        <h4 className="font-semibold text-foreground">Tag Supervision</h4>
         <div className="flex items-center justify-between">
           <div>
-            <Label className="text-sm font-medium">Examine tags companions add before they show</Label>
-            <p className="text-sm text-muted-foreground">Tags will require your consent before appearing on your profile</p>
+            <Label className="text-sm font-medium">Review tags allies attach before they appear</Label>
+            <p className="text-sm text-muted-foreground">Tags will need your approval before showing on your profile</p>
           </div>
           <Switch checked={privacySettings.review_tags === 'true'} onCheckedChange={c => updatePrivacySetting('review_tags', c.toString())} />
         </div>
