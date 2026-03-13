@@ -172,7 +172,7 @@ const PrivacyCheckup = () => {
   // Detail views
   const renderBackButton = () => (
     <Button variant="ghost" size="sm" onClick={() => setActiveView(null)} className="mb-4 -ml-2 text-muted-foreground hover:text-foreground">
-      <ArrowLeft className="h-4 w-4 mr-1" /> Return to overview
+      <ArrowLeft className="h-4 w-4 mr-1" /> Back to overview
     </Button>
   );
 
