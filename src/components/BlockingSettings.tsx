@@ -291,7 +291,7 @@ const BlockingSettings = () => {
                                     variant="destructive"
                                     onClick={() => blockUser(profile.id, section.blockType)}
                                   >
-                                    Obstruct
+                                    Block
                                   </Button>
                                 </div>
                               ))}
