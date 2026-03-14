@@ -276,6 +276,64 @@ const PrivacyCheckup = () => {
           You can review more privacy controls in{' '}
           <span className="text-primary font-medium cursor-pointer">Settings Preferences</span>
         </p>
+
+        {/* Sharing Intro Modal */}
+        <Dialog open={showSharingIntro} onOpenChange={setShowSharingIntro}>
+          <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-xl border-border">
+            <div className="bg-amber-500 relative">
+              <img src={whoCanSeeImg} alt="Who can observe what you share" className="w-full h-48 object-cover" />
+              <button
+                onClick={() => setShowSharingIntro(false)}
+                className="absolute top-3 right-3 bg-background/80 hover:bg-background rounded-full p-1.5 transition-colors"
+              >
+                <X className="h-4 w-4 text-foreground" />
+              </button>
+            </div>
+            <div className="p-6 pt-4 space-y-4">
+              <div>
+                <h3 className="text-lg font-bold text-foreground">Who can observe what you share</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Thank you for reviewing who can observe what you share. You can make adjustments at any time in settings.
+                </p>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <span className="text-sm font-medium text-foreground">Profile Details</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+                    <Monitor className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <span className="text-sm font-medium text-foreground">Audience</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+                    <Tag className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <span className="text-sm font-medium text-foreground">Mentioning</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+                    <ShieldBan className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <span className="text-sm font-medium text-foreground">Restricting</span>
+                </div>
+              </div>
+              <Button
+                className="w-full"
+                onClick={() => {
+                  setShowSharingIntro(false);
+                  setActiveView('sharing');
+                }}
+              >
+                Continue
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
