@@ -331,7 +331,7 @@ const BlockingSettings = () => {
                                     onClick={() => unblockUser(block.id)}
                                     className="hover:bg-destructive/10 hover:text-destructive"
                                   >
-                                    Unobstruct
+                                    Unblock
                                   </Button>
                                 </div>
                               ))}
