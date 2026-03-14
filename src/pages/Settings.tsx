@@ -39,7 +39,7 @@ import {
   Settings as SettingsIcon,
   Hash
 } from 'lucide-react';
-import BlockedUsersManager from '@/components/BlockedUsersManager';
+import BlockingSettings from '@/components/BlockingSettings';
 import { AdminReportsManager } from '@/components/AdminReportsManager';
 import { useHashtagNotificationSettings } from '@/hooks/useHashtagNotificationSettings';
 import NotificationSettings from '@/components/NotificationSettings';
