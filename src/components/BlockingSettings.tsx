@@ -198,7 +198,7 @@ const BlockingSettings = () => {
   if (loading) {
     return (
       <div className="space-y-4">
-        <h2 className="text-2xl font-bold text-foreground">Obstructing</h2>
+        <h2 className="text-2xl font-bold text-foreground">Blocklists</h2>
         {[1, 2, 3].map((i) => (
           <Skeleton key={i} className="h-24 w-full rounded-lg" />
         ))}
