@@ -43,43 +43,43 @@ const sections: BlockSection[] = [
   },
   {
     id: 'profiles',
-    title: 'Obstruct profiles and Pages',
+    title: 'Block profiles and Pages',
     description:
-      'Once you obstruct a profile or Page, you can no longer engage with each other\'s profiles, posts, remarks, or dispatches. This doesn\'t encompass apps, games, or groups you both take part in. If you are presently linked with that profile or Page, obstructing it will remove the bond, unlike, and unfollow it.',
+      'Once you block a profile or Page, you can no longer engage with each other\'s profiles, posts, comments, or dispatches. This doesn\'t encompass apps, games, or groups you both take part in. If you are presently linked with that profile or Page, blocking it will remove the bond, unlike, and unfollow it.',
     blockType: 'full',
-    searchPlaceholder: 'Search by name to obstruct...',
+    searchPlaceholder: 'Search by name to block...',
   },
   {
     id: 'nicknames',
-    title: 'Obstructed aliases',
+    title: 'Blocked aliases',
     description:
-      'They can\'t label you or engage with your content. In certain cases, they may still be able to view your content. Obstructing may not prevent all communications or engagements.',
+      'They can\'t label you or engage with your content. In certain cases, they may still be able to view your content. Blocking may not prevent all communications or engagements.',
     blockType: 'nickname',
-    searchPlaceholder: 'Search by alias to obstruct...',
+    searchPlaceholder: 'Search by alias to block...',
   },
   {
     id: 'messages',
-    title: 'Obstruct dispatches',
+    title: 'Block dispatches',
     description:
-      'If you obstruct someone\'s profile on the platform, they won\'t be able to reach you in Messenger either. Unless you obstruct someone\'s profile and any others they may establish, they may be able to post on your timeline, label you, and remark on your posts or remarks.',
+      'If you block someone\'s profile on the platform, they won\'t be able to reach you in Messenger either. Unless you block someone\'s profile and any others they may establish, they may be able to post on your timeline, label you, and comment on your posts or comments.',
     blockType: 'messaging',
-    searchPlaceholder: 'Search by name to obstruct dispatches...',
+    searchPlaceholder: 'Search by name to block dispatches...',
   },
   {
     id: 'app_invites',
-    title: 'Obstruct app solicitations',
+    title: 'Block app solicitations',
     description:
-      'Once you obstruct app solicitations from someone\'s profile, you\'ll automatically disregard future app requests from that person\'s profile. To obstruct solicitations from a specific companion\'s profile, click the "Disregard All Solicitations From This Profile" link under your most recent request.',
+      'Once you block app solicitations from someone\'s profile, you\'ll automatically disregard future app requests from that person\'s profile. To block solicitations from a specific companion\'s profile, click the "Disregard All Solicitations From This Profile" link under your most recent request.',
     blockType: 'app_invite',
-    searchPlaceholder: 'Search by name to obstruct app solicitations...',
+    searchPlaceholder: 'Search by name to block app solicitations...',
   },
   {
     id: 'event_invites',
-    title: 'Obstruct occasion solicitations',
+    title: 'Block occasion solicitations',
     description:
-      'Once you obstruct occasion solicitations from someone\'s profile, you\'ll automatically disregard future occasion requests from that profile.',
+      'Once you block occasion solicitations from someone\'s profile, you\'ll automatically disregard future occasion requests from that profile.',
     blockType: 'event_invite',
-    searchPlaceholder: 'Search by name to obstruct occasion solicitations...',
+    searchPlaceholder: 'Search by name to block occasion solicitations...',
   },
 ];
 
