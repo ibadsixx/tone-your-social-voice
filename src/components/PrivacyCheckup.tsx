@@ -392,31 +392,92 @@ const PrivacyCheckup = () => {
   );
 
   // Sharing wizard step: Audience
-  const renderAudienceStep = () => (
-    <div className="space-y-4">
-      <div>
-        <Label>Who can observe your upcoming posts?</Label>
-        <Select value={privacySettings.future_posts_visibility || 'friends'} onValueChange={v => updatePrivacySetting('future_posts_visibility', v)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>{privacyOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-        </Select>
+  const renderAudienceStep = () => {
+    const futurePostsVal = privacySettings.future_posts_visibility || 'public';
+    const storiesVal = privacySettings.stories_visibility || 'friends';
+
+    const handleLimitPastPosts = async () => {
+      await updatePrivacySetting('past_posts_visibility', 'friends');
+      toast({ title: 'Done', description: 'Prior posts are now restricted to Allies only' });
+    };
+
+    return (
+      <div className="space-y-1">
+        {/* Future posts */}
+        <div className="relative">
+          <button
+            className="w-full flex items-center justify-between py-4 px-1 hover:bg-muted/50 rounded-lg transition-colors text-left"
+            onClick={() => setEditingField(editingField === 'future_posts_visibility' ? null : 'future_posts_visibility')}
+          >
+            <div>
+              <p className="text-sm font-semibold text-foreground">Who can observe your upcoming posts?</p>
+              <p className="text-xs text-muted-foreground">{visibilityLabel(futurePostsVal)}</p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </button>
+          {editingField === 'future_posts_visibility' && (
+            <div className="pb-3 px-1">
+              <Select value={futurePostsVal} onValueChange={(v) => { updatePrivacySetting('future_posts_visibility', v); setEditingField(null); }}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {privacyOptions.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+
+        <Separator />
+
+        {/* Stories */}
+        <div className="relative">
+          <button
+            className="w-full flex items-center justify-between py-4 px-1 hover:bg-muted/50 rounded-lg transition-colors text-left"
+            onClick={() => setEditingField(editingField === 'stories_visibility' ? null : 'stories_visibility')}
+          >
+            <div>
+              <p className="text-sm font-semibold text-foreground">Who can observe your narratives?</p>
+              <p className="text-xs text-muted-foreground">{visibilityLabel(storiesVal)}</p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </button>
+          {editingField === 'stories_visibility' && (
+            <div className="pb-3 px-1">
+              <Select value={storiesVal} onValueChange={(v) => { updatePrivacySetting('stories_visibility', v); setEditingField(null); }}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {privacyOptions.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+
+        <Separator />
+
+        {/* Limit past posts */}
+        <div className="flex items-center justify-between py-4 px-1">
+          <p className="text-sm font-semibold text-foreground">Curb who can observe prior posts</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs font-medium"
+            onClick={handleLimitPastPosts}
+          >
+            Curb prior posts
+          </Button>
+        </div>
       </div>
-      <div>
-        <Label>Who can observe your stories?</Label>
-        <Select value={privacySettings.stories_visibility || 'friends'} onValueChange={v => updatePrivacySetting('stories_visibility', v)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>{privacyOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-        </Select>
-      </div>
-      <div>
-        <Label>Restrict who can observe prior posts</Label>
-        <Select value={privacySettings.past_posts_visibility || 'friends'} onValueChange={v => updatePrivacySetting('past_posts_visibility', v)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>{privacyOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-        </Select>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // Sharing wizard step: Mentioning
   const renderMentioningStep = () => (
