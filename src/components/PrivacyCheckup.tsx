@@ -656,11 +656,40 @@ const PrivacyCheckup = () => {
     );
   };
 
+  const renderCompletionStep = () => {
+    const completedItems = [
+      { label: 'Profile Particulars', done: true },
+      { label: 'Audience', done: true },
+      { label: 'Mentioning', done: true },
+      { label: 'Blocking', done: true },
+    ];
+
+    return (
+      <div className="flex flex-col items-center text-center py-6 space-y-5">
+        <h3 className="text-xl font-bold text-foreground">You're all set!</h3>
+        <p className="text-sm text-muted-foreground max-w-xs">
+          Thank you for reviewing Who can observe what you share. You can make adjustments at any time in settings.
+        </p>
+        <div className="w-full space-y-3 text-left">
+          {completedItems.map((item) => (
+            <div key={item.label} className="flex items-center gap-3">
+              <div className="h-6 w-6 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                <Check className="h-4 w-4 text-primary-foreground" />
+              </div>
+              <span className="text-sm text-foreground">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const sharingStepTitles: Record<string, string> = {
     profile_info: 'Profile Particulars',
     audience: 'Audience',
     mentioning: 'Mentioning',
     blocking: 'Blocking',
+    completion: 'Complete',
   };
 
   const sharingStepRenderers: Record<string, () => JSX.Element> = {
@@ -668,6 +697,7 @@ const PrivacyCheckup = () => {
     audience: renderAudienceStep,
     mentioning: renderMentioningStep,
     blocking: renderBlockingStep,
+    completion: renderCompletionStep,
   };
 
   const cards: { id: ActiveView; title: string; image: string; bg: string }[] = [
