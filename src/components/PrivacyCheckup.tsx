@@ -597,7 +597,7 @@ const PrivacyCheckup = () => {
             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
             onClick={() => setShowBlockedList(false)}
           >
-            <ArrowLeft className="h-4 w-4" /> Back to Restricting
+            <ArrowLeft className="h-4 w-4" /> Back to Blocking
           </button>
           <h4 className="font-semibold text-foreground">Barred Users</h4>
           {blockedUsers.length === 0 ? (
