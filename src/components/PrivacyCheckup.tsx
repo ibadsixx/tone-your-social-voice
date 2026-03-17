@@ -734,7 +734,7 @@ const PrivacyCheckup = () => {
     return (
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground px-1 pb-2">
-          Choose who is permitted to send you ally solicitations on Tone.
+          Specify who is authorized to dispatch companion appeals on Tone.
         </p>
         <div className="relative">
           <button
@@ -742,7 +742,7 @@ const PrivacyCheckup = () => {
             onClick={() => setEditingField(editingField === 'friend_requests_from' ? null : 'friend_requests_from')}
           >
             <div>
-              <p className="text-sm font-semibold text-foreground">Who can send you ally solicitations?</p>
+              <p className="text-sm font-semibold text-foreground">Who can dispatch you companion appeals?</p>
               <p className="text-xs text-muted-foreground">
                 {friendRequestsVal === 'everyone' ? 'Everyone' : friendRequestsVal === 'friends_of_friends' ? 'Wider Circle' : 'Nobody'}
               </p>
@@ -881,7 +881,7 @@ const PrivacyCheckup = () => {
   };
 
   const discoverStepTitles: Record<string, string> = {
-    ally_requests: 'Ally Solicitations',
+    ally_requests: 'Companion Appeals',
     contact_lookup: 'Phone number and email',
     search_engines: 'Search engines',
     completion: 'Complete',
@@ -1080,7 +1080,7 @@ const PrivacyCheckup = () => {
                   <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
                     <UserPlus className="h-4 w-4 text-muted-foreground" />
                   </div>
-                  <span className="text-sm font-medium text-foreground">Ally solicitations</span>
+                  <span className="text-sm font-medium text-foreground">Companion Appeals</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
@@ -1120,7 +1120,7 @@ const PrivacyCheckup = () => {
               <button onClick={handleDiscoverBack} className="p-1 hover:bg-muted rounded-full transition-colors">
                 <ArrowLeft className="h-5 w-5 text-foreground" />
               </button>
-              <h3 className="text-base font-bold text-foreground">{discoverStepTitles[discoverStep] || 'Ally Solicitations'}</h3>
+              <h3 className="text-base font-bold text-foreground">{discoverStepTitles[discoverStep] || 'Companion Appeals'}</h3>
               <button onClick={() => { setShowDiscoverWizard(false); setDiscoverStep('intro'); }} className="p-1 hover:bg-muted rounded-full transition-colors">
                 <X className="h-5 w-5 text-foreground" />
               </button>
