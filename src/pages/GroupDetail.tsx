@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,7 +13,7 @@ import {
   Users, Globe, Lock, Share2, ChevronDown,
   UserPlus, Search, MoreHorizontal, ArrowLeft,
   MessageSquare, Image, SmilePlus, BarChart3,
-  FileText, CalendarDays
+  FileText, CalendarDays, Camera
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -25,6 +25,7 @@ interface GroupDetail {
   created_at: string;
   created_by: string | null;
   invite_followers: boolean;
+  cover_image: string | null;
 }
 
 interface GroupMember {
