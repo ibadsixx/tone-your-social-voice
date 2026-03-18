@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,7 +13,7 @@ import {
   Users, Globe, Lock, Share2, ChevronDown,
   UserPlus, Search, MoreHorizontal, ArrowLeft,
   MessageSquare, Image, SmilePlus, BarChart3,
-  FileText, CalendarDays
+  FileText, CalendarDays, Camera
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -25,6 +25,7 @@ interface GroupDetail {
   created_at: string;
   created_by: string | null;
   invite_followers: boolean;
+  cover_image: string | null;
 }
 
 interface GroupMember {
@@ -49,6 +50,8 @@ const GroupDetailPage = () => {
   const [isMember, setIsMember] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('discussion');
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (groupId) fetchGroupDetail();
@@ -126,6 +129,55 @@ const GroupDetailPage = () => {
     }
   };
 
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !groupId || !user) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({ title: 'Invalid file', description: 'Please upload a JPG, PNG, or WebP image.', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: 'File too large', description: 'Cover image must be under 5MB.', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      setUploadingCover(true);
+      const ext = file.name.split('.').pop();
+      const path = `${groupId}/cover.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('group_covers')
+        .upload(path, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('group_covers')
+        .getPublicUrl(path);
+
+      const coverUrl = `${publicUrl}?t=${Date.now()}`;
+
+      const { error: updateError } = await supabase
+        .from('groups')
+        .update({ cover_image: coverUrl } as any)
+        .eq('id', groupId);
+
+      if (updateError) throw updateError;
+
+      setGroup(prev => prev ? { ...prev, cover_image: coverUrl } : prev);
+      toast({ title: 'Cover updated', description: 'Group cover image has been updated.' });
+    } catch (error: any) {
+      console.error('Cover upload failed:', error);
+      toast({ title: 'Upload failed', description: error.message || 'Failed to upload cover image.', variant: 'destructive' });
+    } finally {
+      setUploadingCover(false);
+      if (coverInputRef.current) coverInputRef.current.value = '';
+    }
+  };
+
   const formatMemberCount = (count: number) => {
     if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
     return count.toString();
@@ -164,11 +216,47 @@ const GroupDetailPage = () => {
     );
   }
 
+  const isAdmin = userRole === 'admin';
+
   return (
     <div className="max-w-4xl mx-auto">
       {/* Cover Photo Area */}
-      <div className="relative w-full h-56 md:h-72 bg-gradient-to-br from-primary/30 via-primary/10 to-muted rounded-b-xl overflow-hidden">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCAwIDAgNjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjA1KSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-50" />
+      <div className="relative w-full h-56 md:h-72 rounded-b-xl overflow-hidden group/cover">
+        {group.cover_image ? (
+          <img
+            src={group.cover_image}
+            alt={`${group.name} cover`}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-primary/30 via-primary/10 to-muted">
+            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCAwIDAgNjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjA1KSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-50" />
+          </div>
+        )}
+
+        {/* Upload Cover Button - visible on hover for admins */}
+        {isAdmin && (
+          <>
+            <input
+              ref={coverInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handleCoverUpload}
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              className="absolute bottom-4 right-4 opacity-0 group-hover/cover:opacity-100 transition-opacity shadow-md"
+              onClick={() => coverInputRef.current?.click()}
+              disabled={uploadingCover}
+            >
+              <Camera className="h-4 w-4 mr-2" />
+              {uploadingCover ? 'Uploading...' : group.cover_image ? 'Edit Cover Photo' : 'Add Cover Photo'}
+            </Button>
+          </>
+        )}
+
         <Button
           variant="ghost"
           size="icon"
