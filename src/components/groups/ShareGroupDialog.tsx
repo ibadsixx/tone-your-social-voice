@@ -68,7 +68,6 @@ const ShareGroupDialog = ({ isOpen, onClose, groupId, groupName }: ShareGroupDia
         content: message || `Check out this group: ${groupName}`,
         type: 'text',
       }] as any);
-      });
       toast({ title: 'Shared!', description: 'Group shared to your feed' });
       onClose();
       setMessage('');
