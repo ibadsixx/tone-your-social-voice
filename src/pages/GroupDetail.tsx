@@ -63,6 +63,7 @@ const GroupDetailPage = () => {
   const coverInputRef = useRef<HTMLInputElement>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     if (groupId) fetchGroupDetail();
