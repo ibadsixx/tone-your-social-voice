@@ -19,7 +19,8 @@ import {
   Users, Globe, Lock, Share2, ChevronDown,
   UserPlus, Search, MoreHorizontal, ArrowLeft,
   MessageSquare, Image, SmilePlus, BarChart3,
-  FileText, CalendarDays, Camera, Bell, UserX, LogOut
+  FileText, CalendarDays, Camera, Bell, UserX, LogOut,
+  LayoutList, Pin, Flag, ChevronRight
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import InviteToGroupDialog from '@/components/groups/InviteToGroupDialog';
