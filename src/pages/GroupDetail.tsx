@@ -26,6 +26,7 @@ import { motion } from 'framer-motion';
 import InviteToGroupDialog from '@/components/groups/InviteToGroupDialog';
 import ShareGroupDialog from '@/components/groups/ShareGroupDialog';
 import GroupSearchDialog from '@/components/groups/GroupSearchDialog';
+import GroupYourContent from '@/components/groups/GroupYourContent';
 
 interface GroupDetail {
   id: string;
