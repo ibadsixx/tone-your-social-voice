@@ -233,6 +233,15 @@ const GroupDetailPage = () => {
 
   const isAdmin = userRole === 'admin';
 
+  if (showYourContent) {
+    return (
+      <GroupYourContent
+        groupName={group.name}
+        onBack={() => setShowYourContent(false)}
+      />
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto">
       {/* Cover Photo Area */}
