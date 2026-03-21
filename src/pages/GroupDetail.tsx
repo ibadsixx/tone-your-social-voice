@@ -405,7 +405,7 @@ const GroupDetailPage = () => {
                   <Pin className="h-4 w-4" />
                   Pin group
                 </DropdownMenuItem>
-                <DropdownMenuItem className="gap-3 cursor-pointer" onClick={() => toast({ title: 'Report submitted', description: 'Thank you for your feedback.' })}>
+                <DropdownMenuItem className="gap-3 cursor-pointer" onClick={() => setReportGroupOpen(true)}>
                   <Flag className="h-4 w-4" />
                   Report group
                 </DropdownMenuItem>
