@@ -142,6 +142,8 @@ const Post = ({
   location_provider,
   duration,
   aspect_ratio,
+  group_name,
+  group_id,
   profiles,
   post_media,
   shared_post,
