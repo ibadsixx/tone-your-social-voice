@@ -356,8 +356,20 @@ const Post = ({
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <div className="flex items-center space-x-2">
+                   <div className="flex items-center flex-wrap gap-x-1">
                     <p className="font-semibold text-sm text-foreground hover:underline">{profiles.display_name}</p>
+                    {group_name && group_id && (
+                      <>
+                        <span className="text-sm text-muted-foreground">›</span>
+                        <Link 
+                          to={`/groups/${group_id}`} 
+                          className="font-semibold text-sm text-foreground hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {group_name}
+                        </Link>
+                      </>
+                    )}
                     {feelingDisplay && (
                       <span className="text-sm text-muted-foreground">
                         {feeling_activity_target_text && feeling_activity_target_id ? (
