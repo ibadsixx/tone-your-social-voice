@@ -86,6 +86,13 @@ export const useHomeFeed = () => {
               display_name,
               profile_pic
             )
+          ),
+          group_posts (
+            group_id,
+            groups:group_id (
+              id,
+              name
+            )
           )
         `)
         .order('created_at', { ascending: false })
@@ -93,13 +100,19 @@ export const useHomeFeed = () => {
 
       if (error) throw error;
 
-      const postsWithTypedMedia = (data || []).map(post => ({
-        ...post,
-        media_type: (post.media_type === 'image' || post.media_type === 'video') 
-          ? post.media_type as 'image' | 'video'
-          : null,
-        shared_post: post.shared_post
-      })) as HomeFeedPost[];
+      const postsWithTypedMedia = (data || []).map(post => {
+        const groupPost = (post as any).group_posts?.[0];
+        const groupInfo = groupPost?.groups;
+        return {
+          ...post,
+          media_type: (post.media_type === 'image' || post.media_type === 'video') 
+            ? post.media_type as 'image' | 'video'
+            : null,
+          shared_post: post.shared_post,
+          group_name: groupInfo?.name || null,
+          group_id: groupInfo?.id || null,
+        };
+      }) as HomeFeedPost[];
 
       if (resetPosts) {
         setPosts(postsWithTypedMedia);
