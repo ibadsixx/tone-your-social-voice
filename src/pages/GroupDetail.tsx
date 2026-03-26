@@ -602,7 +602,7 @@ const GroupDetailPage = () => {
           <TabsContent value="media" className="mt-4">
             <Card>
               <CardContent className="py-12 text-center">
-                <Image className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                <ImageIcon className="h-12 w-12 mx-auto mb-4 opacity-30" />
                 <p className="text-muted-foreground">No media shared yet</p>
               </CardContent>
             </Card>
