@@ -355,6 +355,21 @@ export const useHomeFeed = () => {
       const postId = data?.id;
       console.log('[createPost] Post created with ID:', postId);
 
+      // Persist tagged users for this post (skip on scheduled posts; they'll be created on publish)
+      if (postId && !scheduledAt && Array.isArray(taggedUsers) && taggedUsers.length > 0 && user?.id) {
+        const tagRows = taggedUsers
+          .filter((t: any) => t?.id)
+          .map((t: any) => ({
+            post_id: postId,
+            tagged_user_id: t.id,
+            tagged_by: user.id,
+          }));
+        if (tagRows.length > 0) {
+          const { error: tagErr } = await supabase.from('post_tags').insert(tagRows);
+          if (tagErr) console.error('[createPost] Failed to insert post_tags:', tagErr);
+        }
+      }
+
       toast({
         title: 'Success',
         description: scheduledAt ? 'Post scheduled successfully' : 'Post created successfully'
