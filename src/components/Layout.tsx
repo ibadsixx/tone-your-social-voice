@@ -43,7 +43,6 @@ const Layout = () => {
     { name: 'Messages', href: '/messages', icon: MessageCircle },
     { name: 'Profile', href: '/profile', icon: User },
     { name: 'Search', href: '/search', icon: Search },
-    { name: 'Mentions', href: '/mentions', icon: AtSign },
     { name: 'Following Hashtags', href: '/hashtags/following', icon: Hash },
     { name: 'Saved', href: '/saved', icon: Bookmark },
     { name: 'Groups', href: '/groups', icon: Users },
