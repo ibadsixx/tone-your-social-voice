@@ -62,7 +62,17 @@ export const useHomeFeed = () => {
     try {
       setLoading(true);
       const currentOffset = resetPosts ? 0 : offset;
-      
+
+      // Load groups the current user has explicitly unfollowed so we can hide their posts.
+      let unfollowedGroupIds: string[] = [];
+      if (user) {
+        const { data: unfollowRows } = await supabase
+          .from('group_follows' as any)
+          .select('group_id')
+          .eq('user_id', user.id);
+        unfollowedGroupIds = (unfollowRows || []).map((r: any) => r.group_id);
+      }
+
       const { data, error } = await supabase
         .from('posts')
         .select(`
@@ -112,7 +122,9 @@ export const useHomeFeed = () => {
           group_name: groupInfo?.name || null,
           group_id: groupInfo?.id || null,
         };
-      }) as HomeFeedPost[];
+      }).filter((p: any) =>
+        !p.group_id || !unfollowedGroupIds.includes(p.group_id)
+      ) as HomeFeedPost[];
 
       if (resetPosts) {
         setPosts(postsWithTypedMedia);
@@ -132,7 +144,7 @@ export const useHomeFeed = () => {
     } finally {
       setLoading(false);
     }
-  }, [offset, toast]);
+  }, [offset, toast, user]);
 
   const loadMore = useCallback(() => {
     if (!loading && hasMore) {

@@ -207,6 +207,7 @@ const GroupDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [isMember, setIsMember] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [isFollowing, setIsFollowing] = useState(true);
   const [activeTab, setActiveTab] = useState('discussion');
   const [uploadingCover, setUploadingCover] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -303,6 +304,16 @@ const GroupDetailPage = () => {
         const membership = membersData?.find(m => m.user_id === user.id);
         setIsMember(!!membership);
         setUserRole(membership?.role || null);
+
+        // A row in `group_follows` indicates the user has explicitly UNFOLLOWED.
+        // Without a row, members are treated as following by default.
+        const { data: unfollowRow } = await supabase
+          .from('group_follows' as any)
+          .select('id')
+          .eq('group_id', groupId!)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        setIsFollowing(!unfollowRow);
       }
     } catch (error: any) {
       console.error('Failed to load group:', error);
@@ -339,6 +350,40 @@ const GroupDetailPage = () => {
       fetchGroupDetail();
     } catch (error: any) {
       toast({ title: 'Error', description: 'Failed to leave group', variant: 'destructive' });
+    }
+  };
+
+  const handleToggleFollow = async () => {
+    if (!user || !groupId) return;
+    try {
+      if (isFollowing) {
+        // Unfollow: insert a row marking explicit unfollow
+        const { error } = await supabase
+          .from('group_follows' as any)
+          .insert({ group_id: groupId, user_id: user.id });
+        if (error && (error as any).code !== '23505') throw error;
+        setIsFollowing(false);
+        toast({
+          title: 'Unfollowed',
+          description: "You won't see this group's posts in your feed. You're still a member.",
+        });
+      } else {
+        // Follow again: remove the unfollow marker
+        const { error } = await supabase
+          .from('group_follows' as any)
+          .delete()
+          .eq('group_id', groupId)
+          .eq('user_id', user.id);
+        if (error) throw error;
+        setIsFollowing(true);
+        toast({
+          title: 'Following',
+          description: "You'll see this group's posts in your feed again.",
+        });
+      }
+    } catch (error: any) {
+      console.error('[GroupDetail] toggle follow error:', error);
+      toast({ title: 'Error', description: 'Failed to update follow state', variant: 'destructive' });
     }
   };
 
@@ -558,9 +603,9 @@ const GroupDetailPage = () => {
                       <Bell className="h-4 w-4" />
                       Manage notifications
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="gap-3 cursor-pointer" onClick={() => toast({ title: 'Coming soon', description: 'Unfollow feature will be available soon.' })}>
+                    <DropdownMenuItem className="gap-3 cursor-pointer" onClick={handleToggleFollow}>
                       <UserX className="h-4 w-4" />
-                      Unfollow group
+                      {isFollowing ? 'Unfollow group' : 'Follow group'}
                     </DropdownMenuItem>
                     <DropdownMenuItem className="gap-3 cursor-pointer" onClick={handleLeave}>
                       <LogOut className="h-4 w-4" />
