@@ -7,6 +7,7 @@ import Post from './Post';
 import ScheduledPostsTab from './ScheduledPostsTab';
 import FilteredPostsLayout from './FilteredPostsLayout';
 import FriendsTab from './FriendsTab';
+import Mentions from '@/pages/Mentions';
 
 interface ProfileTabsProps {
   profileId: string;
@@ -19,9 +20,10 @@ const ProfileTabs = ({ profileId, isOwnProfile }: ProfileTabsProps) => {
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-      <TabsList className={`grid w-full ${isOwnProfile ? 'grid-cols-4' : 'grid-cols-3'}`}>
+      <TabsList className={`grid w-full ${isOwnProfile ? 'grid-cols-5' : 'grid-cols-3'}`}>
         <TabsTrigger value="posts">Posts</TabsTrigger>
         {isOwnProfile && <TabsTrigger value="scheduled">Scheduled</TabsTrigger>}
+        {isOwnProfile && <TabsTrigger value="mentions">Mentions</TabsTrigger>}
         <TabsTrigger value="about">About</TabsTrigger>
         <TabsTrigger value="friends">Friends</TabsTrigger>
       </TabsList>
@@ -37,6 +39,12 @@ const ProfileTabs = ({ profileId, isOwnProfile }: ProfileTabsProps) => {
       {isOwnProfile && (
         <TabsContent value="scheduled" className="mt-6">
           <ScheduledPostsTab />
+        </TabsContent>
+      )}
+
+      {isOwnProfile && (
+        <TabsContent value="mentions" className="mt-6">
+          <Mentions />
         </TabsContent>
       )}
       
