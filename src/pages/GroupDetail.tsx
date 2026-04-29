@@ -305,17 +305,15 @@ const GroupDetailPage = () => {
         setIsMember(!!membership);
         setUserRole(membership?.role || null);
 
-        // Load follow state (default = following when row missing)
+        // Load follow state. A row in `group_follows` means the user follows the group.
+        // Members are considered following by default until they explicitly unfollow.
         const { data: followRow } = await supabase
           .from('group_follows' as any)
           .select('id')
           .eq('group_id', groupId!)
           .eq('user_id', user.id)
           .maybeSingle();
-        setIsFollowing(!followRow ? true : true);
-        // We use presence of row to mean "explicitly unfollowed"
-        // Re-evaluate: row present => unfollowed
-        setIsFollowing(!followRow);
+        setIsFollowing(!!followRow || !!membership);
       }
     } catch (error: any) {
       console.error('Failed to load group:', error);
