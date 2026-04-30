@@ -691,8 +691,7 @@ const GroupDetailPage = () => {
             <TabsTrigger value="about">About</TabsTrigger>
             <TabsTrigger value="discussion">Discussion</TabsTrigger>
             <TabsTrigger value="people">People</TabsTrigger>
-            <TabsTrigger value="media">Media</TabsTrigger>
-            <TabsTrigger value="files">Files</TabsTrigger>
+            <TabsTrigger value="media">Media/Files</TabsTrigger>
           </TabsList>
 
           <TabsContent value="discussion" className="mt-4 space-y-4">
@@ -774,22 +773,12 @@ const GroupDetailPage = () => {
             </Card>
           </TabsContent>
 
-          {/* Media Tab */}
+          {/* Media/Files Tab */}
           <TabsContent value="media" className="mt-4">
             <Card>
               <CardContent className="py-12 text-center">
                 <ImageIcon className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                <p className="text-muted-foreground">No media shared yet</p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Files Tab */}
-          <TabsContent value="files" className="mt-4">
-            <Card>
-              <CardContent className="py-12 text-center">
-                <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                <p className="text-muted-foreground">No files shared yet</p>
+                <p className="text-muted-foreground">No media or files shared yet</p>
               </CardContent>
             </Card>
           </TabsContent>
