@@ -629,13 +629,6 @@ const GroupDetailPage = () => {
                   <LayoutList className="h-4 w-4" />
                   Your content
                 </DropdownMenuItem>
-                <DropdownMenuItem className="gap-3 cursor-pointer justify-between" onClick={() => setShareOpen(true)}>
-                  <div className="flex items-center gap-3">
-                    <Share2 className="h-4 w-4" />
-                    Share
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </DropdownMenuItem>
                 <DropdownMenuItem className="gap-3 cursor-pointer" onClick={() => setNotifSettingsOpen(true)}>
                   <Bell className="h-4 w-4" />
                   Manage notifications
