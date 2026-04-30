@@ -479,6 +479,7 @@ const GroupDetailPage = () => {
   if (showYourContent) {
     return (
       <GroupYourContent
+        groupId={groupId!}
         groupName={group.name}
         onBack={() => setShowYourContent(false)}
       />
