@@ -30,6 +30,7 @@ import InviteToGroupDialog from '@/components/groups/InviteToGroupDialog';
 import ShareGroupDialog from '@/components/groups/ShareGroupDialog';
 import GroupSearchDialog from '@/components/groups/GroupSearchDialog';
 import GroupYourContent from '@/components/groups/GroupYourContent';
+import GroupMediaFiles from '@/components/groups/GroupMediaFiles';
 import GroupNotificationSettings from '@/components/groups/GroupNotificationSettings';
 import ReportGroupDialog from '@/components/groups/ReportGroupDialog';
 import NewPost from '@/components/NewPost';
@@ -775,12 +776,7 @@ const GroupDetailPage = () => {
 
           {/* Media/Files Tab */}
           <TabsContent value="media" className="mt-4">
-            <Card>
-              <CardContent className="py-12 text-center">
-                <ImageIcon className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                <p className="text-muted-foreground">No media or files shared yet</p>
-              </CardContent>
-            </Card>
+            {groupId && <GroupMediaFiles groupId={groupId} />}
           </TabsContent>
         </Tabs>
       </div>
