@@ -34,6 +34,8 @@ const Pages = () => {
   const handlePageCreated = () => {
     if (activeTab === 'owned') {
       loadPages('owned');
+    } else {
+      setActiveTab('owned');
     }
   };
 
