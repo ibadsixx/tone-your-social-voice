@@ -688,7 +688,7 @@ const GroupDetailPage = () => {
       {/* Tabs */}
       <div className="px-4 md:px-6 mt-4">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="w-full justify-start bg-card border overflow-x-auto">
+          <TabsList className="w-full justify-start bg-card border overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <TabsTrigger value="about">About</TabsTrigger>
             <TabsTrigger value="discussion">Discussion</TabsTrigger>
             <TabsTrigger value="people">People</TabsTrigger>
