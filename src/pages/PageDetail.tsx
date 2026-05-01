@@ -11,7 +11,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Camera, Loader2, Save, Users } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ArrowLeft, Camera, Loader2, Save, Users, Heart } from 'lucide-react';
+import NewPost from '@/components/NewPost';
+import Post from '@/components/Post';
+import { useHomeFeed } from '@/hooks/useHomeFeed';
 
 const categories = [
   'Business', 'Entertainment', 'Education', 'Sports', 'Technology',
@@ -45,6 +49,12 @@ const PageDetail = () => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<string>('');
+  const [activeTab, setActiveTab] = useState('posts');
+  const [pagePosts, setPagePosts] = useState<any[]>([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
+  const { createPost } = useHomeFeed();
 
   const isAdmin = !!user && page?.admin_id === user.id;
 
@@ -75,6 +85,86 @@ const PageDetail = () => {
       setLoading(false);
     })();
   }, [id, navigate, toast]);
+
+  const fetchPagePosts = async () => {
+    if (!id) return;
+    setPostsLoading(true);
+    const { data } = await supabase
+      .from('page_posts')
+      .select(`
+        id, message, created_at, shared_by,
+        post:post_id (
+          *,
+          profiles!posts_user_id_fkey (username, display_name, profile_pic),
+          likes (id, user_id),
+          comments (id, content, profiles:user_id (display_name))
+        )
+      `)
+      .eq('page_id', id)
+      .order('created_at', { ascending: false });
+    setPagePosts(data || []);
+    setPostsLoading(false);
+  };
+
+  useEffect(() => {
+    if (id) fetchPagePosts();
+  }, [id]);
+
+  useEffect(() => {
+    if (!id || !user) return;
+    (async () => {
+      const { data } = await supabase
+        .from('page_followers')
+        .select('user_id')
+        .eq('page_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setIsFollowing(!!data);
+    })();
+  }, [id, user]);
+
+  const handlePagePost = async (
+    content: string,
+    media?: File[],
+    taggedUsers?: any[],
+    audience?: any,
+    feeling?: any,
+    scheduledAt?: Date,
+    location?: any,
+  ) => {
+    if (!id || !user) return undefined;
+    try {
+      const postId = await createPost(content, media, taggedUsers, audience, feeling, scheduledAt, location);
+      if (postId) {
+        const { error } = await supabase.from('page_posts').insert({
+          page_id: id,
+          post_id: postId,
+          shared_by: user.id,
+        });
+        if (error) throw error;
+        fetchPagePosts();
+      }
+      return postId;
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message ?? 'Failed to post', variant: 'destructive' });
+      return undefined;
+    }
+  };
+
+  const toggleFollow = async () => {
+    if (!id || !user) return;
+    setFollowBusy(true);
+    if (isFollowing) {
+      await supabase.from('page_followers').delete().eq('page_id', id).eq('user_id', user.id);
+      setIsFollowing(false);
+      setFollowerCount((c) => Math.max(0, c - 1));
+    } else {
+      await supabase.from('page_followers').insert({ page_id: id, user_id: user.id, role: 'follower' });
+      setIsFollowing(true);
+      setFollowerCount((c) => c + 1);
+    }
+    setFollowBusy(false);
+  };
 
   const handleSave = async () => {
     if (!page || !isAdmin) return;
@@ -176,27 +266,90 @@ const PageDetail = () => {
           />
         </div>
         <CardContent className="pt-6">
-          <div className="flex items-start gap-4">
-            <Avatar className="h-16 w-16 -mt-12 border-4 border-background">
-              <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold">
+          <div className="flex items-start gap-4 flex-wrap">
+            <Avatar className="h-20 w-20 -mt-14 border-4 border-background">
+              <AvatarFallback className="bg-primary/10 text-primary text-2xl font-bold">
                 {page.name.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
               <h1 className="text-2xl font-bold text-foreground truncate">{page.name}</h1>
-              <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
+              <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
                 <span className="inline-flex items-center gap-1">
                   <Users className="h-3 w-3" /> {followerCount} followers
                 </span>
                 {page.category && <Badge variant="secondary">{page.category}</Badge>}
+                {isAdmin && <Badge variant="outline">Admin</Badge>}
               </div>
+              {page.description && (
+                <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{page.description}</p>
+              )}
             </div>
+            {!isAdmin && user && (
+              <Button
+                onClick={toggleFollow}
+                disabled={followBusy}
+                variant={isFollowing ? 'secondary' : 'default'}
+                size="sm"
+              >
+                <Heart className={`h-4 w-4 mr-2 ${isFollowing ? 'fill-current' : ''}`} />
+                {isFollowing ? 'Following' : 'Follow'}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {isAdmin ? (
-        <Card>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList>
+          <TabsTrigger value="posts">Posts</TabsTrigger>
+          <TabsTrigger value="about">About</TabsTrigger>
+          {isAdmin && <TabsTrigger value="manage">Manage</TabsTrigger>}
+        </TabsList>
+
+        <TabsContent value="posts" className="space-y-4 mt-4">
+          {isAdmin && <NewPost onCreatePost={handlePagePost} />}
+          {postsLoading ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : pagePosts.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                {isAdmin ? 'No posts yet. Share your first post above.' : 'This page has no posts yet.'}
+              </CardContent>
+            </Card>
+          ) : (
+            pagePosts.map((pp) =>
+              pp.post ? (
+                <Post key={pp.id} {...pp.post} onDelete={() => fetchPagePosts()} />
+              ) : null,
+            )
+          )}
+        </TabsContent>
+
+        <TabsContent value="about" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>About</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <p className="text-muted-foreground whitespace-pre-wrap">
+                {page.description || 'No description provided.'}
+              </p>
+              {page.category && (
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Category: </span>
+                  <Badge variant="secondary">{page.category}</Badge>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {isAdmin && (
+          <TabsContent value="manage" className="mt-4">
+            <Card>
           <CardHeader>
             <CardTitle>Manage page</CardTitle>
           </CardHeader>
@@ -234,19 +387,10 @@ const PageDetail = () => {
               </Button>
             </div>
           </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>About</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground whitespace-pre-wrap">
-              {page.description || 'No description provided.'}
-            </p>
-          </CardContent>
-        </Card>
-      )}
+            </Card>
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 };
