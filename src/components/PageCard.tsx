@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -17,6 +18,7 @@ interface PageCardProps {
 
 export const PageCard = ({ page, onFollow, onUnfollow, variant = 'default', loading }: PageCardProps) => {
   const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
 
   const handleFollowClick = async () => {
     setIsLoading(true);
@@ -115,11 +117,21 @@ export const PageCard = ({ page, onFollow, onUnfollow, variant = 'default', load
             <div className="flex gap-2">
               {variant === 'owned' ? (
                 <>
-                  <Button variant="outline" size="sm" className="h-8">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => navigate(`/pages/${page.id}`)}
+                  >
                     <Settings className="h-3 w-3 mr-1" />
                     Manage
                   </Button>
-                  <Button variant="outline" size="sm" className="h-8">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => navigate(`/pages/${page.id}`)}
+                  >
                     <PlusCircle className="h-3 w-3 mr-1" />
                     Post
                   </Button>

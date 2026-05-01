@@ -18,6 +18,7 @@ import Search from "@/pages/Search";
 import Groups from "@/pages/Groups";
 import GroupDetail from "@/pages/GroupDetail";
 import Pages from "@/pages/Pages";
+import PageDetail from "@/pages/PageDetail";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/NotFound";
 import Saved from "@/pages/Saved";
@@ -59,6 +60,7 @@ const App = () => (
                 <Route path="groups" element={<Groups />} />
                 <Route path="groups/:groupId" element={<GroupDetail />} />
                 <Route path="pages" element={<Pages />} />
+                <Route path="pages/:id" element={<PageDetail />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="saved" element={<Saved />} />
                 <Route path="mentions" element={<Mentions />} />
