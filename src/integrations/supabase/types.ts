@@ -2145,6 +2145,55 @@ export type Database = {
           },
         ]
       }
+      page_posts: {
+        Row: {
+          created_at: string
+          id: string
+          message: string | null
+          page_id: string
+          post_id: string
+          shared_by: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message?: string | null
+          page_id: string
+          post_id: string
+          shared_by: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string | null
+          page_id?: string
+          post_id?: string
+          shared_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_posts_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "page_posts_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "page_posts_shared_by_fkey"
+            columns: ["shared_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pages: {
         Row: {
           admin_id: string
