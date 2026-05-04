@@ -26,6 +26,12 @@ import {
   Tag,
   MoreHorizontal,
   Search,
+  Star,
+  Link2,
+  Mail,
+  MapPin,
+  Phone,
+  Image as ImageIcon,
 } from 'lucide-react';
 import NewPost from '@/components/NewPost';
 import Post from '@/components/Post';
@@ -64,6 +70,7 @@ const PageDetail = () => {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<string>('');
   const [activeTab, setActiveTab] = useState('posts');
+  const [aboutSection, setAboutSection] = useState('contact');
   const [pagePosts, setPagePosts] = useState<any[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -341,6 +348,8 @@ const PageDetail = () => {
             <TabsList className="bg-transparent h-12 p-0 gap-1">
               <TabsTrigger value="posts" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Posts</TabsTrigger>
               <TabsTrigger value="about" className="data-[state=active]:bg-accent rounded-md px-4 h-10">About</TabsTrigger>
+              <TabsTrigger value="mentions" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Mentions</TabsTrigger>
+              <TabsTrigger value="reviews" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Reviews</TabsTrigger>
               <TabsTrigger value="followers" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Followers</TabsTrigger>
               <TabsTrigger value="photos" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Photos</TabsTrigger>
               {isAdmin && <TabsTrigger value="manage" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Manage</TabsTrigger>}
@@ -409,22 +418,157 @@ const PageDetail = () => {
             </div>
           </TabsContent>
 
+          {/* About — Facebook-style with sub-nav + sections */}
           <TabsContent value="about" className="m-0 p-4">
             <Card>
-              <CardHeader>
-                <CardTitle>About</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-muted-foreground whitespace-pre-wrap">
-                  {page.description || 'No description provided.'}
-                </p>
-                {page.category && (
-                  <div className="text-sm">
-                    <span className="text-muted-foreground">Category: </span>
-                    <Badge variant="secondary">{page.category}</Badge>
+              <CardContent className="p-0">
+                <div className="grid grid-cols-1 md:grid-cols-4">
+                  {/* Sub-nav */}
+                  <aside className="md:col-span-1 border-r p-4">
+                    <h2 className="text-xl font-bold mb-3">About</h2>
+                    <nav className="flex flex-col gap-1 text-sm">
+                      {[
+                        { id: 'contact', label: 'Contact and basic info' },
+                        { id: 'privacy', label: 'Privacy and legal info' },
+                        { id: 'work', label: 'Work and education' },
+                        { id: 'places', label: 'Places lived' },
+                        { id: 'transparency', label: 'Page transparency' },
+                        { id: 'family', label: 'Family and relationships' },
+                        { id: 'life', label: 'Life updates' },
+                      ].map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => setAboutSection(s.id)}
+                          className={`text-left px-3 py-2 rounded-md transition-colors ${
+                            aboutSection === s.id
+                              ? 'bg-primary/10 text-primary font-medium'
+                              : 'hover:bg-accent text-foreground'
+                          }`}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </nav>
+                  </aside>
+
+                  {/* Section content */}
+                  <div className="md:col-span-3 p-6 space-y-6">
+                    {aboutSection === 'contact' && (
+                      <>
+                        <section>
+                          <h3 className="font-semibold mb-3">Categories</h3>
+                          <div className="flex items-center gap-2 text-sm text-foreground">
+                            <Tag className="h-4 w-4 text-muted-foreground" />
+                            <span>{page.category || 'Uncategorized'}</span>
+                          </div>
+                        </section>
+
+                        <section>
+                          <h3 className="font-semibold mb-3">Websites and social links</h3>
+                          <div className="space-y-2 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <Link2 className="h-4 w-4" />
+                              <span>No links added yet</span>
+                            </div>
+                          </div>
+                        </section>
+
+                        <section>
+                          <h3 className="font-semibold mb-3">Basic info</h3>
+                          <div className="space-y-2 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <Star className="h-4 w-4" />
+                              <span>Not yet rated (0 Reviews)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4" />
+                              <span>Created {createdAt}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Globe className="h-4 w-4" />
+                              <span>Public page</span>
+                            </div>
+                          </div>
+                        </section>
+
+                        <section>
+                          <h3 className="font-semibold mb-3">Description</h3>
+                          <p className="text-sm text-foreground whitespace-pre-wrap">
+                            {page.description || 'No description provided.'}
+                          </p>
+                        </section>
+                      </>
+                    )}
+
+                    {aboutSection === 'privacy' && (
+                      <p className="text-sm text-muted-foreground">No privacy or legal info added yet.</p>
+                    )}
+                    {aboutSection === 'work' && (
+                      <p className="text-sm text-muted-foreground">No work or education info added yet.</p>
+                    )}
+                    {aboutSection === 'places' && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <MapPin className="h-4 w-4" /> <span>No places added yet.</span>
+                      </div>
+                    )}
+                    {aboutSection === 'transparency' && (
+                      <div className="space-y-2 text-sm text-muted-foreground">
+                        <p>Facebook is showing information to help you better understand the purpose of this page.</p>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4" /> <span>Page created — {createdAt}</span>
+                        </div>
+                      </div>
+                    )}
+                    {aboutSection === 'family' && (
+                      <p className="text-sm text-muted-foreground">No family or relationships info.</p>
+                    )}
+                    {aboutSection === 'life' && (
+                      <p className="text-sm text-muted-foreground">No life updates yet.</p>
+                    )}
                   </div>
-                )}
-                <div className="text-sm text-muted-foreground">Created on {createdAt}</div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Followers preview */}
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle className="text-lg">Followers</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  {followerCount} {followerCount === 1 ? 'person follows' : 'people follow'} this page.
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Photos preview */}
+            <Card className="mt-4">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-lg">Photos</CardTitle>
+                <Button variant="ghost" size="sm" onClick={() => setActiveTab('photos')}>See all</Button>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <ImageIcon className="h-4 w-4" /> <span>No photos yet.</span>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="mentions" className="m-0 p-4">
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                No mentions yet.
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="reviews" className="m-0 p-4">
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                <Star className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                Not yet rated · 0 Reviews
               </CardContent>
             </Card>
           </TabsContent>
