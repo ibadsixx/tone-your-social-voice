@@ -12,7 +12,21 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Camera, Loader2, Save, Users, Heart } from 'lucide-react';
+import {
+  ArrowLeft,
+  Camera,
+  Loader2,
+  Save,
+  Users,
+  Heart,
+  MessageCircle,
+  Share2,
+  Globe,
+  Calendar,
+  Tag,
+  MoreHorizontal,
+  Search,
+} from 'lucide-react';
 import NewPost from '@/components/NewPost';
 import Post from '@/components/Post';
 import { useHomeFeed } from '@/hooks/useHomeFeed';
@@ -229,15 +243,23 @@ const PageDetail = () => {
 
   if (!page) return null;
 
-  return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <Button variant="ghost" size="sm" onClick={() => navigate('/pages')}>
-        <ArrowLeft className="h-4 w-4 mr-2" /> Back to Pages
-      </Button>
+  const createdAt = new Date(page.created_at).toLocaleDateString(undefined, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
 
-      {/* Cover */}
-      <Card className="overflow-hidden">
-        <div className="relative h-48 bg-gradient-to-br from-primary/20 to-purple-500/20">
+  return (
+    <div className="max-w-5xl mx-auto pb-10">
+      <div className="px-4 pt-4">
+        <Button variant="ghost" size="sm" onClick={() => navigate('/pages')}>
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Pages
+        </Button>
+      </div>
+
+      {/* Cover + Header (Facebook-style) */}
+      <Card className="overflow-hidden mt-3 mx-4 rounded-xl">
+        <div className="relative h-56 md:h-72 bg-gradient-to-br from-primary/20 to-purple-500/20">
           {page.cover_image && (
             <img src={page.cover_image} alt={page.name} className="w-full h-full object-cover" />
           )}
@@ -250,7 +272,7 @@ const PageDetail = () => {
               disabled={uploading}
             >
               {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Camera className="h-4 w-4 mr-2" />}
-              {uploading ? 'Uploading...' : 'Change cover'}
+              {uploading ? 'Uploading...' : 'Edit cover'}
             </Button>
           )}
           <input
@@ -265,91 +287,167 @@ const PageDetail = () => {
             }}
           />
         </div>
-        <CardContent className="pt-6">
-          <div className="flex items-start gap-4 flex-wrap">
-            <Avatar className="h-20 w-20 -mt-14 border-4 border-background">
-              <AvatarFallback className="bg-primary/10 text-primary text-2xl font-bold">
+
+        <div className="px-6 pt-4 pb-4 border-b">
+          <div className="flex flex-col md:flex-row md:items-end gap-4">
+            <Avatar className="h-32 w-32 -mt-20 border-4 border-background shadow-md">
+              <AvatarFallback className="bg-primary/10 text-primary text-4xl font-bold">
                 {page.name.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-bold text-foreground truncate">{page.name}</h1>
-              <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
-                <span className="inline-flex items-center gap-1">
-                  <Users className="h-3 w-3" /> {followerCount} followers
-                </span>
-                {page.category && <Badge variant="secondary">{page.category}</Badge>}
-                {isAdmin && <Badge variant="outline">Admin</Badge>}
+              <h1 className="text-3xl font-bold text-foreground truncate">{page.name}</h1>
+              <div className="text-sm text-muted-foreground mt-1">
+                {followerCount} followers · {page.category || 'Page'}
               </div>
-              {page.description && (
-                <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{page.description}</p>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {!isAdmin && user && (
+                <>
+                  <Button
+                    onClick={toggleFollow}
+                    disabled={followBusy}
+                    variant={isFollowing ? 'secondary' : 'default'}
+                  >
+                    <Heart className={`h-4 w-4 mr-2 ${isFollowing ? 'fill-current' : ''}`} />
+                    {isFollowing ? 'Following' : 'Follow'}
+                  </Button>
+                  <Button variant="secondary">
+                    <MessageCircle className="h-4 w-4 mr-2" /> Message
+                  </Button>
+                </>
               )}
-            </div>
-            {!isAdmin && user && (
-              <Button
-                onClick={toggleFollow}
-                disabled={followBusy}
-                variant={isFollowing ? 'secondary' : 'default'}
-                size="sm"
-              >
-                <Heart className={`h-4 w-4 mr-2 ${isFollowing ? 'fill-current' : ''}`} />
-                {isFollowing ? 'Following' : 'Follow'}
+              {isAdmin && (
+                <Button onClick={() => setActiveTab('manage')} variant="default">
+                  Manage Page
+                </Button>
+              )}
+              <Button variant="secondary" size="icon">
+                <Share2 className="h-4 w-4" />
               </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList>
-          <TabsTrigger value="posts">Posts</TabsTrigger>
-          <TabsTrigger value="about">About</TabsTrigger>
-          {isAdmin && <TabsTrigger value="manage">Manage</TabsTrigger>}
-        </TabsList>
-
-        <TabsContent value="posts" className="space-y-4 mt-4">
-          {isAdmin && <NewPost onCreatePost={handlePagePost} />}
-          {postsLoading ? (
-            <div className="flex justify-center py-10">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <Button variant="secondary" size="icon">
+                <Search className="h-4 w-4" />
+              </Button>
+              <Button variant="secondary" size="icon">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
             </div>
-          ) : pagePosts.length === 0 ? (
+          </div>
+        </div>
+
+        {/* Tabs bar */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="px-2">
+            <TabsList className="bg-transparent h-12 p-0 gap-1">
+              <TabsTrigger value="posts" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Posts</TabsTrigger>
+              <TabsTrigger value="about" className="data-[state=active]:bg-accent rounded-md px-4 h-10">About</TabsTrigger>
+              <TabsTrigger value="followers" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Followers</TabsTrigger>
+              <TabsTrigger value="photos" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Photos</TabsTrigger>
+              {isAdmin && <TabsTrigger value="manage" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Manage</TabsTrigger>}
+            </TabsList>
+          </div>
+
+          {/* Posts tab — Facebook-style two-column */}
+          <TabsContent value="posts" className="m-0">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4">
+              {/* Left: Intro */}
+              <aside className="md:col-span-2 space-y-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Intro</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    {page.description ? (
+                      <p className="text-foreground whitespace-pre-wrap text-center">{page.description}</p>
+                    ) : (
+                      <p className="text-muted-foreground text-center">No description yet.</p>
+                    )}
+                    {page.category && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Tag className="h-4 w-4" /> <span>{page.category}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Globe className="h-4 w-4" /> <span>Public page</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Calendar className="h-4 w-4" /> <span>Created {createdAt}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Users className="h-4 w-4" /> <span>{followerCount} followers</span>
+                    </div>
+                    {isAdmin && (
+                      <Button variant="secondary" className="w-full mt-2" onClick={() => setActiveTab('manage')}>
+                        Edit details
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              </aside>
+
+              {/* Right: composer + posts */}
+              <section className="md:col-span-3 space-y-4">
+                {isAdmin && <NewPost onCreatePost={handlePagePost} />}
+                {postsLoading ? (
+                  <div className="flex justify-center py-10">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
+                ) : pagePosts.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-10 text-center text-muted-foreground">
+                      {isAdmin ? 'No posts yet. Share your first post above.' : 'This page has no posts yet.'}
+                    </CardContent>
+                  </Card>
+                ) : (
+                  pagePosts.map((pp) =>
+                    pp.post ? (
+                      <Post key={pp.id} {...pp.post} onDelete={() => fetchPagePosts()} />
+                    ) : null,
+                  )
+                )}
+              </section>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="about" className="m-0 p-4">
             <Card>
-              <CardContent className="py-10 text-center text-muted-foreground">
-                {isAdmin ? 'No posts yet. Share your first post above.' : 'This page has no posts yet.'}
+              <CardHeader>
+                <CardTitle>About</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-muted-foreground whitespace-pre-wrap">
+                  {page.description || 'No description provided.'}
+                </p>
+                {page.category && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Category: </span>
+                    <Badge variant="secondary">{page.category}</Badge>
+                  </div>
+                )}
+                <div className="text-sm text-muted-foreground">Created on {createdAt}</div>
               </CardContent>
             </Card>
-          ) : (
-            pagePosts.map((pp) =>
-              pp.post ? (
-                <Post key={pp.id} {...pp.post} onDelete={() => fetchPagePosts()} />
-              ) : null,
-            )
-          )}
-        </TabsContent>
+          </TabsContent>
 
-        <TabsContent value="about" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>About</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <p className="text-muted-foreground whitespace-pre-wrap">
-                {page.description || 'No description provided.'}
-              </p>
-              {page.category && (
-                <div className="text-sm">
-                  <span className="text-muted-foreground">Category: </span>
-                  <Badge variant="secondary">{page.category}</Badge>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {isAdmin && (
-          <TabsContent value="manage" className="mt-4">
+          <TabsContent value="followers" className="m-0 p-4">
             <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                {followerCount} {followerCount === 1 ? 'person follows' : 'people follow'} this page.
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="photos" className="m-0 p-4">
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                Photos shared on this page will appear here.
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {isAdmin && (
+            <TabsContent value="manage" className="m-0 p-4">
+              <Card>
           <CardHeader>
             <CardTitle>Manage page</CardTitle>
           </CardHeader>
@@ -391,6 +489,7 @@ const PageDetail = () => {
           </TabsContent>
         )}
       </Tabs>
+      </Card>
     </div>
   );
 };
