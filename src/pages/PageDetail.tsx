@@ -36,6 +36,8 @@ import {
   UserCog,
   Megaphone,
   Hash,
+  User as UserIcon,
+  ArrowLeftRight,
 } from 'lucide-react';
 import NewPost from '@/components/NewPost';
 import Post from '@/components/Post';
@@ -81,9 +83,14 @@ const PageDetail = () => {
   const [followBusy, setFollowBusy] = useState(false);
   const [followers, setFollowers] = useState<any[]>([]);
   const [adminProfile, setAdminProfile] = useState<any>(null);
+  const [viewAsPage, setViewAsPage] = useState(false);
   const { createPost } = useHomeFeed();
 
-  const isAdmin = !!user && page?.admin_id === user.id;
+  const isPageAdmin = !!user && page?.admin_id === user.id;
+  // Only act as the page (edit/post) when admin has explicitly switched to page mode
+  const actingAsPage = isPageAdmin && viewAsPage;
+  // Backwards-compatible alias used throughout the editing UI
+  const isAdmin = actingAsPage;
 
   useEffect(() => {
     if (!id) return;
