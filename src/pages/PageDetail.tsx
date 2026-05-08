@@ -36,6 +36,8 @@ import {
   UserCog,
   Megaphone,
   Hash,
+  User as UserIcon,
+  ArrowLeftRight,
 } from 'lucide-react';
 import NewPost from '@/components/NewPost';
 import Post from '@/components/Post';
@@ -81,9 +83,14 @@ const PageDetail = () => {
   const [followBusy, setFollowBusy] = useState(false);
   const [followers, setFollowers] = useState<any[]>([]);
   const [adminProfile, setAdminProfile] = useState<any>(null);
+  const [viewAsPage, setViewAsPage] = useState(false);
   const { createPost } = useHomeFeed();
 
-  const isAdmin = !!user && page?.admin_id === user.id;
+  const isPageAdmin = !!user && page?.admin_id === user.id;
+  // Only act as the page (edit/post) when admin has explicitly switched to page mode
+  const actingAsPage = isPageAdmin && viewAsPage;
+  // Backwards-compatible alias used throughout the editing UI
+  const isAdmin = actingAsPage;
 
   useEffect(() => {
     if (!id) return;
@@ -341,6 +348,16 @@ const PageDetail = () => {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              {isPageAdmin && (
+                <Button
+                  variant={viewAsPage ? 'default' : 'outline'}
+                  onClick={() => setViewAsPage((v) => !v)}
+                  title={viewAsPage ? 'Switch back to your personal account' : 'Switch to manage and post as this Page'}
+                >
+                  <ArrowLeftRight className="h-4 w-4 mr-2" />
+                  {viewAsPage ? 'Viewing as Page' : 'Switch to Page'}
+                </Button>
+              )}
               {!isAdmin && user && (
                 <>
                   <Button variant="default">
