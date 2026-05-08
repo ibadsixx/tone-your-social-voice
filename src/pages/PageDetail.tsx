@@ -343,31 +343,33 @@ const PageDetail = () => {
             <div className="flex items-center gap-2 flex-wrap">
               {!isAdmin && user && (
                 <>
+                  <Button variant="default">
+                    <MessageCircle className="h-4 w-4 mr-2" /> Message
+                  </Button>
                   <Button
                     onClick={toggleFollow}
                     disabled={followBusy}
-                    variant={isFollowing ? 'secondary' : 'default'}
+                    variant="outline"
                   >
                     <Heart className={`h-4 w-4 mr-2 ${isFollowing ? 'fill-current' : ''}`} />
                     {isFollowing ? 'Following' : 'Follow'}
                   </Button>
-                  <Button variant="secondary">
-                    <MessageCircle className="h-4 w-4 mr-2" /> Message
+                  <Button variant="outline">
+                    <Search className="h-4 w-4 mr-2" /> Search
                   </Button>
                 </>
               )}
               {isAdmin && (
-                <Button onClick={() => setActiveTab('manage')} variant="default">
-                  Manage Page
-                </Button>
+                <>
+                  <Button onClick={() => setActiveTab('manage')} variant="default">
+                    Manage Page
+                  </Button>
+                  <Button variant="outline">
+                    <Search className="h-4 w-4 mr-2" /> Search
+                  </Button>
+                </>
               )}
-              <Button variant="secondary" size="icon">
-                <Share2 className="h-4 w-4" />
-              </Button>
-              <Button variant="secondary" size="icon">
-                <Search className="h-4 w-4" />
-              </Button>
-              <Button variant="secondary" size="icon">
+              <Button variant="outline" size="icon">
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </div>
