@@ -400,8 +400,38 @@ const PageDetail = () => {
           {/* Posts tab — Facebook-style two-column */}
           <TabsContent value="posts" className="m-0">
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4">
-              {/* Left: Intro */}
+              {/* Left: Intro + admin switcher */}
               <aside className="md:col-span-2 space-y-4">
+                {isPageAdmin && (
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback className="bg-primary/10 text-primary text-sm font-bold">
+                            {viewAsPage ? page.name.charAt(0).toUpperCase() : (user?.email?.charAt(0).toUpperCase() ?? 'U')}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">
+                            {viewAsPage ? page.name : 'Your personal profile'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {viewAsPage ? 'Viewing as Page' : 'Viewing as yourself'}
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setViewAsPage((v) => !v)}
+                          title={viewAsPage ? 'Switch back to your personal account' : 'Switch to manage and post as this Page'}
+                        >
+                          <ArrowLeftRight className="h-4 w-4 mr-1" />
+                          {viewAsPage ? 'Switch back' : 'Switch to Page'}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-lg">Intro</CardTitle>
