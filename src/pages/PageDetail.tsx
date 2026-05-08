@@ -348,6 +348,16 @@ const PageDetail = () => {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              {isPageAdmin && (
+                <Button
+                  variant={viewAsPage ? 'default' : 'outline'}
+                  onClick={() => setViewAsPage((v) => !v)}
+                  title={viewAsPage ? 'Switch back to your personal account' : 'Switch to manage and post as this Page'}
+                >
+                  <ArrowLeftRight className="h-4 w-4 mr-2" />
+                  {viewAsPage ? 'Viewing as Page' : 'Switch to Page'}
+                </Button>
+              )}
               {!isAdmin && user && (
                 <>
                   <Button variant="default">
