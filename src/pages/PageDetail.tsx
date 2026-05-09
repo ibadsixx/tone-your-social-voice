@@ -38,6 +38,18 @@ import {
   Hash,
   User as UserIcon,
   ArrowLeftRight,
+  LayoutDashboard,
+  BarChart3,
+  Target,
+  PlusSquare,
+  TrendingUp,
+  Settings as SettingsIcon,
+  ChevronUp,
+  BadgeCheck,
+  Briefcase,
+  Building2,
+  Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 import NewPost from '@/components/NewPost';
 import Post from '@/components/Post';
@@ -403,30 +415,85 @@ const PageDetail = () => {
               {/* Left: Intro + admin switcher */}
               <aside className="md:col-span-2 space-y-4">
                 {isPageAdmin && (
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarFallback className="bg-primary/10 text-primary text-sm font-bold">
-                            {viewAsPage ? page.name.charAt(0).toUpperCase() : (user?.email?.charAt(0).toUpperCase() ?? 'U')}
+                  <Card className="overflow-hidden">
+                    <CardContent className="p-0">
+                      {/* Header */}
+                      <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                        <h3 className="font-semibold text-foreground">Manage Page</h3>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full">
+                          <ChevronUp className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      {/* Page identity */}
+                      <div className="flex items-center gap-2 px-4 py-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                            {page.name.charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate">
-                            {viewAsPage ? page.name : 'Your personal profile'}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {viewAsPage ? 'Viewing as Page' : 'Viewing as yourself'}
-                          </p>
-                        </div>
+                        <span className="text-sm font-medium truncate">{page.name}</span>
+                      </div>
+
+                      {/* Primary tools */}
+                      <nav className="py-1">
+                        {[
+                          { icon: LayoutDashboard, label: 'Professional dashboard' },
+                          { icon: BarChart3, label: 'Insights' },
+                          { icon: Target, label: 'Ad Center' },
+                          { icon: PlusSquare, label: 'Create ads' },
+                          { icon: TrendingUp, label: 'Boost Instagram post' },
+                          { icon: SettingsIcon, label: 'Settings', onClick: () => setActiveTab('manage') },
+                        ].map(({ icon: Icon, label, onClick }) => (
+                          <button
+                            key={label}
+                            onClick={onClick}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
+                          >
+                            <Icon className="h-4 w-4 text-muted-foreground" />
+                            <span className="flex-1 truncate">{label}</span>
+                          </button>
+                        ))}
+                      </nav>
+
+                      {/* More tools */}
+                      <div className="px-4 pt-3 pb-1 border-t">
+                        <p className="text-sm font-semibold">More tools</p>
+                        <p className="text-xs text-muted-foreground">Manage your business across Meta apps.</p>
+                      </div>
+                      <nav className="py-1">
+                        {[
+                          { icon: BadgeCheck, label: 'Meta Verified' },
+                          { icon: Briefcase, label: 'Leads Center', external: true },
+                          { icon: Building2, label: 'Meta Business Suite', external: true },
+                          { icon: Sparkles, label: 'Manus AI' },
+                        ].map(({ icon: Icon, label, external }) => (
+                          <button
+                            key={label}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
+                          >
+                            <Icon className="h-4 w-4 text-muted-foreground" />
+                            <span className="flex-1 truncate">{label}</span>
+                            {external && <ExternalLink className="h-3 w-3 text-muted-foreground" />}
+                          </button>
+                        ))}
+                      </nav>
+
+                      {/* Switch CTA */}
+                      <div className="border-t p-3 bg-muted/30">
+                        <p className="text-xs text-foreground mb-2">
+                          {viewAsPage
+                            ? `You are managing ${page.name} as a Page.`
+                            : `Switch into ${page.name}'s Page to take more actions`}
+                        </p>
                         <Button
-                          variant="outline"
+                          className="w-full"
+                          variant={viewAsPage ? 'outline' : 'default'}
                           size="sm"
                           onClick={() => setViewAsPage((v) => !v)}
-                          title={viewAsPage ? 'Switch back to your personal account' : 'Switch to manage and post as this Page'}
                         >
-                          <ArrowLeftRight className="h-4 w-4 mr-1" />
-                          {viewAsPage ? 'Switch back' : 'Switch to Page'}
+                          <ArrowLeftRight className="h-4 w-4 mr-2" />
+                          {viewAsPage ? 'Switch back' : 'Switch'}
                         </Button>
                       </div>
                     </CardContent>
