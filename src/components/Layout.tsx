@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { NotificationsDropdown } from '@/components/NotificationsDropdown';
 import { FloatingIM } from '@/components/im/FloatingIM';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { HeaderAvatarMenuProvider, useHeaderAvatarMenu } from '@/contexts/HeaderAvatarMenuContext';
 import { 
   Home, 
   MessageCircle, 
@@ -19,6 +21,27 @@ import {
   AtSign,
   Hash
 } from 'lucide-react';
+
+const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
+  const { menu } = useHeaderAvatarMenu();
+  const avatar = (
+    <Avatar className="h-9 w-9 border-2 border-tone-purple/20 ring-2 ring-transparent hover:ring-tone-purple/30 transition-all cursor-pointer">
+      <AvatarImage src={profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
+      <AvatarFallback className="bg-tone-gradient text-white">
+        {profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
+      </AvatarFallback>
+    </Avatar>
+  );
+  if (!menu) return avatar;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>{avatar}</PopoverTrigger>
+      <PopoverContent align="end" className="w-80 p-0 max-h-[80vh] overflow-y-auto">
+        {menu}
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 const Layout = () => {
   const { user, signOut, loading } = useAuth();
@@ -75,12 +98,7 @@ const Layout = () => {
               <Heart className="h-4 w-4" />
             </Button>
 
-            <Avatar className="h-9 w-9 border-2 border-tone-purple/20 ring-2 ring-transparent hover:ring-tone-purple/30 transition-all cursor-pointer">
-              <AvatarImage src={profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
-              <AvatarFallback className="bg-tone-gradient text-white">
-                {profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            <HeaderAvatar profile={profile} user={user} />
             
             <Button variant="ghost" size="sm" onClick={handleSignOut} className="text-muted-foreground hover:text-destructive transition-colors">
               <LogOut className="h-4 w-4" />
@@ -124,6 +142,7 @@ const Layout = () => {
       {/* Floating IM */}
       <FloatingIM />
     </div>
+    </HeaderAvatarMenuProvider>
   );
 };
 
