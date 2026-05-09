@@ -54,6 +54,7 @@ import {
 import NewPost from '@/components/NewPost';
 import Post from '@/components/Post';
 import { useHomeFeed } from '@/hooks/useHomeFeed';
+import { useHeaderAvatarMenu } from '@/contexts/HeaderAvatarMenuContext';
 
 const categories = [
   'Business', 'Entertainment', 'Education', 'Sports', 'Technology',
@@ -103,6 +104,88 @@ const PageDetail = () => {
   const actingAsPage = isPageAdmin && viewAsPage;
   // Backwards-compatible alias used throughout the editing UI
   const isAdmin = actingAsPage;
+
+  const { setMenu } = useHeaderAvatarMenu();
+
+  useEffect(() => {
+    if (!isPageAdmin || !page) {
+      setMenu(null);
+      return;
+    }
+    setMenu(
+      <div>
+        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+          <h3 className="font-semibold text-foreground">Manage Page</h3>
+          <ChevronUp className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <div className="flex items-center gap-2 px-4 py-2">
+          <Avatar className="h-8 w-8">
+            <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+              {page.name.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <span className="text-sm font-medium truncate">{page.name}</span>
+        </div>
+        <nav className="py-1">
+          {[
+            { icon: LayoutDashboard, label: 'Professional dashboard' },
+            { icon: BarChart3, label: 'Insights' },
+            { icon: Target, label: 'Ad Center' },
+            { icon: PlusSquare, label: 'Create ads' },
+            { icon: TrendingUp, label: 'Boost Instagram post' },
+            { icon: SettingsIcon, label: 'Settings', onClick: () => setActiveTab('manage') },
+          ].map(({ icon: Icon, label, onClick }) => (
+            <button
+              key={label}
+              onClick={onClick}
+              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
+            >
+              <Icon className="h-4 w-4 text-muted-foreground" />
+              <span className="flex-1 truncate">{label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="px-4 pt-3 pb-1 border-t">
+          <p className="text-sm font-semibold">More tools</p>
+          <p className="text-xs text-muted-foreground">Manage your business across Meta apps.</p>
+        </div>
+        <nav className="py-1">
+          {[
+            { icon: BadgeCheck, label: 'Meta Verified', external: false },
+            { icon: Briefcase, label: 'Leads Center', external: true },
+            { icon: Building2, label: 'Meta Business Suite', external: true },
+            { icon: Sparkles, label: 'Manus AI', external: false },
+          ].map(({ icon: Icon, label, external }) => (
+            <button
+              key={label}
+              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
+            >
+              <Icon className="h-4 w-4 text-muted-foreground" />
+              <span className="flex-1 truncate">{label}</span>
+              {external && <ExternalLink className="h-3 w-3 text-muted-foreground" />}
+            </button>
+          ))}
+        </nav>
+        <div className="border-t p-3 bg-muted/30">
+          <p className="text-xs text-foreground mb-2">
+            {viewAsPage
+              ? `You are managing ${page.name} as a Page.`
+              : `Switch into ${page.name}'s Page to take more actions`}
+          </p>
+          <Button
+            className="w-full"
+            variant={viewAsPage ? 'outline' : 'default'}
+            size="sm"
+            onClick={() => setViewAsPage((v) => !v)}
+          >
+            <ArrowLeftRight className="h-4 w-4 mr-2" />
+            {viewAsPage ? 'Switch back' : 'Switch'}
+          </Button>
+        </div>
+      </div>
+    );
+    return () => setMenu(null);
+  }, [isPageAdmin, page, viewAsPage, setMenu]);
 
   useEffect(() => {
     if (!id) return;
@@ -414,91 +497,6 @@ const PageDetail = () => {
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4">
               {/* Left: Intro + admin switcher */}
               <aside className="md:col-span-2 space-y-4">
-                {isPageAdmin && (
-                  <Card className="overflow-hidden">
-                    <CardContent className="p-0">
-                      {/* Header */}
-                      <div className="flex items-center justify-between px-4 pt-4 pb-2">
-                        <h3 className="font-semibold text-foreground">Manage Page</h3>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full">
-                          <ChevronUp className="h-4 w-4" />
-                        </Button>
-                      </div>
-
-                      {/* Page identity */}
-                      <div className="flex items-center gap-2 px-4 py-2">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
-                            {page.name.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm font-medium truncate">{page.name}</span>
-                      </div>
-
-                      {/* Primary tools */}
-                      <nav className="py-1">
-                        {[
-                          { icon: LayoutDashboard, label: 'Professional dashboard' },
-                          { icon: BarChart3, label: 'Insights' },
-                          { icon: Target, label: 'Ad Center' },
-                          { icon: PlusSquare, label: 'Create ads' },
-                          { icon: TrendingUp, label: 'Boost Instagram post' },
-                          { icon: SettingsIcon, label: 'Settings', onClick: () => setActiveTab('manage') },
-                        ].map(({ icon: Icon, label, onClick }) => (
-                          <button
-                            key={label}
-                            onClick={onClick}
-                            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
-                          >
-                            <Icon className="h-4 w-4 text-muted-foreground" />
-                            <span className="flex-1 truncate">{label}</span>
-                          </button>
-                        ))}
-                      </nav>
-
-                      {/* More tools */}
-                      <div className="px-4 pt-3 pb-1 border-t">
-                        <p className="text-sm font-semibold">More tools</p>
-                        <p className="text-xs text-muted-foreground">Manage your business across Meta apps.</p>
-                      </div>
-                      <nav className="py-1">
-                        {[
-                          { icon: BadgeCheck, label: 'Meta Verified' },
-                          { icon: Briefcase, label: 'Leads Center', external: true },
-                          { icon: Building2, label: 'Meta Business Suite', external: true },
-                          { icon: Sparkles, label: 'Manus AI' },
-                        ].map(({ icon: Icon, label, external }) => (
-                          <button
-                            key={label}
-                            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
-                          >
-                            <Icon className="h-4 w-4 text-muted-foreground" />
-                            <span className="flex-1 truncate">{label}</span>
-                            {external && <ExternalLink className="h-3 w-3 text-muted-foreground" />}
-                          </button>
-                        ))}
-                      </nav>
-
-                      {/* Switch CTA */}
-                      <div className="border-t p-3 bg-muted/30">
-                        <p className="text-xs text-foreground mb-2">
-                          {viewAsPage
-                            ? `You are managing ${page.name} as a Page.`
-                            : `Switch into ${page.name}'s Page to take more actions`}
-                        </p>
-                        <Button
-                          className="w-full"
-                          variant={viewAsPage ? 'outline' : 'default'}
-                          size="sm"
-                          onClick={() => setViewAsPage((v) => !v)}
-                        >
-                          <ArrowLeftRight className="h-4 w-4 mr-2" />
-                          {viewAsPage ? 'Switch back' : 'Switch'}
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-lg">Intro</CardTitle>
