@@ -78,6 +78,7 @@ const Layout = () => {
   };
 
   return (
+    <HeaderAvatarMenuProvider>
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border/50 bg-card/80 backdrop-blur-lg supports-[backdrop-filter]:bg-card/60 shadow-tone">
