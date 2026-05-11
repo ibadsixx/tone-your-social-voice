@@ -7,6 +7,8 @@ import { NotificationsDropdown } from '@/components/NotificationsDropdown';
 import { FloatingIM } from '@/components/im/FloatingIM';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HeaderAvatarMenuProvider, useHeaderAvatarMenu } from '@/contexts/HeaderAvatarMenuContext';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   Home, 
   MessageCircle, 
@@ -24,6 +26,20 @@ import {
 
 const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
   const { menu } = useHeaderAvatarMenu();
+  const [ownedPages, setOwnedPages] = useState<Array<{ id: string; name: string; cover_image: string | null }>>([]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      const { data } = await supabase
+        .from('pages')
+        .select('id, name, cover_image')
+        .eq('admin_id', user.id)
+        .order('created_at', { ascending: false });
+      setOwnedPages(data || []);
+    })();
+  }, [user?.id]);
+
   const avatar = (
     <Avatar className="h-9 w-9 border-2 border-tone-purple/20 ring-2 ring-transparent hover:ring-tone-purple/30 transition-all cursor-pointer">
       <AvatarImage src={profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
@@ -32,12 +48,52 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
       </AvatarFallback>
     </Avatar>
   );
-  if (!menu) return avatar;
+
+  const defaultMenu = (
+    <div>
+      <div className="px-4 pt-4 pb-2">
+        <h3 className="font-semibold text-foreground">Your Pages</h3>
+      </div>
+      {ownedPages.length === 0 ? (
+        <div className="px-4 pb-4 text-sm text-muted-foreground">
+          You don't manage any pages yet.
+        </div>
+      ) : (
+        <nav className="py-1">
+          {ownedPages.map((p) => (
+            <Link
+              key={p.id}
+              to={`/pages/${p.id}`}
+              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+            >
+              <Avatar className="h-8 w-8">
+                {p.cover_image && <AvatarImage src={p.cover_image} className="object-cover" />}
+                <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                  {p.name.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="flex-1 truncate">{p.name}</span>
+            </Link>
+          ))}
+        </nav>
+      )}
+      <div className="border-t">
+        <Link
+          to="/pages"
+          className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-foreground hover:bg-accent transition-colors"
+        >
+          <FileText className="h-4 w-4 text-muted-foreground" />
+          Manage all pages
+        </Link>
+      </div>
+    </div>
+  );
+
   return (
     <Popover>
       <PopoverTrigger asChild>{avatar}</PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0 max-h-[80vh] overflow-y-auto">
-        {menu}
+        {menu ?? defaultMenu}
       </PopoverContent>
     </Popover>
   );
