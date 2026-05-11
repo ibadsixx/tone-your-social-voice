@@ -21,7 +21,9 @@ import {
   Heart,
   Bookmark,
   AtSign,
-  Hash
+  Hash,
+  ChevronUp,
+  Plus
 } from 'lucide-react';
 
 const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
@@ -51,41 +53,50 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
 
   const defaultMenu = (
     <div>
-      <div className="px-4 pt-4 pb-2">
+      <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <h3 className="font-semibold text-foreground">Your Pages</h3>
+        <ChevronUp className="h-4 w-4 text-muted-foreground" />
       </div>
-      {ownedPages.length === 0 ? (
-        <div className="px-4 pb-4 text-sm text-muted-foreground">
-          You don't manage any pages yet.
-        </div>
-      ) : (
-        <nav className="py-1">
-          {ownedPages.map((p) => (
-            <Link
-              key={p.id}
-              to={`/pages/${p.id}`}
-              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors"
-            >
-              <Avatar className="h-8 w-8">
-                {p.cover_image && <AvatarImage src={p.cover_image} className="object-cover" />}
-                <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
-                  {p.name.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <span className="flex-1 truncate">{p.name}</span>
-            </Link>
-          ))}
-        </nav>
-      )}
-      <div className="border-t">
+      <div className="flex items-center gap-2 px-4 py-2">
+        <Avatar className="h-8 w-8">
+          <AvatarImage src={profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
+          <AvatarFallback className="bg-tone-gradient text-white text-xs font-bold">
+            {profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+        <span className="text-sm font-medium truncate">{profile?.display_name || user?.email}</span>
+      </div>
+      <nav className="py-1">
+        {ownedPages.map((p) => (
+          <Link
+            key={p.id}
+            to={`/pages/${p.id}`}
+            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
+          >
+            <Avatar className="h-4 w-4">
+              {p.cover_image && <AvatarImage src={p.cover_image} className="object-cover" />}
+              <AvatarFallback className="bg-primary/10 text-primary text-[8px] font-bold">
+                {p.name.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <span className="flex-1 truncate">{p.name}</span>
+          </Link>
+        ))}
         <Link
           to="/pages"
-          className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-foreground hover:bg-accent transition-colors"
+          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
         >
           <FileText className="h-4 w-4 text-muted-foreground" />
-          Manage all pages
+          <span className="flex-1 truncate">Manage all pages</span>
         </Link>
-      </div>
+        <Link
+          to="/pages"
+          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
+        >
+          <Plus className="h-4 w-4 text-muted-foreground" />
+          <span className="flex-1 truncate">Create new Page</span>
+        </Link>
+      </nav>
     </div>
   );
 
