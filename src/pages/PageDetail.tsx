@@ -145,27 +145,6 @@ const PageDetail = () => {
             </button>
           ))}
         </nav>
-        <div className="px-4 pt-3 pb-1 border-t">
-          <p className="text-sm font-semibold">More tools</p>
-          <p className="text-xs text-muted-foreground">Manage your business across Meta apps.</p>
-        </div>
-        <nav className="py-1">
-          {[
-            { icon: BadgeCheck, label: 'Meta Verified', external: false },
-            { icon: Briefcase, label: 'Leads Center', external: true },
-            { icon: Building2, label: 'Meta Business Suite', external: true },
-            { icon: Sparkles, label: 'Manus AI', external: false },
-          ].map(({ icon: Icon, label, external }) => (
-            <button
-              key={label}
-              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
-            >
-              <Icon className="h-4 w-4 text-muted-foreground" />
-              <span className="flex-1 truncate">{label}</span>
-              {external && <ExternalLink className="h-3 w-3 text-muted-foreground" />}
-            </button>
-          ))}
-        </nav>
         <div className="border-t p-3 bg-muted/30">
           <p className="text-xs text-foreground mb-2">
             {viewAsPage
