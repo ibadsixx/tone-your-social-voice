@@ -22,12 +22,19 @@ import {
   Bookmark,
   AtSign,
   Hash,
+  ChevronRight,
   ChevronUp,
-  Plus
+  Plus,
+  Briefcase,
+  HelpCircle,
+  Moon,
+  MessageSquareWarning,
+  Shield
 } from 'lucide-react';
 
 const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
   const { menu } = useHeaderAvatarMenu();
+  const { signOut } = useAuth();
   const [ownedPages, setOwnedPages] = useState<Array<{ id: string; name: string; cover_image: string | null }>>([]);
 
   useEffect(() => {
@@ -52,51 +59,92 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
   );
 
   const defaultMenu = (
-    <div>
-      <div className="flex items-center justify-between px-4 pt-4 pb-2">
-        <h3 className="font-semibold text-foreground">Your Pages</h3>
-        <ChevronUp className="h-4 w-4 text-muted-foreground" />
-      </div>
-      <div className="flex items-center gap-2 px-4 py-2">
-        <Avatar className="h-8 w-8">
-          <AvatarImage src={profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
-          <AvatarFallback className="bg-tone-gradient text-white text-xs font-bold">
-            {profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-        <span className="text-sm font-medium truncate">{profile?.display_name || user?.email}</span>
-      </div>
-      <nav className="py-1">
+    <div className="py-2">
+      <div className="px-2">
+        <Link
+          to="/profile"
+          className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors"
+        >
+          <Avatar className="h-9 w-9">
+            <AvatarImage src={profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
+            <AvatarFallback className="bg-tone-gradient text-white text-xs font-bold">
+              {profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <span className="text-sm font-semibold truncate">{profile?.display_name || user?.email}</span>
+        </Link>
         {ownedPages.map((p) => (
           <Link
             key={p.id}
             to={`/pages/${p.id}`}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
+            className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors"
           >
-            <Avatar className="h-4 w-4">
+            <Avatar className="h-9 w-9">
               {p.cover_image && <AvatarImage src={p.cover_image} className="object-cover" />}
-              <AvatarFallback className="bg-primary/10 text-primary text-[8px] font-bold">
+              <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
                 {p.name.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            <span className="flex-1 truncate">{p.name}</span>
+            <span className="text-sm font-semibold truncate">{p.name}</span>
           </Link>
         ))}
         <Link
           to="/pages"
-          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
+          className="mt-2 mb-1 w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-muted hover:bg-accent transition-colors text-sm font-medium"
         >
-          <FileText className="h-4 w-4 text-muted-foreground" />
-          <span className="flex-1 truncate">Manage all pages</span>
+          <Users className="h-4 w-4" />
+          See all profiles
         </Link>
-        <Link
-          to="/pages"
-          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
+      </div>
+
+      <div className="my-2 border-t" />
+
+      <nav className="px-2 space-y-1">
+        {[
+          { icon: Briefcase, label: 'Meta Business Suite', to: '/pages', trailing: <ChevronRight className="h-4 w-4 text-muted-foreground rotate-[-45deg]" /> },
+          { icon: Settings, label: 'Settings & privacy', to: '/settings', trailing: <ChevronRight className="h-4 w-4 text-muted-foreground" /> },
+          { icon: HelpCircle, label: 'Help & support', to: '/settings', trailing: <ChevronRight className="h-4 w-4 text-muted-foreground" /> },
+          { icon: Moon, label: 'Display & accessibility', to: '/settings', trailing: <ChevronRight className="h-4 w-4 text-muted-foreground" /> },
+        ].map(({ icon: Icon, label, to, trailing }) => (
+          <Link
+            key={label}
+            to={to}
+            className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm"
+          >
+            <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+              <Icon className="h-5 w-5 text-foreground" />
+            </span>
+            <span className="flex-1 truncate font-medium">{label}</span>
+            {trailing}
+          </Link>
+        ))}
+        <button
+          type="button"
+          className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm text-left"
         >
-          <Plus className="h-4 w-4 text-muted-foreground" />
-          <span className="flex-1 truncate">Create new Page</span>
-        </Link>
+          <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+            <MessageSquareWarning className="h-5 w-5 text-foreground" />
+          </span>
+          <span className="flex-1">
+            <span className="block font-medium">Give feedback</span>
+            <span className="block text-xs text-muted-foreground">CTRL B</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => signOut()}
+          className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm text-left"
+        >
+          <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+            <LogOut className="h-5 w-5 text-foreground" />
+          </span>
+          <span className="flex-1 font-medium">Log out</span>
+        </button>
       </nav>
+
+      <div className="px-4 pt-3 pb-1 text-[11px] text-muted-foreground leading-relaxed">
+        Privacy · Terms · Advertising · Ad Choices · Cookies · More
+      </div>
     </div>
   );
 
