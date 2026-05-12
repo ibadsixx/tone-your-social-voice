@@ -92,6 +92,8 @@ const PageDetail = () => {
   const [aboutSection, setAboutSection] = useState('contact');
   const [pagePosts, setPagePosts] = useState<any[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isFollowing, setIsFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [followers, setFollowers] = useState<any[]>([]);
