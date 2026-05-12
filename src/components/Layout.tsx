@@ -152,7 +152,7 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
     <Popover>
       <PopoverTrigger asChild>{avatar}</PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0 max-h-[80vh] overflow-y-auto">
-        {menu ?? defaultMenu}
+        {defaultMenu}
       </PopoverContent>
     </Popover>
   );
