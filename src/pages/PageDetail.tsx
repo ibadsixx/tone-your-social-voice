@@ -92,6 +92,8 @@ const PageDetail = () => {
   const [aboutSection, setAboutSection] = useState('contact');
   const [pagePosts, setPagePosts] = useState<any[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isFollowing, setIsFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [followers, setFollowers] = useState<any[]>([]);
@@ -435,7 +437,7 @@ const PageDetail = () => {
                     <Heart className={`h-4 w-4 mr-2 ${isFollowing ? 'fill-current' : ''}`} />
                     {isFollowing ? 'Following' : 'Follow'}
                   </Button>
-                  <Button variant="outline">
+                  <Button variant="outline" onClick={() => setSearchOpen((v) => !v)}>
                     <Search className="h-4 w-4 mr-2" /> Search
                   </Button>
                 </>
@@ -445,7 +447,7 @@ const PageDetail = () => {
                   <Button onClick={() => setActiveTab('manage')} variant="default">
                     Manage Page
                   </Button>
-                  <Button variant="outline">
+                  <Button variant="outline" onClick={() => setSearchOpen((v) => !v)}>
                     <Search className="h-4 w-4 mr-2" /> Search
                   </Button>
                 </>
@@ -512,6 +514,14 @@ const PageDetail = () => {
               {/* Right: composer + posts */}
               <section className="md:col-span-3 space-y-4">
                 {isAdmin && <NewPost onCreatePost={handlePagePost} />}
+                {searchOpen && (
+                  <Input
+                    autoFocus
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search posts on this page..."
+                  />
+                )}
                 {postsLoading ? (
                   <div className="flex justify-center py-10">
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -523,11 +533,17 @@ const PageDetail = () => {
                     </CardContent>
                   </Card>
                 ) : (
-                  pagePosts.map((pp) =>
-                    pp.post ? (
-                      <Post key={pp.id} {...pp.post} onDelete={() => fetchPagePosts()} />
-                    ) : null,
-                  )
+                  pagePosts
+                    .filter((pp) => {
+                      if (!searchQuery.trim()) return true;
+                      const q = searchQuery.toLowerCase();
+                      return (pp.post?.content || '').toLowerCase().includes(q);
+                    })
+                    .map((pp) =>
+                      pp.post ? (
+                        <Post key={pp.id} {...pp.post} onDelete={() => fetchPagePosts()} />
+                      ) : null,
+                    )
                 )}
               </section>
             </div>
