@@ -25,7 +25,7 @@ import {
   ChevronRight,
   ChevronUp,
   Plus,
-  Briefcase,
+  CirclePlay,
   HelpCircle,
   Moon,
   MessageSquareWarning,
@@ -101,7 +101,7 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
 
       <nav className="px-2 space-y-1">
         {[
-          { icon: Briefcase, label: 'Meta Business Suite', to: '/pages', trailing: <ChevronRight className="h-4 w-4 text-muted-foreground rotate-[-45deg]" /> },
+          { icon: CirclePlay, label: 'Meta Business Suite', to: '/pages', trailing: <ChevronRight className="h-4 w-4 text-muted-foreground rotate-[-45deg]" /> },
           { icon: Settings, label: 'Settings & privacy', to: '/settings', trailing: <ChevronRight className="h-4 w-4 text-muted-foreground" /> },
           { icon: HelpCircle, label: 'Help & support', to: '/settings', trailing: <ChevronRight className="h-4 w-4 text-muted-foreground" /> },
           { icon: Moon, label: 'Display & accessibility', to: '/settings', trailing: <ChevronRight className="h-4 w-4 text-muted-foreground" /> },
