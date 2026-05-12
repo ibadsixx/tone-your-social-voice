@@ -437,7 +437,7 @@ const PageDetail = () => {
                     <Heart className={`h-4 w-4 mr-2 ${isFollowing ? 'fill-current' : ''}`} />
                     {isFollowing ? 'Following' : 'Follow'}
                   </Button>
-                  <Button variant="outline">
+                  <Button variant="outline" onClick={() => setSearchOpen((v) => !v)}>
                     <Search className="h-4 w-4 mr-2" /> Search
                   </Button>
                 </>
@@ -447,7 +447,7 @@ const PageDetail = () => {
                   <Button onClick={() => setActiveTab('manage')} variant="default">
                     Manage Page
                   </Button>
-                  <Button variant="outline">
+                  <Button variant="outline" onClick={() => setSearchOpen((v) => !v)}>
                     <Search className="h-4 w-4 mr-2" /> Search
                   </Button>
                 </>
