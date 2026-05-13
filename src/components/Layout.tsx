@@ -36,6 +36,7 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
   const { menu } = useHeaderAvatarMenu();
   const { signOut } = useAuth();
   const [ownedPages, setOwnedPages] = useState<Array<{ id: string; name: string; cover_image: string | null }>>([]);
+  const [lastPageId, setLastPageId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -45,9 +46,26 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
         .select('id, name, cover_image')
         .eq('admin_id', user.id)
         .order('created_at', { ascending: false });
-      setOwnedPages(data || []);
+      // Deduplicate by name to avoid showing the same page repeatedly
+      const seen = new Set<string>();
+      const unique = (data || []).filter((p) => {
+        const key = p.name.trim().toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setOwnedPages(unique);
     })();
   }, [user?.id]);
+
+  useEffect(() => {
+    try {
+      setLastPageId(localStorage.getItem(`tone:lastPageId:${user?.id}`) || null);
+    } catch {}
+  }, [user?.id]);
+
+  const lastPage =
+    ownedPages.find((p) => p.id === lastPageId) || ownedPages[0] || null;
 
   const avatar = (
     <Avatar className="h-9 w-9 border-2 border-tone-purple/20 ring-2 ring-transparent hover:ring-tone-purple/30 transition-all cursor-pointer">
@@ -73,21 +91,26 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
           </Avatar>
           <span className="text-sm font-semibold truncate">{profile?.display_name || user?.email}</span>
         </Link>
-        {ownedPages.map((p) => (
+        {lastPage && (
           <Link
-            key={p.id}
-            to={`/pages/${p.id}`}
+            key={lastPage.id}
+            to={`/pages/${lastPage.id}`}
+            onClick={() => {
+              try {
+                localStorage.setItem(`tone:lastPageId:${user?.id}`, lastPage.id);
+              } catch {}
+            }}
             className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors"
           >
             <Avatar className="h-9 w-9">
-              {p.cover_image && <AvatarImage src={p.cover_image} className="object-cover" />}
+              {lastPage.cover_image && <AvatarImage src={lastPage.cover_image} className="object-cover" />}
               <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
-                {p.name.charAt(0).toUpperCase()}
+                {lastPage.name.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            <span className="text-sm font-semibold truncate">{p.name}</span>
+            <span className="text-sm font-semibold truncate">{lastPage.name}</span>
           </Link>
-        ))}
+        )}
         <Link
           to="/pages"
           className="mt-2 mb-1 w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-muted hover:bg-accent transition-colors text-sm font-medium"
