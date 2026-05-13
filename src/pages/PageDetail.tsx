@@ -82,6 +82,14 @@ const PageDetail = () => {
   const [page, setPage] = useState<PageRow | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id || !id) return;
+    try {
+      localStorage.setItem(`tone:lastPageId:${user.id}`, id);
+    } catch {}
+  }, [user?.id, id]);
+
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
