@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Heart, Users, Calendar, Settings, Edit, PlusCircle } from 'lucide-react';
+import { Heart, Users, Calendar, Settings, Edit, PlusCircle, Archive } from 'lucide-react';
 import { Page } from '@/hooks/usePages';
 import { motion } from 'framer-motion';
 
@@ -66,7 +66,16 @@ export const PageCard = ({ page, onFollow, onUnfollow, variant = 'default', load
           )}
           
           {/* Category Badge */}
-          {page.category && (
+          {page.archived && (
+            <Badge 
+              variant="secondary" 
+              className="absolute top-2 left-2 bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30"
+            >
+              <Archive className="h-3 w-3 mr-1" />
+              Archived
+            </Badge>
+          )}
+          {page.category && !page.archived && (
             <Badge 
               variant="secondary" 
               className="absolute top-2 left-2 bg-background/80 backdrop-blur-sm"

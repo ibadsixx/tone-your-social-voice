@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { CallProvider } from "@/contexts/CallContext";
+import { PageSwitchProvider } from "@/contexts/PageSwitchContext";
 import { IncomingCallModal, ActiveCallWindow } from "@/components/calls";
 import Layout from "@/components/Layout";
 import Home from "@/pages/Home";
@@ -19,6 +20,10 @@ import Groups from "@/pages/Groups";
 import GroupDetail from "@/pages/GroupDetail";
 import Pages from "@/pages/Pages";
 import PageDetail from "@/pages/PageDetail";
+import PageStatus from "@/pages/PageStatus";
+import PageArchive from "@/pages/PageArchive";
+import PageActivityLog from "@/pages/PageActivityLog";
+import PageManage from "@/pages/PageManage";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/NotFound";
 import Saved from "@/pages/Saved";
@@ -39,6 +44,7 @@ const App = () => (
     <BrowserRouter>
       <AuthProvider>
         <CallProvider>
+          <PageSwitchProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
@@ -61,6 +67,10 @@ const App = () => (
                 <Route path="groups/:groupId" element={<GroupDetail />} />
                 <Route path="pages" element={<Pages />} />
                 <Route path="pages/:id" element={<PageDetail />} />
+                <Route path="pages/:id/status" element={<PageStatus />} />
+                <Route path="pages/:id/archive" element={<PageArchive />} />
+                <Route path="pages/:id/activity-log" element={<PageActivityLog />} />
+                <Route path="pages/:id/manage" element={<PageManage />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="saved" element={<Saved />} />
                 <Route path="mentions" element={<Mentions />} />
@@ -77,6 +87,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
           </TooltipProvider>
+          </PageSwitchProvider>
         </CallProvider>
       </AuthProvider>
     </BrowserRouter>

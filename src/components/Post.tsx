@@ -85,6 +85,12 @@ interface PostProps {
   thumbnail?: string | null;
   group_name?: string | null;
   group_id?: string | null;
+  page?: {
+    id: string;
+    name: string;
+    cover_image: string | null;
+    profile_pic?: string | null;
+  } | null;
   profiles: {
     username: string;
     display_name: string;
@@ -144,6 +150,7 @@ const Post = ({
   aspect_ratio,
   group_name,
   group_id,
+  page,
   profiles,
   post_media,
   shared_post,
@@ -348,16 +355,16 @@ const Post = ({
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <Link to={`/profile/${profiles.username}`} className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
+              <Link to={page ? `/pages/${page.id}` : `/profile/${profiles.username}`} className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
                 <Avatar className="h-10 w-10 border-2 border-primary/20">
-                  <AvatarImage src={profiles.profile_pic || '/default-avatar.png'} className="object-cover" />
+                  <AvatarImage src={page ? (page.profile_pic || page.cover_image || undefined) : (profiles.profile_pic || '/default-avatar.png')} className="object-cover" />
                   <AvatarFallback className="bg-primary/10 text-primary">
-                    {profiles.display_name?.charAt(0) || profiles.username?.charAt(0) || '?'}
+                    {page ? page.name.charAt(0) : (profiles.display_name?.charAt(0) || profiles.username?.charAt(0) || '?')}
                   </AvatarFallback>
                 </Avatar>
                 <div>
                    <div className="flex items-center flex-wrap gap-x-1">
-                    <p className="font-semibold text-sm text-foreground hover:underline">{profiles.display_name}</p>
+                    <p className="font-semibold text-sm text-foreground hover:underline">{page ? page.name : profiles.display_name}</p>
                     {group_name && group_id && (
                       <>
                         <span className="text-sm text-muted-foreground">›</span>
@@ -392,7 +399,7 @@ const Post = ({
                     )}
                   </div>
                   <div className="flex items-center space-x-2">
-                    <p className="text-muted-foreground text-xs">@{profiles.username} • {timeAgo}</p>
+                    <p className="text-muted-foreground text-xs">{page ? page.name : `@${profiles.username}`} • {timeAgo}</p>
                     {audienceDisplay && (
                       <>
                         <span className="text-muted-foreground text-xs">•</span>

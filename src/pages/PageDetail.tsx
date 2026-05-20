@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -37,29 +37,97 @@ import {
   Megaphone,
   Hash,
   User as UserIcon,
-  ArrowLeftRight,
-  LayoutDashboard,
-  BarChart3,
-  Target,
-  PlusSquare,
-  TrendingUp,
-  Settings as SettingsIcon,
-  ChevronUp,
   BadgeCheck,
   Briefcase,
   Building2,
   Sparkles,
   ExternalLink,
+  Upload,
+  ToggleLeft,
+  PlusSquare,
+  Archive,
+  Hash as HashIcon,
+  PhoneCall,
+  ShoppingCart,
+  BookOpen,
+  Hand,
+  Youtube,
+  BellRing,
+  Send,
+  Navigation,
+  Plus,
+  X,
 } from 'lucide-react';
 import NewPost from '@/components/NewPost';
 import Post from '@/components/Post';
 import { useHomeFeed } from '@/hooks/useHomeFeed';
-import { useHeaderAvatarMenu } from '@/contexts/HeaderAvatarMenuContext';
+import { usePageSwitch } from '@/contexts/PageSwitchContext';
+import { useCall } from '@/contexts/CallContext';
+import { useConversations } from '@/hooks/useConversations';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog';
 
 const categories = [
   'Business', 'Entertainment', 'Education', 'Sports', 'Technology',
   'Travel', 'Food & Cooking', 'Fashion', 'Health & Fitness', 'Art & Culture',
   'Music', 'Gaming', 'News & Media', 'Non-profit', 'Community', 'Other'
+];
+
+interface PageLink {
+  type: string;
+  url: string;
+}
+
+const LINK_TYPES = [
+  'Website', 'Twitter', 'Instagram', 'Facebook', 'YouTube', 'TikTok',
+  'LinkedIn', 'GitHub', 'Discord', 'Telegram', 'WhatsApp', 'Other',
+];
+
+const SOCIAL_TYPES = new Set(['Twitter', 'Instagram', 'Facebook', 'YouTube', 'TikTok', 'LinkedIn', 'GitHub', 'Discord', 'Telegram', 'WhatsApp']);
+
+const COUNTRY_CODES = [
+  { label: '🇺🇸 US +1', value: '1' },
+  { label: '🇬🇧 UK +44', value: '44' },
+  { label: '🇨🇦 Canada +1', value: '1' },
+  { label: '🇦🇺 Australia +61', value: '61' },
+  { label: '🇮🇳 India +91', value: '91' },
+  { label: '🇵🇭 Philippines +63', value: '63' },
+  { label: '🇳🇬 Nigeria +234', value: '234' },
+  { label: '🇩🇪 Germany +49', value: '49' },
+  { label: '🇫🇷 France +33', value: '33' },
+  { label: '🇧🇷 Brazil +55', value: '55' },
+  { label: '🇲🇽 Mexico +52', value: '52' },
+  { label: '🇯🇵 Japan +81', value: '81' },
+  { label: '🇰🇷 South Korea +82', value: '82' },
+  { label: '🇷🇺 Russia +7', value: '7' },
+  { label: '🇿🇦 South Africa +27', value: '27' },
+  { label: '🇪🇸 Spain +34', value: '34' },
+  { label: '🇮🇹 Italy +39', value: '39' },
+  { label: '🇸🇦 Saudi Arabia +966', value: '966' },
+  { label: '🇦🇪 UAE +971', value: '971' },
+  { label: '🇵🇰 Pakistan +92', value: '92' },
+  { label: '🇧🇩 Bangladesh +880', value: '880' },
+  { label: '🇮🇩 Indonesia +62', value: '62' },
+  { label: '🇹🇷 Turkey +90', value: '90' },
+  { label: '🇻🇳 Vietnam +84', value: '84' },
+  { label: '🇹🇭 Thailand +66', value: '66' },
+  { label: '🇪🇬 Egypt +20', value: '20' },
+  { label: '🇦🇷 Argentina +54', value: '54' },
+  { label: '🇨🇴 Colombia +57', value: '57' },
 ];
 
 interface PageRow {
@@ -68,9 +136,29 @@ interface PageRow {
   description: string | null;
   category: string | null;
   cover_image: string | null;
+  profile_pic?: string | null;
   admin_id: string;
   created_at: string;
+  button_type: string | null;
+  button_url: string | null;
+  archived: boolean;
+  links?: PageLink[] | null;
 }
+
+const BUTTON_TYPES = [
+  { value: 'order_now', label: 'Order now', icon: ShoppingCart, needsLink: true },
+  { value: 'register_now', label: 'Register now', icon: Hand, needsLink: true },
+  { value: 'request_ticket', label: 'Request a ticket', icon: Mail, needsLink: true },
+  { value: 'book_now', label: 'Book now', icon: Calendar, needsLink: true },
+  { value: 'learn_more', label: 'Learn now', icon: BookOpen, needsLink: true },
+  { value: 'watch_now', label: 'Watch now', icon: Youtube, needsLink: true },
+  { value: 'play_now', label: 'Play now', icon: BellRing, needsLink: true },
+  { value: 'buy_now', label: 'Buy now', icon: ShoppingCart, needsLink: true },
+  { value: 'message', label: 'Message', icon: Send, needsLink: false },
+  { value: 'call', label: 'Call', icon: PhoneCall, needsLink: false },
+  { value: 'email', label: 'Email', icon: Mail, needsLink: false },
+  { value: 'group', label: 'Group', icon: Users, needsLink: false },
+] as const;
 
 const PageDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -78,6 +166,7 @@ const PageDetail = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
   const [page, setPage] = useState<PageRow | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
@@ -92,10 +181,12 @@ const PageDetail = () => {
 
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [aboutEditing, setAboutEditing] = useState(false);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<string>('');
+  const [links, setLinks] = useState<PageLink[]>([]);
   const [activeTab, setActiveTab] = useState('posts');
   const [aboutSection, setAboutSection] = useState('contact');
   const [pagePosts, setPagePosts] = useState<any[]>([]);
@@ -106,75 +197,61 @@ const PageDetail = () => {
   const [followBusy, setFollowBusy] = useState(false);
   const [followers, setFollowers] = useState<any[]>([]);
   const [adminProfile, setAdminProfile] = useState<any>(null);
-  const [viewAsPage, setViewAsPage] = useState(false);
+  const [addButtonOpen, setAddButtonOpen] = useState(false);
+  const [selectedButtonType, setSelectedButtonType] = useState<string>('message');
+  const [buttonUrl, setButtonUrl] = useState('');
+  const [savingButton, setSavingButton] = useState(false);
+
   const { createPost } = useHomeFeed();
+  const { actingPage, switchToPage, switchToPersonal } = usePageSwitch();
+  const { initiateCall } = useCall();
+  const { getOrCreateDM } = useConversations(user?.id || undefined);
+
+  const handleButtonClick = async () => {
+    if (!page?.button_type) return;
+    const btn = BUTTON_TYPES.find((t) => t.value === page.button_type);
+    if (!btn) return;
+
+    if (btn.needsLink && page.button_url) {
+      window.open(page.button_url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    if (!user) return;
+
+    switch (page.button_type) {
+      case 'message': {
+        const convId = await getOrCreateDM(page.admin_id);
+        if (convId) navigate(`/messages/${convId}`);
+        break;
+      }
+      case 'call': {
+        if (!adminProfile) return;
+        initiateCall(page.admin_id, {
+          id: page.admin_id,
+          display_name: adminProfile.display_name || adminProfile.username || 'User',
+          username: adminProfile.username || '',
+          profile_pic: adminProfile.profile_pic || undefined,
+        }, 'audio');
+        break;
+      }
+      case 'email': {
+        const email = adminProfile?.email;
+        if (email) window.location.href = `mailto:${email}`;
+        break;
+      }
+      case 'group': {
+        navigate('/groups');
+        break;
+      }
+    }
+  };
 
   const isPageAdmin = !!user && page?.admin_id === user.id;
   // Only act as the page (edit/post) when admin has explicitly switched to page mode
-  const actingAsPage = isPageAdmin && viewAsPage;
+  const actingAsPage = isPageAdmin && actingPage?.id === page?.id;
   // Backwards-compatible alias used throughout the editing UI
   const isAdmin = actingAsPage;
-
-  const { setMenu } = useHeaderAvatarMenu();
-
-  useEffect(() => {
-    if (!isPageAdmin || !page) {
-      setMenu(null);
-      return;
-    }
-    setMenu(
-      <div>
-        <div className="flex items-center justify-between px-4 pt-4 pb-2">
-          <h3 className="font-semibold text-foreground">Manage Page</h3>
-          <ChevronUp className="h-4 w-4 text-muted-foreground" />
-        </div>
-        <div className="flex items-center gap-2 px-4 py-2">
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
-              {page.name.charAt(0).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <span className="text-sm font-medium truncate">{page.name}</span>
-        </div>
-        <nav className="py-1">
-          {[
-            { icon: LayoutDashboard, label: 'Professional dashboard' },
-            { icon: BarChart3, label: 'Insights' },
-            { icon: Target, label: 'Ad Center' },
-            { icon: PlusSquare, label: 'Create ads' },
-            { icon: TrendingUp, label: 'Boost Instagram post' },
-            { icon: SettingsIcon, label: 'Settings', onClick: () => setActiveTab('manage') },
-          ].map(({ icon: Icon, label, onClick }) => (
-            <button
-              key={label}
-              onClick={onClick}
-              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left"
-            >
-              <Icon className="h-4 w-4 text-muted-foreground" />
-              <span className="flex-1 truncate">{label}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="border-t p-3 bg-muted/30">
-          <p className="text-xs text-foreground mb-2">
-            {viewAsPage
-              ? `You are managing ${page.name} as a Page.`
-              : `Switch into ${page.name}'s Page to take more actions`}
-          </p>
-          <Button
-            className="w-full"
-            variant={viewAsPage ? 'outline' : 'default'}
-            size="sm"
-            onClick={() => setViewAsPage((v) => !v)}
-          >
-            <ArrowLeftRight className="h-4 w-4 mr-2" />
-            {viewAsPage ? 'Switch back' : 'Switch'}
-          </Button>
-        </div>
-      </div>
-    );
-    return () => setMenu(null);
-  }, [isPageAdmin, page, viewAsPage, setMenu]);
 
   useEffect(() => {
     if (!id) return;
@@ -194,6 +271,7 @@ const PageDetail = () => {
       setName(data.name);
       setDescription(data.description ?? '');
       setCategory(data.category ?? '');
+      setLinks((data as any).links ?? []);
 
       const { count } = await supabase
         .from('page_followers')
@@ -247,7 +325,7 @@ const PageDetail = () => {
     (async () => {
       const { data } = await supabase
         .from('profiles')
-        .select('id, display_name, username, profile_pic')
+        .select('id, display_name, username, profile_pic, email')
         .eq('id', page.admin_id)
         .maybeSingle();
       setAdminProfile(data);
@@ -323,6 +401,7 @@ const PageDetail = () => {
         name: name.trim(),
         description: description.trim() || null,
         category: category || null,
+        links: links.length > 0 ? links : null,
       })
       .eq('id', page.id);
     setSaving(false);
@@ -330,7 +409,7 @@ const PageDetail = () => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
       return;
     }
-    setPage({ ...page, name: name.trim(), description: description.trim() || null, category: category || null });
+    setPage({ ...page, name: name.trim(), description: description.trim() || null, category: category || null, links: links.length > 0 ? links : null });
     toast({ title: 'Saved', description: 'Page updated successfully' });
   };
 
@@ -363,6 +442,80 @@ const PageDetail = () => {
     toast({ title: 'Cover updated' });
   };
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !page || !isAdmin) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: 'File too large', description: 'Max 5MB', variant: 'destructive' });
+      return;
+    }
+    setUploading(true);
+    const ext = file.name.split('.').pop();
+    const path = `page_avatars/${page.id}/${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { upsert: true });
+    if (uploadError) {
+      setUploading(false);
+      toast({ title: 'Upload failed', description: uploadError.message, variant: 'destructive' });
+      return;
+    }
+    const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+    const profile_pic = urlData.publicUrl;
+    const { error } = await supabase.from('pages').update({ profile_pic }).eq('id', page.id);
+    setUploading(false);
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setPage({ ...page, profile_pic });
+    // Update actingPage in context if currently acting as this page
+    if (actingPage?.id === page.id) {
+      switchToPage({ id: page.id, name: page.name, cover_image: page.cover_image, profile_pic });
+    }
+    toast({ title: 'Avatar updated' });
+  };
+
+  const handleSaveButton = async () => {
+    if (!page || !isPageAdmin) return;
+    const needsLink = BUTTON_TYPES.find((t) => t.value === selectedButtonType)?.needsLink;
+    if (needsLink && !buttonUrl.trim()) {
+      toast({ title: 'Error', description: 'Please add a link', variant: 'destructive' });
+      return;
+    }
+    setSavingButton(true);
+    const url = needsLink ? buttonUrl.trim() : null;
+    const { error } = await supabase
+      .from('pages')
+      .update({ button_type: selectedButtonType, button_url: url })
+      .eq('id', page.id);
+    setSavingButton(false);
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setPage({ ...page, button_type: selectedButtonType, button_url: url });
+    toast({ title: 'Button saved', description: 'Page button updated successfully' });
+    setAddButtonOpen(false);
+  };
+
+  const handleRemoveButton = async () => {
+    if (!page || !isPageAdmin) return;
+    setSavingButton(true);
+    const { error } = await supabase
+      .from('pages')
+      .update({ button_type: null, button_url: null })
+      .eq('id', page.id);
+    setSavingButton(false);
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setPage({ ...page, button_type: null, button_url: null });
+    toast({ title: 'Button removed' });
+    setAddButtonOpen(false);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -389,6 +542,12 @@ const PageDetail = () => {
 
       {/* Cover + Header (Facebook-style) */}
       <Card className="overflow-hidden mt-3 mx-4 rounded-xl">
+        {page.archived && (
+          <div className="bg-amber-500/15 border-b border-amber-500/30 px-6 py-3 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+            <Archive className="h-4 w-4 shrink-0" />
+            <span>This page is archived. Only you can see it.</span>
+          </div>
+        )}
         <div className="relative h-56 md:h-72 bg-gradient-to-br from-primary/20 to-purple-500/20">
           {page.cover_image && (
             <img src={page.cover_image} alt={page.name} className="w-full h-full object-cover" />
@@ -420,11 +579,33 @@ const PageDetail = () => {
 
         <div className="px-6 pt-4 pb-4 border-b">
           <div className="flex flex-col md:flex-row md:items-end gap-4">
-            <Avatar className="h-32 w-32 -mt-20 border-4 border-background shadow-md">
-              <AvatarFallback className="bg-primary/10 text-primary text-4xl font-bold">
-                {page.name.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            <div className="relative">
+              <Avatar className="h-32 w-32 -mt-20 border-4 border-background shadow-md">
+                <AvatarImage src={page.profile_pic || ''} />
+                <AvatarFallback className="bg-primary/10 text-primary text-4xl font-bold">
+                  {page.name.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              {isAdmin && (
+                <div className="absolute bottom-0 right-0">
+                  <Button
+                    size="sm"
+                    className="rounded-full h-10 w-10 p-0"
+                    onClick={() => avatarFileInputRef.current?.click()}
+                    disabled={uploading}
+                  >
+                    <Camera className="h-4 w-4" />
+                  </Button>
+                  <input
+                    ref={avatarFileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handleAvatarUpload}
+                  />
+                </div>
+              )}
+            </div>
             <div className="flex-1 min-w-0">
               <h1 className="text-3xl font-bold text-foreground truncate">{page.name}</h1>
               <div className="text-sm text-muted-foreground mt-1">
@@ -434,9 +615,20 @@ const PageDetail = () => {
             <div className="flex items-center gap-2 flex-wrap">
               {!isAdmin && user && (
                 <>
-                  <Button variant="default">
-                    <MessageCircle className="h-4 w-4 mr-2" /> Message
-                  </Button>
+                  {page.button_type ? (
+                    <Button variant="default" onClick={handleButtonClick}>
+                      {(() => {
+                        const bt = BUTTON_TYPES.find((t) => t.value === page.button_type);
+                        const Icon = bt?.icon || PlusSquare;
+                        return <Icon className="h-4 w-4 mr-2" />;
+                      })()}
+                      {BUTTON_TYPES.find((t) => t.value === page.button_type)?.label || page.button_type}
+                    </Button>
+                  ) : (
+                    <Button variant="default">
+                      <MessageCircle className="h-4 w-4 mr-2" /> Message
+                    </Button>
+                  )}
                   <Button
                     onClick={toggleFollow}
                     disabled={followBusy}
@@ -452,7 +644,7 @@ const PageDetail = () => {
               )}
               {isAdmin && (
                 <>
-                  <Button onClick={() => setActiveTab('manage')} variant="default">
+                  <Button onClick={() => navigate(`/pages/${page.id}/manage`, { state: { id: page.id, name: page.name, profile_pic: page.profile_pic } })} variant="default">
                     Manage Page
                   </Button>
                   <Button variant="outline" onClick={() => setSearchOpen((v) => !v)}>
@@ -460,9 +652,59 @@ const PageDetail = () => {
                   </Button>
                 </>
               )}
-              <Button variant="outline" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  {isAdmin ? (
+                    <>
+                      <DropdownMenuItem onClick={() => navigate(`/pages/${page.id}/status`, { state: { id: page.id, name: page.name, profile_pic: page.profile_pic } })}>
+                        <ToggleLeft className="h-4 w-4 mr-2" />
+                        Page status
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => {
+                        setSelectedButtonType(page.button_type || 'message');
+                        setButtonUrl(page.button_url || '');
+                        setAddButtonOpen(true);
+                      }}>
+                        <PlusSquare className="h-4 w-4 mr-2" />
+                        Add button
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => navigate(`/pages/${page.id}/archive`, { state: { id: page.id, name: page.name, profile_pic: page.profile_pic, archived: page.archived } })}>
+                        <Archive className="h-4 w-4 mr-2" />
+                        {page.archived ? 'Unarchive' : 'Archive'}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate(`/pages/${page.id}/activity-log`, { state: { id: page.id, name: page.name, profile_pic: page.profile_pic } })}>
+                        <HashIcon className="h-4 w-4 mr-2" />
+                        Posts/tags
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <>
+                      <DropdownMenuItem onClick={() => {
+                        navigator.clipboard.writeText(window.location.href);
+                        toast({ title: 'Link copied', description: 'Page link copied to clipboard' });
+                      }}>
+                        <Link2 className="h-4 w-4 mr-2" />
+                        Copy link
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => toast({ title: 'Share', description: 'Coming soon' })}>
+                        <Share2 className="h-4 w-4 mr-2" />
+                        Share
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => toast({ title: 'Report', description: 'Coming soon' })}>
+                        <ShieldCheck className="h-4 w-4 mr-2" />
+                        Report page
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -477,7 +719,6 @@ const PageDetail = () => {
               <TabsTrigger value="reviews" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Reviews</TabsTrigger>
               <TabsTrigger value="followers" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Followers</TabsTrigger>
               <TabsTrigger value="photos" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Photos</TabsTrigger>
-              {isAdmin && <TabsTrigger value="manage" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Manage</TabsTrigger>}
             </TabsList>
           </div>
 
@@ -510,11 +751,7 @@ const PageDetail = () => {
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Users className="h-4 w-4" /> <span>{followerCount} followers</span>
                     </div>
-                    {isAdmin && (
-                      <Button variant="secondary" className="w-full mt-2" onClick={() => setActiveTab('manage')}>
-                        Edit details
-                      </Button>
-                    )}
+
                   </CardContent>
                 </Card>
               </aside>
@@ -549,7 +786,7 @@ const PageDetail = () => {
                     })
                     .map((pp) =>
                       pp.post ? (
-                        <Post key={pp.id} {...pp.post} onDelete={() => fetchPagePosts()} />
+                        <Post key={pp.id} {...pp.post} page={{ id: page.id, name: page.name, cover_image: page.cover_image }} onDelete={() => fetchPagePosts()} />
                       ) : null,
                     )
                 )}
@@ -592,10 +829,29 @@ const PageDetail = () => {
 
                   {/* Section content */}
                   <div className="md:col-span-3 p-6 space-y-6">
+                    {isAdmin && (
+                      <div className="flex justify-end">
+                        {aboutEditing ? (
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => { setAboutEditing(false); setDescription(page.description ?? ''); setCategory(page.category ?? ''); setLinks(page.links ?? []); }}>
+                              Cancel
+                            </Button>
+                            <Button variant="default" size="sm" onClick={() => { handleSave(); setAboutEditing(false); }} disabled={saving}>
+                              {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                              Save
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button variant="outline" size="sm" onClick={() => setAboutEditing(true)}>
+                            Edit
+                          </Button>
+                        )}
+                      </div>
+                    )}
                     {aboutSection === 'contact' && (
                       <>
                         <section>
-                          <h3 className="font-semibold mb-3">Categories</h3>
+                          <h3 className="font-semibold mb-3">Category</h3>
                           <div className="flex items-center gap-2 text-sm text-foreground">
                             <Tag className="h-4 w-4 text-muted-foreground" />
                             <span>{page.category || 'Uncategorized'}</span>
@@ -603,13 +859,151 @@ const PageDetail = () => {
                         </section>
 
                         <section>
+                          <h3 className="font-semibold mb-3">Description</h3>
+                          {aboutEditing ? (
+                            <Textarea
+                              value={description}
+                              onChange={(e) => setDescription(e.target.value)}
+                              rows={4}
+                              placeholder="Add a description for your page"
+                            />
+                          ) : (
+                            <p className="text-sm text-foreground whitespace-pre-wrap">
+                              {page.description || 'No description provided.'}
+                            </p>
+                          )}
+                        </section>
+
+                          <section>
                           <h3 className="font-semibold mb-3">Websites and social links</h3>
-                          <div className="space-y-2 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                              <Link2 className="h-4 w-4" />
-                              <span>No links added yet</span>
+                          {aboutEditing ? (
+                            <div className="space-y-3">
+                              {links.map((link, i) => {
+                                const isWA = link.type === 'WhatsApp';
+                                let waCode = '1', waPhone = '';
+                                if (isWA && link.url) {
+                                  const digits = link.url.replace(/^https?:\/\/wa\.me\//, '').replace(/\D/g, '');
+                                  const sorted = [...COUNTRY_CODES].sort((a, b) => b.value.length - a.value.length);
+                                  const match = sorted.find((c) => digits.startsWith(c.value));
+                                  if (match) {
+                                    waCode = match.value;
+                                    waPhone = digits.slice(match.value.length);
+                                  } else {
+                                    waPhone = digits;
+                                  }
+                                }
+                                return (
+                                <div key={i} className="flex items-start gap-2">
+                                  <Select
+                                    value={link.type}
+                                    onValueChange={(val) => {
+                                      let nextUrl = link.url;
+                                      if (val !== 'WhatsApp' && link.type === 'WhatsApp') {
+                                        nextUrl = '';
+                                      }
+                                      if (val === 'WhatsApp' && link.type !== 'WhatsApp') {
+                                        nextUrl = '';
+                                      }
+                                      const next = [...links];
+                                      next[i] = { type: val, url: nextUrl };
+                                      setLinks(next);
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-36 shrink-0">
+                                      <SelectValue placeholder="Type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {LINK_TYPES.map((t) => (
+                                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  {isWA ? (
+                                    <div className="flex-1 flex gap-2">
+                                      <Select
+                                        value={waCode}
+                                        onValueChange={(code) => {
+                                          const next = [...links];
+                                          next[i] = { ...next[i], url: `https://wa.me/${code}${waPhone}` };
+                                          setLinks(next);
+                                        }}
+                                      >
+                                        <SelectTrigger className="w-30 shrink-0">
+                                          <SelectValue placeholder="Code" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {COUNTRY_CODES.map((c) => (
+                                            <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                      <Input
+                                        value={waPhone}
+                                        onChange={(e) => {
+                                          const phone = e.target.value.replace(/\D/g, '');
+                                          const next = [...links];
+                                          next[i] = { ...next[i], url: `https://wa.me/${waCode}${phone}` };
+                                          setLinks(next);
+                                        }}
+                                        placeholder="phone number"
+                                        type="text"
+                                      />
+                                    </div>
+                                  ) : (
+                                  <Input
+                                    value={link.url}
+                                    onChange={(e) => {
+                                      const next = [...links];
+                                      next[i] = { ...next[i], url: e.target.value };
+                                      setLinks(next);
+                                    }}
+                                    placeholder={SOCIAL_TYPES.has(link.type) ? 'username' : 'https://example.com'}
+                                    type={SOCIAL_TYPES.has(link.type) ? 'text' : 'url'}
+                                  />
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="mt-0.5 shrink-0"
+                                    onClick={() => setLinks(links.filter((_, j) => j !== i))}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                );
+                              })}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setLinks([...links, { type: 'Website', url: '' }])}
+                              >
+                                <Plus className="h-4 w-4 mr-2" /> Add link
+                              </Button>
                             </div>
-                          </div>
+                          ) : (
+                            <div className="space-y-2 text-sm">
+                              {links.length > 0 ? (
+                                links.map((link, i) => (
+                                  <a
+                                    key={i}
+                                    href={link.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 text-primary hover:underline"
+                                  >
+                                    <Link2 className="h-4 w-4 shrink-0" />
+                                    <span className="truncate font-medium">{link.type}</span>
+                                    <span className="truncate text-muted-foreground">{link.url}</span>
+                                  </a>
+                                ))
+                              ) : (
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                  <Link2 className="h-4 w-4" />
+                                  <span>No links added yet</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </section>
 
                         <section>
@@ -628,13 +1022,6 @@ const PageDetail = () => {
                               <span>Public page</span>
                             </div>
                           </div>
-                        </section>
-
-                        <section>
-                          <h3 className="font-semibold mb-3">Description</h3>
-                          <p className="text-sm text-foreground whitespace-pre-wrap">
-                            {page.description || 'No description provided.'}
-                          </p>
                         </section>
                       </>
                     )}
@@ -810,51 +1197,80 @@ const PageDetail = () => {
             </Card>
           </TabsContent>
 
-          {isAdmin && (
-            <TabsContent value="manage" className="m-0 p-4">
-              <Card>
-          <CardHeader>
-            <CardTitle>Manage page</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="page-name">Name</Label>
-              <Input id="page-name" value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="page-category">Category</Label>
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger id="page-category">
-                  <SelectValue placeholder="Select a category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="page-description">Description</Label>
-              <Textarea
-                id="page-description"
-                rows={4}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-            <div className="flex justify-end">
-              <Button onClick={handleSave} disabled={saving || !name.trim()}>
-                {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                Save changes
-              </Button>
-            </div>
-          </CardContent>
-            </Card>
-          </TabsContent>
-        )}
       </Tabs>
       </Card>
+
+      <Dialog open={addButtonOpen} onOpenChange={setAddButtonOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add a button to your page</DialogTitle>
+            <DialogDescription>
+              Choose a call-to-action button for visitors.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Button type</Label>
+              <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+                {BUTTON_TYPES.map((bt) => {
+                  const Icon = bt.icon;
+                  return (
+                    <button
+                      key={bt.value}
+                      type="button"
+                      onClick={() => setSelectedButtonType(bt.value)}
+                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm transition-colors ${
+                        selectedButtonType === bt.value
+                          ? 'border-primary bg-primary/10 text-primary font-medium'
+                          : 'border-border hover:border-primary/50 hover:bg-accent'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span>{bt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {BUTTON_TYPES.find((t) => t.value === selectedButtonType)?.needsLink && (
+              <div className="space-y-2">
+                <Label htmlFor="button-url">
+                  Add link <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="button-url"
+                  value={buttonUrl}
+                  onChange={(e) => setButtonUrl(e.target.value)}
+                  placeholder="https://example.com"
+                  type="url"
+                  required
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            {page.button_type && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleRemoveButton}
+                disabled={savingButton}
+                className="mr-auto"
+              >
+                Remove button
+              </Button>
+            )}
+            <DialogClose asChild>
+              <Button variant="outline" disabled={savingButton}>Cancel</Button>
+            </DialogClose>
+            <Button onClick={handleSaveButton} disabled={savingButton || (BUTTON_TYPES.find((t) => t.value === selectedButtonType)?.needsLink && !buttonUrl.trim())}>
+              {savingButton ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 };

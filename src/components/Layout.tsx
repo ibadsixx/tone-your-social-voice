@@ -1,4 +1,4 @@
-import { Outlet, Link, useLocation, Navigate } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { NotificationsDropdown } from '@/components/NotificationsDropdown';
 import { FloatingIM } from '@/components/im/FloatingIM';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HeaderAvatarMenuProvider, useHeaderAvatarMenu } from '@/contexts/HeaderAvatarMenuContext';
+import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -29,26 +30,28 @@ import {
   HelpCircle,
   Moon,
   MessageSquareWarning,
-  Shield
+  Shield,
+  ArrowLeftRight,
 } from 'lucide-react';
 
 const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
   const { menu } = useHeaderAvatarMenu();
   const { signOut } = useAuth();
-  const [ownedPages, setOwnedPages] = useState<Array<{ id: string; name: string; cover_image: string | null }>>([]);
-  const [lastPageId, setLastPageId] = useState<string | null>(null);
+  const { actingPage, switchToPage, switchToPersonal } = usePageSwitch();
+  const navigate = useNavigate();
+  const [ownedPages, setOwnedPages] = useState<Array<{ id: string; name: string; cover_image: string | null; profile_pic: string | null }>>([]);
 
   useEffect(() => {
     if (!user?.id) return;
     (async () => {
       const { data } = await supabase
         .from('pages')
-        .select('id, name, cover_image')
+        .select('*')
         .eq('admin_id', user.id)
         .order('created_at', { ascending: false });
-      // Deduplicate by name to avoid showing the same page repeatedly
+      if (!data) return;
       const seen = new Set<string>();
-      const unique = (data || []).filter((p) => {
+      const unique = data.filter((p) => {
         const key = p.name.trim().toLowerCase();
         if (seen.has(key)) return false;
         seen.add(key);
@@ -58,20 +61,13 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
     })();
   }, [user?.id]);
 
-  useEffect(() => {
-    try {
-      setLastPageId(localStorage.getItem(`tone:lastPageId:${user?.id}`) || null);
-    } catch {}
-  }, [user?.id]);
-
-  const lastPage =
-    ownedPages.find((p) => p.id === lastPageId) || ownedPages[0] || null;
+  const firstPage = ownedPages[0] || null;
 
   const avatar = (
     <Avatar className="h-9 w-9 border-2 border-tone-purple/20 ring-2 ring-transparent hover:ring-tone-purple/30 transition-all cursor-pointer">
-      <AvatarImage src={profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
+      <AvatarImage src={actingPage?.profile_pic || profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
       <AvatarFallback className="bg-tone-gradient text-white">
-        {profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
+        {actingPage ? actingPage.name.charAt(0).toUpperCase() : profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
       </AvatarFallback>
     </Avatar>
   );
@@ -79,37 +75,70 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
   const defaultMenu = (
     <div className="py-2">
       <div className="px-2">
-        <Link
-          to="/profile"
-          className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors"
-        >
-          <Avatar className="h-9 w-9">
-            <AvatarImage src={profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
-            <AvatarFallback className="bg-tone-gradient text-white text-xs font-bold">
-              {profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <span className="text-sm font-semibold truncate">{profile?.display_name || user?.email}</span>
-        </Link>
-        {lastPage && (
-          <Link
-            key={lastPage.id}
-            to={`/pages/${lastPage.id}`}
-            onClick={() => {
-              try {
-                localStorage.setItem(`tone:lastPageId:${user?.id}`, lastPage.id);
-              } catch {}
-            }}
-            className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors"
-          >
-            <Avatar className="h-9 w-9">
-              {lastPage.cover_image && <AvatarImage src={lastPage.cover_image} className="object-cover" />}
-              <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
-                {lastPage.name.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <span className="text-sm font-semibold truncate">{lastPage.name}</span>
-          </Link>
+        {actingPage ? (
+          <div className="space-y-1">
+            <div className="flex items-center gap-3 px-2 py-2">
+              <Avatar className="h-9 w-9">
+                {actingPage.profile_pic && <AvatarImage src={actingPage.profile_pic} className="object-cover" />}
+                <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                  {actingPage.name.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-semibold truncate block">{actingPage.name}</span>
+                <span className="text-xs text-muted-foreground">Active page</span>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                switchToPersonal();
+                navigate('/');
+              }}
+              className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors"
+            >
+              <Avatar className="h-7 w-7">
+                <AvatarImage src={profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
+                <AvatarFallback className="bg-tone-gradient text-white text-xs font-bold">
+                  {profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-sm flex-1">{profile?.display_name || user?.email}</span>
+              <ArrowLeftRight className="h-3 w-3 text-muted-foreground shrink-0" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <Link
+              to="/profile"
+              className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors"
+            >
+              <Avatar className="h-9 w-9">
+                <AvatarImage src={profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
+                <AvatarFallback className="bg-tone-gradient text-white text-xs font-bold">
+                  {profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-sm font-semibold truncate">{profile?.display_name || user?.email}</span>
+            </Link>
+            {firstPage ? (
+              <button
+                onClick={() => {
+                  switchToPage(firstPage);
+                  navigate(`/pages/${firstPage.id}`);
+                }}
+                className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors"
+              >
+                <Avatar className="h-9 w-9">
+                  {firstPage.profile_pic && <AvatarImage src={firstPage.profile_pic} className="object-cover" />}
+                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                    {firstPage.name.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm font-semibold truncate flex-1 text-left">{firstPage.name}</span>
+                <ArrowLeftRight className="h-3 w-3 text-muted-foreground shrink-0" />
+              </button>
+            ) : null}
+          </>
         )}
         <Link
           to="/pages"
@@ -175,6 +204,7 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
     <Popover>
       <PopoverTrigger asChild>{avatar}</PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0 max-h-[80vh] overflow-y-auto">
+        {menu && <div className="border-b">{menu}</div>}
         {defaultMenu}
       </PopoverContent>
     </Popover>
@@ -184,6 +214,8 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
 const Layout = () => {
   const { user, signOut, loading } = useAuth();
   const { profile } = useProfile();
+  const { actingPage, switchToPersonal } = usePageSwitch();
+  const navigate = useNavigate();
   const location = useLocation();
 
   if (loading) {
@@ -202,7 +234,7 @@ const Layout = () => {
   const navigation = [
     { name: 'Home', href: '/', icon: Home },
     { name: 'Messages', href: '/messages', icon: MessageCircle },
-    { name: 'Profile', href: '/profile', icon: User },
+    { name: 'Profile', href: actingPage ? `/pages/${actingPage.id}` : '/profile', icon: User },
     { name: 'Search', href: '/search', icon: Search },
     { name: 'Following Hashtags', href: '/hashtags/following', icon: Hash },
     { name: 'Saved', href: '/saved', icon: Bookmark },
@@ -245,6 +277,27 @@ const Layout = () => {
           </div>
         </div>
       </header>
+
+      {actingPage && (
+        <div className="border-b border-primary/10 bg-primary/5">
+          <div className="container mx-auto px-6 py-2 flex items-center justify-between">
+            <p className="text-sm text-foreground">
+              You're posting as <span className="font-semibold text-primary">{actingPage.name}</span>
+            </p>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                switchToPersonal();
+                navigate('/');
+              }}
+            >
+              <ArrowLeftRight className="h-4 w-4 mr-2" />
+              Switch back to personal
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="flex">
         {/* Sidebar */}

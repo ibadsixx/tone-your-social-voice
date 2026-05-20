@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
+import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { cn } from '@/lib/utils';
 import TagPeopleModal from './TagPeopleModal';
 import TaggedUserChip from './TaggedUserChip';
@@ -50,6 +51,7 @@ interface NewPostProps {
 const NewPost = ({ onCreatePost, className }: NewPostProps) => {
   const { user } = useAuth();
   const { profile } = useProfile();
+  const { actingPage } = usePageSwitch();
   const { audienceToDbFormat } = useAudience();
   const { saveMentionsAndHashtags } = useMentions();
   const [content, setContent] = useState('');
@@ -249,9 +251,9 @@ const NewPost = ({ onCreatePost, className }: NewPostProps) => {
           {/* Header with Avatar */}
           <div className="flex items-start space-x-4 mb-4">
             <Avatar className="w-12 h-12 border-2 border-primary/20">
-              <AvatarImage src={profile?.profile_pic || undefined} />
+              <AvatarImage src={actingPage?.profile_pic || profile?.profile_pic || undefined} />
               <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                {profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+                {actingPage ? actingPage.name.charAt(0).toUpperCase() : profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
               </AvatarFallback>
             </Avatar>
             

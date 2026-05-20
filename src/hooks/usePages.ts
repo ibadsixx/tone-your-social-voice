@@ -9,6 +9,7 @@ export interface Page {
   description: string | null;
   category: string | null;
   cover_image: string | null;
+  profile_pic?: string | null;
   created_at: string;
   admin_id: string;
   follower_count?: number;
@@ -16,6 +17,7 @@ export interface Page {
   user_role?: 'follower' | 'admin' | 'editor';
   followed_at?: string;
   engagement_score?: number;
+  archived?: boolean;
 }
 
 export const usePages = () => {
@@ -30,7 +32,7 @@ export const usePages = () => {
         .from('pages')
         .select(`
           *,
-          page_followers!page_followers_page_id_fkey (
+          page_followers (
             user_id,
             role,
             followed_at
@@ -39,22 +41,18 @@ export const usePages = () => {
 
       switch (type) {
         case 'suggested':
-          // For now, show all pages not followed by user, ordered by follower count
           query = query.order('created_at', { ascending: false });
           break;
         case 'interactive':
-          // For now, order by created_at (can be enhanced with engagement metrics later)
           query = query.order('created_at', { ascending: false });
           break;
         case 'new':
           query = query.order('created_at', { ascending: false });
           break;
         case 'following':
-          // Only pages the user follows
           if (!user) return [];
           break;
         case 'owned':
-          // Only pages created by the user
           if (!user) return [];
           query = query.eq('admin_id', user.id);
           break;
@@ -74,6 +72,7 @@ export const usePages = () => {
           description: page.description,
           category: page.category,
           cover_image: page.cover_image,
+          profile_pic: page.profile_pic,
           created_at: page.created_at,
           admin_id: page.admin_id,
           follower_count: followerCount,
@@ -92,6 +91,7 @@ export const usePages = () => {
 
       return pagesWithFollowerInfo;
     } catch (error: any) {
+      console.error('[usePages] Failed to load pages:', error?.message || error);
       toast({
         title: 'Error',
         description: 'Failed to load pages',
