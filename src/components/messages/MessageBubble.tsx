@@ -19,7 +19,8 @@ import {
   Volume2,
   VolumeX,
   MoreHorizontal,
-  Smile
+  Smile,
+  Flame
 } from 'lucide-react';
 import MessageReactionPicker from './MessageReactionPicker';
 import StaticReactionIcon from '@/components/StaticReactionIcon';
@@ -94,6 +95,7 @@ interface MessageBubbleProps {
   currentUserId?: string;
   isPinned?: boolean;
   chatTheme?: string;
+  isVanishing?: boolean;
   onReact?: (messageId: string, reaction: string) => void;
   onReply?: (message: Message) => void;
   onForward?: (message: Message) => void;
@@ -123,6 +125,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   currentUserId,
   isPinned = false,
   chatTheme = 'default',
+  isVanishing = false,
   onReact,
   onReply,
   onForward,
@@ -803,12 +806,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
           {/* Timestamp - always show but smaller for stickers/GIFs */}
           <p
-            className={`text-xs mt-1 ${
-              (message.is_sticker || message.message_type === 'sticker' || message.is_gif || message.message_type === 'gif') ? 'text-center' : ''
+            className={`text-xs mt-1 flex items-center gap-1 ${
+              (message.is_sticker || message.message_type === 'sticker' || message.is_gif || message.message_type === 'gif') ? 'text-center justify-center' : ''
             } ${
               isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground'
             }`}
           >
+            {isVanishing && <Flame className="h-3 w-3 text-orange-400" />}
             {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
           </p>
           </div>

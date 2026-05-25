@@ -65,6 +65,8 @@ interface ChatInfoPanelProps {
   onReport?: (reportedUserId: string, reason?: string, details?: string) => void;
   onClearHistory?: () => void;
   onScrollToMessage?: (messageId: string) => void;
+  vanishingMessagesEnabled?: boolean;
+  onToggleVanishingMessages?: () => void;
 }
 
 type ExpandableSection = 'chat-info' | 'customize' | 'media' | 'privacy' | null;
@@ -86,6 +88,8 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   onReport,
   onClearHistory,
   onScrollToMessage,
+  vanishingMessagesEnabled: propVanishingEnabled,
+  onToggleVanishingMessages: propToggleVanishing,
 }) => {
   const [expandedSection, setExpandedSection] = useState<ExpandableSection>(null);
   const [showThemeModal, setShowThemeModal] = useState(false);
@@ -112,9 +116,15 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     settings, 
     loading,
     toggleMute, 
-    toggleVanishingMessages, 
+    toggleVanishingMessages: hookToggleVanishing, 
     toggleReadReceipts
   } = useConversationSettings(conversationId);
+
+  // Use props if provided (shared state from ChatWindow), otherwise use own hook
+  const vanishingEnabled = propVanishingEnabled !== undefined
+    ? propVanishingEnabled
+    : (settings?.vanishing_messages_enabled ?? false);
+  const toggleVanishingMessages = propToggleVanishing || hookToggleVanishing;
 
   const toggleSection = (section: ExpandableSection) => {
     setExpandedSection(expandedSection === section ? null : section);
@@ -248,7 +258,6 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   if (!otherUser) return null;
 
   const isMuted = settings?.is_muted ?? false;
-  const vanishingEnabled = settings?.vanishing_messages_enabled ?? false;
   const readReceiptsEnabled = settings?.read_receipts_enabled ?? true;
 
   return (

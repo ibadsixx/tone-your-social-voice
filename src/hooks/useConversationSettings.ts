@@ -201,7 +201,7 @@ export const useConversationSettings = (conversationId?: string) => {
     updateChatTheme,
     updateQuickEmoji,
     refetch: fetchSettings
-  };
+  } as const;
 };
 
 // Hook for reporting conversations

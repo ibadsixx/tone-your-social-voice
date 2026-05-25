@@ -45,6 +45,8 @@ type Message = {
   is_system?: boolean;
   read?: boolean;
   created_at: string;
+  expires_at?: string | null;
+  vanish_on_read?: boolean;
   reply_to_id?: string;
   reply_to?: {
     id: string;
@@ -164,6 +166,8 @@ export const useConversations = (currentUserId?: string) => {
           audio_path,
           reply_to_id,
           created_at,
+          expires_at,
+          vanish_on_read,
           read,
           message_type,
           is_system,
@@ -211,15 +215,25 @@ export const useConversations = (currentUserId?: string) => {
         }
       }
 
+      // Filter out expired vanishing messages
+      const now = new Date().toISOString();
+      const filteredMessages = formattedMessages.filter(
+        m => !m.expires_at || m.expires_at > now
+      );
+
+      if (filteredMessages.length < formattedMessages.length) {
+        console.log(`[useConversations] Filtered out ${formattedMessages.length - filteredMessages.length} expired messages`);
+      }
+
       if (page === 0) {
-        setMessages(formattedMessages);
+        setMessages(filteredMessages);
       } else {
-        setMessages(prev => [...formattedMessages, ...prev]);
+        setMessages(prev => [...filteredMessages, ...prev]);
       }
 
       // Mark messages as read
       await markMessagesAsRead(conversationId);
-      console.log('[useConversations] Messages loaded successfully:', formattedMessages.length);
+      console.log('[useConversations] Messages loaded successfully:', filteredMessages.length);
     } catch (error: any) {
       console.error('[useConversations] Error fetching messages:', error);
       toast({
@@ -267,6 +281,8 @@ export const useConversations = (currentUserId?: string) => {
           message_type,
           reply_to_id,
           created_at,
+          expires_at,
+          vanish_on_read,
           sender_profile:profiles!messages_sender_id_fkey(username, display_name, profile_pic)
         `)
         .single();
@@ -417,13 +433,18 @@ export const useConversations = (currentUserId?: string) => {
                 id, conversation_id, sender_id, content, attachment_url, image_url, media_url, is_image,
                 is_gif, gif_url, is_sticker, sticker_url, sticker_id, sticker_set,
                 audio_url, audio_duration, audio_mime, audio_size, audio_path,
-                reply_to_id, created_at, read, message_type, is_system,
+                reply_to_id, created_at, expires_at, vanish_on_read, read, message_type, is_system,
                 sender_profile:profiles!messages_sender_id_fkey(username, display_name, profile_pic)
               `)
               .eq('id', newMsg.id)
               .single();
             
             if (msgData) {
+              // Skip if message is already expired
+              if (msgData.expires_at && msgData.expires_at < new Date().toISOString()) {
+                return;
+              }
+
               let replyData = null;
               if (msgData.reply_to_id) {
                 const { data: replyResult } = await supabase
@@ -458,6 +479,18 @@ export const useConversations = (currentUserId?: string) => {
         },
         () => {
           debouncedFetchConversations();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          const deletedId = payload.old.id as string;
+          setMessages(prev => prev.filter(m => m.id !== deletedId));
         }
       )
       .subscribe();

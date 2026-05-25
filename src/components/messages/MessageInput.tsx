@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
-import { Send, Image, X, Paperclip, Mic, SmilePlus, Reply } from 'lucide-react';
+import { Send, Image, X, Paperclip, Mic, SmilePlus, Reply, Flame } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { EmojiPickerPanel } from '@/components/EmojiPicker';
 import { Emoji } from '@/components/Emoji';
@@ -34,6 +35,7 @@ interface MessageInputProps {
   onCancelReply?: () => void;
   /** Conversation-level quick emoji code (e.g., "1f44c" or "1f970") or Unicode emoji */
   quickEmoji?: string;
+  vanishing?: boolean;
 }
 
 export const MessageInput: React.FC<MessageInputProps> = ({
@@ -45,7 +47,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   placeholder = "Type a message...",
   replyTo,
   onCancelReply,
-  quickEmoji
+  quickEmoji,
+  vanishing = false
 }) => {
   const [message, setMessage] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -250,7 +253,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   // Show voice recorder if active
   if (showVoiceRecorder) {
     return (
-      <div className="border-t border-border bg-card p-4">
+      <div className={cn(
+        "border-t p-4 transition-colors duration-500",
+        vanishing ? "border-zinc-700/50 bg-zinc-900/50" : "border-border bg-card"
+      )}>
         <MessageRecorder
           onSendAudio={handleSendAudio}
           onCancel={() => setShowVoiceRecorder(false)}
@@ -261,7 +267,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   }
 
   return (
-    <div className="border-t border-border bg-card p-4 space-y-3 relative">
+    <div className={cn(
+      "border-t p-4 space-y-3 relative transition-colors duration-500",
+      vanishing ? "border-zinc-700/50 bg-zinc-900/50" : "border-border bg-card"
+    )}>
       {/* Reply Preview */}
       {replyTo && (
         <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg border-l-4 border-primary">
@@ -345,7 +354,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             size="sm"
             onClick={() => setShowVoiceRecorder(true)}
             disabled={disabled || uploading}
-            className="h-9 w-9 p-0 rounded-full text-primary hover:bg-primary/10 transition-colors"
+            className={cn(
+              "h-9 w-9 p-0 rounded-full transition-colors",
+              vanishing
+                ? "text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-100"
+                : "text-primary hover:bg-primary/10"
+            )}
             title="Record voice message"
           >
             <Mic className="h-5 w-5" />
@@ -355,7 +369,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             size="sm"
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled || uploading}
-            className="h-9 w-9 p-0 rounded-full text-primary hover:bg-primary/10 transition-colors"
+            className={cn(
+              "h-9 w-9 p-0 rounded-full transition-colors",
+              vanishing
+                ? "text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-100"
+                : "text-primary hover:bg-primary/10"
+            )}
             title="Send photo"
           >
             <Image className="h-5 w-5" />
@@ -365,7 +384,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             size="sm"
             onClick={toggleStickerPicker}
             disabled={disabled || uploading}
-            className="h-9 w-9 p-0 rounded-full text-primary hover:bg-primary/10 transition-colors"
+            className={cn(
+              "h-9 w-9 p-0 rounded-full transition-colors",
+              vanishing
+                ? "text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-100"
+                : "text-primary hover:bg-primary/10"
+            )}
             title="Send sticker"
           >
             <SmilePlus className="h-5 w-5" />
@@ -375,7 +399,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             size="sm"
             onClick={toggleGifPicker}
             disabled={disabled || uploading}
-            className="h-9 w-9 p-0 rounded-full text-primary hover:bg-primary/10 transition-colors font-bold text-xs"
+            className={cn(
+              "h-9 w-9 p-0 rounded-full font-bold text-xs transition-colors",
+              vanishing
+                ? "text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-100"
+                : "text-primary hover:bg-primary/10"
+            )}
             title="Send GIF"
           >
             GIF
@@ -391,7 +420,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             disabled={disabled || uploading}
-            className="min-h-[40px] max-h-[120px] resize-none py-2.5 pr-10 overflow-y-auto scrollbar-none"
+            className={cn(
+              "min-h-[40px] max-h-[120px] resize-none py-2.5 pr-10 overflow-y-auto scrollbar-none transition-colors",
+              vanishing
+                ? "bg-zinc-800 border-zinc-600 text-zinc-100 placeholder:text-zinc-500"
+                : ""
+            )}
             rows={1}
           />
 
@@ -401,7 +435,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             size="sm"
             onClick={toggleEmojiPicker}
             disabled={disabled || uploading}
-            className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 p-0 hover:bg-muted transition-colors"
+            className={cn(
+              "absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 p-0 transition-colors",
+              vanishing ? "hover:bg-zinc-700 text-zinc-400" : "hover:bg-muted"
+            )}
             title="Emoji"
           >
             <Emoji url="/emoji/1f600.png" alt="Emoji" size={20} />
@@ -423,11 +460,14 @@ export const MessageInput: React.FC<MessageInputProps> = ({
               onClick={hasContent ? handleSend : handleQuickEmojiSend}
               disabled={disabled || uploading || (hasContent && !message.trim() && !selectedFile)}
               size="sm"
-              className="h-10 w-10 p-0"
+              className={cn(
+                "h-10 w-10 p-0 transition-colors",
+                vanishing && "bg-orange-600 hover:bg-orange-500"
+              )}
               title={hasContent ? 'Send' : 'Send quick emoji'}
             >
               {hasContent ? (
-                <Send className="h-4 w-4" />
+                <Send className={cn("h-4 w-4", vanishing && "text-white")} />
               ) : (
                 <EmojiAsset emoji={quickEmoji || '👌'} alt="Quick emoji" size={18} />
               )}
@@ -455,11 +495,19 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       />
 
       {/* Status */}
+      {vanishing && (
+        <div className="flex items-center justify-center gap-1.5">
+          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-700 to-transparent" />
+          <Flame className="h-3 w-3 text-orange-400 animate-pulse" />
+          <span className="text-[10px] text-zinc-500 tracking-wide uppercase">Vanish Mode</span>
+          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-700 to-transparent" />
+        </div>
+      )}
       {uploading && (
-        <p className="text-xs text-muted-foreground">Uploading file...</p>
+        <p className={cn("text-xs transition-colors", vanishing ? "text-zinc-400" : "text-muted-foreground")}>Uploading file...</p>
       )}
       {uploadingAudio && (
-        <p className="text-xs text-muted-foreground">Uploading voice message...</p>
+        <p className={cn("text-xs transition-colors", vanishing ? "text-zinc-400" : "text-muted-foreground")}>Uploading voice message...</p>
       )}
     </div>
   );

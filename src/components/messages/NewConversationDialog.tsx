@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogContent,
@@ -9,8 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Search, UserPlus, Loader2 } from 'lucide-react';
+import { Search, UserPlus, Loader2, Users, Megaphone } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface User {
   id: string;
@@ -32,6 +34,8 @@ export const NewConversationDialog: React.FC<NewConversationDialogProps> = ({
   onSelectUser,
   currentUserId,
 }) => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
@@ -110,6 +114,18 @@ export const NewConversationDialog: React.FC<NewConversationDialogProps> = ({
     }
   };
 
+  const handleCreateGroupChat = () => {
+    onOpenChange(false);
+    navigate('/groups');
+  };
+
+  const handleCreateChannel = () => {
+    toast({
+      title: 'Coming Soon',
+      description: 'Channels are not available yet. Stay tuned!',
+    });
+  };
+
   const handleSelectUser = (userId: string) => {
     onSelectUser(userId);
     setSearchQuery('');
@@ -127,6 +143,26 @@ export const NewConversationDialog: React.FC<NewConversationDialogProps> = ({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Create Group / Channel Options */}
+          <div className="space-y-1 pb-2 border-b border-border">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 h-auto py-3 px-3 hover:bg-accent"
+              onClick={handleCreateGroupChat}
+            >
+              <Users className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm font-medium">Create group chat</span>
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 h-auto py-3 px-3 hover:bg-accent"
+              onClick={handleCreateChannel}
+            >
+              <Megaphone className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm font-medium">Create channel</span>
+            </Button>
+          </div>
+
           {/* Search Input */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

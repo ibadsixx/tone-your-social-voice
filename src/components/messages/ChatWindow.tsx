@@ -4,7 +4,8 @@ import { CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Phone, Video, Info, Users } from 'lucide-react';
+import { Phone, Video, Info, Users, Flame, X, Camera } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { MessageBubble, Message } from './MessageBubble';
 import { MessageInput, ReplyToMessage } from './MessageInput';
@@ -69,11 +70,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [chatTheme, setChatTheme] = useState('default');
   const scrollAttemptsRef = useRef<Record<string, number>>({});
   const navigate = useNavigate();
+  const { toast } = useToast();
   const { reportConversation } = useConversationReport();
-  const { settings: conversationSettings, updateChatTheme } = useConversationSettings(conversationId);
+  const { settings: conversationSettings, updateChatTheme, toggleVanishingMessages: toggleVanish } = useConversationSettings(conversationId);
   const { toggleReaction, fetchReactions, getMessageReactions } = useMessageReactions(conversationId);
   const { blockStatus, blockUser, unblockUser } = useBlocks(otherUser?.id || '', currentUserId);
   const { deleteMessage, pinMessage, reportMessage: submitReport, getPinnedMessages } = useMessageActions(conversationId, currentUserId);
+
+  // Vanish mode: swipe gesture state
+  const swipeStartY = useRef<number | null>(null);
+  const chatAreaRef = useRef<HTMLDivElement>(null);
+  const vanishJustActivated = useRef(false);
 
   // Derive chat theme and quick emoji from conversation settings (fetched via RPC in useConversationSettings)
   useEffect(() => {
@@ -83,6 +90,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   }, [conversationSettings?.chat_theme]);
 
   const quickEmoji = conversationSettings?.quick_emoji || '👌';
+  const vanishingMessagesEnabled = conversationSettings?.vanishing_messages_enabled ?? false;
 
   // Fetch pinned messages and reactions when conversation changes
   useEffect(() => {
@@ -97,6 +105,57 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       fetchReactions(messageIds);
     }
   }, [messages]);
+
+  // Clean up vanish mode messages when leaving a conversation
+  const prevConvIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    return () => {
+      // Only delete if vanish mode was active and we have a conversation ID
+      if (prevConvIdRef.current && vanishingMessagesEnabled) {
+        supabase.rpc('delete_read_vanish_messages', {
+          p_conversation_id: prevConvIdRef.current
+        }).then(({ error }) => {
+          if (error) console.error('Error cleaning up vanish messages:', error);
+        });
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Track the current conversation ID for cleanup on unmount
+  useEffect(() => {
+    prevConvIdRef.current = conversationId;
+  }, [conversationId]);
+
+  // Screenshot detection for vanish mode
+  const wasHiddenRef = useRef(false);
+  useEffect(() => {
+    if (!vanishingMessagesEnabled) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        wasHiddenRef.current = true;
+      } else if (wasHiddenRef.current) {
+        wasHiddenRef.current = false;
+        toast({
+          title: "Screenshot detected",
+          description: "Someone may have taken a screenshot of this chat",
+        });
+      }
+    };
+
+    const handleWindowBlur = () => {
+      wasHiddenRef.current = true;
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [vanishingMessagesEnabled, toast]);
 
   const handleReaction = async (messageId: string, reaction: string) => {
     await toggleReaction(messageId, reaction as ReactionKey, currentUserId);
@@ -223,21 +282,85 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   return (
     <div className="flex-1 flex bg-background relative h-full overflow-hidden">
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative">
+      <div
+        ref={chatAreaRef}
+        className={cn(
+          "flex-1 flex flex-col min-w-0 h-full overflow-hidden relative transition-colors duration-500",
+          vanishingMessagesEnabled && "bg-gradient-to-b from-zinc-900 via-zinc-950 to-black"
+        )}
+        onTouchStart={(e) => {
+          swipeStartY.current = e.touches[0].clientY;
+        }}
+        onTouchMove={(e) => {
+          if (swipeStartY.current === null) return;
+          const deltaY = e.touches[0].clientY - swipeStartY.current;
+          // Swipe up (negative delta) crosses threshold
+          if (deltaY < -80 && !vanishJustActivated.current) {
+            vanishJustActivated.current = true;
+            swipeStartY.current = null;
+            const newValue = !vanishingMessagesEnabled;
+            supabase.rpc('update_conversation_settings', {
+              p_conversation_id: conversationId,
+              p_vanishing_messages_enabled: newValue
+            }).catch(console.error);
+            toast({
+              title: newValue ? "Vanish Mode activated" : "Vanish Mode deactivated",
+              description: newValue
+                ? "Messages will disappear after being seen"
+                : "Messages will be kept permanently",
+            });
+            setTimeout(() => { vanishJustActivated.current = false; }, 1000);
+          }
+        }}
+        onTouchEnd={() => {
+          swipeStartY.current = null;
+        }}
+      >
+        {/* Vanish Mode Banner */}
+        {vanishingMessagesEnabled && (
+          <div className="flex items-center justify-between px-4 py-2 bg-gradient-to-r from-orange-600/20 via-amber-600/20 to-yellow-600/20 border-b border-orange-500/20 animate-in slide-in-from-top duration-300">
+            <div className="flex items-center gap-2">
+              <Flame className="h-4 w-4 text-orange-400" />
+              <span className="text-sm font-medium text-orange-300">Vanish Mode is on</span>
+              <span className="text-xs text-orange-400/70">Messages will disappear after 24 hours</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleVanish}
+              className="h-6 w-6 p-0 text-orange-400/70 hover:text-orange-300 hover:bg-orange-500/10"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+
         {/* Chat Header */}
-        <CardHeader className="border-b border-border p-4 shrink-0">
+        <CardHeader className={cn(
+          "border-b p-4 shrink-0 transition-colors duration-500",
+          vanishingMessagesEnabled ? "border-zinc-700/50 bg-zinc-900/50" : "border-border"
+        )}>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <Avatar className="w-10 h-10">
                 <AvatarImage src={otherUser.profile_pic} alt={otherUser.display_name} />
-                <AvatarFallback className="bg-primary text-primary-foreground">
+                <AvatarFallback className={cn(
+                  "bg-primary text-primary-foreground",
+                  vanishingMessagesEnabled && "ring-2 ring-orange-500/50"
+                )}>
                   {otherUser.display_name.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <div>
-                <h3 className="font-semibold text-foreground">{otherUser.display_name}</h3>
+                <h3 className={cn(
+                  "font-semibold transition-colors",
+                  vanishingMessagesEnabled ? "text-zinc-100" : "text-foreground"
+                )}>{otherUser.display_name}</h3>
                 <div className="flex items-center gap-1">
-                  <p className="text-sm text-muted-foreground">@{otherUser.username}</p>
+                  <p className={cn(
+                    "text-sm transition-colors",
+                    vanishingMessagesEnabled ? "text-zinc-400" : "text-muted-foreground"
+                  )}>@{otherUser.username}</p>
                   <span className={cn(
                     "inline-flex items-center gap-1 text-xs",
                     isOnline(otherUser.last_seen_at) ? "text-green-500" : "text-muted-foreground"
@@ -259,7 +382,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 size="sm"
                 onClick={() => handleStartCall('voice')}
                 disabled={isInCall}
-                className="h-10 w-10 p-0 hover:bg-primary/10 hover:text-primary transition-colors"
+                className={cn(
+                  "h-10 w-10 p-0 transition-colors",
+                  vanishingMessagesEnabled
+                    ? "hover:bg-zinc-700/50 text-zinc-400 hover:text-zinc-100"
+                    : "hover:bg-primary/10 hover:text-primary"
+                )}
               >
                 <Phone className="h-5 w-5" />
               </Button>
@@ -268,7 +396,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 size="sm"
                 onClick={() => handleStartCall('video')}
                 disabled={isInCall}
-                className="h-10 w-10 p-0 hover:bg-primary/10 hover:text-primary transition-colors"
+                className={cn(
+                  "h-10 w-10 p-0 transition-colors",
+                  vanishingMessagesEnabled
+                    ? "hover:bg-zinc-700/50 text-zinc-400 hover:text-zinc-100"
+                    : "hover:bg-primary/10 hover:text-primary"
+                )}
               >
                 <Video className="h-5 w-5" />
               </Button>
@@ -277,7 +410,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsInfoPanelOpen(!isInfoPanelOpen)}
-                className="h-10 w-10 p-0 hover:bg-primary/10 hover:text-primary transition-colors"
+                className={cn(
+                  "h-10 w-10 p-0 transition-colors",
+                  vanishingMessagesEnabled
+                    ? "hover:bg-zinc-700/50 text-zinc-400 hover:text-zinc-100"
+                    : "hover:bg-primary/10 hover:text-primary"
+                )}
               >
                 <Info className="h-5 w-5" />
               </Button>
@@ -286,7 +424,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         </CardHeader>
 
         {/* Messages Area */}
-        <ScrollArea className="flex-1 p-4 min-h-0" ref={scrollAreaRef}>
+        <ScrollArea className={cn(
+          "flex-1 p-4 min-h-0 transition-colors duration-500",
+          vanishingMessagesEnabled && "bg-zinc-950/50"
+        )} ref={scrollAreaRef}>
 
           {loading && messages.length === 0 ? (
             <div className="space-y-4">
@@ -328,6 +469,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         currentUserId={currentUserId}
                         isPinned={isPinned}
                         chatTheme={chatTheme}
+                        isVanishing={vanishingMessagesEnabled}
                       onReact={handleReaction}
                       onReply={(msg) => setReplyTo({
                         id: msg.id,
@@ -377,6 +519,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           replyTo={replyTo}
           onCancelReply={() => setReplyTo(null)}
           quickEmoji={quickEmoji}
+          vanishing={vanishingMessagesEnabled}
         />
       </div>
 
@@ -410,6 +553,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }}
         onClearHistory={() => console.log('Clear chat history')}
         onScrollToMessage={handleScrollToMessage}
+        vanishingMessagesEnabled={vanishingMessagesEnabled}
+        onToggleVanishingMessages={toggleVanish}
       />
 
       {/* Forward Message Modal */}
