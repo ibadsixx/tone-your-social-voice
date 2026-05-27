@@ -61,6 +61,8 @@ type Message = {
     display_name: string;
     profile_pic?: string;
   };
+  seen?: boolean;
+  delivered?: boolean;
 };
 
 type ConversationInfoRow = {
@@ -104,6 +106,7 @@ type MessageRow = {
   audio_size?: number;
   audio_path?: string;
   reply_to_id?: string;
+  delivered_at?: string;
   created_at: string;
   message_type?: string;
   is_system?: boolean;
@@ -119,6 +122,7 @@ export const useConversations = (currentUserId?: string) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [firstUnreadIndex, setFirstUnreadIndex] = useState<number>(-1);
   const { toast } = useToast();
 
   // Fetch conversations using the new RPC
@@ -227,7 +231,9 @@ export const useConversations = (currentUserId?: string) => {
       // Format messages (reverse to show oldest first)
       const formattedMessages: Message[] = (data?.reverse() || []).map((msg: MessageRow) => ({
         ...msg,
-        reply_to: null
+        reply_to: null,
+        seen: false,
+        delivered: !!msg.delivered_at
       }));
 
       // Fetch reply_to messages separately if any messages have reply_to_id
@@ -253,6 +259,33 @@ export const useConversations = (currentUserId?: string) => {
 
       if (page === 0) {
         setMessages(formattedMessages);
+
+        // Determine which messages have been read by other participants
+        const { data: readData } = await supabase
+          .rpc('get_message_read_status', { p_conversation_id: conversationId });
+        if (readData && readData.length > 0) {
+          const seenIds = new Set(readData.map(r => r.message_id));
+          setMessages(prev => prev.map(msg => {
+            if (msg.sender_id === currentUserId && seenIds.has(msg.id)) {
+              return { ...msg, seen: true };
+            }
+            return msg;
+          }));
+        }
+
+        // Compute the boundary between already-read and new messages
+        const messageIds = formattedMessages.map(m => m.id);
+        if (messageIds.length > 0) {
+          const { data: myReads } = await supabase
+            .rpc('get_my_read_message_ids', { p_message_ids: messageIds });
+          if (myReads && myReads.length > 0) {
+            const readSet = new Set(myReads.map(r => r.message_id));
+            const idx = formattedMessages.findIndex(m => !readSet.has(m.id));
+            setFirstUnreadIndex(idx);
+          } else {
+            setFirstUnreadIndex(0);
+          }
+        }
       } else {
         setMessages(prev => [...formattedMessages, ...prev]);
       }
@@ -335,7 +368,9 @@ export const useConversations = (currentUserId?: string) => {
 
         const newMessage: Message = {
           ...data,
-          reply_to: replyData || null
+          reply_to: replyData || null,
+          seen: false,
+          delivered: false
         };
 
         setMessages(prev => [...prev, newMessage]);
@@ -343,7 +378,9 @@ export const useConversations = (currentUserId?: string) => {
         // Add message without reply data
         const newMessage: Message = {
           ...data,
-          reply_to: null
+          reply_to: null,
+          seen: false,
+          delivered: false
         };
         setMessages(prev => [...prev, newMessage]);
       }
@@ -403,6 +440,18 @@ export const useConversations = (currentUserId?: string) => {
     conversationIdsRef.current = new Set(conversations.map(c => c.conversation_id));
   }, [conversations]);
 
+  // Keep a ref to messages so the realtime callback can update seen status
+  const messagesRef = useRef<Message[]>([]);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  // Keep a ref to conversations so the presence refresh interval isn't stale
+  const conversationsDataRef = useRef<Conversation[]>([]);
+  useEffect(() => {
+    conversationsDataRef.current = conversations;
+  }, [conversations]);
+
   // Debounced version of fetchConversations to avoid rapid refetches
   const debouncedFetchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncedFetchConversations = useCallback(() => {
@@ -452,13 +501,18 @@ export const useConversations = (currentUserId?: string) => {
                 id, conversation_id, sender_id, content, attachment_url, image_url, media_url, is_image,
                 is_gif, gif_url, is_sticker, sticker_url, sticker_id, sticker_set,
                 audio_url, audio_duration, audio_mime, audio_size, audio_path,
-                reply_to_id, created_at, read, message_type, is_system,
+                          reply_to_id,
+          created_at, message_type, is_system,
                 sender_profile:profiles!messages_sender_id_fkey(username, display_name, profile_pic)
               `)
               .eq('id', newMsg.id)
               .single();
             
             if (msgData) {
+              // Acknowledge delivery to the sender
+              supabase.rpc('mark_message_delivered', { p_message_id: msgData.id })
+                .catch(() => {});
+              
               let replyData = null;
               if (msgData.reply_to_id) {
                 const { data: replyResult } = await supabase
@@ -471,7 +525,9 @@ export const useConversations = (currentUserId?: string) => {
               
               const fullMessage: Message = {
                 ...msgData,
-                reply_to: replyData
+                reply_to: replyData,
+                seen: false,
+                delivered: !!msgData.delivered_at
               };
               
               setMessages(prev => {
@@ -507,6 +563,48 @@ export const useConversations = (currentUserId?: string) => {
           setMessages(prev => prev.filter(m => m.id !== deletedId));
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          const updated = payload.new as {
+            id: string;
+            delivered_at?: string;
+            sender_id: string;
+            conversation_id: string;
+          };
+          if (
+            updated.delivered_at &&
+            updated.sender_id === currentUserId &&
+            conversationIdsRef.current.has(updated.conversation_id)
+          ) {
+            setMessages(prev => prev.map(m =>
+              m.id === updated.id ? { ...m, delivered: true } : m
+            ));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'message_reads',
+        },
+        (payload) => {
+          const { message_id, user_id } = payload.new as { message_id: string; user_id: string };
+          if (user_id === currentUserId) return;
+          if (messagesRef.current.some(m => m.id === message_id)) {
+            setMessages(prev => prev.map(m =>
+              m.id === message_id ? { ...m, seen: true } : m
+            ));
+          }
+        }
+      )
       .subscribe();
 
     return () => {
@@ -522,9 +620,68 @@ export const useConversations = (currentUserId?: string) => {
     }
   }, [currentUserId, fetchConversations]);
 
+  // Refresh conversations when user returns to the tab (handles stale unread counts after navigation)
+  useEffect(() => {
+    if (!currentUserId) return;
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        fetchConversations();
+      }
+    };
+    const handleFocus = () => {
+      fetchConversations();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [currentUserId, fetchConversations]);
+
+  // Periodically refresh conversation partners' online presence (matches usePresence 30s interval)
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const refreshPresence = async () => {
+      const allConvs = conversationsDataRef.current;
+      if (allConvs.length === 0) return;
+
+      const userIds = [...new Set(allConvs.map(c => c.other_user.id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, last_seen_at')
+        .in('id', userIds);
+
+      if (profiles) {
+        const lastSeenMap = new Map(profiles.map(p => [p.id, p.last_seen_at]));
+        setConversations(prev => prev.map(conv => {
+          const newLastSeen = lastSeenMap.get(conv.other_user.id);
+          if (!newLastSeen || newLastSeen === conv.other_user.last_seen_at) return conv;
+          return {
+            ...conv,
+            other_user: {
+              ...conv.other_user,
+              last_seen_at: newLastSeen,
+            }
+          };
+        }));
+      }
+    };
+
+    const initialRefresh = setTimeout(refreshPresence, 2000);
+    const interval = setInterval(refreshPresence, 30000);
+
+    return () => {
+      clearTimeout(initialRefresh);
+      clearInterval(interval);
+    };
+  }, [currentUserId]);
+
   return {
     conversations,
     messages,
+    firstUnreadIndex,
     loading,
     activeConversationId,
     setActiveConversationId,

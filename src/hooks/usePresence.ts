@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-const OFFLINE_THRESHOLD_MS = 120000; // 2 minutes
+const POLL_INTERVAL_MS = 30000;
+const OFFLINE_THRESHOLD_MS = 60000;
 
 export function isOnline(lastSeenAt?: string): boolean {
   if (!lastSeenAt) return false;
@@ -37,11 +38,23 @@ export function usePresence(userId?: string) {
       await supabase.rpc('update_last_seen');
     };
 
+    const updateLastSeenSync = () => {
+      supabase.rpc('update_last_seen').catch(() => {});
+    };
+
     updateLastSeen();
-    intervalRef.current = setInterval(updateLastSeen, 60000);
+    intervalRef.current = setInterval(updateLastSeen, POLL_INTERVAL_MS);
+
+    window.addEventListener('beforeunload', updateLastSeenSync);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        updateLastSeenSync();
+      }
+    });
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      window.removeEventListener('beforeunload', updateLastSeenSync);
     };
   }, [userId]);
 }

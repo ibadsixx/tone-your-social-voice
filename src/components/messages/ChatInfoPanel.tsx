@@ -90,6 +90,7 @@ interface ChatInfoPanelProps {
   onScrollToMessage?: (messageId: string) => void;
   vanishingMessagesEnabled?: boolean;
   onToggleVanishingMessages?: () => void;
+  otherUserReadReceiptsEnabled?: boolean;
 }
 
 type ExpandableSection = 'chat-info' | 'customize' | 'media' | 'privacy' | null;
@@ -113,6 +114,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   onScrollToMessage,
   vanishingMessagesEnabled: propVanishingEnabled,
   onToggleVanishingMessages: propToggleVanishing,
+  otherUserReadReceiptsEnabled,
 }) => {
   const [expandedSection, setExpandedSection] = useState<ExpandableSection>(null);
   const [showThemeModal, setShowThemeModal] = useState(false);
@@ -558,6 +560,11 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
                     </div>
                     <span className="text-muted-foreground text-xs">{readReceiptsEnabled ? 'On' : 'Off'}</span>
                   </button>
+                  {readReceiptsEnabled && otherUserReadReceiptsEnabled === false && (
+                    <p className="text-xs text-muted-foreground/50 pl-11 -mt-1 mb-1">
+                      {otherUser.display_name} has read receipts off
+                    </p>
+                  )}
                   <button 
                     onClick={handleCheckEncryption}
                     disabled={!conversationId}

@@ -36,6 +36,7 @@ type OtherUser = {
 interface ChatWindowProps {
   otherUser: OtherUser | null;
   messages: Message[];
+  firstUnreadIndex?: number;
   currentUserId: string;
   conversationId?: string;
   onSendMessage: (content?: string, mediaUrl?: string, replyToId?: string) => void;
@@ -48,6 +49,7 @@ interface ChatWindowProps {
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   otherUser,
   messages,
+  firstUnreadIndex,
   currentUserId,
   conversationId,
   onSendMessage,
@@ -71,6 +73,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const scrollAttemptsRef = useRef<Record<string, number>>({});
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [otherUserReadReceiptsEnabled, setOtherUserReadReceiptsEnabled] = useState(true);
   const { reportConversation } = useConversationReport();
   const { settings: conversationSettings, updateChatTheme, toggleVanishingMessages: toggleVanish, updateQuickEmoji } = useConversationSettings(conversationId);
   const { toggleReaction, fetchReactions, getMessageReactions } = useMessageReactions(conversationId);
@@ -91,6 +94,51 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const quickEmoji = conversationSettings?.quick_emoji || '👌';
   const vanishingMessagesEnabled = conversationSettings?.vanishing_messages_enabled ?? false;
+  const readReceiptsEnabled = conversationSettings?.read_receipts_enabled ?? true;
+
+  // Fetch the other user's read_receipts_enabled preference
+  useEffect(() => {
+    if (!conversationId || !otherUser?.id) return;
+    supabase.rpc('get_other_user_read_receipts_enabled', {
+      p_conversation_id: conversationId,
+      p_other_user_id: otherUser.id
+    }).then(({ data, error }) => {
+      if (!error && data !== null) {
+        setOtherUserReadReceiptsEnabled(data);
+      }
+    });
+  }, [conversationId, otherUser?.id]);
+
+  // Real-time subscription for other user's read_receipts_enabled changes
+  useEffect(() => {
+    if (!conversationId || !otherUser?.id) return;
+
+    const channel = supabase
+      .channel(`other-read-receipts-${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversation_settings',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const updated = payload.new as {
+            user_id: string;
+            read_receipts_enabled: boolean;
+          };
+          if (updated.user_id === otherUser.id) {
+            setOtherUserReadReceiptsEnabled(updated.read_receipts_enabled ?? true);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [conversationId, otherUser?.id]);
 
   // Fetch pinned messages and reactions when conversation changes
   useEffect(() => {
@@ -368,6 +416,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     {isOnline(otherUser.last_seen_at) ? 'Online' : formatLastSeen(otherUser.last_seen_at)}
                   </span>
                 </div>
+                  {readReceiptsEnabled && !otherUserReadReceiptsEnabled && (
+                    <p className="text-xs text-muted-foreground/50 mt-0.5">Read receipts are off</p>
+                  )}
               </div>
             </div>
 
@@ -455,9 +506,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   const messageReactions = getMessageReactions(message.id);
                   const isPinned = pinnedMessageIds.includes(message.id);
                   
-                    return (
+                  return (
+                    <React.Fragment key={message.id}>
+                    {firstUnreadIndex !== undefined && firstUnreadIndex >= 0 && index === firstUnreadIndex && (
+                      <div className="flex items-center gap-2 my-4">
+                        <div className="flex-1 h-px bg-primary/30" />
+                        <span className="text-xs font-semibold text-primary shrink-0">Unread messages</span>
+                        <div className="flex-1 h-px bg-primary/30" />
+                      </div>
+                    )}
                       <MessageBubble
-                        key={message.id}
                         message={message}
                         isOwn={isOwnMessage}
                         showAvatar={showAvatar}
@@ -466,6 +524,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         isPinned={isPinned}
                         chatTheme={chatTheme}
                         isVanishing={vanishingMessagesEnabled}
+                        showSeenStatus={readReceiptsEnabled}
                       onReact={handleReaction}
                       onReply={(msg) => setReplyTo({
                         id: msg.id,
@@ -484,6 +543,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       }}
                       onScrollToMessage={handleScrollToMessage}
                     />
+                    </React.Fragment>
                   );
                 })}
               </div>
@@ -551,6 +611,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onScrollToMessage={handleScrollToMessage}
         vanishingMessagesEnabled={vanishingMessagesEnabled}
         onToggleVanishingMessages={handleToggleVanish}
+        otherUserReadReceiptsEnabled={otherUserReadReceiptsEnabled}
       />
 
       {/* Forward Message Modal */}

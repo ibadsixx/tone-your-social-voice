@@ -23,6 +23,7 @@ const Messages = () => {
   const {
     conversations,
     messages,
+    firstUnreadIndex,
     loading,
     activeConversationId,
     setActiveConversationId,
@@ -34,13 +35,13 @@ const Messages = () => {
 
   // Sync URL -> state (refresh, direct navigation, manual URL change)
   useEffect(() => {
-    if (urlConversationId && currentUserId && urlConversationId !== activeConversationId) {
+    if (urlConversationId && currentUserId && !loading && urlConversationId !== activeConversationId) {
       setActiveConversationId(urlConversationId);
       setActivePage(0);
       fetchMessages(urlConversationId, 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUserId, urlConversationId, activeConversationId]);
+  }, [currentUserId, urlConversationId, activeConversationId, loading]);
 
   const handleSelectConversation = (conversationId: string) => {
     setActiveConversationId(conversationId);
@@ -139,6 +140,7 @@ const Messages = () => {
           key={activeConversationId || 'no-conversation'}
           otherUser={activeConversation?.other_user || null}
           messages={messages}
+          firstUnreadIndex={firstUnreadIndex}
           currentUserId={currentUserId}
           conversationId={activeConversationId || undefined}
           onSendMessage={handleSendMessage}

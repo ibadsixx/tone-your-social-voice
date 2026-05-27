@@ -20,7 +20,9 @@ import {
   VolumeX,
   MoreHorizontal,
   Smile,
-  Flame
+  Flame,
+  Check,
+  CheckCheck
 } from 'lucide-react';
 import MessageReactionPicker from './MessageReactionPicker';
 import StaticReactionIcon from '@/components/StaticReactionIcon';
@@ -65,6 +67,8 @@ export interface Message {
     profile_pic?: string;
   };
   is_system?: boolean;
+  seen?: boolean;
+  delivered?: boolean;
   reply_to_id?: string | null;
   reply_to?: {
     id: string;
@@ -103,6 +107,7 @@ interface MessageBubbleProps {
   onPin?: (messageId: string) => void;
   onReport?: (message: Message) => void;
   onScrollToMessage?: (messageId: string) => void;
+  showSeenStatus?: boolean;
 }
 
 // Theme gradient mappings
@@ -132,7 +137,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onDelete,
   onPin,
   onReport,
-  onScrollToMessage
+  onScrollToMessage,
+  showSeenStatus = true
 }) => {
   const themeClass = THEME_GRADIENTS[chatTheme] || THEME_GRADIENTS['default'];
   const currentUserReactionKey: ReactionKey | null = (() => {
@@ -512,6 +518,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             />
             <p className={`text-xs mt-1 ${isOwn ? 'text-right' : 'text-left'} text-muted-foreground`}>
               {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
+              {isOwn && showSeenStatus !== false && (message.seen ? <CheckCheck className="h-3 w-3 inline ml-1 text-blue-400" /> : message.delivered ? <CheckCheck className="h-3 w-3 inline ml-1 text-muted-foreground/40" /> : <Check className="h-3 w-3 inline ml-1 text-muted-foreground/40" />)}
             </p>
           </div>
         ) : isImageOnlyMessage() ? (
@@ -532,6 +539,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             />
             <p className={`text-xs mt-1 ${isOwn ? 'text-right' : 'text-left'} text-muted-foreground`}>
               {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
+              {isOwn && showSeenStatus !== false && (message.seen ? <CheckCheck className="h-3 w-3 inline ml-1 text-blue-400" /> : message.delivered ? <CheckCheck className="h-3 w-3 inline ml-1 text-muted-foreground/40" /> : <Check className="h-3 w-3 inline ml-1 text-muted-foreground/40" />)}
             </p>
           </div>
         ) : isEmojiOnlyMessage() ? (
@@ -544,6 +552,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             />
             <p className={`text-xs mt-1 text-muted-foreground`}>
               {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
+              {isOwn && showSeenStatus !== false && (message.seen ? <CheckCheck className="h-3 w-3 inline ml-1 text-blue-400" /> : message.delivered ? <CheckCheck className="h-3 w-3 inline ml-1 text-muted-foreground/40" /> : <Check className="h-3 w-3 inline ml-1 text-muted-foreground/40" />)}
             </p>
           </div>
         ) : (
@@ -814,6 +823,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           >
             {isVanishing && <Flame className="h-3 w-3 text-orange-400" />}
             {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
+            {isOwn && showSeenStatus !== false && (message.seen ? <CheckCheck className="h-3 w-3 text-blue-400" /> : message.delivered ? <CheckCheck className="h-3 w-3 text-muted-foreground/40" /> : <Check className="h-3 w-3 text-muted-foreground/40" />)}
           </p>
           </div>
         )}
