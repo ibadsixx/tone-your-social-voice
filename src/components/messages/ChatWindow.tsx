@@ -150,6 +150,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     } else {
       setChannelRole(null);
       toast({ description: `Unfollowed #${conversationName}` });
+      navigate('/messages');
     }
   };
 
