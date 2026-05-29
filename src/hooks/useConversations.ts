@@ -88,7 +88,7 @@ type ConversationInfoRow = {
   conversation_description?: string | null;
   created_at: string;
   updated_at: string;
-  other_user_id: string;
+  other_user_id: string | null;
   other_user_username: string;
   other_user_display_name: string;
   other_user_profile_pic?: string;
