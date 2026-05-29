@@ -16,6 +16,7 @@ type Conversation = {
   conversation_id: string;
   type: string;
   name?: string;
+  description?: string | null;
   other_user?: {
     id: string;
     username: string;

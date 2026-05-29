@@ -18,6 +18,7 @@ type Conversation = {
   conversation_id: string;
   type: string;
   name?: string;
+  description?: string | null;
   created_at: string;
   updated_at: string;
   other_user?: {
@@ -84,6 +85,7 @@ type ConversationInfoRow = {
   conversation_id: string;
   type: string;
   conversation_name?: string;
+  conversation_description?: string | null;
   created_at: string;
   updated_at: string;
   other_user_id: string;
@@ -157,6 +159,7 @@ export const useConversations = (currentUserId?: string) => {
         conversation_id: conv.conversation_id,
         type: conv.type,
         name: conv.conversation_name || undefined,
+        description: conv.conversation_description,
         created_at: conv.created_at,
         updated_at: conv.updated_at,
         other_user: conv.type === 'channel' ? undefined : {
