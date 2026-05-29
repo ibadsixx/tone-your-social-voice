@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { useChannelPolls, PollData } from '@/hooks/useChannelPolls';
+import { getPoll, vote, PollData } from '@/hooks/useChannelPolls';
 import { supabase } from '@/integrations/supabase/client';
 import { Check, BarChart3 } from 'lucide-react';
 
@@ -10,14 +10,13 @@ interface PollMessageProps {
 }
 
 export const PollMessage: React.FC<PollMessageProps> = ({ messageId, currentUserId }) => {
-  const { getPoll, vote } = useChannelPolls();
   const [poll, setPoll] = useState<PollData | null>(null);
   const [voting, setVoting] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getPoll(messageId).then(setPoll);
-  }, [messageId, getPoll]);
+  }, [messageId]);
 
   // Real-time subscription to poll vote changes
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -39,7 +38,7 @@ export const PollMessage: React.FC<PollMessageProps> = ({ messageId, currentUser
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [poll?.poll_id, messageId, getPoll]);
+  }, [poll?.poll_id, messageId]);
 
   const handleVote = async (optionIndex: number) => {
     if (!poll || poll.user_vote !== null) return;
