@@ -76,7 +76,6 @@ export const ChatWindowManager: React.FC = () => {
   const minimizedSide = isFloatingIMHidden ? 'right-4' : 'left-4';
 
   const currentUserId = user?.id;
-  if (!currentUserId || isMessagesPage) return null;
 
   const closeChat = useCallback((id: string) => {
     setOpenChats((prev) => prev.filter((c) => c.contact.id !== id));
@@ -92,6 +91,7 @@ export const ChatWindowManager: React.FC = () => {
 
   // Search users when typing in new-chat popover
   useEffect(() => {
+    if (!currentUserId) return;
     if (!newChatQuery.trim() || newChatQuery.trim().length < 2) {
       setNewChatResults([]);
       return;
@@ -130,6 +130,8 @@ export const ChatWindowManager: React.FC = () => {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [newChatOpen]);
+
+  if (!currentUserId || isMessagesPage) return null;
 
   const expanded = openChats.filter((c) => !c.minimized);
   const minimized = openChats.filter((c) => c.minimized);

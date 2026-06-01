@@ -14,6 +14,86 @@ async function tryDecryptMessage(msg: Message, convId: string): Promise<Message>
   return msg;
 }
 
+async function fetchConversationsDirectly(userId: string): Promise<Conversation[]> {
+  const { data: participants } = await supabase
+    .from('conversation_participants')
+    .select('conversation_id')
+    .eq('user_id', userId);
+
+  if (!participants || participants.length === 0) return [];
+
+  const convIds = participants.map(p => p.conversation_id);
+
+  const { data: convs } = await supabase
+    .from('conversations')
+    .select('id, type, description, created_at, updated_at')
+    .in('id', convIds);
+
+  if (!convs) return [];
+
+  const { data: otherParts } = await supabase
+    .from('conversation_participants')
+    .select('conversation_id, user_id')
+    .in('conversation_id', convIds)
+    .neq('user_id', userId);
+
+  const firstOtherPerConv = new Map<string, string>();
+  (otherParts || []).forEach(p => {
+    if (!firstOtherPerConv.has(p.conversation_id)) {
+      firstOtherPerConv.set(p.conversation_id, p.user_id);
+    }
+  });
+
+  const otherUserIds = [...new Set(firstOtherPerConv.values())];
+  const { data: profilesData } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, profile_pic, last_seen_at')
+    .in('id', otherUserIds);
+
+  const profileMap = new Map((profilesData || []).map(p => [p.id, p]));
+
+  const { data: allMessages } = await supabase
+    .from('messages')
+    .select('conversation_id, content, created_at')
+    .in('conversation_id', convIds)
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  const lastMsgMap = new Map<string, { content: string; created_at: string }>();
+  (allMessages || []).forEach(msg => {
+    if (!lastMsgMap.has(msg.conversation_id)) {
+      lastMsgMap.set(msg.conversation_id, msg);
+    }
+  });
+
+  return convs.map(conv => {
+    const otherUserId = firstOtherPerConv.get(conv.id);
+    const otherProfile = otherUserId ? profileMap.get(otherUserId) : null;
+    const lastMsg = lastMsgMap.get(conv.id);
+
+    return {
+      conversation_id: conv.id,
+      type: conv.type,
+      name: undefined,
+      description: conv.description,
+      created_at: conv.created_at,
+      updated_at: conv.updated_at,
+      other_user: conv.type === 'channel' ? undefined : otherProfile ? {
+        id: otherProfile.id,
+        username: otherProfile.username,
+        display_name: otherProfile.display_name,
+        profile_pic: otherProfile.profile_pic,
+        last_seen_at: otherProfile.last_seen_at,
+      } : undefined,
+      last_message: lastMsg ? {
+        content: lastMsg.content,
+        created_at: lastMsg.created_at,
+      } : undefined,
+      unread_count: 0,
+    };
+  });
+}
+
 type Conversation = {
   conversation_id: string;
   type: string;
@@ -197,12 +277,18 @@ export const useConversations = (currentUserId?: string) => {
 
       setConversations(formattedConversations);
     } catch (error) {
-      console.error('Error fetching conversations:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch conversations",
-        variant: "destructive"
-      });
+      console.error('Error fetching conversations via RPC, trying direct fallback:', error);
+      try {
+        const directConversations = await fetchConversationsDirectly(currentUserId);
+        setConversations(directConversations);
+      } catch (fallbackError) {
+        console.error('Fallback fetch also failed:', fallbackError);
+        toast({
+          title: "Error",
+          description: "Failed to fetch conversations",
+          variant: "destructive"
+        });
+      }
     } finally {
       setLoading(false);
     }

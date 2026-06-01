@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
@@ -52,10 +53,10 @@ const App = () => (
             <IncomingCallModal />
             <ActiveCallWindow />
             <Routes>
-              <Route path="/auth" element={<Auth />} />
+              <Route path="/auth" element={<ErrorBoundary><Auth /></ErrorBoundary>} />
               {/* Fullscreen reel viewer - outside Layout for true fullscreen */}
               <Route path="/reels/:id" element={<ReelViewer />} />
-              <Route path="/" element={<Layout />}>
+              <Route path="/" element={<ErrorBoundary><Layout /></ErrorBoundary>}>
                 <Route index element={<Home />} />
                 <Route path="profile" element={<Profile />} />
                 <Route path="profile/:username" element={<ProfilePage />} />
