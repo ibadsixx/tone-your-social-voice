@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { initConversationEncryption, decryptContent, isEncryptionReady } from '@/lib/conversationEncryption';
 import { loadEcdhPrivateKey } from '@/hooks/useEncryptionKeys';
 
@@ -79,6 +80,80 @@ async function fetchConversationsDirectly(userId: string): Promise<Conversation[
       created_at: conv.created_at,
       updated_at: conv.updated_at,
       other_user: conv.type === 'channel' ? undefined : otherProfile ? {
+        id: otherProfile.id,
+        username: otherProfile.username,
+        display_name: otherProfile.display_name,
+        profile_pic: otherProfile.profile_pic,
+        last_seen_at: otherProfile.last_seen_at,
+      } : undefined,
+      last_message: lastMsg ? {
+        content: lastMsg.content,
+        created_at: lastMsg.created_at,
+      } : undefined,
+      unread_count: 0,
+    };
+  });
+}
+
+async function fetchPageConversationsDirectly(pageId: string, userId: string): Promise<Conversation[]> {
+  const { data: convs } = await supabase
+    .from('conversations')
+    .select('id, type, description, created_at, updated_at')
+    .eq('page_id', pageId)
+    .order('updated_at', { ascending: false });
+
+  if (!convs || convs.length === 0) return [];
+
+  const convIds = convs.map(c => c.id);
+
+  const { data: otherParts } = await supabase
+    .from('conversation_participants')
+    .select('conversation_id, user_id')
+    .in('conversation_id', convIds)
+    .neq('user_id', userId);
+
+  const firstOtherPerConv = new Map<string, string>();
+  (otherParts || []).forEach(p => {
+    if (!firstOtherPerConv.has(p.conversation_id)) {
+      firstOtherPerConv.set(p.conversation_id, p.user_id);
+    }
+  });
+
+  const otherUserIds = [...new Set(firstOtherPerConv.values())];
+  const { data: profilesData } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, profile_pic, last_seen_at')
+    .in('id', otherUserIds);
+
+  const profileMap = new Map((profilesData || []).map(p => [p.id, p]));
+
+  const { data: allMessages } = await supabase
+    .from('messages')
+    .select('conversation_id, content, created_at')
+    .in('conversation_id', convIds)
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  const lastMsgMap = new Map<string, { content: string; created_at: string }>();
+  (allMessages || []).forEach(msg => {
+    if (!lastMsgMap.has(msg.conversation_id)) {
+      lastMsgMap.set(msg.conversation_id, msg);
+    }
+  });
+
+  return convs.map(conv => {
+    const otherUserId = firstOtherPerConv.get(conv.id);
+    const otherProfile = otherUserId ? profileMap.get(otherUserId) : null;
+    const lastMsg = lastMsgMap.get(conv.id);
+
+    return {
+      conversation_id: conv.id,
+      type: conv.type,
+      name: undefined,
+      description: conv.description,
+      created_at: conv.created_at,
+      updated_at: conv.updated_at,
+      other_user: otherProfile ? {
         id: otherProfile.id,
         username: otherProfile.username,
         display_name: otherProfile.display_name,
@@ -216,6 +291,9 @@ type MessageRow = {
 };
 
 export const useConversations = (currentUserId?: string) => {
+  const { actingPage } = usePageSwitch();
+  const actingPageId = actingPage?.id;
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -227,6 +305,23 @@ export const useConversations = (currentUserId?: string) => {
   // Fetch conversations using the new RPC
   const fetchConversations = useCallback(async () => {
     if (!currentUserId) return;
+
+    if (actingPageId) {
+      try {
+        const pageConvs = await fetchPageConversationsDirectly(actingPageId, currentUserId);
+        setConversations(pageConvs);
+      } catch (error) {
+        console.error('Error fetching page conversations:', error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch page conversations",
+          variant: "destructive"
+        });
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     try {
       const { data, error } = await supabase.rpc('get_conversations_with_info', {
@@ -292,7 +387,7 @@ export const useConversations = (currentUserId?: string) => {
     } finally {
       setLoading(false);
     }
-  }, [currentUserId, toast]);
+  }, [currentUserId, actingPageId, toast]);
 
   // Initialize E2EE for the active conversation
   const initEncryption = useCallback(async (convId: string) => {
@@ -596,6 +691,14 @@ export const useConversations = (currentUserId?: string) => {
       });
 
       if (error) throw error;
+
+      if (actingPageId && data) {
+        await supabase
+          .from('conversations')
+          .update({ page_id: actingPageId })
+          .eq('id', data)
+          .maybeSingle();
+      }
 
       return data;
     } catch (error) {
