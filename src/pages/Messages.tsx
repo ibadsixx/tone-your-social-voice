@@ -128,16 +128,16 @@ const Messages = () => {
       <div className="w-80 lg:w-96 border-r border-border flex flex-col bg-card shrink-0">
         {/* Header */}
         <div className="p-4 border-b border-border">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold text-foreground">Chats</h1>
+          <div className="flex items-center gap-2 mb-4">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setShowNewConversation(true)}
-              className="h-9 w-9 rounded-full bg-muted hover:bg-muted/80"
+              className="h-9 w-9 rounded-full bg-muted hover:bg-muted/80 shrink-0"
             >
               <Edit className="h-4 w-4" />
             </Button>
+            <h1 className="text-2xl font-bold text-foreground">Chats</h1>
           </div>
         </div>
 

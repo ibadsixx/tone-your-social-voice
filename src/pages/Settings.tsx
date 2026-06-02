@@ -898,15 +898,12 @@ const Settings = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Left Sidebar */}
-          <div className="lg:col-span-1">
+        <div className="flex gap-6">
+          {/* Left Sidebar - icon only */}
+          <div className="w-12 shrink-0">
             <Card className="border-border/50 sticky top-6">
-              <CardHeader>
-                <CardTitle className="text-lg">Settings</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <nav className="space-y-1">
+              <CardContent className="p-1">
+                <nav className="space-y-0.5">
                   {sidebarOptions.map((option) => {
                     const Icon = option.icon;
                     const isActive = activeSection === option.id;
@@ -915,14 +912,13 @@ const Settings = () => {
                       <button
                         key={option.id}
                         onClick={() => setActiveSection(option.id)}
-                        className={`w-full flex items-center space-x-3 px-4 py-3 text-left text-sm font-medium transition-all duration-200 rounded-none first:rounded-t-none last:rounded-b-lg ${
+                        className={`w-full flex items-center justify-center py-2.5 rounded-md text-sm font-medium transition-all duration-200 ${
                           isActive
                             ? 'bg-primary text-primary-foreground shadow-sm'
                             : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
                         }`}
                       >
                         <Icon className="w-4 h-4" />
-                        <span>{option.title}</span>
                       </button>
                     );
                   })}
@@ -932,7 +928,7 @@ const Settings = () => {
           </div>
 
           {/* Right Content Area */}
-          <div className="lg:col-span-3">
+          <div className="flex-1 min-w-0">
             <div className="transition-all duration-300 ease-in-out">
               {renderContent()}
             </div>

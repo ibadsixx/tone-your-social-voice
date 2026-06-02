@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -27,6 +27,14 @@ const ProfilesAndPersonalDetails: React.FC = () => {
   const [middleName, setMiddleName] = useState('');
   const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
+  const [nameErrors, setNameErrors] = useState({ firstName: false, lastName: false });
+  const firstNameRef = useRef<HTMLInputElement>(null);
+  const lastNameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (nameErrors.firstName) firstNameRef.current?.focus();
+    else if (nameErrors.lastName) lastNameRef.current?.focus();
+  }, [nameErrors]);
 
   useEffect(() => {
     if (user) setEmail(user.email || '');
@@ -82,6 +90,11 @@ const ProfilesAndPersonalDetails: React.FC = () => {
 
   const handleSaveDisplayName = async () => {
     if (!user?.id) return;
+    const errors = { firstName: !firstName.trim(), lastName: !lastName.trim() };
+    setNameErrors(errors);
+    if (errors.firstName || errors.lastName) {
+      return;
+    }
     try {
       const fullName = [firstName, middleName, lastName].filter(Boolean).join(' ');
       const { error } = await supabase
@@ -165,7 +178,12 @@ const ProfilesAndPersonalDetails: React.FC = () => {
         <div className="space-y-0 border rounded-lg border-border/50 overflow-hidden">
           <div className="px-4 pt-3 pb-1">
             <Label className="text-xs text-muted-foreground">First name</Label>
-            <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="border-0 px-0 focus-visible:ring-0 shadow-none text-foreground" />
+            <Input
+              ref={firstNameRef}
+              value={firstName}
+              onChange={(e) => { setFirstName(e.target.value); setNameErrors(prev => ({ ...prev, firstName: false })); }}
+              className={`border-0 px-0 shadow-none text-foreground ${nameErrors.firstName ? 'ring-2 ring-red-500 rounded focus-visible:outline-none' : 'focus-visible:ring-0'}`}
+            />
           </div>
           <Separator />
           <div className="px-4 pt-3 pb-1">
@@ -175,7 +193,12 @@ const ProfilesAndPersonalDetails: React.FC = () => {
           <Separator />
           <div className="px-4 pt-3 pb-1">
             <Label className="text-xs text-muted-foreground">Last name</Label>
-            <Input value={lastName} onChange={(e) => setLastName(e.target.value)} className="border-0 px-0 focus-visible:ring-0 shadow-none text-foreground" />
+            <Input
+              ref={lastNameRef}
+              value={lastName}
+              onChange={(e) => { setLastName(e.target.value); setNameErrors(prev => ({ ...prev, lastName: false })); }}
+              className={`border-0 px-0 shadow-none text-foreground ${nameErrors.lastName ? 'ring-2 ring-red-500 rounded focus-visible:outline-none' : 'focus-visible:ring-0'}`}
+            />
           </div>
         </div>
 

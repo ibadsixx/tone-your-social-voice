@@ -152,9 +152,8 @@ export const ChatWindowManager: React.FC = () => {
           </div>
         ))}
       </div>
-      {/* Minimized chat bubbles */}
-      <div className={`fixed bottom-0 ${minimizedSide} z-50 flex items-end gap-2 flex-row-reverse`}>
-        {/* Persistent new-chat bubble */}
+      {/* Persistent new-chat bubble - always on the left */}
+      <div className="fixed bottom-0 right-4 z-50">
         <div className="relative" ref={searchRef}>
           <button
             onClick={() => setNewChatOpen(!newChatOpen)}
@@ -166,7 +165,7 @@ export const ChatWindowManager: React.FC = () => {
             </div>
           </button>
           {newChatOpen && (
-            <div className={`absolute bottom-16 ${isFloatingIMHidden ? 'right-0' : 'left-0'} w-72 bg-card border border-border rounded-lg shadow-xl overflow-hidden`}>
+            <div className="absolute bottom-16 right-0 w-72 bg-card border border-border rounded-lg shadow-xl overflow-hidden">
               <div className="p-3 border-b border-border">
                 <p className="text-sm font-semibold mb-2">New message</p>
                 <Input
@@ -215,29 +214,32 @@ export const ChatWindowManager: React.FC = () => {
             </div>
           )}
         </div>
+      </div>
+      {/* Minimized chat bubbles - on the right */}
+      <div className={`fixed bottom-0 ${minimizedSide} z-50 flex items-end gap-2 flex-row-reverse`}>
         {minimized.map(({ contact }) => (
+          <button
+            key={contact.id}
+            onClick={() => toggleMinimize(contact.id)}
+            className="relative group"
+            title={contact.display_name}
+          >
+            <Avatar className="h-12 w-12 border-2 border-primary/30 ring-2 ring-transparent group-hover:ring-primary/40 transition-all shadow-lg cursor-pointer">
+              <AvatarImage src={contact.profile_pic || ''} className="object-cover" />
+              <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
+                {contact.display_name.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-background rounded-full" />
             <button
-              key={contact.id}
-              onClick={() => toggleMinimize(contact.id)}
-              className="relative group"
-              title={contact.display_name}
+              onClick={(e) => { e.stopPropagation(); closeChat(contact.id); }}
+              className="absolute -top-1 -right-1 w-5 h-5 bg-muted rounded-full items-center justify-center text-muted-foreground hover:bg-destructive hover:text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity hidden group-hover:flex"
             >
-              <Avatar className="h-12 w-12 border-2 border-primary/30 ring-2 ring-transparent group-hover:ring-primary/40 transition-all shadow-lg cursor-pointer">
-                <AvatarImage src={contact.profile_pic || ''} className="object-cover" />
-                <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
-                  {contact.display_name.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-background rounded-full" />
-              <button
-                onClick={(e) => { e.stopPropagation(); closeChat(contact.id); }}
-                className="absolute -top-1 -right-1 w-5 h-5 bg-muted rounded-full items-center justify-center text-muted-foreground hover:bg-destructive hover:text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity hidden group-hover:flex"
-              >
-                <X className="h-3 w-3" />
-              </button>
+              <X className="h-3 w-3" />
             </button>
-          ))}
-        </div>
+          </button>
+        ))}
+      </div>
     </>
   );
 };

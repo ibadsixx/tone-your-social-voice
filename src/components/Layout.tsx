@@ -302,38 +302,40 @@ const Layout = () => {
       )}
 
       <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-16 h-[calc(100vh-4rem)] border-r border-border/50 bg-card/50 sticky top-16">
-          <nav className="flex flex-col items-center gap-1 py-4">
-            {navigation.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.href;
-              
-              return (
-                <Tooltip key={item.name}>
-                  <TooltipTrigger asChild>
-                    <Link
-                      to={item.href}
-                      className={`flex items-center justify-center w-10 h-10 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        isActive
-                          ? 'bg-primary text-primary-foreground shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-                      }`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    {item.name}
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
-          </nav>
-        </aside>
+        {/* Sidebar - hidden on settings page */}
+        {location.pathname !== '/settings' && (
+          <aside className="w-16 h-[calc(100vh-4rem)] border-r border-border/50 bg-card/50 sticky top-16">
+            <nav className="flex flex-col items-center gap-1 py-4">
+              {navigation.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.href;
+                
+                return (
+                  <Tooltip key={item.name}>
+                    <TooltipTrigger asChild>
+                      <Link
+                        to={item.href}
+                        className={`flex items-center justify-center w-10 h-10 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          isActive
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                        }`}
+                      >
+                        <Icon className="h-5 w-5" />
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      {item.name}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </nav>
+          </aside>
+        )}
 
         {/* Main Content */}
-        <main className={`flex-1 min-h-[calc(100vh-4rem)] ${location.pathname.startsWith('/messages') ? '' : 'xl:mr-[260px]'}`}>
+        <main className={`flex-1 min-h-[calc(100vh-4rem)] ${location.pathname === '/settings' ? '' : location.pathname.startsWith('/messages') ? '' : 'xl:mr-[260px]'}`}>
           <Outlet />
         </main>
       </div>
@@ -341,7 +343,7 @@ const Layout = () => {
       {/* Chat windows — always visible */}
       <ChatWindowManager />
       {/* Floating IM contacts sidebar — hidden on profile, page profile, and messages pages */}
-      {!location.pathname.startsWith('/profile') && !location.pathname.startsWith('/pages') && !location.pathname.startsWith('/messages') && <FloatingIM />}
+      {!location.pathname.startsWith('/profile') && !location.pathname.startsWith('/pages') && !location.pathname.startsWith('/messages') && location.pathname !== '/settings' && <FloatingIM />}
     </div>
     </HeaderAvatarMenuProvider>
   );
