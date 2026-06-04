@@ -12,7 +12,7 @@ import { useProfile } from '@/hooks/useProfile';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
-type SubView = 'main' | 'contact' | 'birthday' | 'profile-detail' | 'display-name' | 'username';
+type SubView = 'main' | 'contact' | 'contact-email' | 'birthday' | 'profile-detail' | 'display-name' | 'username';
 
 const ProfilesAndPersonalDetails: React.FC = () => {
   const { user } = useAuth();
@@ -28,6 +28,9 @@ const ProfilesAndPersonalDetails: React.FC = () => {
   const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
   const [nameErrors, setNameErrors] = useState({ firstName: false, lastName: false });
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [usernameSuggestions, setUsernameSuggestions] = useState<string[]>([]);
+  const [checkingUsername, setCheckingUsername] = useState(false);
   const firstNameRef = useRef<HTMLInputElement>(null);
   const lastNameRef = useRef<HTMLInputElement>(null);
 
@@ -37,16 +40,63 @@ const ProfilesAndPersonalDetails: React.FC = () => {
   }, [nameErrors]);
 
   useEffect(() => {
-    if (user) setEmail(user.email || '');
     if (profile) {
+      setEmail(user?.email || profile.email || '');
       setBirthday(profile.birthday || '');
       setUsername(profile.username || '');
       const parts = (profile.display_name || '').split(' ');
       setFirstName(parts[0] || '');
       setLastName(parts.length > 1 ? parts[parts.length - 1] : '');
       setMiddleName(parts.length > 2 ? parts.slice(1, -1).join(' ') : '');
+    } else if (user) {
+      setEmail(user.email || '');
     }
   }, [user, profile]);
+
+  useEffect(() => {
+    if (subView !== 'username') return;
+    setUsernameError(null);
+    setUsernameSuggestions([]);
+  }, [subView]);
+
+  useEffect(() => {
+    if (subView !== 'username') return;
+    if (!username.trim()) {
+      setUsernameError('Username is required');
+      setUsernameSuggestions([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setCheckingUsername(true);
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('username', username)
+          .neq('id', user?.id)
+          .maybeSingle();
+        if (error) throw error;
+        if (data) {
+          setUsernameError('Username already exists');
+          const candidates = Array.from({ length: 10 }, (_, i) => `${username}${i + 1}`);
+          const { data: taken } = await supabase
+            .from('profiles')
+            .select('username')
+            .in('username', candidates);
+          const takenSet = new Set(taken?.map(p => p.username) || []);
+          setUsernameSuggestions(candidates.filter(c => !takenSet.has(c)).slice(0, 5));
+        } else {
+          setUsernameError(null);
+          setUsernameSuggestions([]);
+        }
+      } catch (err) {
+        console.warn('Error checking username:', err);
+      } finally {
+        setCheckingUsername(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [username, user?.id, subView]);
 
   const handleSaveContact = async () => {
     if (!user?.id) return;
@@ -111,6 +161,11 @@ const ProfilesAndPersonalDetails: React.FC = () => {
 
   const handleSaveUsername = async () => {
     if (!user?.id) return;
+    if (!username.trim()) {
+      setUsernameError('Username is required');
+      return;
+    }
+    if (usernameError) return;
     try {
       const { error } = await supabase
         .from('profiles')
@@ -118,6 +173,8 @@ const ProfilesAndPersonalDetails: React.FC = () => {
         .eq('id', user.id);
       if (error) throw error;
       toast({ title: 'Success', description: 'Username updated.' });
+      setUsernameError(null);
+      setUsernameSuggestions([]);
       setSubView('profile-detail');
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -147,7 +204,7 @@ const ProfilesAndPersonalDetails: React.FC = () => {
               <Input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="border-0 px-0 focus-visible:ring-0 shadow-none text-foreground flex-1"
+                className={`border-0 px-0 shadow-none text-foreground flex-1 ${usernameError ? 'ring-2 ring-red-500 rounded focus-visible:outline-none' : 'focus-visible:ring-0'}`}
               />
               {username && (
                 <button onClick={() => setUsername('')} className="text-muted-foreground hover:text-foreground transition-colors">
@@ -155,10 +212,31 @@ const ProfilesAndPersonalDetails: React.FC = () => {
                 </button>
               )}
             </div>
+            {usernameError && (
+              <p className="text-xs text-red-500 mt-1">{usernameError}</p>
+            )}
           </div>
         </div>
 
-        <Button className="w-full" onClick={handleSaveUsername}>Done</Button>
+        {usernameSuggestions.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {usernameSuggestions.map((s) => (
+              <button
+                key={s}
+                onClick={() => {
+                  setUsername(s);
+                  setUsernameError(null);
+                  setUsernameSuggestions([]);
+                }}
+                className="text-xs bg-accent hover:bg-accent/70 rounded-full px-3 py-1 transition-colors"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <Button className="w-full" onClick={handleSaveUsername} disabled={checkingUsername}>Done</Button>
       </DialogContent>
     </Dialog>
   );
@@ -249,8 +327,6 @@ const ProfilesAndPersonalDetails: React.FC = () => {
           {[
             { label: 'Display name' },
             { label: 'Username' },
-            { label: 'Profile picture' },
-            { label: 'Bio' },
           ].map((item, idx, arr) => (
             <React.Fragment key={item.label}>
               <button
@@ -291,7 +367,10 @@ const ProfilesAndPersonalDetails: React.FC = () => {
 
         <div className="border rounded-lg border-border/50 overflow-hidden">
           {/* Email row */}
-          <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition-colors text-left">
+          <button
+            onClick={() => setSubView('contact-email')}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition-colors text-left"
+          >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-muted-foreground shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
             <span className="font-medium text-foreground text-sm flex-1 truncate">{email || 'No email set'}</span>
             <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -311,6 +390,144 @@ const ProfilesAndPersonalDetails: React.FC = () => {
           <Plus className="w-4 h-4" />
           Add new contact
         </button>
+      </DialogContent>
+    </Dialog>
+  );
+
+  const [addingEmail, setAddingEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+
+  const parseEmails = (val: unknown): string[] => {
+    if (Array.isArray(val)) return val as string[];
+    if (typeof val === 'string') {
+      try { const p = JSON.parse(val); if (Array.isArray(p)) return p; } catch {}
+      return [val];
+    }
+    return [];
+  };
+
+  const profileEmails = parseEmails(profile?.email);
+
+  const allEmails = [...new Set([user?.email, ...profileEmails].filter(Boolean))];
+
+  const handleSendEmail = async () => {
+    if (!newEmail.trim() || !user?.id) return;
+    try {
+      const updated = [...new Set([...profileEmails, newEmail])];
+      const { error } = await supabase
+        .from('profiles')
+        .update({ email: updated } as any)
+        .eq('id', user.id);
+      if (error) throw error;
+      toast({ title: 'Success', description: 'Email ' + newEmail + ' added.' });
+      setNewEmail('');
+      setAddingEmail(false);
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const handleRemoveEmail = async (addr: string) => {
+    if (!user?.id) return;
+    try {
+      const updated = profileEmails.filter((e) => e !== addr);
+      const { error } = await supabase
+        .from('profiles')
+        .update({ email: updated } as any)
+        .eq('id', user.id);
+      if (error) throw error;
+      toast({ title: 'Success', description: 'Email removed.' });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const handleSetPrimary = async (addr: string) => {
+    if (!user?.id || addr === user?.email) return;
+    try {
+      const { data: oldEmail, error } = await supabase.rpc<string>('set_primary_email', { new_email: addr });
+      if (error) throw error;
+      if (oldEmail && oldEmail !== addr) {
+        const updated = [...new Set([...profileEmails.filter(e => e !== addr), oldEmail])];
+        await supabase.from('profiles').update({ email: updated } as any).eq('id', user.id);
+      }
+      await supabase.auth.refreshSession();
+      toast({ title: 'Success', description: addr + ' is now your primary email.' });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const emailDialog = (
+    <Dialog open={subView === 'contact-email'} onOpenChange={(open) => {
+      if (!open) { setSubView('contact'); setAddingEmail(false); setNewEmail(''); }
+    }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <button onClick={() => { setSubView('contact'); setAddingEmail(false); setNewEmail(''); }} className="hover:bg-accent rounded-full p-1 transition-colors">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            Email
+          </DialogTitle>
+        </DialogHeader>
+
+        {addingEmail ? (
+          <>
+            <div className="border rounded-lg border-border/50 overflow-hidden">
+              <div className="px-4 pt-3 pb-1">
+                <Label className="text-xs text-muted-foreground">New email address</Label>
+                <Input
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  type="email"
+                  placeholder="your@email.com"
+                  className="border-0 px-0 focus-visible:ring-0 shadow-none text-foreground"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => { setAddingEmail(false); setNewEmail(''); }}>
+                Cancel
+              </Button>
+              <Button className="flex-1" onClick={handleSendEmail} disabled={!newEmail.trim()}>
+                Add
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="border rounded-lg border-border/50 overflow-hidden">
+              {allEmails.length > 0 ? allEmails.map((addr, idx) => (
+                <div key={addr} className={`flex items-center gap-3 px-4 py-3 ${idx < allEmails.length - 1 ? 'border-b border-border/50' : ''}`}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-muted-foreground shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                  <span className="font-medium text-foreground text-sm flex-1">{addr}</span>
+                  {addr === user?.email ? (
+                    <span className="text-xs text-muted-foreground">Primary</span>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => handleSetPrimary(addr)} className="text-xs text-primary hover:underline">Make primary</button>
+                      <button onClick={() => handleRemoveEmail(addr)} className="text-muted-foreground hover:text-red-500 transition-colors">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )) : (
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-muted-foreground shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                  <span className="font-medium text-foreground text-sm">No email set</span>
+                </div>
+              )}
+            </div>
+
+            <button onClick={() => setAddingEmail(true)} className="text-sm font-medium text-primary hover:underline flex items-center gap-1 px-1">
+              <Plus className="w-4 h-4" />
+              Add another
+            </button>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -374,6 +591,7 @@ const ProfilesAndPersonalDetails: React.FC = () => {
     {displayNameDialog}
     {profileDetailDialog}
     {contactInfoDialog}
+    {emailDialog}
     {birthdayDialog}
     <div className="space-y-8">
       <div>
