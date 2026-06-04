@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,9 +77,13 @@ const Settings = () => {
   const { user } = useAuth();
   const { uploadPhoto, uploading } = usePhotoUpload();
   const { enabled: hashtagNotificationsEnabled, loading: hashtagNotifLoading, toggleNotifications: toggleHashtagNotifications } = useHashtagNotificationSettings();
+  const location = useLocation();
+  const navigate = useNavigate();
   
-  // State for active sidebar option
-  const [activeSection, setActiveSection] = useState('personal');
+  // State for active sidebar option — derive from URL path
+  const [activeSection, setActiveSection] = useState(
+    location.pathname === '/settings/details' ? 'personal' : 'personal'
+  );
   
   // Check if user is admin (simple check - you can enhance this with proper role system)
   const [isAdmin, setIsAdmin] = useState(false);
@@ -895,7 +900,14 @@ const Settings = () => {
                     return (
                       <button
                         key={option.id}
-                        onClick={() => setActiveSection(option.id)}
+                        onClick={() => {
+                          if (option.id === 'personal') {
+                            navigate('/settings/details');
+                          } else {
+                            navigate('/settings');
+                          }
+                          setActiveSection(option.id);
+                        }}
                         className={`w-full flex items-center justify-center py-2.5 rounded-md text-sm font-medium transition-all duration-200 ${
                           isActive
                             ? 'bg-primary text-primary-foreground shadow-sm'
