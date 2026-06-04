@@ -8,16 +8,17 @@ import { Switch } from '@/components/ui/switch';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { usePhotoUpload } from '@/hooks/usePhotoUpload';
 import { supabase } from '@/integrations/supabase/client';
 import PhotoUploadDialog from '@/components/PhotoUploadDialog';
+import QRCode from 'qrcode';
 import YourInformationAndPermissions from '@/components/YourInformationAndPermissions';
 import ProfilesAndPersonalDetails from '@/components/settings/ProfilesAndPersonalDetails';
 import AdPreferences from '@/components/AdPreferences';
 import PrivacyCheckup from '@/components/PrivacyCheckup';
-import QRCode from 'qrcode';
 import { 
   User, 
   Shield, 
@@ -25,16 +26,15 @@ import {
   Target, 
   Eye, 
   Activity,
+  AlertCircle,
   Camera,
   Save,
-  Trash2,
-  ExternalLink,
-  AlertCircle,
   Check,
-  EyeOff,
+  ChevronRight,
   Copy,
-  QrCode,
+  EyeOff,
   Loader2,
+  QrCode,
   UserX,
   Settings as SettingsIcon,
   Hash
@@ -63,15 +63,6 @@ type PasswordData = {
   currentPassword: string;
   newPassword: string;
   confirmPassword: string;
-};
-
-type TOTPData = {
-  secret: string;
-  qr_code: string;
-  verification_code: string;
-  factor_id?: string;
-  challenge_id?: string;
-  enabled: boolean;
 };
 
 type PasswordVisibility = {
@@ -179,18 +170,19 @@ const Settings = () => {
     confirm: false
   });
   
+  // Loading states
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  
   // State for TOTP/2FA
-  const [totpData, setTotpData] = useState<TOTPData>({
+  const [totpData, setTotpData] = useState({
     secret: '',
     qr_code: '',
     verification_code: '',
-    factor_id: undefined,
-    challenge_id: undefined,
+    factor_id: undefined as string | undefined,
+    challenge_id: undefined as string | undefined,
     enabled: false
   });
-  
-  // Loading states
-  const [passwordLoading, setPasswordLoading] = useState(false);
   const [totpLoading, setTotpLoading] = useState(false);
   const [totpSetupLoading, setTotpSetupLoading] = useState(false);
   
@@ -275,31 +267,6 @@ const Settings = () => {
     }
   };
 
-  // Check for existing MFA factors on component mount
-  useEffect(() => {
-    if (user) {
-      checkExistingMFA();
-    }
-  }, [user]);
-
-  const checkExistingMFA = async () => {
-    try {
-      const { data, error } = await supabase.auth.mfa.listFactors();
-      if (error) throw error;
-
-      const totpFactor = data.totp.find(factor => factor.status === 'verified');
-      if (totpFactor) {
-        setTotpData(prev => ({
-          ...prev,
-          enabled: true,
-          factor_id: totpFactor.id
-        }));
-      }
-    } catch (error: any) {
-      console.error('Error checking MFA status:', error);
-    }
-  };
-
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordLoading(true);
@@ -372,11 +339,35 @@ const Settings = () => {
     }));
   };
 
+  // Check for existing MFA factors on component mount
+  useEffect(() => {
+    if (user) {
+      checkExistingMFA();
+    }
+  }, [user]);
+
+  const checkExistingMFA = async () => {
+    try {
+      const { data, error } = await supabase.auth.mfa.listFactors();
+      if (error) throw error;
+
+      const totpFactor = data.totp.find(factor => factor.status === 'verified');
+      if (totpFactor) {
+        setTotpData(prev => ({
+          ...prev,
+          enabled: true,
+          factor_id: totpFactor.id
+        }));
+      }
+    } catch (error: any) {
+      console.error('Error checking MFA status:', error);
+    }
+  };
+
   const setupTOTP = async () => {
     setTotpSetupLoading(true);
     
     try {
-      // Step 1: Enroll a new TOTP factor
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: 'totp',
         friendlyName: 'Tone Authenticator'
@@ -384,7 +375,6 @@ const Settings = () => {
 
       if (error) throw error;
 
-      // Generate QR code from the URI
       const qrCodeDataUrl = await QRCode.toDataURL(data.totp.uri);
 
       setTotpData(prev => ({
@@ -411,14 +401,12 @@ const Settings = () => {
     setTotpLoading(true);
 
     try {
-      // Step 2: Challenge the factor
       const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
         factorId: totpData.factor_id
       });
 
       if (challengeError) throw challengeError;
 
-      // Step 3: Verify the TOTP code
       const { data: verifyData, error: verifyError } = await supabase.auth.mfa.verify({
         factorId: totpData.factor_id,
         challengeId: challengeData.id,
@@ -514,28 +502,40 @@ const Settings = () => {
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-semibold text-foreground mb-2">Password and Security</h2>
-              <p className="text-muted-foreground">Keep your account secure with a strong password and multi-factor authentication.</p>
+              <p className="text-muted-foreground">Keep your account secure with a strong password.</p>
             </div>
-            
-            {/* Password Change Section */}
-            <form onSubmit={handlePasswordSubmit} className="space-y-6">
-              <Card className="border-border/50">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Shield className="w-5 h-5" />
-                    Change Password
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
+
+            <Card className="border-border/50">
+              <CardContent className="p-0">
+                <button
+                  onClick={() => setPasswordDialogOpen(true)}
+                  className="w-full flex items-center justify-between px-4 py-4 hover:bg-accent/50 transition-colors text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <Shield className="w-5 h-5 text-muted-foreground" />
+                    <span className="font-medium text-foreground">Change Password</span>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                </button>
+              </CardContent>
+            </Card>
+
+            <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Change Password</DialogTitle>
+                </DialogHeader>
+
+                <form onSubmit={(e) => { handlePasswordSubmit(e); setPasswordDialogOpen(false); }} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="currentPassword">Current Password *</Label>
+                    <Label htmlFor="dialogCurrentPassword">Current Password</Label>
                     <div className="relative">
                       <Input
-                        id="currentPassword"
+                        id="dialogCurrentPassword"
                         type={passwordVisibility.current ? "text" : "password"}
                         value={passwordData.currentPassword}
                         onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
-                        className="focus:ring-primary pr-10"
+                        className="pr-10"
                         placeholder="Enter your current password"
                         required
                       />
@@ -546,24 +546,20 @@ const Settings = () => {
                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                         onClick={() => togglePasswordVisibility('current')}
                       >
-                        {passwordVisibility.current ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
+                        {passwordVisibility.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2">
-                    <Label htmlFor="newPassword">New Password *</Label>
+                    <Label htmlFor="dialogNewPassword">New Password</Label>
                     <div className="relative">
                       <Input
-                        id="newPassword"
+                        id="dialogNewPassword"
                         type={passwordVisibility.new ? "text" : "password"}
                         value={passwordData.newPassword}
                         onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
-                        className="focus:ring-primary pr-10"
+                        className="pr-10"
                         placeholder="Enter your new password"
                         required
                       />
@@ -574,27 +570,23 @@ const Settings = () => {
                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                         onClick={() => togglePasswordVisibility('new')}
                       >
-                        {passwordVisibility.new ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
+                        {passwordVisibility.new ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Must be at least 8 characters with uppercase, lowercase, numbers, and special characters
                     </p>
                   </div>
-                  
+
                   <div className="space-y-2">
-                    <Label htmlFor="confirmPassword">Confirm New Password *</Label>
+                    <Label htmlFor="dialogConfirmPassword">Confirm New Password</Label>
                     <div className="relative">
                       <Input
-                        id="confirmPassword"
+                        id="dialogConfirmPassword"
                         type={passwordVisibility.confirm ? "text" : "password"}
                         value={passwordData.confirmPassword}
                         onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                        className="focus:ring-primary pr-10"
+                        className="pr-10"
                         placeholder="Confirm your new password"
                         required
                       />
@@ -605,20 +597,12 @@ const Settings = () => {
                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                         onClick={() => togglePasswordVisibility('confirm')}
                       >
-                        {passwordVisibility.confirm ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
+                        {passwordVisibility.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
                   </div>
 
-                  <Button 
-                    type="submit" 
-                    className="bg-primary hover:bg-primary/90" 
-                    disabled={passwordLoading}
-                  >
+                  <Button type="submit" className="w-full" disabled={passwordLoading}>
                     {passwordLoading ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -631,9 +615,9 @@ const Settings = () => {
                       </>
                     )}
                   </Button>
-                </CardContent>
-              </Card>
-            </form>
+                </form>
+              </DialogContent>
+            </Dialog>
 
             {/* Two-Factor Authentication Section */}
             <Card className="border-border/50">

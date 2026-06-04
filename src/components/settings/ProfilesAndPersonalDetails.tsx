@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ChevronRight, Plus, ArrowLeft, Save, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
@@ -14,15 +15,22 @@ import { supabase } from '@/integrations/supabase/client';
 
 type SubView = 'main' | 'contact' | 'contact-email' | 'birthday' | 'profile-detail' | 'display-name' | 'username';
 
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
 const ProfilesAndPersonalDetails: React.FC = () => {
   const { user } = useAuth();
-  const { profile, loading } = useProfile();
+  const { profile, loading, refetch } = useProfile();
   const { toast } = useToast();
   const [subView, setSubView] = useState<SubView>('main');
 
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [birthday, setBirthday] = useState('');
+  const [birthDay, setBirthDay] = useState('');
+  const [birthMonth, setBirthMonth] = useState('');
+  const [birthYear, setBirthYear] = useState('');
   const [firstName, setFirstName] = useState('');
   const [middleName, setMiddleName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -42,7 +50,16 @@ const ProfilesAndPersonalDetails: React.FC = () => {
   useEffect(() => {
     if (profile) {
       setEmail(user?.email || profile.email || '');
-      setBirthday(profile.birthday || '');
+      if (profile.birthday) {
+        const d = new Date(profile.birthday);
+        if (!isNaN(d.getTime())) {
+          setBirthDay(d.getDate().toString());
+          setBirthMonth(MONTHS[d.getMonth()]);
+          setBirthYear(d.getFullYear().toString());
+        }
+      } else {
+        setBirthDay(''); setBirthMonth(''); setBirthYear('');
+      }
       setUsername(profile.username || '');
       const parts = (profile.display_name || '').split(' ');
       setFirstName(parts[0] || '');
@@ -112,14 +129,54 @@ const ProfilesAndPersonalDetails: React.FC = () => {
     }
   };
 
+  const combineBirthday = () => {
+    if (!birthDay || !birthMonth || !birthYear) return null;
+    const monthIndex = MONTHS.indexOf(birthMonth);
+    if (monthIndex === -1) return null;
+    const d = new Date(parseInt(birthYear), monthIndex, parseInt(birthDay));
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString().split('T')[0];
+  };
+
+  const isUnder18 = () => {
+    if (!birthDay || !birthMonth || !birthYear) return false;
+    const monthIndex = MONTHS.indexOf(birthMonth);
+    if (monthIndex === -1) return false;
+    const birthDate = new Date(parseInt(birthYear), monthIndex, parseInt(birthDay));
+    if (isNaN(birthDate.getTime())) return false;
+    const today = new Date();
+    const age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    const dayDiff = today.getDate() - birthDate.getDate();
+    const adjustedAge = monthDiff < 0 || (monthDiff === 0 && dayDiff < 0) ? age - 1 : age;
+    return adjustedAge < 18;
+  };
+
   const handleSaveBirthday = async () => {
     if (!user?.id) return;
+    const dateStr = combineBirthday();
+    if (!dateStr) {
+      toast({ title: 'Error', description: 'Please select a valid day, month, and year.', variant: 'destructive' });
+      return;
+    }
+    if (isUnder18()) {
+      toast({ title: 'Error', description: 'You must be at least 18 years old to set a birthday.', variant: 'destructive' });
+      return;
+    }
+    const monthIndex = MONTHS.indexOf(birthMonth);
+    const birthDateOnly = new Date(2000, monthIndex, parseInt(birthDay)).toISOString().split('T')[0];
+    const birthYearInt = parseInt(birthYear);
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ birthday })
+        .update({
+          birthday: dateStr,
+          birth_date: birthDateOnly,
+          birth_year: birthYearInt,
+        })
         .eq('id', user.id);
       if (error) throw error;
+      await refetch();
       toast({ title: 'Success', description: 'Birthday updated.' });
       setSubView('main');
     } catch (err: any) {
@@ -127,15 +184,9 @@ const ProfilesAndPersonalDetails: React.FC = () => {
     }
   };
 
-  const formatBirthday = (dateStr: string | null) => {
-    if (!dateStr) return 'Not set';
-    try {
-      return new Date(dateStr).toLocaleDateString('en-US', {
-        year: 'numeric', month: 'long', day: 'numeric',
-      });
-    } catch {
-      return dateStr;
-    }
+  const formatBirthday = () => {
+    if (!birthDay || !birthMonth || !birthYear) return 'Not set';
+    return `${birthMonth} ${birthDay}, ${birthYear}`;
   };
 
   const handleSaveDisplayName = async () => {
@@ -547,17 +598,50 @@ const ProfilesAndPersonalDetails: React.FC = () => {
 
         <div className="border rounded-lg border-border/50 overflow-hidden">
           {/* Birthday row */}
-          <div className="flex items-center justify-between px-4 py-3">
+          <div className="px-4 py-3">
             {editingBirthday ? (
-              <div className="flex items-center gap-2 flex-1">
-                <Input type="date" value={birthday} onChange={(e) => setBirthday(e.target.value)} className="flex-1" />
-                <Button size="sm" onClick={() => { handleSaveBirthday(); setEditingBirthday(false); }}>Save</Button>
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <Select value={birthDay} onValueChange={setBirthDay}>
+                    <SelectTrigger className="w-20">
+                      <SelectValue placeholder="Day" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                        <SelectItem key={d} value={d.toString()}>{d}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={birthMonth} onValueChange={setBirthMonth}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Month" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MONTHS.map((m) => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    placeholder="Year"
+                    min="1900"
+                    max={new Date().getFullYear()}
+                    value={birthYear}
+                    onChange={(e) => setBirthYear(e.target.value)}
+                    className="w-24"
+                  />
+                </div>
+                {isUnder18() && (
+                  <p className="text-xs text-red-500">You must be at least 18 years old.</p>
+                )}
+                <Button className="w-full" size="sm" onClick={() => { handleSaveBirthday(); setEditingBirthday(false); }} disabled={isUnder18()}>Save</Button>
               </div>
             ) : (
-              <>
-                <span className="font-medium text-foreground text-sm">{formatBirthday(birthday || null)}</span>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-foreground text-sm">{formatBirthday()}</span>
                 <Button variant="outline" size="sm" onClick={() => setEditingBirthday(true)}>Edit</Button>
-              </>
+              </div>
             )}
           </div>
 
@@ -655,7 +739,7 @@ const ProfilesAndPersonalDetails: React.FC = () => {
             >
               <div>
                 <p className="font-medium text-foreground">Birthday</p>
-                <p className="text-sm text-muted-foreground">{formatBirthday(profile?.birthday || null)}</p>
+                <p className="text-sm text-muted-foreground">{formatBirthday()}</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
             </button>
