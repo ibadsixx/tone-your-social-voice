@@ -75,6 +75,7 @@ const App = () => (
                 <Route path="pages/:id/manage" element={<PageManage />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="settings/details" element={<Settings />} />
+                <Route path="settings/security" element={<Settings />} />
                 <Route path="saved" element={<Saved />} />
                 <Route path="mentions" element={<Mentions />} />
                 <Route path="hashtag/:tag" element={<Hashtag />} />

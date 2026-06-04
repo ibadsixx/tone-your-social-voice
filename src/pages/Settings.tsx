@@ -81,9 +81,12 @@ const Settings = () => {
   const navigate = useNavigate();
   
   // State for active sidebar option — derive from URL path
-  const [activeSection, setActiveSection] = useState(
-    location.pathname === '/settings/details' ? 'personal' : 'personal'
-  );
+  const getSectionFromPath = (path: string) => {
+    if (path === '/settings/details') return 'personal';
+    if (path === '/settings/security') return 'security';
+    return 'personal';
+  };
+  const [activeSection, setActiveSection] = useState(getSectionFromPath(location.pathname));
   
   // Check if user is admin (simple check - you can enhance this with proper role system)
   const [isAdmin, setIsAdmin] = useState(false);
@@ -903,6 +906,8 @@ const Settings = () => {
                         onClick={() => {
                           if (option.id === 'personal') {
                             navigate('/settings/details');
+                          } else if (option.id === 'security') {
+                            navigate('/settings/security');
                           } else {
                             navigate('/settings');
                           }
