@@ -18,6 +18,7 @@ import PhotoUploadDialog from '@/components/PhotoUploadDialog';
 import QRCode from 'qrcode';
 import YourInformationAndPermissions from '@/components/YourInformationAndPermissions';
 import ProfilesAndPersonalDetails from '@/components/settings/ProfilesAndPersonalDetails';
+import SettingsLanding from '@/components/settings/SettingsLanding';
 import AdPreferences from '@/components/AdPreferences';
 import PrivacyCheckup from '@/components/PrivacyCheckup';
 import { 
@@ -84,7 +85,7 @@ const Settings = () => {
   const getSectionFromPath = (path: string) => {
     if (path === '/settings/details') return 'personal';
     if (path === '/settings/security') return 'security';
-    return 'personal';
+    return 'landing';
   };
   const [activeSection, setActiveSection] = useState(getSectionFromPath(location.pathname));
   
@@ -502,6 +503,9 @@ const Settings = () => {
   // Render content based on active section
   const renderContent = () => {
     switch (activeSection) {
+      case 'landing':
+        return <SettingsLanding />;
+
       case 'personal':
         return <ProfilesAndPersonalDetails />;
 
