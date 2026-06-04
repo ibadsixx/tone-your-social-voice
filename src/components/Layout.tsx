@@ -302,8 +302,8 @@ const Layout = () => {
       )}
 
       <div className="flex">
-        {/* Sidebar - hidden on settings page */}
-        {location.pathname !== '/settings' && (
+        {/* Sidebar - hidden on settings pages */}
+        {!location.pathname.startsWith('/settings') && (
           <aside className="w-16 h-[calc(100vh-4rem)] border-r border-border/50 bg-card/50 sticky top-16">
             <nav className="flex flex-col items-center gap-1 py-4">
               {navigation.map((item) => {
@@ -335,7 +335,7 @@ const Layout = () => {
         )}
 
         {/* Main Content */}
-        <main className={`flex-1 min-h-[calc(100vh-4rem)] ${location.pathname === '/settings' ? '' : location.pathname.startsWith('/messages') ? '' : 'xl:mr-[260px]'}`}>
+        <main className={`flex-1 min-h-[calc(100vh-4rem)] ${location.pathname.startsWith('/settings') ? '' : location.pathname.startsWith('/messages') ? '' : 'xl:mr-[260px]'}`}>
           <Outlet />
         </main>
       </div>
@@ -343,7 +343,7 @@ const Layout = () => {
       {/* Chat windows — always visible */}
       <ChatWindowManager />
       {/* Floating IM contacts sidebar — hidden on profile, page profile, and messages pages */}
-      {!location.pathname.startsWith('/profile') && !location.pathname.startsWith('/pages') && !location.pathname.startsWith('/messages') && location.pathname !== '/settings' && <FloatingIM />}
+      {!location.pathname.startsWith('/profile') && !location.pathname.startsWith('/pages') && !location.pathname.startsWith('/messages') && !location.pathname.startsWith('/settings') && <FloatingIM />}
     </div>
     </HeaderAvatarMenuProvider>
   );
