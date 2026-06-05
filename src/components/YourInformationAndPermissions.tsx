@@ -1,6 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Calendar as CalendarIcon } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
 import { 
   Download, 
   Eye, 
@@ -11,7 +30,11 @@ import {
   Clock,
   Globe,
   Shield,
-  Database
+  Database,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Archive
 } from 'lucide-react';
 import YourActivity from './YourActivity';
 
@@ -24,6 +47,17 @@ type MenuOption = {
   icon: React.ElementType;
 };
 
+type ExportRequest = {
+  id: string;
+  data_type: string;
+  start_date: string | null;
+  end_date: string | null;
+  status: string;
+  download_url: string | null;
+  completed_at: string | null;
+  created_at: string;
+};
+
 /**
  * Your Information and Permissions Component
  * 
@@ -34,6 +68,9 @@ type MenuOption = {
  * - Responsive design with TailwindCSS
  */
 const YourInformationAndPermissions: React.FC = () => {
+  const { toast } = useToast();
+  const [requesting, setRequesting] = useState(false);
+
   // State to track the currently selected menu option
   const [selectedOption, setSelectedOption] = useState<string>('export');
 
@@ -50,6 +87,82 @@ const YourInformationAndPermissions: React.FC = () => {
   /**
    * Renders the content for the right side based on the selected menu option
    */
+  const [dataType, setDataType] = useState<string>('');
+  const [startDate, setStartDate] = useState<Date | undefined>();
+  const [endDate, setEndDate] = useState<Date | undefined>();
+
+  const handleRequestExport = async () => {
+    if (!dataType) return;
+    setRequesting(true);
+    try {
+      const { data, error } = await supabase.rpc('create_export_request', {
+        p_data_type: dataType,
+        p_start_date: startDate ? format(startDate, 'yyyy-MM-dd') : null,
+        p_end_date: endDate ? format(endDate, 'yyyy-MM-dd') : null,
+      });
+      if (error) throw error;
+      toast({ title: 'Export requested', description: 'Your data export is being prepared. You will be notified when it is ready.' });
+      setDataType('');
+      setStartDate(undefined);
+      setEndDate(undefined);
+      fetchExportRequests();
+    } catch (error) {
+      console.error('Error requesting export:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to request export',
+        variant: 'destructive',
+      });
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  const [exportRequests, setExportRequests] = useState<ExportRequest[]>([]);
+  const [fetchingRequests, setFetchingRequests] = useState(false);
+
+  const fetchExportRequests = async () => {
+    setFetchingRequests(true);
+    try {
+      const { data, error } = await supabase.rpc('get_my_export_requests');
+      if (error) throw error;
+      setExportRequests(data || []);
+    } catch (error) {
+      console.error('Error fetching export requests:', error);
+    } finally {
+      setFetchingRequests(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchExportRequests();
+  }, []);
+
+  const dataTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      posts: 'Posts',
+      messages: 'Messages',
+      profile: 'Profile Information',
+      activity: 'Activity Log',
+      media: 'Photos and Media',
+      all: 'All Data',
+    };
+    return labels[type] || type;
+  };
+
+  const statusBadge = (status: string) => {
+    switch (status) {
+      case 'ready':
+        return <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400"><CheckCircle2 className="w-3 h-3" />Ready</span>;
+      case 'failed':
+        return <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400"><XCircle className="w-3 h-3" />Failed</span>;
+      case 'processing':
+        return <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400"><Loader2 className="w-3 h-3 animate-spin" />Processing</span>;
+      default:
+        return <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground"><Clock className="w-3 h-3" />Pending</span>;
+    }
+  };
+
   const renderRightContent = () => {
     switch (selectedOption) {
       case 'export':
@@ -69,34 +182,125 @@ const YourInformationAndPermissions: React.FC = () => {
                   Data Export Options
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-medium">Complete Data Archive</p>
-                      <p className="text-sm text-muted-foreground">All your data including posts, messages, and media files</p>
-                    </div>
-                    <Button variant="outline">Export All</Button>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="data-type">Data type</Label>
+                  <Select value={dataType} onValueChange={setDataType}>
+                    <SelectTrigger id="data-type">
+                      <SelectValue placeholder="Select the type of data to export" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="posts">Posts</SelectItem>
+                      <SelectItem value="messages">Messages</SelectItem>
+                      <SelectItem value="profile">Profile Information</SelectItem>
+                      <SelectItem value="activity">Activity Log</SelectItem>
+                      <SelectItem value="media">Photos and Media</SelectItem>
+                      <SelectItem value="all">All Data</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Start date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !startDate && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {startDate ? format(startDate, "PPP") : "Select start date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={startDate}
+                          onSelect={setStartDate}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
-                  
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-medium">Profile Information Only</p>
-                      <p className="text-sm text-muted-foreground">Basic profile details and account information</p>
-                    </div>
-                    <Button variant="outline">Export Profile</Button>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-medium">Posts and Media</p>
-                      <p className="text-sm text-muted-foreground">Your posts, photos, and shared content</p>
-                    </div>
-                    <Button variant="outline">Export Posts</Button>
+                  <div className="space-y-2">
+                    <Label>End date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !endDate && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {endDate ? format(endDate, "PPP") : "Select end date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={endDate}
+                          onSelect={setEndDate}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 </div>
+
+                <Button className="w-full" disabled={!dataType || requesting} onClick={handleRequestExport}>
+                  {requesting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Request Export
+                </Button>
               </CardContent>
             </Card>
+
+            {exportRequests.length > 0 && (
+              <Card className="border-border/50">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Archive className="w-5 h-5" />
+                    Previously Requested Exports
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {fetchingRequests && exportRequests.length === 0 ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    exportRequests.map((req) => (
+                      <div key={req.id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{dataTypeLabel(req.data_type)}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(req.created_at), 'MMM d, yyyy')}
+                            </span>
+                            {statusBadge(req.status)}
+                          </div>
+                        </div>
+                        {req.status === 'ready' && req.download_url && (
+                          <a
+                            href={req.download_url}
+                            download
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shrink-0 ml-3"
+                          >
+                            <Download className="w-4 h-4" />
+                            Download
+                          </a>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             <Card className="border-border/50 bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800">
               <CardContent className="p-4">

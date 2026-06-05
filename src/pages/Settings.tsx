@@ -85,6 +85,7 @@ const Settings = () => {
   const getSectionFromPath = (path: string) => {
     if (path === '/settings/details') return 'personal';
     if (path === '/settings/security') return 'security';
+    if (path === '/settings/information') return 'permissions';
     return 'landing';
   };
   const [activeSection, setActiveSection] = useState(getSectionFromPath(location.pathname));
@@ -204,6 +205,7 @@ const Settings = () => {
   });
 
   const sidebarOptions: SidebarOption[] = [
+    { id: 'landing', title: 'Settings', icon: SettingsIcon },
     { id: 'personal', title: 'Personal details', icon: User },
     { id: 'security', title: 'Password and security', icon: Shield },
     { id: 'permissions', title: 'Your information and permissions', icon: Info },
@@ -912,6 +914,8 @@ const Settings = () => {
                             navigate('/settings/details');
                           } else if (option.id === 'security') {
                             navigate('/settings/security');
+                          } else if (option.id === 'permissions') {
+                            navigate('/settings/information');
                           } else {
                             navigate('/settings');
                           }

@@ -4276,6 +4276,14 @@ export type Database = {
         }
         Returns: string
       }
+      create_export_request: {
+        Args: {
+          p_data_type: string
+          p_start_date?: string
+          p_end_date?: string
+        }
+        Returns: string
+      }
       follow_channel: {
         Args: { p_conversation_id: string }
         Returns: undefined
@@ -4416,6 +4424,19 @@ export type Database = {
       get_mutual_friends_count: {
         Args: { user_a: string; user_b: string }
         Returns: number
+      }
+      get_my_export_requests: {
+        Args: Record<string, never>
+        Returns: {
+          id: string
+          data_type: string
+          start_date: string
+          end_date: string
+          status: string
+          download_url: string | null
+          completed_at: string | null
+          created_at: string
+        }[]
       }
       get_my_encryption_keys: {
         Args: Record<string, never>
