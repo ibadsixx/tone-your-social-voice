@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronRight, Loader2, X } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAdPreferences } from '@/hooks/useAdPreferences';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 
 const AdPreferences = () => {
   const [activeTab, setActiveTab] = useState('customize');
@@ -16,6 +19,29 @@ const AdPreferences = () => {
     updateSettings,
     updateTopicPreference,
   } = useAdPreferences();
+
+  const { user } = useAuth();
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [profileData, setProfileData] = useState({ birth_year: 0, country: '' });
+
+  useEffect(() => {
+    if (!categoriesOpen || !user) return;
+    supabase.from('profiles').select('birth_year, country').eq('id', user.id).single().then(({ data }) => {
+      if (data) setProfileData(data as { birth_year: number; country: string });
+    });
+  }, [categoriesOpen, user]);
+
+  const ageRange = profileData.birth_year
+    ? `${new Date().getFullYear() - profileData.birth_year - 4}-${new Date().getFullYear() - profileData.birth_year} years old`
+    : 'Not set';
+
+  const categories = [
+    { label: 'Age range', value: ageRange },
+    { label: 'Language', value: 'Arabic speaker' },
+    { label: 'Country', value: profileData.country || 'Not set' },
+    { label: 'Interests', value: `${adTopics.filter(t => t.preference === 'interested').length} topics selected` },
+    { label: 'Device type', value: 'Not set' },
+  ];
 
   const SectionHeader = ({ title, onSeeAll }: { title: string; onSeeAll?: () => void }) => (
     <div className="flex items-center justify-between mb-3">
@@ -246,7 +272,7 @@ const AdPreferences = () => {
             <h3 className="text-sm font-semibold text-foreground mb-3">Categories Used to Reach You</h3>
             <div
               className="flex items-center justify-between px-4 py-3 border rounded-lg hover:bg-muted/40 transition-colors cursor-pointer"
-              onClick={() => updateSettings({ use_categories: !adSettings.use_categories })}
+              onClick={() => setCategoriesOpen(true)}
             >
               <div>
                 <p className="text-sm font-medium text-foreground">Use categories to find you</p>
@@ -258,6 +284,22 @@ const AdPreferences = () => {
               <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
             </div>
           </div>
+
+          <Dialog open={categoriesOpen} onOpenChange={setCategoriesOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Categories Used to Reach You</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                {categories.map((cat) => (
+                  <div key={cat.label} className="flex items-center justify-between p-3 border rounded-lg">
+                    <span className="text-sm text-muted-foreground">{cat.label}</span>
+                    <span className="text-sm font-medium text-foreground">{cat.value}</span>
+                  </div>
+                ))}
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <Separator />
 
