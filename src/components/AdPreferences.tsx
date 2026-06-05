@@ -241,130 +241,122 @@ const AdPreferences = () => {
         </TabsContent>
 
         <TabsContent value="manage" className="mt-6 space-y-6">
-          {/* Data used to display ads */}
+          {/* Categories Used to Reach You */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Data utilized to present ads</h3>
-            <div className="rounded-lg border border-border/50 overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Segments applied to find you</p>
-                  <p className="text-xs text-muted-foreground">Details you share on your profile or other segments applied to find you.</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
+            <h3 className="text-sm font-semibold text-foreground mb-3">Categories Used to Reach You</h3>
+            <div
+              className="flex items-center justify-between px-4 py-3 border rounded-lg hover:bg-muted/40 transition-colors cursor-pointer"
+              onClick={() => updateSettings({ use_categories: !adSettings.use_categories })}
+            >
+              <div>
+                <p className="text-sm font-medium text-foreground">Use categories to find you</p>
+                <p className="text-xs text-muted-foreground">Allow us to use categories based on your profile and activity to show relevant ads.</p>
+                <p className="text-xs text-primary font-medium mt-0.5">
+                  {adSettings.use_categories ? 'Categories enabled' : 'Categories disabled'}
+                </p>
               </div>
-              <Separator />
-              <div
-                className="flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer"
-                onClick={() => updateSettings({ use_partner_data: !adSettings.use_partner_data })}
-              >
-                <div>
-                  <p className="text-sm font-medium text-foreground">Engagement data from ad collaborators</p>
-                  <p className="text-xs text-muted-foreground">Decide whether we leverage this to present ads that are more aligned to you.</p>
-                  <p className="text-xs text-primary font-medium mt-0.5">
-                    {adSettings.use_partner_data ? 'Leveraging this data' : 'Not leveraging this data'}
-                  </p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Interest-driven promotion</p>
-                  <p className="text-xs text-muted-foreground">Promoters leveraging your engagement or details</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
-              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
             </div>
           </div>
 
           <Separator />
 
-          {/* Ads beyond the platform */}
+          {/* Activity Information From Ad Partners */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Ads beyond the platform</h3>
-            <div className="rounded-lg border border-border/50 overflow-hidden">
-              <div
-                className="flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer"
-                onClick={() => updateSettings({ show_ads_in_external_apps: !adSettings.show_ads_in_external_apps })}
-              >
-                <div>
-                  <p className="text-sm font-medium text-foreground">Ads in external apps</p>
-                  <p className="text-xs text-muted-foreground">Decide whether you view ads from the Audience Network in external apps.</p>
-                  <p className="text-xs text-primary font-medium mt-0.5">
-                    {adSettings.show_ads_in_external_apps ? 'Displaying ads in external apps' : 'Not displaying ads in external apps'}
-                  </p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
+            <h3 className="text-sm font-semibold text-foreground mb-3">Activity Information From Ad Partners</h3>
+            <div
+              className="flex items-center justify-between px-4 py-3 border rounded-lg hover:bg-muted/40 transition-colors cursor-pointer"
+              onClick={() => updateSettings({ use_partner_data: !adSettings.use_partner_data })}
+            >
+              <div>
+                <p className="text-sm font-medium text-foreground">Engagement data from ad collaborators</p>
+                <p className="text-xs text-muted-foreground">Decide whether we leverage this to present ads that are more aligned to you.</p>
+                <p className="text-xs text-primary font-medium mt-0.5">
+                  {adSettings.use_partner_data ? 'Leveraging this data' : 'Not leveraging this data'}
+                </p>
               </div>
-              <Separator />
-              <div
-                className="flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer"
-                onClick={() => updateSettings({ use_activity_for_external_ads: !adSettings.use_activity_for_external_ads })}
-              >
-                <div>
-                  <p className="text-sm font-medium text-foreground">Ads regarding the platform</p>
-                  <p className="text-xs text-muted-foreground">Decide whether we leverage your engagement to display ads about the platform on other services.</p>
-                  <p className="text-xs text-primary font-medium mt-0.5">
-                    {adSettings.use_activity_for_external_ads ? 'Leveraging this data' : 'Not leveraging this data'}
-                  </p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
-              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
             </div>
           </div>
 
           <Separator />
 
-          {/* Other settings */}
+          {/* Audience-Based Advertising */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Additional preferences</h3>
-            <div className="rounded-lg border border-border/50 overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Social engagements</p>
-                  <p className="text-xs text-muted-foreground">Decide who can view your social engagements alongside ads.</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
+            <h3 className="text-sm font-semibold text-foreground mb-3">Audience-Based Advertising</h3>
+            <div
+              className="flex items-center justify-between px-4 py-3 border rounded-lg hover:bg-muted/40 transition-colors cursor-pointer"
+              onClick={() => updateSettings({ audience_based_advertising: !adSettings.audience_based_advertising })}
+            >
+              <div>
+                <p className="text-sm font-medium text-foreground">Interest-driven promotion</p>
+                <p className="text-xs text-muted-foreground">Promoters leveraging your engagement or details to reach you with ads.</p>
+                <p className="text-xs text-primary font-medium mt-0.5">
+                  {adSettings.audience_based_advertising ? 'Audience ads enabled' : 'Audience ads disabled'}
+                </p>
               </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
             </div>
           </div>
 
           <Separator />
 
-          {/* Learn more */}
+          {/* Ads From Ad Partners */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-1">Discover more about ads privacy</h3>
-            <p className="text-xs text-muted-foreground mb-3">Explore what data is leveraged to present ads, and how you can manage your privacy.</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg border border-border/50 p-4 flex flex-col justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">What data is leveraged to present ads?</p>
-                  <p className="text-xs text-muted-foreground mt-1">We present ads based on your details and engagement. You have the ability to manage these preferences.</p>
-                </div>
-                <button className="w-full mt-3 text-xs font-medium text-primary-foreground bg-primary rounded-md py-2 hover:bg-primary/90 transition-colors">
-                  More details
-                </button>
+            <h3 className="text-sm font-semibold text-foreground mb-3">Ads From Ad Partners</h3>
+            <div
+              className="flex items-center justify-between px-4 py-3 border rounded-lg hover:bg-muted/40 transition-colors cursor-pointer"
+              onClick={() => updateSettings({ show_ads_in_external_apps: !adSettings.show_ads_in_external_apps })}
+            >
+              <div>
+                <p className="text-sm font-medium text-foreground">Ads in external apps</p>
+                <p className="text-xs text-muted-foreground">Decide whether you view ads from the Audience Network in external apps.</p>
+                <p className="text-xs text-primary font-medium mt-0.5">
+                  {adSettings.show_ads_in_external_apps ? 'Displaying ads in external apps' : 'Not displaying ads in external apps'}
+                </p>
               </div>
-              <div className="rounded-lg border border-border/50 p-4 flex flex-col justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Do we sell your data?</p>
-                  <p className="text-xs text-muted-foreground mt-1">No. We never sell your personal data.</p>
-                </div>
-                <button className="w-full mt-3 text-xs font-medium text-primary-foreground bg-primary rounded-md py-2 hover:bg-primary/90 transition-colors">
-                  More details
-                </button>
-              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
             </div>
           </div>
 
-          {/* Footer links */}
-          <div className="space-y-2">
-            <button className="w-full text-xs font-medium text-muted-foreground border border-border/50 rounded-lg py-2.5 hover:bg-muted/40 transition-colors">
-              Discover more in Privacy Center
-            </button>
-            <button className="w-full text-xs font-medium text-muted-foreground border border-border/50 rounded-lg py-2.5 hover:bg-muted/40 transition-colors">
-              Discover more about Platform Ads
-            </button>
+          <Separator />
+
+          {/* Ads About Tone */}
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-3">Ads About Tone</h3>
+            <div
+              className="flex items-center justify-between px-4 py-3 border rounded-lg hover:bg-muted/40 transition-colors cursor-pointer"
+              onClick={() => updateSettings({ use_activity_for_external_ads: !adSettings.use_activity_for_external_ads })}
+            >
+              <div>
+                <p className="text-sm font-medium text-foreground">Ads regarding the platform</p>
+                <p className="text-xs text-muted-foreground">Decide whether we leverage your engagement to display ads about Tone on other services.</p>
+                <p className="text-xs text-primary font-medium mt-0.5">
+                  {adSettings.use_activity_for_external_ads ? 'Leveraging this data' : 'Not leveraging this data'}
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Social Interactions */}
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-3">Social Interactions</h3>
+            <div
+              className="flex items-center justify-between px-4 py-3 border rounded-lg hover:bg-muted/40 transition-colors cursor-pointer"
+              onClick={() => updateSettings({ social_interactions_visibility: adSettings.social_interactions_visibility === 'friends' ? 'only_me' : 'friends' })}
+            >
+              <div>
+                <p className="text-sm font-medium text-foreground">Social engagements</p>
+                <p className="text-xs text-muted-foreground">Decide who can view your social engagements alongside ads.</p>
+                <p className="text-xs text-primary font-medium mt-0.5">
+                  {adSettings.social_interactions_visibility === 'friends' ? 'Visible to friends' : 'Only me'}
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
+            </div>
           </div>
         </TabsContent>
       </Tabs>

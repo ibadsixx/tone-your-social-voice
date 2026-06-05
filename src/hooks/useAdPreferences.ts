@@ -32,14 +32,18 @@ export interface AdTopic {
 }
 
 export interface AdSettings {
+  use_categories: boolean;
   use_partner_data: boolean;
+  audience_based_advertising: boolean;
   show_ads_in_external_apps: boolean;
   use_activity_for_external_ads: boolean;
   social_interactions_visibility: string;
 }
 
 const defaultSettings: AdSettings = {
+  use_categories: true,
   use_partner_data: true,
+  audience_based_advertising: true,
   show_ads_in_external_apps: true,
   use_activity_for_external_ads: true,
   social_interactions_visibility: 'friends',
@@ -81,7 +85,9 @@ export const useAdPreferences = () => {
     }
     if (setRes.data) {
       setAdSettings({
+        use_categories: setRes.data.use_categories ?? true,
         use_partner_data: setRes.data.use_partner_data ?? true,
+        audience_based_advertising: setRes.data.audience_based_advertising ?? true,
         show_ads_in_external_apps: setRes.data.show_ads_in_external_apps ?? true,
         use_activity_for_external_ads: setRes.data.use_activity_for_external_ads ?? true,
         social_interactions_visibility: setRes.data.social_interactions_visibility ?? 'friends',
