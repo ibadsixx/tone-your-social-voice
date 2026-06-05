@@ -26,6 +26,7 @@ const AdPreferences = () => {
   const [audienceBasedOpen, setAudienceBasedOpen] = useState(false);
   const [adsAboutToneOpen, setAdsAboutToneOpen] = useState(false);
   const [socialInteractionsOpen, setSocialInteractionsOpen] = useState(false);
+  const [adsFromPartnersOpen, setAdsFromPartnersOpen] = useState(false);
   const [profileData, setProfileData] = useState({ birth_year: 0, country: '' });
 
   useEffect(() => {
@@ -302,6 +303,30 @@ const AdPreferences = () => {
                   </div>
                 ))}
               </div>
+              <Separator className="my-1" />
+              <p className="text-sm text-muted-foreground">Allow us to use categories based on your profile and activity to show relevant ads.</p>
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => { updateSettings({ use_categories: true }); setCategoriesOpen(false); }}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    adSettings.use_categories
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  }`}
+                >
+                  Allow
+                </button>
+                <button
+                  onClick={() => { updateSettings({ use_categories: false }); setCategoriesOpen(false); }}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    !adSettings.use_categories
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  }`}
+                >
+                  Don't Allow
+                </button>
+              </div>
             </DialogContent>
           </Dialog>
 
@@ -418,18 +443,51 @@ const AdPreferences = () => {
             <h3 className="text-sm font-semibold text-foreground mb-3">Ads From Ad Partners</h3>
             <div
               className="flex items-center justify-between px-4 py-3 border rounded-lg hover:bg-muted/40 transition-colors cursor-pointer"
-              onClick={() => updateSettings({ show_ads_in_external_apps: !adSettings.show_ads_in_external_apps })}
+              onClick={() => setAdsFromPartnersOpen(true)}
             >
               <div>
                 <p className="text-sm font-medium text-foreground">Ads in external apps</p>
                 <p className="text-xs text-muted-foreground">Decide whether you view ads from the Audience Network in external apps.</p>
                 <p className="text-xs text-primary font-medium mt-0.5">
-                  {adSettings.show_ads_in_external_apps ? 'Displaying ads in external apps' : 'Not displaying ads in external apps'}
+                  {adSettings.show_ads_in_external_apps ? 'Allow' : "Don't allow"}
                 </p>
               </div>
               <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
             </div>
           </div>
+
+          <Dialog open={adsFromPartnersOpen} onOpenChange={setAdsFromPartnersOpen}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Ads From Ad Partners</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                Allow ads from Audience Network to appear in external apps?
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => { updateSettings({ show_ads_in_external_apps: true }); setAdsFromPartnersOpen(false); }}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    adSettings.show_ads_in_external_apps
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  }`}
+                >
+                  Allow
+                </button>
+                <button
+                  onClick={() => { updateSettings({ show_ads_in_external_apps: false }); setAdsFromPartnersOpen(false); }}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    !adSettings.show_ads_in_external_apps
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  }`}
+                >
+                  Don't Allow
+                </button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <Separator />
 
