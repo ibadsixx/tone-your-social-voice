@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -70,10 +71,20 @@ type ExportRequest = {
  */
 const YourInformationAndPermissions: React.FC = () => {
   const { toast } = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [requesting, setRequesting] = useState(false);
 
-  // State to track the currently selected menu option
-  const [selectedOption, setSelectedOption] = useState<string>('export');
+  // State to track the currently selected menu option — derived from URL
+  const [selectedOption, setSelectedOption] = useState<string>(() => {
+    if (location.pathname === '/settings/information/export') return 'export';
+    if (location.pathname === '/settings/information/access') return 'access';
+    if (location.pathname === '/settings/information/searchhistory') return 'search';
+    if (location.pathname === '/settings/information/activity') return 'activity';
+    if (location.pathname === '/settings/information/adpartners') return 'partners';
+    if (location.pathname === '/settings/information/contacts') return 'contacts';
+    return 'landing';
+  });
 
   // Menu options configuration
   const menuOptions: MenuOption[] = [
@@ -211,8 +222,55 @@ const YourInformationAndPermissions: React.FC = () => {
     fetchSearchHistory();
   }, []);
 
+  useEffect(() => {
+    if (location.pathname === '/settings/information/export') {
+      setSelectedOption('export');
+    } else if (location.pathname === '/settings/information/access') {
+      setSelectedOption('access');
+    } else if (location.pathname === '/settings/information/searchhistory') {
+      setSelectedOption('search');
+    } else if (location.pathname === '/settings/information/activity') {
+      setSelectedOption('activity');
+    } else if (location.pathname === '/settings/information/adpartners') {
+      setSelectedOption('partners');
+    } else if (location.pathname === '/settings/information/contacts') {
+      setSelectedOption('contacts');
+    } else {
+      setSelectedOption('landing');
+    }
+  }, [location.pathname]);
+
   const renderRightContent = () => {
     switch (selectedOption) {
+      case 'landing':
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {menuOptions.map((option) => {
+                const Icon = option.icon;
+                const pathMap: Record<string, string> = {
+                  export: '/settings/information/export',
+                  access: '/settings/information/access',
+                  search: '/settings/information/searchhistory',
+                  activity: '/settings/information/activity',
+                  partners: '/settings/information/adpartners',
+                  contacts: '/settings/information/contacts',
+                };
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => navigate(pathMap[option.id])}
+                    className="flex flex-col items-center gap-3 p-6 border rounded-xl hover:bg-accent/50 hover:border-primary/50 transition-all duration-200 text-center group"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                      <Icon className="w-6 h-6 text-primary" />
+                    </div>
+                    <span className="font-medium text-sm">{option.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+        );
+
       case 'export':
         return (
           <div className="space-y-6">
@@ -499,8 +557,9 @@ const YourInformationAndPermissions: React.FC = () => {
       </div>
 
       {/* Main content with left menu and right content */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className={`grid grid-cols-1 gap-6 ${selectedOption === 'landing' ? '' : 'lg:grid-cols-4'}`}>
         {/* Left Menu */}
+        {selectedOption !== 'landing' && (
         <div className="lg:col-span-1">
           <Card className="border-border/50">
             <CardHeader>
@@ -515,7 +574,22 @@ const YourInformationAndPermissions: React.FC = () => {
                   return (
                     <button
                       key={option.id}
-                      onClick={() => setSelectedOption(option.id)}
+                      onClick={() => {
+                        if (option.id === 'export') {
+                          navigate('/settings/information/export');
+                        } else if (option.id === 'access') {
+                          navigate('/settings/information/access');
+                        } else if (option.id === 'search') {
+                          navigate('/settings/information/searchhistory');
+                        } else if (option.id === 'activity') {
+                          navigate('/settings/information/activity');
+                        } else if (option.id === 'partners') {
+                          navigate('/settings/information/adpartners');
+                        } else if (option.id === 'contacts') {
+                          navigate('/settings/information/contacts');
+                        }
+                        setSelectedOption(option.id);
+                      }}
                       className={`w-full flex items-center space-x-3 px-4 py-3 text-left text-sm font-medium transition-all duration-200 rounded-none first:rounded-t-none last:rounded-b-lg ${
                         isActive
                           ? 'bg-primary text-primary-foreground shadow-sm'
@@ -531,9 +605,10 @@ const YourInformationAndPermissions: React.FC = () => {
             </CardContent>
           </Card>
         </div>
+        )}
 
         {/* Right Content */}
-        <div className="lg:col-span-3">
+        <div className={selectedOption === 'landing' ? 'lg:col-span-4' : 'lg:col-span-3'}>
           <div className="transition-all duration-300 ease-in-out">
             {renderRightContent()}
           </div>

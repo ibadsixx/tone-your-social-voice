@@ -76,6 +76,13 @@ const App = () => (
                 <Route path="settings" element={<Settings />} />
                 <Route path="settings/details" element={<Settings />} />
                 <Route path="settings/security" element={<Settings />} />
+                <Route path="settings/ads" element={<Settings />} />
+                <Route path="settings/information/export" element={<Settings />} />
+                <Route path="settings/information/access" element={<Settings />} />
+                <Route path="settings/information/searchhistory" element={<Settings />} />
+                <Route path="settings/information/activity" element={<Settings />} />
+                <Route path="settings/information/adpartners" element={<Settings />} />
+                <Route path="settings/information/contacts" element={<Settings />} />
                 <Route path="settings/information" element={<Settings />} />
                 <Route path="saved" element={<Saved />} />
                 <Route path="mentions" element={<Mentions />} />
