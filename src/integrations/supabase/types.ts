@@ -4458,6 +4458,16 @@ export type Database = {
           created_at: string
         }[]
       }
+      get_my_ad_partners: {
+        Args: Record<string, never>
+        Returns: {
+          partner_id: string
+          name: string
+          description: string
+          icon_color: string
+          enabled: boolean
+        }[]
+      }
       get_my_encryption_keys: {
         Args: Record<string, never>
         Returns: Json
@@ -4542,9 +4552,17 @@ export type Database = {
         Args: { p_conversation_id: string }
         Returns: undefined
       }
+      opt_out_all_ad_partners: {
+        Args: Record<string, never>
+        Returns: undefined
+      }
       toggle_reel_like: {
         Args: { p_reel_id: string; p_user_id: string }
         Returns: Json
+      }
+      toggle_ad_partner: {
+        Args: { p_partner_id: string; p_enabled: boolean }
+        Returns: undefined
       }
       update_conversation_quick_emoji: {
         Args: { p_conversation_id: string; p_quick_emoji: string }

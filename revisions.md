@@ -611,3 +611,19 @@ Adds online/offline indicators to conversation list avatars and chat window head
 **Files:**
 - `supabase/migrations/20260605000003_activity_triggers.sql` — 4 SECURITY DEFINER trigger functions + triggers on `posts`, `profiles`, `comments`, `follows`
 - `supabase/migrations/20260605000004_backfill_user_activity.sql` — backfill RPC for existing data
+
+## 2026-06-05 (later)
+
+### Active Ad Partners page wired to database
+
+**Problem:** The "Specific Ad Partners" section under `case 'partners'` had three hardcoded ad partner cards with fake data and no functional controls.
+
+**Fixes:**
+- **Migration** — `20260605000005_ad_partners.sql`: creates `ad_partners` table (seeded with 3 partners), `user_ad_partner_settings` join table (user_id, partner_id, enabled), RLS, RPCs `get_my_ad_partners`, `toggle_ad_partner`, `opt_out_all_ad_partners`
+- **Types** — Added `get_my_ad_partners`, `toggle_ad_partner`, `opt_out_all_ad_partners` to `supabase/types.ts` RPC definitions
+- **UI** — Replaced hardcoded partner cards with `AdPartnersSection` component that fetches real data via `get_my_ad_partners`, renders each partner with a `<Switch>` toggle wired to `toggle_ad_partner`, and "Opt Out of All Personalized Ads" button calling `opt_out_all_ad_partners` with loading spinner + toast feedback
+
+**Files:**
+- `supabase/migrations/20260605000005_ad_partners.sql` — ad_partners + user_ad_partner_settings tables, RLS, RPCs
+- `src/integrations/supabase/types.ts` — RPC type definitions
+- `src/components/YourInformationAndPermissions.tsx` — AdPartnersSection component replacing hardcoded JSX

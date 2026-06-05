@@ -36,6 +36,7 @@ import {
   XCircle,
   Archive
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import YourActivity from './YourActivity';
 
 /**
@@ -472,83 +473,7 @@ const YourInformationAndPermissions: React.FC = () => {
         );
 
       case 'partners':
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-semibold text-foreground mb-2">Specific Ad Partners</h2>
-              <p className="text-muted-foreground">
-                Manage which advertising partners can show you personalized ads.
-              </p>
-            </div>
-
-            <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Globe className="w-5 h-5" />
-                  Active Ad Partners
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
-                        <Globe className="w-5 h-5 text-white" />
-                      </div>
-                      <div>
-                        <p className="font-medium">Global Ads Network</p>
-                        <p className="text-sm text-muted-foreground">Personalized ads based on your interests</p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm">Manage</Button>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
-                        <Shield className="w-5 h-5 text-white" />
-                      </div>
-                      <div>
-                        <p className="font-medium">Privacy-First Ads</p>
-                        <p className="text-sm text-muted-foreground">Non-tracking advertisement service</p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm">Manage</Button>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
-                        <Users className="w-5 h-5 text-white" />
-                      </div>
-                      <div>
-                        <p className="font-medium">Social Commerce</p>
-                        <p className="text-sm text-muted-foreground">Ads from brands you follow</p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm">Manage</Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle>Partner Preferences</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <Button variant="outline" className="w-full">
-                    View All Ad Partners
-                  </Button>
-                  <Button variant="outline" className="w-full">
-                    Opt Out of All Personalized Ads
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        );
+        return <AdPartnersSection />;
 
       case 'activity':
         return <YourActivity />;
@@ -691,5 +616,125 @@ const YourInformationAndPermissions: React.FC = () => {
     </div>
   );
 };
+
+const iconMap: Record<string, React.ElementType> = {
+  blue: Globe,
+  green: Shield,
+  purple: Users,
+};
+
+const colorMap: Record<string, string> = {
+  blue: 'bg-blue-500',
+  green: 'bg-green-500',
+  purple: 'bg-purple-500',
+};
+
+function AdPartnersSection() {
+  const [partners, setPartners] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [optOutLoading, setOptOutLoading] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    loadPartners();
+  }, []);
+
+  async function loadPartners() {
+    setLoading(true);
+    const { data, error } = await supabase.rpc('get_my_ad_partners');
+    if (error) {
+      toast({ variant: 'destructive', title: 'Failed to load partners', description: error.message });
+    } else {
+      setPartners(data || []);
+    }
+    setLoading(false);
+  }
+
+  async function togglePartner(partnerId: string, enabled: boolean) {
+    setPartners(prev => prev.map(p => p.partner_id === partnerId ? { ...p, enabled } : p));
+    const { error } = await supabase.rpc('toggle_ad_partner', { p_partner_id: partnerId, p_enabled: enabled });
+    if (error) {
+      toast({ variant: 'destructive', title: 'Failed to update preference', description: error.message });
+      loadPartners();
+    } else {
+      toast({ title: `Partner ${enabled ? 'enabled' : 'disabled'}` });
+    }
+  }
+
+  async function optOutAll() {
+    setOptOutLoading(true);
+    const { error } = await supabase.rpc('opt_out_all_ad_partners');
+    if (error) {
+      toast({ variant: 'destructive', title: 'Failed to opt out', description: error.message });
+    } else {
+      setPartners(prev => prev.map(p => ({ ...p, enabled: false })));
+      toast({ title: 'Opted out of all personalized ads' });
+    }
+    setOptOutLoading(false);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-semibold text-foreground mb-2">Specific Ad Partners</h2>
+        <p className="text-muted-foreground">
+          Manage which advertising partners can show you personalized ads.
+        </p>
+      </div>
+
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="w-5 h-5" />
+            Active Ad Partners
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-3">
+            {partners.map(partner => {
+              const Icon = iconMap[partner.icon_color] || Globe;
+              return (
+                <div key={partner.partner_id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-10 h-10 ${colorMap[partner.icon_color] || 'bg-gray-500'} rounded-lg flex items-center justify-center`}>
+                      <Icon className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <p className="font-medium">{partner.name}</p>
+                      <p className="text-sm text-muted-foreground">{partner.description}</p>
+                    </div>
+                  </div>
+                  <Switch checked={partner.enabled} onCheckedChange={checked => togglePartner(partner.partner_id, checked)} />
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle>Partner Preferences</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <Button variant="outline" className="w-full" onClick={optOutAll} disabled={optOutLoading}>
+              {optOutLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Opt Out of All Personalized Ads
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export default YourInformationAndPermissions;
