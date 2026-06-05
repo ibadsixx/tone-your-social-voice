@@ -25,6 +25,7 @@ const AdPreferences = () => {
   const [partnerDataOpen, setPartnerDataOpen] = useState(false);
   const [audienceBasedOpen, setAudienceBasedOpen] = useState(false);
   const [adsAboutToneOpen, setAdsAboutToneOpen] = useState(false);
+  const [socialInteractionsOpen, setSocialInteractionsOpen] = useState(false);
   const [profileData, setProfileData] = useState({ birth_year: 0, country: '' });
 
   useEffect(() => {
@@ -473,18 +474,54 @@ const AdPreferences = () => {
             <h3 className="text-sm font-semibold text-foreground mb-3">Social Interactions</h3>
             <div
               className="flex items-center justify-between px-4 py-3 border rounded-lg hover:bg-muted/40 transition-colors cursor-pointer"
-              onClick={() => updateSettings({ social_interactions_visibility: adSettings.social_interactions_visibility === 'friends' ? 'only_me' : 'friends' })}
+              onClick={() => setSocialInteractionsOpen(true)}
             >
               <div>
                 <p className="text-sm font-medium text-foreground">Social engagements</p>
-                <p className="text-xs text-muted-foreground">Decide who can view your social engagements alongside ads.</p>
+                <p className="text-xs text-muted-foreground">Controlling the display of social interactions within advertisements.</p>
                 <p className="text-xs text-primary font-medium mt-0.5">
-                  {adSettings.social_interactions_visibility === 'friends' ? 'Visible to friends' : 'Only me'}
+                  {adSettings.social_interactions_visibility === 'friends' ? 'Show to friends' : "Don't show"}
                 </p>
               </div>
               <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
             </div>
           </div>
+
+          <Dialog open={socialInteractionsOpen} onOpenChange={setSocialInteractionsOpen}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Social Interactions</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground mb-1">
+                Controlling the display of social interactions within advertisements.
+              </p>
+              <p className="text-xs text-muted-foreground italic">
+                Example: If a user likes a page, it can appear to their friends: Ahmed likes XYZ.
+              </p>
+              <div className="flex gap-3 pt-3">
+                <button
+                  onClick={() => { updateSettings({ social_interactions_visibility: 'friends' }); setSocialInteractionsOpen(false); }}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    adSettings.social_interactions_visibility === 'friends'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  }`}
+                >
+                  Show to friends
+                </button>
+                <button
+                  onClick={() => { updateSettings({ social_interactions_visibility: 'only_me' }); setSocialInteractionsOpen(false); }}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    adSettings.social_interactions_visibility === 'only_me'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  }`}
+                >
+                  Don't show
+                </button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
       </Tabs>
     </div>
