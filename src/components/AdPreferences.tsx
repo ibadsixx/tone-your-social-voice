@@ -22,6 +22,7 @@ const AdPreferences = () => {
 
   const { user } = useAuth();
   const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [partnerDataOpen, setPartnerDataOpen] = useState(false);
   const [profileData, setProfileData] = useState({ birth_year: 0, country: '' });
 
   useEffect(() => {
@@ -308,18 +309,51 @@ const AdPreferences = () => {
             <h3 className="text-sm font-semibold text-foreground mb-3">Activity Information From Ad Partners</h3>
             <div
               className="flex items-center justify-between px-4 py-3 border rounded-lg hover:bg-muted/40 transition-colors cursor-pointer"
-              onClick={() => updateSettings({ use_partner_data: !adSettings.use_partner_data })}
+              onClick={() => setPartnerDataOpen(true)}
             >
               <div>
                 <p className="text-sm font-medium text-foreground">Engagement data from ad collaborators</p>
                 <p className="text-xs text-muted-foreground">Decide whether we leverage this to present ads that are more aligned to you.</p>
                 <p className="text-xs text-primary font-medium mt-0.5">
-                  {adSettings.use_partner_data ? 'Leveraging this data' : 'Not leveraging this data'}
+                  {adSettings.use_partner_data ? 'Allowing use of data' : 'Not allowing use of data'}
                 </p>
               </div>
               <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
             </div>
           </div>
+
+          <Dialog open={partnerDataOpen} onOpenChange={setPartnerDataOpen}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Activity Information From Ad Partners</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                Can user data be used to target them with personalized ads?
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => { updateSettings({ use_partner_data: true }); setPartnerDataOpen(false); }}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    adSettings.use_partner_data
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  }`}
+                >
+                  Allow
+                </button>
+                <button
+                  onClick={() => { updateSettings({ use_partner_data: false }); setPartnerDataOpen(false); }}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    !adSettings.use_partner_data
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  }`}
+                >
+                  Don't Allow
+                </button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <Separator />
 
