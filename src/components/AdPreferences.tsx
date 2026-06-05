@@ -23,6 +23,7 @@ const AdPreferences = () => {
   const { user } = useAuth();
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [partnerDataOpen, setPartnerDataOpen] = useState(false);
+  const [audienceBasedOpen, setAudienceBasedOpen] = useState(false);
   const [profileData, setProfileData] = useState({ birth_year: 0, country: '' });
 
   useEffect(() => {
@@ -362,18 +363,51 @@ const AdPreferences = () => {
             <h3 className="text-sm font-semibold text-foreground mb-3">Audience-Based Advertising</h3>
             <div
               className="flex items-center justify-between px-4 py-3 border rounded-lg hover:bg-muted/40 transition-colors cursor-pointer"
-              onClick={() => updateSettings({ audience_based_advertising: !adSettings.audience_based_advertising })}
+              onClick={() => setAudienceBasedOpen(true)}
             >
               <div>
                 <p className="text-sm font-medium text-foreground">Interest-driven promotion</p>
                 <p className="text-xs text-muted-foreground">Promoters leveraging your engagement or details to reach you with ads.</p>
                 <p className="text-xs text-primary font-medium mt-0.5">
-                  {adSettings.audience_based_advertising ? 'Audience ads enabled' : 'Audience ads disabled'}
+                  {adSettings.audience_based_advertising ? 'Enabled' : 'Disabled'}
                 </p>
               </div>
               <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
             </div>
           </div>
+
+          <Dialog open={audienceBasedOpen} onOpenChange={setAudienceBasedOpen}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Audience-Based Advertising</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                Can partner data be used to improve advertising?
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => { updateSettings({ audience_based_advertising: true }); setAudienceBasedOpen(false); }}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    adSettings.audience_based_advertising
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  }`}
+                >
+                  Enabled
+                </button>
+                <button
+                  onClick={() => { updateSettings({ audience_based_advertising: false }); setAudienceBasedOpen(false); }}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    !adSettings.audience_based_advertising
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  }`}
+                >
+                  Disabled
+                </button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <Separator />
 
