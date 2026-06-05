@@ -557,3 +557,39 @@ Adds online/offline indicators to conversation list avatars and chat window head
 
 **Files:**
 - `src/pages/Settings.tsx` — prepended 'landing' with SettingsIcon gear icon to `sidebarOptions`
+
+## 2026-06-05
+
+### Export Your Information — dedicated `/settings/information` route, DB-backed export request form, past exports list
+
+**Problem:** The "Export Your Information" section inside "Your information and permissions" had no dedicated URL and no database backend — the export buttons were frontend-only with no `onClick` handlers.
+
+**Fixes:**
+- **`/settings/information` route** — `App.tsx`: added route; `Settings.tsx`: `getSectionFromPath` maps it to `'permissions'` section; sidebar navigates to `/settings/information` on click
+- **`export_requests` table** — `20260605000000_add_export_requests.sql`: creates `export_requests` table (`id`, `user_id`, `data_type`, `start_date`, `end_date`, `status`, `created_at`, `updated_at`) with RLS, `create_export_request` RPC (validates auth + date range), and `get_my_export_requests` RPC
+- **Download URL + completed_at** — `20260605000001_add_download_url_to_export_requests.sql`: adds `download_url` and `completed_at` columns; updates `get_my_export_requests` RPC to return them
+- **Export form** — `YourInformationAndPermissions.tsx`: replaced static option cards with a data type `<Select>`, two `<Calendar>` date pickers (start/end), and a **Request Export** button wired to `create_export_request` RPC with loading spinner + toast feedback
+- **Past exports list** — `YourInformationAndPermissions.tsx`: fetches past requests on mount via `get_my_export_requests`, shows a "Previously Requested Exports" card with data type, date, status badge (Pending/Processing/Ready/Failed), and a **Download** button for `ready` exports with a `download_url` link; list refreshes after a new request
+
+**Files:**
+- `src/App.tsx` — added `settings/information` route
+- `src/pages/Settings.tsx` — `getSectionFromPath` mapping, sidebar navigation
+- `src/components/YourInformationAndPermissions.tsx` — export form with data type select, date pickers, Request Export button wired to DB, past exports list with status badges and download links
+- `src/integrations/supabase/types.ts` — `create_export_request` and `get_my_export_requests` RPC types
+- `supabase/migrations/20260605000000_add_export_requests.sql` — `export_requests` table, RPCs, RLS
+- `supabase/migrations/20260605000001_add_download_url_to_export_requests.sql` — `download_url`/`completed_at` columns, updated RPC
+
+### Search History — DB-backed, saved from Search page, remove/clear
+
+**Problem:** The Search History section displayed hardcoded mock entries ("photography tips", "travel destinations", "@john_doe") with non-functional Remove/Clear buttons. No search queries were ever persisted.
+
+**Fixes:**
+- **`search_history` table** — `20260605000002_add_search_history.sql`: creates `search_history` table (`id`, `user_id`, `query`, `created_at`) with RLS; RPCs: `add_search_entry`, `get_my_search_history`, `remove_search_entry`, `clear_my_search_history`
+- **Search History page** — `YourInformationAndPermissions.tsx`: fetches real entries from `get_my_search_history` on mount; renders query + relative timestamp; Remove button calls `remove_search_entry`; Clear All calls `clear_my_search_history` with loading spinner + toast; shows empty state when no entries
+- **Search page saves queries** — `Search.tsx`: calls `add_search_entry` RPC when a result is clicked (mouse) or Enter is pressed (with or without a selected result)
+
+**Files:**
+- `src/components/YourInformationAndPermissions.tsx` — wired search history to DB, replaced hardcoded data with real fetch/remove/clear
+- `src/pages/Search.tsx` — saves search queries via `add_search_entry` RPC on result click or Enter
+- `src/integrations/supabase/types.ts` — `add_search_entry`, `get_my_search_history`, `remove_search_entry`, `clear_my_search_history` RPC types
+- `supabase/migrations/20260605000002_add_search_history.sql` — `search_history` table, RPCs, RLS
