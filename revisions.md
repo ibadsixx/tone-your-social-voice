@@ -593,3 +593,16 @@ Adds online/offline indicators to conversation list avatars and chat window head
 - `src/pages/Search.tsx` — saves search queries via `add_search_entry` RPC on result click or Enter
 - `src/integrations/supabase/types.ts` — `add_search_entry`, `get_my_search_history`, `remove_search_entry`, `clear_my_search_history` RPC types
 - `supabase/migrations/20260605000002_add_search_history.sql` — `search_history` table, RPCs, RLS
+
+### Your Activity — DB triggers auto-record posts, comments, follows, profile pic changes
+
+**Problem:** The Your Activity page queried `user_activity` table but nothing ever wrote to it — activity was never recorded, so the page always showed "No Activity Yet".
+
+**Fixes:**
+- **Post trigger** — `log_post_activity()` fires on `posts` INSERT; creates `post_created` or `photo_uploaded` entry with content preview
+- **Profile pic trigger** — `log_profile_pic_activity()` fires on `profiles` UPDATE of `profile_pic`; creates `profile_pic_changed` entry
+- **Comment trigger** — `log_comment_activity()` fires on `comments` INSERT; creates `comment_created` entry with post/comment content
+- **Follow trigger** — `log_follow_activity()` fires on `follows` INSERT; creates `follow` entry with target user's display name
+
+**Files:**
+- `supabase/migrations/20260605000003_activity_triggers.sql` — 4 SECURITY DEFINER trigger functions + triggers on `posts`, `profiles`, `comments`, `follows`
