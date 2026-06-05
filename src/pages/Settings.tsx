@@ -85,6 +85,7 @@ const Settings = () => {
   const getSectionFromPath = (path: string) => {
     if (path === '/settings/details') return 'personal';
     if (path === '/settings/security') return 'security';
+    if (path === '/settings/privacycheckup') return 'privacy';
     if (path === '/settings/ads') return 'ads';
     if (path.startsWith('/settings/information')) return 'permissions';
     return 'landing';
@@ -915,6 +916,8 @@ const Settings = () => {
                             navigate('/settings/details');
                           } else if (option.id === 'security') {
                             navigate('/settings/security');
+                          } else if (option.id === 'privacy') {
+                            navigate('/settings/privacycheckup');
                           } else if (option.id === 'permissions') {
                             navigate('/settings/information');
                           } else if (option.id === 'ads') {

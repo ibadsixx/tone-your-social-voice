@@ -76,6 +76,7 @@ const App = () => (
                 <Route path="settings" element={<Settings />} />
                 <Route path="settings/details" element={<Settings />} />
                 <Route path="settings/security" element={<Settings />} />
+                <Route path="settings/privacycheckup" element={<Settings />} />
                 <Route path="settings/ads" element={<Settings />} />
                 <Route path="settings/information/export" element={<Settings />} />
                 <Route path="settings/information/access" element={<Settings />} />
