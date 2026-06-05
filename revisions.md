@@ -673,3 +673,71 @@ The page now shows only the Contact Settings card with the three toggles. "Uploa
 
 **Files:**
 - `supabase/migrations/20260605000007_user_contacts.sql` — added `::TEXT` cast
+
+## 2026-06-05 (final)
+
+### Settings — dedicated URLs for information sub-pages and ad preferences
+
+**Problem:** The "Your Information and Permissions" sub-sections (Export, Access, Search History, etc.) and "Ad Preferences" had no dedicated URLs — they could only be accessed via the settings sidebar with no way to link or bookmark them.
+
+**Fixes:**
+- **Dedicated routes** — Added `settings/information/export`, `settings/information/access`, `settings/information/searchhistory`, `settings/information/activity`, `settings/information/adpartners`, `settings/information/contacts`, and `settings/ads` routes in App.tsx
+- **URL-aware section routing** — `Settings.tsx` `getSectionFromPath` uses `startsWith('/settings/information')` for all information sub-paths; sidebar navigation updated for all routes
+- **Information landing page** — `/settings/information` now shows a grid of clickable cards (icon + title) for each sub-section instead of defaulting to the export page
+- **Options menu hidden on landing** — The left "Options" sidebar only renders on sub-pages; the landing page uses full-width card grid
+- **Duplicate header removed** — Landing page no longer had duplicate title/description from both the main return and the landing case
+- **Sidebar link** — "Your Information and Permissions" icon navigates to `/settings/information` (landing), not directly to export
+
+**Files:**
+- `src/App.tsx` — 7 new routes added
+- `src/pages/Settings.tsx` — `getSectionFromPath` updated for all `/settings/information/*` paths, sidebar navigation for `ads`
+- `src/components/YourInformationAndPermissions.tsx` — URL-based sub-section state, landing card grid, conditional options menu, removed duplicate header
+
+### Ad Preferences — Ad interactions split into viewed/clicked/hidden sections
+
+**Problem:** The "Ad interactions" section under "Tailor ads" showed all ad activity in a single flat list with no categorization. There was no way to distinguish between ads the user viewed, clicked, or hid.
+
+**Fixes:**
+- **Migration** — `20260605000008_add_interaction_type_to_ad_activity.sql`: adds `interaction_type TEXT` column (`viewed`/`clicked`/`hidden`) with CHECK constraint and index
+- **Hook** — `useAdPreferences.ts`: `AdActivity` interface now includes `interaction_type`; select query fetches it
+- **UI** — "Ad interactions" section split into three sub-sections: "Ads you viewed", "Ads you clicked", and "Ads you hid", each with its own card grid and empty state
+
+**Files:**
+- `supabase/migrations/20260605000008_add_interaction_type_to_ad_activity.sql` — new column + constraint + index
+- `src/hooks/useAdPreferences.ts` — `interaction_type` in interface and query
+- `src/components/AdPreferences.tsx` — three categorized sub-sections
+
+### Ad Preferences — Ad subjects with interest toggles, saved ads section, renamed advertisers
+
+**Problem:** The "Ad subjects" section only displayed a static list with no way to express interest. The "Saved ads" section was separate from Ad interactions. The advertisers section had a vague title.
+
+**Fixes:**
+- **Migration** — `20260605000009_seed_ad_topics.sql`: creates `seed_default_ad_topics(p_user_id)` RPC that inserts 6 predefined topics (Technology, Sports, Fitness, Gaming, Travel, Education) with neutral preference
+- **Hook** — `useAdPreferences.ts`: auto-seeds topics on first fetch if empty; new `updateTopicPreference(topicId, preference)` function with optimistic update
+- **Ad subjects UI** — Replaced static list with interactive preference buttons (Interested / Neutral / Not interested) per topic
+- **Saved ads in Ad interactions** — Added "Ads you saved" as a 4th sub-section within Ad interactions; removed standalone "Bookmarked ads" section
+- **Renamed** — "Brands that showed you ads" → "Advertisers you saw ads from"
+
+**Files:**
+- `supabase/migrations/20260605000009_seed_ad_topics.sql` — seed RPC
+- `src/hooks/useAdPreferences.ts` — auto-seed, updateTopicPreference
+- `src/components/AdPreferences.tsx` — interactive ad subjects, saved ads in interactions, renamed advertisers
+- `src/integrations/supabase/types.ts` — seed_default_ad_topics RPC type
+
+## 2026-06-05 (even later)
+
+### Handle info — all sections converted to dialog-based choices, full DB persistence
+
+**Problem:** The "Handle info" tab in Ad Preferences had inline toggle buttons for Categories, Activity Information From Ad Partners, Audience-Based Advertising, Ads From Ad Partners, Ads About Tone, and Social Interactions. These toggles directly mutated DB state with no user confirmation, lacked explainer dialogs, and didn't communicate the choice effectively.
+
+**Fixes:**
+- **Categories Used to Reach You** — dialog now shows profile category data (age range, language, country, interests, device type) with Allow / Don't Allow buttons that update `use_categories` in `ad_settings`
+- **Activity Information From Ad Partners** — dialog with Allow / Don't Allow for `use_partner_data`
+- **Audience-Based Advertising** — dialog with Enabled / Disabled for `audience_based_advertising`
+- **Ads From Ad Partners** — dialog with Allow / Don't Allow for `show_ads_in_external_apps`
+- **Ads About Tone** — informational dialog showing "Advertisements related to Tone's services themselves." with Close button
+- **Social Interactions** — dialog with example ("Ahmed likes XYZ") and Show to friends / Don't show choices for `social_interactions_visibility` (`'friends'` / `'only_me'`)
+- All choices call `updateSettings()` which upserts to `ad_settings` table via Supabase
+
+**Files:**
+- `src/components/AdPreferences.tsx` — 6 new dialog state variables, replaced all inline `onClick` toggles with dialog-open handlers, Allow/Don't Allow/Enabled/Disabled buttons, informational Ads About Tone dialog, improved status labels
