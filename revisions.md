@@ -741,3 +741,18 @@ The page now shows only the Contact Settings card with the three toggles. "Uploa
 
 **Files:**
 - `src/components/AdPreferences.tsx` — 6 new dialog state variables, replaced all inline `onClick` toggles with dialog-open handlers, Allow/Don't Allow/Enabled/Disabled buttons, informational Ads About Tone dialog, improved status labels
+
+## 2026-06-05 (latest)
+
+### Privacy Checkup — dedicated `/settings/privacycheckup` route
+
+**Problem:** Privacy Checkup had no dedicated URL — it was only accessible as an inline section inside `/settings` with no way to link or bookmark it.
+
+**Fixes:**
+- **Route added** — `<Route path="settings/privacycheckup" element={<Settings />} />` in App.tsx
+- **Path mapping** — `getSectionFromPath` in Settings.tsx maps `/settings/privacycheckup` to `'privacy'`
+- **Sidebar navigation** — clicking Privacy Checkup icon navigates to `/settings/privacycheckup`
+
+**Files:**
+- `src/App.tsx` — new route
+- `src/pages/Settings.tsx` — path mapping + sidebar nav
