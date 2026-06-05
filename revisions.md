@@ -659,3 +659,10 @@ Adds online/offline indicators to conversation list avatars and chat window head
 - `supabase/migrations/20260605000007_user_contacts.sql` — user_contacts table, settings seeds, RPCs
 - `src/integrations/supabase/types.ts` — RPC type definitions
 - `src/components/YourInformationAndPermissions.tsx` — ContactSection component
+
+### Manage Contacts — removed Uploaded Contacts and Contact Management cards
+
+The page now shows only the Contact Settings card with the three toggles. "Uploaded Contacts" and "Contact Management" cards removed per request.
+
+**Files:**
+- `src/components/YourInformationAndPermissions.tsx` — ContactSection simplified

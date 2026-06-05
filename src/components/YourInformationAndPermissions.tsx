@@ -649,32 +649,22 @@ const settingDescriptions: Record<string, string> = {
 };
 
 function ContactSection() {
-  const [contacts, setContacts] = useState<any[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [deleteAllLoading, setDeleteAllLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    loadData();
+    loadSettings();
   }, []);
 
-  async function loadData() {
+  async function loadSettings() {
     setLoading(true);
-    const [contactsRes, settingsRes] = await Promise.all([
-      supabase.rpc('get_my_contacts'),
-      supabase.rpc('get_my_contact_settings'),
-    ]);
-    if (contactsRes.error) {
-      toast({ variant: 'destructive', title: 'Failed to load contacts', description: contactsRes.error.message });
-    } else {
-      setContacts(contactsRes.data || []);
-    }
-    if (settingsRes.error) {
-      toast({ variant: 'destructive', title: 'Failed to load settings', description: settingsRes.error.message });
+    const { data, error } = await supabase.rpc('get_my_contact_settings');
+    if (error) {
+      toast({ variant: 'destructive', title: 'Failed to load settings', description: error.message });
     } else {
       const map: Record<string, string> = {};
-      (settingsRes.data || []).forEach(s => { map[s.setting_name] = s.setting_value; });
+      (data || []).forEach(s => { map[s.setting_name] = s.setting_value; });
       setSettings(map);
     }
     setLoading(false);
@@ -686,30 +676,8 @@ function ContactSection() {
     const { error } = await supabase.rpc('update_contact_setting', { p_setting_name: name, p_setting_value: newVal });
     if (error) {
       toast({ variant: 'destructive', title: 'Failed to update setting', description: error.message });
-      loadData();
+      loadSettings();
     }
-  }
-
-  async function deleteContact(id: string) {
-    const { error } = await supabase.rpc('delete_my_contact', { p_contact_id: id });
-    if (error) {
-      toast({ variant: 'destructive', title: 'Failed to delete contact', description: error.message });
-    } else {
-      setContacts(prev => prev.filter(c => c.id !== id));
-      toast({ title: 'Contact deleted' });
-    }
-  }
-
-  async function deleteAll() {
-    setDeleteAllLoading(true);
-    const { error } = await supabase.rpc('delete_all_my_contacts');
-    if (error) {
-      toast({ variant: 'destructive', title: 'Failed to delete contacts', description: error.message });
-    } else {
-      setContacts([]);
-      toast({ title: 'All contacts deleted' });
-    }
-    setDeleteAllLoading(false);
   }
 
   if (loading) {
@@ -748,51 +716,6 @@ function ContactSection() {
               </Button>
             </div>
           ))}
-        </CardContent>
-      </Card>
-
-      <Card className="border-border/50">
-        <CardHeader>
-          <CardTitle>Uploaded Contacts</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {contacts.length === 0 ? (
-            <div className="text-center py-8">
-              <UserPlus className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground mb-4">No contacts have been uploaded</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {contacts.map(c => (
-                <div key={c.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div>
-                    <p className="font-medium">{c.name}</p>
-                    <p className="text-sm text-muted-foreground">{c.phone || c.email || ''}</p>
-                  </div>
-                  <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteContact(c.id)}>
-                    Remove
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="border-border/50">
-        <CardHeader>
-          <CardTitle>Contact Management</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <Button variant="outline" className="w-full">
-              Download Contact Data
-            </Button>
-            <Button variant="outline" className="w-full text-destructive" onClick={deleteAll} disabled={deleteAllLoading || contacts.length === 0}>
-              {deleteAllLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              Delete All Uploaded Contacts
-            </Button>
-          </div>
         </CardContent>
       </Card>
     </div>
