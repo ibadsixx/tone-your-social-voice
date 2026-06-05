@@ -666,3 +666,10 @@ The page now shows only the Contact Settings card with the three toggles. "Uploa
 
 **Files:**
 - `src/components/YourInformationAndPermissions.tsx` — ContactSection simplified
+
+### Fix: VARCHAR(100) → TEXT type mismatch in get_my_contact_settings
+
+`privacy_settings.setting_name` is `VARCHAR(100)` but the RPC returned `TEXT` — PostgreSQL rejects this in TABLE-returning functions. Added `::TEXT` cast in the query.
+
+**Files:**
+- `supabase/migrations/20260605000007_user_contacts.sql` — added `::TEXT` cast

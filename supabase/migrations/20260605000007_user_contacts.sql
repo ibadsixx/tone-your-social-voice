@@ -114,7 +114,7 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  SELECT ps.setting_name, ps.setting_value
+  SELECT ps.setting_name::TEXT, ps.setting_value
   FROM public.privacy_settings ps
   WHERE ps.user_id = auth.uid()
     AND ps.setting_name IN ('contact_upload_enabled', 'friend_suggestions_enabled', 'contact_sync_enabled');
