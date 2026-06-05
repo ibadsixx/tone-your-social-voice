@@ -4176,6 +4176,10 @@ export type Database = {
         Args: { p_body: string; p_reel_id: string; p_user_id: string }
         Returns: Json
       }
+      add_search_entry: {
+        Args: { p_query: string }
+        Returns: string
+      }
       are_users_friends: {
         Args: { user_a: string; user_b: string }
         Returns: boolean
@@ -4250,6 +4254,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      remove_search_entry: {
+        Args: { p_entry_id: string }
+        Returns: undefined
+      }
       update_group_member_role: {
         Args: {
           p_conversation_id: string
@@ -4283,6 +4291,10 @@ export type Database = {
           p_end_date?: string
         }
         Returns: string
+      }
+      clear_my_search_history: {
+        Args: Record<string, never>
+        Returns: undefined
       }
       follow_channel: {
         Args: { p_conversation_id: string }
@@ -4435,6 +4447,14 @@ export type Database = {
           status: string
           download_url: string | null
           completed_at: string | null
+          created_at: string
+        }[]
+      }
+      get_my_search_history: {
+        Args: Record<string, never>
+        Returns: {
+          id: string
+          query: string
           created_at: string
         }[]
       }

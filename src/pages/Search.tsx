@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Search as SearchIcon, User, Users, FileText, Loader2, Grid3X3, Plus } from 'lucide-react';
 import { useSearch, SearchResult } from '@/hooks/useSearch';
 import { useExplorePosts } from '@/hooks/useExplorePosts';
+import { supabase } from '@/integrations/supabase/client';
 import ExplorePostGrid from '@/components/ExplorePostGrid';
 import PostModal from '@/components/PostModal';
 import { cn } from '@/lib/utils';
@@ -47,7 +48,16 @@ const Search = () => {
     setShowResults(value.trim().length > 0);
   };
 
+  const saveSearchQuery = async (q: string) => {
+    try {
+      await supabase.rpc('add_search_entry', { p_query: q });
+    } catch {
+      // silently fail — search history is non-critical
+    }
+  };
+
   const handleResultClick = (result: SearchResult) => {
+    saveSearchQuery(query);
     switch (result.type) {
       case 'person':
         navigate(`/profile/${result.username}`);
@@ -91,6 +101,8 @@ const Search = () => {
         e.preventDefault();
         if (selectedIndex >= 0 && flatResults[selectedIndex]) {
           handleResultClick(flatResults[selectedIndex]);
+        } else if (query.trim()) {
+          saveSearchQuery(query.trim());
         }
         break;
       case 'Escape':

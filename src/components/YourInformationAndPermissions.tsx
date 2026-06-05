@@ -19,7 +19,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { 
   Download, 
   Eye, 
@@ -162,6 +162,53 @@ const YourInformationAndPermissions: React.FC = () => {
         return <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground"><Clock className="w-3 h-3" />Pending</span>;
     }
   };
+
+  const [searchEntries, setSearchEntries] = useState<{ id: string; query: string; created_at: string }[]>([]);
+  const [fetchingSearch, setFetchingSearch] = useState(false);
+  const [clearingSearch, setClearingSearch] = useState(false);
+
+  const fetchSearchHistory = async () => {
+    setFetchingSearch(true);
+    try {
+      const { data, error } = await supabase.rpc('get_my_search_history');
+      if (error) throw error;
+      setSearchEntries(data || []);
+    } catch (error) {
+      console.error('Error fetching search history:', error);
+    } finally {
+      setFetchingSearch(false);
+    }
+  };
+
+  const handleRemoveSearchEntry = async (entryId: string) => {
+    try {
+      const { error } = await supabase.rpc('remove_search_entry', { p_entry_id: entryId });
+      if (error) throw error;
+      setSearchEntries((prev) => prev.filter((e) => e.id !== entryId));
+    } catch (error) {
+      console.error('Error removing search entry:', error);
+      toast({ title: 'Error', description: 'Failed to remove entry', variant: 'destructive' });
+    }
+  };
+
+  const handleClearSearchHistory = async () => {
+    setClearingSearch(true);
+    try {
+      const { error } = await supabase.rpc('clear_my_search_history');
+      if (error) throw error;
+      setSearchEntries([]);
+      toast({ title: 'Search history cleared' });
+    } catch (error) {
+      console.error('Error clearing search history:', error);
+      toast({ title: 'Error', description: 'Failed to clear search history', variant: 'destructive' });
+    } finally {
+      setClearingSearch(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSearchHistory();
+  }, []);
 
   const renderRightContent = () => {
     switch (selectedOption) {
@@ -384,54 +431,41 @@ const YourInformationAndPermissions: React.FC = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium">"photography tips"</p>
-                      <p className="text-xs text-muted-foreground">2 hours ago</p>
-                    </div>
-                    <Button variant="ghost" size="sm">Remove</Button>
+                {fetchingSearch ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                   </div>
-                  
-                  <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium">"travel destinations"</p>
-                      <p className="text-xs text-muted-foreground">1 day ago</p>
-                    </div>
-                    <Button variant="ghost" size="sm">Remove</Button>
+                ) : searchEntries.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No search history</p>
                   </div>
-                  
-                  <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium">"@john_doe"</p>
-                      <p className="text-xs text-muted-foreground">3 days ago</p>
-                    </div>
-                    <Button variant="ghost" size="sm">Remove</Button>
+                ) : (
+                  <div className="space-y-1">
+                    {searchEntries.map((entry) => (
+                      <div key={entry.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{entry.query}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(entry.created_at), { addSuffix: true })}
+                          </p>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => handleRemoveSearchEntry(entry.id)}>
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                </div>
-                
-                <div className="pt-4 border-t">
-                  <Button variant="outline" className="w-full">
-                    Clear All Search History
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                )}
 
-            <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle>Search Settings</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Save Search History</p>
-                      <p className="text-sm text-muted-foreground">Allow Tone to save your searches</p>
-                    </div>
-                    <Button variant="outline" size="sm">Enabled</Button>
+                {searchEntries.length > 0 && (
+                  <div className="pt-4 border-t">
+                    <Button variant="outline" className="w-full" onClick={handleClearSearchHistory} disabled={clearingSearch}>
+                      {clearingSearch && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Clear All Search History
+                    </Button>
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </div>
