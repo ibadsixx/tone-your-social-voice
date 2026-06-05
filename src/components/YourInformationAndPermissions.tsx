@@ -479,81 +479,7 @@ const YourInformationAndPermissions: React.FC = () => {
         return <YourActivity />;
 
       case 'contacts':
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-semibold text-foreground mb-2">Manage Contacts</h2>
-              <p className="text-muted-foreground">
-                Control how Tone uses your contacts and manages your connections.
-              </p>
-            </div>
-
-            <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <UserPlus className="w-5 h-5" />
-                  Contact Settings
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-medium">Contact Upload</p>
-                      <p className="text-sm text-muted-foreground">Allow Tone to access your device contacts</p>
-                    </div>
-                    <Button variant="outline" size="sm">Disabled</Button>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-medium">Friend Suggestions</p>
-                      <p className="text-sm text-muted-foreground">Get suggestions based on mutual connections</p>
-                    </div>
-                    <Button variant="outline" size="sm">Enabled</Button>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-medium">Contact Sync</p>
-                      <p className="text-sm text-muted-foreground">Sync contacts across your devices</p>
-                    </div>
-                    <Button variant="outline" size="sm">Enabled</Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle>Uploaded Contacts</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8">
-                  <UserPlus className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground mb-4">No contacts have been uploaded</p>
-                  <Button variant="outline">Upload Contacts</Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle>Contact Management</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <Button variant="outline" className="w-full">
-                    Download Contact Data
-                  </Button>
-                  <Button variant="outline" className="w-full text-destructive">
-                    Delete All Uploaded Contacts
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        );
+        return <ContactSection />;
 
       default:
         return (
@@ -704,6 +630,169 @@ function AdPartnersSection() {
               })}
             </div>
           )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+const settingLabels: Record<string, string> = {
+  contact_upload_enabled: 'Contact Upload',
+  friend_suggestions_enabled: 'Friend Suggestions',
+  contact_sync_enabled: 'Contact Sync',
+};
+
+const settingDescriptions: Record<string, string> = {
+  contact_upload_enabled: 'Allow Tone to access your device contacts',
+  friend_suggestions_enabled: 'Get suggestions based on mutual connections',
+  contact_sync_enabled: 'Sync contacts across your devices',
+};
+
+function ContactSection() {
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [settings, setSettings] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [deleteAllLoading, setDeleteAllLoading] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  async function loadData() {
+    setLoading(true);
+    const [contactsRes, settingsRes] = await Promise.all([
+      supabase.rpc('get_my_contacts'),
+      supabase.rpc('get_my_contact_settings'),
+    ]);
+    if (contactsRes.error) {
+      toast({ variant: 'destructive', title: 'Failed to load contacts', description: contactsRes.error.message });
+    } else {
+      setContacts(contactsRes.data || []);
+    }
+    if (settingsRes.error) {
+      toast({ variant: 'destructive', title: 'Failed to load settings', description: settingsRes.error.message });
+    } else {
+      const map: Record<string, string> = {};
+      (settingsRes.data || []).forEach(s => { map[s.setting_name] = s.setting_value; });
+      setSettings(map);
+    }
+    setLoading(false);
+  }
+
+  async function toggleSetting(name: string) {
+    const newVal = settings[name] === 'true' ? 'false' : 'true';
+    setSettings(prev => ({ ...prev, [name]: newVal }));
+    const { error } = await supabase.rpc('update_contact_setting', { p_setting_name: name, p_setting_value: newVal });
+    if (error) {
+      toast({ variant: 'destructive', title: 'Failed to update setting', description: error.message });
+      loadData();
+    }
+  }
+
+  async function deleteContact(id: string) {
+    const { error } = await supabase.rpc('delete_my_contact', { p_contact_id: id });
+    if (error) {
+      toast({ variant: 'destructive', title: 'Failed to delete contact', description: error.message });
+    } else {
+      setContacts(prev => prev.filter(c => c.id !== id));
+      toast({ title: 'Contact deleted' });
+    }
+  }
+
+  async function deleteAll() {
+    setDeleteAllLoading(true);
+    const { error } = await supabase.rpc('delete_all_my_contacts');
+    if (error) {
+      toast({ variant: 'destructive', title: 'Failed to delete contacts', description: error.message });
+    } else {
+      setContacts([]);
+      toast({ title: 'All contacts deleted' });
+    }
+    setDeleteAllLoading(false);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-semibold text-foreground mb-2">Manage Contacts</h2>
+        <p className="text-muted-foreground">
+          Control how Tone uses your contacts and manages your connections.
+        </p>
+      </div>
+
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserPlus className="w-5 h-5" />
+            Contact Settings
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {['contact_upload_enabled', 'friend_suggestions_enabled', 'contact_sync_enabled'].map(name => (
+            <div key={name} className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <p className="font-medium">{settingLabels[name]}</p>
+                <p className="text-sm text-muted-foreground">{settingDescriptions[name]}</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => toggleSetting(name)}>
+                {settings[name] === 'true' ? 'Enabled' : 'Disabled'}
+              </Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle>Uploaded Contacts</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {contacts.length === 0 ? (
+            <div className="text-center py-8">
+              <UserPlus className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground mb-4">No contacts have been uploaded</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {contacts.map(c => (
+                <div key={c.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <p className="font-medium">{c.name}</p>
+                    <p className="text-sm text-muted-foreground">{c.phone || c.email || ''}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteContact(c.id)}>
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle>Contact Management</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <Button variant="outline" className="w-full">
+              Download Contact Data
+            </Button>
+            <Button variant="outline" className="w-full text-destructive" onClick={deleteAll} disabled={deleteAllLoading || contacts.length === 0}>
+              {deleteAllLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Delete All Uploaded Contacts
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

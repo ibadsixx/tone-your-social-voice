@@ -643,3 +643,19 @@ Adds online/offline indicators to conversation list avatars and chat window head
 - `supabase/migrations/20260605000006_ad_interactions.sql` — advertisers + user_ad_interactions tables, seeds, RPC
 - `src/integrations/supabase/types.ts` — get_my_advertisers type
 - `src/components/YourInformationAndPermissions.tsx` — updated AdPartnersSection
+
+## 2026-06-05 (even later)
+
+### Manage Contacts page wired to database
+
+**Problem:** The contacts section had hardcoded setting buttons (Disabled/Enabled), a static "No contacts" empty state, and non-functional action buttons.
+
+**Fixes:**
+- **Migration** — `20260605000007_user_contacts.sql`: creates `user_contacts` table (id, user_id, name, phone, email), RLS, seeds 5 sample contacts for the demo user; sets up 3 privacy_settings rows (contact_upload_enabled, friend_suggestions_enabled, contact_sync_enabled); RPCs: `get_my_contacts`, `delete_my_contact`, `delete_all_my_contacts`, `get_my_contact_settings`, `update_contact_setting`
+- **Types** — Added all 5 RPCs to `supabase/types.ts`
+- **UI** — Replaced hardcoded JSX with `ContactSection` component: settings read from `privacy_settings` via `get_my_contact_settings` with toggle buttons that call `update_contact_setting`; contacts list from `get_my_contacts` with "Remove" per-row that calls `delete_my_contact`; "Delete All Uploaded Contacts" button calls `delete_all_my_contacts` with loading spinner
+
+**Files:**
+- `supabase/migrations/20260605000007_user_contacts.sql` — user_contacts table, settings seeds, RPCs
+- `src/integrations/supabase/types.ts` — RPC type definitions
+- `src/components/YourInformationAndPermissions.tsx` — ContactSection component

@@ -4308,6 +4308,14 @@ export type Database = {
         Args: { p_conversation_id: string }
         Returns: undefined
       }
+      delete_my_contact: {
+        Args: { p_contact_id: string }
+        Returns: undefined
+      }
+      delete_all_my_contacts: {
+        Args: Record<string, never>
+        Returns: undefined
+      }
       add_channel_moderator: {
         Args: {
           p_conversation_id: string
@@ -4478,6 +4486,23 @@ export type Database = {
           last_interaction_at: string
         }[]
       }
+      get_my_contact_settings: {
+        Args: Record<string, never>
+        Returns: {
+          setting_name: string
+          setting_value: string
+        }[]
+      }
+      get_my_contacts: {
+        Args: Record<string, never>
+        Returns: {
+          id: string
+          name: string
+          phone: string | null
+          email: string | null
+          created_at: string
+        }[]
+      }
       get_my_encryption_keys: {
         Args: Record<string, never>
         Returns: Json
@@ -4582,11 +4607,18 @@ export type Database = {
         Args: {
           p_conversation_id: string
           p_is_muted?: boolean
-          p_quick_emoji?: string
+          p_chat_theme?: string
           p_read_receipts_enabled?: boolean
-          p_vanishing_messages_duration?: number
           p_vanishing_messages_enabled?: boolean
+          p_vanishing_messages_duration?: number
+          p_messaging_controls?: Json
         }
+        Returns: Json
+      }
+      update_contact_setting: {
+        Args: { p_setting_name: string; p_setting_value: string }
+        Returns: undefined
+      }
         Returns: {
           chat_theme: string
           conversation_id: string
