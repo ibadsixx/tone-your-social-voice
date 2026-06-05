@@ -4468,6 +4468,16 @@ export type Database = {
           enabled: boolean
         }[]
       }
+      get_my_advertisers: {
+        Args: Record<string, never>
+        Returns: {
+          advertiser_id: string
+          name: string
+          domain: string
+          last_interaction_type: string
+          last_interaction_at: string
+        }[]
+      }
       get_my_encryption_keys: {
         Args: Record<string, never>
         Returns: Json

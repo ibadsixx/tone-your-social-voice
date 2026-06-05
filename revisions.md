@@ -627,3 +627,19 @@ Adds online/offline indicators to conversation list avatars and chat window head
 - `supabase/migrations/20260605000005_ad_partners.sql` — ad_partners + user_ad_partner_settings tables, RLS, RPCs
 - `src/integrations/supabase/types.ts` — RPC type definitions
 - `src/components/YourInformationAndPermissions.tsx` — AdPartnersSection component replacing hardcoded JSX
+
+## 2026-06-05 (even later)
+
+### Active Ad Partners — real advertisers from interaction data
+
+**Problem:** The partners section showed predefined ad partner cards (Global Ads Network, Privacy-First Ads, etc.) with toggle switches, not actual advertisers the user had interacted with.
+
+**Fixes:**
+- **Migration** — `20260605000006_ad_interactions.sql`: creates `advertisers` table, `user_ad_interactions` table with interaction_type enum (viewed/clicked/visited), RLS, seeds 10 advertisers and 8 sample interactions for the current user, `get_my_advertisers` RPC returning distinct advertisers with last interaction type and timestamp
+- **Types** — Added `get_my_advertisers` to `supabase/types.ts`
+- **UI** — Rewrote `AdPartnersSection` to fetch from `get_my_advertisers`, show advertiser name + domain + interaction type description + relative timestamp via `formatDistanceToNow`, empty state when no interactions exist
+
+**Files:**
+- `supabase/migrations/20260605000006_ad_interactions.sql` — advertisers + user_ad_interactions tables, seeds, RPC
+- `src/integrations/supabase/types.ts` — get_my_advertisers type
+- `src/components/YourInformationAndPermissions.tsx` — updated AdPartnersSection

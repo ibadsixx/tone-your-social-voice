@@ -34,9 +34,9 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  Archive
+  Archive,
+  Building2
 } from 'lucide-react';
-import { Switch } from '@/components/ui/switch';
 import YourActivity from './YourActivity';
 
 /**
@@ -617,60 +617,36 @@ const YourInformationAndPermissions: React.FC = () => {
   );
 };
 
-const iconMap: Record<string, React.ElementType> = {
-  blue: Globe,
-  green: Shield,
-  purple: Users,
+const interactionIcons: Record<string, React.ElementType> = {
+  viewed: Eye,
+  clicked: Search,
+  visited: Globe,
 };
 
-const colorMap: Record<string, string> = {
-  blue: 'bg-blue-500',
-  green: 'bg-green-500',
-  purple: 'bg-purple-500',
+const interactionLabels: Record<string, string> = {
+  viewed: 'You viewed an ad from',
+  clicked: 'You clicked an ad from',
+  visited: 'You visited',
 };
 
 function AdPartnersSection() {
-  const [partners, setPartners] = useState<any[]>([]);
+  const [advertisers, setAdvertisers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [optOutLoading, setOptOutLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    loadPartners();
+    loadAdvertisers();
   }, []);
 
-  async function loadPartners() {
+  async function loadAdvertisers() {
     setLoading(true);
-    const { data, error } = await supabase.rpc('get_my_ad_partners');
+    const { data, error } = await supabase.rpc('get_my_advertisers');
     if (error) {
-      toast({ variant: 'destructive', title: 'Failed to load partners', description: error.message });
+      toast({ variant: 'destructive', title: 'Failed to load advertisers', description: error.message });
     } else {
-      setPartners(data || []);
+      setAdvertisers(data || []);
     }
     setLoading(false);
-  }
-
-  async function togglePartner(partnerId: string, enabled: boolean) {
-    setPartners(prev => prev.map(p => p.partner_id === partnerId ? { ...p, enabled } : p));
-    const { error } = await supabase.rpc('toggle_ad_partner', { p_partner_id: partnerId, p_enabled: enabled });
-    if (error) {
-      toast({ variant: 'destructive', title: 'Failed to update preference', description: error.message });
-      loadPartners();
-    } else {
-      toast({ title: `Partner ${enabled ? 'enabled' : 'disabled'}` });
-    }
-  }
-
-  async function optOutAll() {
-    setOptOutLoading(true);
-    const { error } = await supabase.rpc('opt_out_all_ad_partners');
-    if (error) {
-      toast({ variant: 'destructive', title: 'Failed to opt out', description: error.message });
-    } else {
-      setPartners(prev => prev.map(p => ({ ...p, enabled: false })));
-      toast({ title: 'Opted out of all personalized ads' });
-    }
-    setOptOutLoading(false);
   }
 
   if (loading) {
@@ -684,53 +660,50 @@ function AdPartnersSection() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold text-foreground mb-2">Specific Ad Partners</h2>
+        <h2 className="text-2xl font-semibold text-foreground mb-2">Active Ad Partners</h2>
         <p className="text-muted-foreground">
-          Manage which advertising partners can show you personalized ads.
+          Advertisers whose ads you have viewed, clicked on, or whose websites you have visited.
         </p>
       </div>
 
       <Card className="border-border/50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Globe className="w-5 h-5" />
-            Active Ad Partners
+            <Building2 className="w-5 h-5" />
+            Advertisers You Have Interacted With
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-3">
-            {partners.map(partner => {
-              const Icon = iconMap[partner.icon_color] || Globe;
-              return (
-                <div key={partner.partner_id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-10 h-10 ${colorMap[partner.icon_color] || 'bg-gray-500'} rounded-lg flex items-center justify-center`}>
-                      <Icon className="w-5 h-5 text-white" />
+        <CardContent>
+          {advertisers.length === 0 ? (
+            <p className="text-muted-foreground text-sm py-4 text-center">
+              No advertiser interactions yet. Ads you interact with will appear here.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {advertisers.map(adv => {
+                const Icon = interactionIcons[adv.last_interaction_type] || Eye;
+                return (
+                  <div key={adv.advertiser_id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-foreground/10 rounded-lg flex items-center justify-center">
+                        <Icon className="w-5 h-5 text-foreground/70" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{adv.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {interactionLabels[adv.last_interaction_type] || 'Interacted with'} {adv.name}
+                          {adv.domain ? ` (${adv.domain})` : ''}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium">{partner.name}</p>
-                      <p className="text-sm text-muted-foreground">{partner.description}</p>
+                    <div className="text-right text-sm text-muted-foreground whitespace-nowrap">
+                      {formatDistanceToNow(new Date(adv.last_interaction_at), { addSuffix: true })}
                     </div>
                   </div>
-                  <Switch checked={partner.enabled} onCheckedChange={checked => togglePartner(partner.partner_id, checked)} />
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-border/50">
-        <CardHeader>
-          <CardTitle>Partner Preferences</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <Button variant="outline" className="w-full" onClick={optOutAll} disabled={optOutLoading}>
-              {optOutLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              Opt Out of All Personalized Ads
-            </Button>
-          </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
