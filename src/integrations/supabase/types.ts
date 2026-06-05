@@ -4688,6 +4688,10 @@ export type Database = {
         }
         Returns: Json
       }
+      seed_default_ad_topics: {
+        Args: { p_user_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       content_report_status:

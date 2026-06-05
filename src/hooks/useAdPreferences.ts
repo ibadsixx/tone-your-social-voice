@@ -8,6 +8,7 @@ export interface AdActivity {
   title: string;
   advertiser: string;
   image_url: string;
+  interaction_type: string;
 }
 
 export interface SavedAd {
@@ -63,7 +64,7 @@ export const useAdPreferences = () => {
     if (!user) return;
     setLoading(true);
     const [actRes, savedRes, advRes, topRes, setRes] = await Promise.all([
-      supabase.from('ad_activity').select('id, title, advertiser, image_url').eq('user_id', user.id).order('clicked_at', { ascending: false }),
+      supabase.from('ad_activity').select('id, title, advertiser, image_url, interaction_type').eq('user_id', user.id).order('clicked_at', { ascending: false }),
       supabase.from('saved_ads').select('id, title, subtitle, image_url').eq('user_id', user.id).order('created_at', { ascending: false }),
       supabase.from('ad_advertisers').select('id, name, icon').eq('user_id', user.id).order('last_shown_at', { ascending: false }),
       supabase.from('ad_topics').select('id, name, icon, preference').eq('user_id', user.id).order('created_at', { ascending: false }),
@@ -73,6 +74,11 @@ export const useAdPreferences = () => {
     if (savedRes.data) setSavedAds(savedRes.data);
     if (advRes.data) setAdvertisers(advRes.data);
     if (topRes.data) setAdTopics(topRes.data);
+    if (topRes.data && topRes.data.length === 0) {
+      await supabase.rpc('seed_default_ad_topics', { p_user_id: user.id });
+      const refetch = await supabase.from('ad_topics').select('id, name, icon, preference').eq('user_id', user.id).order('created_at', { ascending: false });
+      if (refetch.data) setAdTopics(refetch.data);
+    }
     if (setRes.data) {
       setAdSettings({
         use_partner_data: setRes.data.use_partner_data ?? true,
@@ -109,6 +115,11 @@ export const useAdPreferences = () => {
     await supabase.from('ad_activity').delete().eq('id', id).eq('user_id', user.id);
   };
 
+  const updateTopicPreference = async (topicId: string, preference: string) => {
+    setAdTopics(prev => prev.map(t => t.id === topicId ? { ...t, preference } : t));
+    await supabase.from('ad_topics').update({ preference }).eq('id', topicId);
+  };
+
   return {
     adActivity,
     savedAds,
@@ -119,6 +130,7 @@ export const useAdPreferences = () => {
     updateSettings,
     removeSavedAd,
     removeAdActivity,
+    updateTopicPreference,
     refetch: fetchAll,
   };
 };

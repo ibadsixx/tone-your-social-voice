@@ -14,6 +14,7 @@ const AdPreferences = () => {
     adSettings,
     loading,
     updateSettings,
+    updateTopicPreference,
   } = useAdPreferences();
 
   const SectionHeader = ({ title, onSeeAll }: { title: string; onSeeAll?: () => void }) => (
@@ -75,57 +76,110 @@ const AdPreferences = () => {
         </TabsList>
 
         <TabsContent value="customize" className="mt-6 space-y-6">
-          {/* Ad activity */}
-          <div>
-            <SectionHeader title="Ad interactions" onSeeAll={adActivity.length > 0 ? () => {} : undefined} />
-            {adActivity.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3">
-                {adActivity.map((ad) => (
-                  <div key={ad.id} className="rounded-lg overflow-hidden border border-border/50 bg-muted/20">
-                    <div className="aspect-video bg-muted/50 relative">
-                      <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
-                    </div>
-                    <div className="p-2">
-                      <p className="text-xs text-muted-foreground truncate">{ad.advertiser}</p>
-                      <button className="w-full mt-1.5 text-xs font-medium text-primary-foreground bg-primary rounded-md py-1.5 hover:bg-primary/90 transition-colors">
-                        Ad info
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState message="No ad interactions recorded yet." />
-            )}
-          </div>
+          {/* Ad interactions */}
+          <div className="space-y-6">
+            <h3 className="text-sm font-semibold text-foreground">Ad interactions</h3>
 
-          <Separator />
-
-          {/* Saved ads */}
-          <div>
-            <SectionHeader title="Bookmarked ads" onSeeAll={savedAds.length > 0 ? () => {} : undefined} />
-            {savedAds.length > 0 ? (
-              <div className="flex gap-2 overflow-x-auto pb-2">
-                {savedAds.map((ad) => (
-                  <div key={ad.id} className="flex-shrink-0 w-20">
-                    <div className="w-20 h-20 rounded-lg overflow-hidden bg-muted/50 border border-border/50">
-                      <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
+            {/* Ads the user interacted with */}
+            <div>
+              <SectionHeader title="Ads you viewed" />
+              {adActivity.filter(a => a.interaction_type === 'viewed').length > 0 ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {adActivity.filter(a => a.interaction_type === 'viewed').map((ad) => (
+                    <div key={ad.id} className="rounded-lg overflow-hidden border border-border/50 bg-muted/20">
+                      <div className="aspect-video bg-muted/50 relative">
+                        <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="p-2">
+                        <p className="text-xs text-muted-foreground truncate">{ad.advertiser}</p>
+                        <button className="w-full mt-1.5 text-xs font-medium text-primary-foreground bg-primary rounded-md py-1.5 hover:bg-primary/90 transition-colors">
+                          Ad info
+                        </button>
+                      </div>
                     </div>
-                    <p className="text-[10px] text-foreground mt-1 truncate">{ad.title}</p>
-                    <p className="text-[10px] text-muted-foreground truncate">{ad.subtitle}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState message="No bookmarked ads yet." />
-            )}
+                  ))}
+                </div>
+              ) : (
+                <EmptyState message="No ads viewed yet." />
+              )}
+            </div>
+
+            {/* Ads they clicked on */}
+            <div>
+              <SectionHeader title="Ads you clicked" />
+              {adActivity.filter(a => a.interaction_type === 'clicked').length > 0 ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {adActivity.filter(a => a.interaction_type === 'clicked').map((ad) => (
+                    <div key={ad.id} className="rounded-lg overflow-hidden border border-border/50 bg-muted/20">
+                      <div className="aspect-video bg-muted/50 relative">
+                        <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="p-2">
+                        <p className="text-xs text-muted-foreground truncate">{ad.advertiser}</p>
+                        <button className="w-full mt-1.5 text-xs font-medium text-primary-foreground bg-primary rounded-md py-1.5 hover:bg-primary/90 transition-colors">
+                          Ad info
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState message="No ads clicked yet." />
+              )}
+            </div>
+
+            {/* Ads they hid */}
+            <div>
+              <SectionHeader title="Ads you hid" />
+              {adActivity.filter(a => a.interaction_type === 'hidden').length > 0 ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {adActivity.filter(a => a.interaction_type === 'hidden').map((ad) => (
+                    <div key={ad.id} className="rounded-lg overflow-hidden border border-border/50 bg-muted/20">
+                      <div className="aspect-video bg-muted/50 relative">
+                        <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="p-2">
+                        <p className="text-xs text-muted-foreground truncate">{ad.advertiser}</p>
+                        <button className="w-full mt-1.5 text-xs font-medium text-primary-foreground bg-primary rounded-md py-1.5 hover:bg-primary/90 transition-colors">
+                          Ad info
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState message="No ads hidden yet." />
+              )}
+            </div>
+
+            {/* Ads they saved */}
+            <div>
+              <SectionHeader title="Ads you saved" />
+              {savedAds.length > 0 ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {savedAds.map((ad) => (
+                    <div key={ad.id} className="rounded-lg overflow-hidden border border-border/50 bg-muted/20">
+                      <div className="aspect-video bg-muted/50 relative">
+                        <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="p-2">
+                        <p className="text-xs text-muted-foreground truncate">{ad.title}</p>
+                        {ad.subtitle && <p className="text-[10px] text-muted-foreground truncate">{ad.subtitle}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState message="No saved ads yet." />
+              )}
+            </div>
           </div>
 
           <Separator />
 
           {/* Advertisers */}
           <div>
-            <SectionHeader title="Brands that showed you ads" onSeeAll={advertisers.length > 0 ? () => {} : undefined} />
+              <SectionHeader title="Advertisers you saw ads from" onSeeAll={advertisers.length > 0 ? () => {} : undefined} />
             {advertisers.length > 0 ? (
               <div className="rounded-lg border border-border/50 overflow-hidden">
                 {advertisers.map((adv, i) => (
@@ -144,17 +198,40 @@ const AdPreferences = () => {
 
           {/* Ad topics */}
           <div>
-            <SectionHeader title="Ad subjects" onSeeAll={adTopics.length > 0 ? () => {} : undefined} />
-            <div className="rounded-xl overflow-hidden bg-accent/30 border border-border/50 mb-3 p-6 flex items-center justify-center">
-              <p className="text-xs text-muted-foreground">Browse ad subjects and explore what you'd like to see more of.</p>
-            </div>
+            <SectionHeader title="Ad subjects" />
+            <p className="text-xs text-muted-foreground mb-3">Specify your interest in certain topics to see more relevant ads.</p>
             {adTopics.length > 0 ? (
-              <div className="rounded-lg border border-border/50 overflow-hidden">
-                {adTopics.map((topic, i) => (
-                  <React.Fragment key={topic.id}>
-                    <ListItem name={topic.name} icon={topic.icon} />
-                    {i < adTopics.length - 1 && <Separator />}
-                  </React.Fragment>
+              <div className="space-y-2">
+                {adTopics.map((topic) => (
+                  <div key={topic.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{topic.icon}</span>
+                      <span className="text-sm font-medium">{topic.name}</span>
+                    </div>
+                    <div className="flex gap-1">
+                      {['interested', 'neutral', 'not_interested'].map((pref) => {
+                        const isActive = topic.preference === pref;
+                        const labels: Record<string, string> = {
+                          interested: 'Interested',
+                          neutral: 'Neutral',
+                          not_interested: 'Not interested',
+                        };
+                        return (
+                          <button
+                            key={pref}
+                            onClick={() => updateTopicPreference(topic.id, pref)}
+                            className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                              isActive
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-transparent text-muted-foreground border-border hover:border-primary/50'
+                            }`}
+                          >
+                            {labels[pref]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ))}
               </div>
             ) : (
