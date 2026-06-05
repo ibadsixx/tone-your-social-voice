@@ -606,3 +606,8 @@ Adds online/offline indicators to conversation list avatars and chat window head
 
 **Files:**
 - `supabase/migrations/20260605000003_activity_triggers.sql` — 4 SECURITY DEFINER trigger functions + triggers on `posts`, `profiles`, `comments`, `follows`
+- **Backfill** — `20260605000004_backfill_user_activity.sql`: creates `backfill_user_activity()` RPC that retroactively populates `user_activity` from existing `posts`, `comments`, and `follows` data (run once after migration)
+
+**Files:**
+- `supabase/migrations/20260605000003_activity_triggers.sql` — 4 SECURITY DEFINER trigger functions + triggers on `posts`, `profiles`, `comments`, `follows`
+- `supabase/migrations/20260605000004_backfill_user_activity.sql` — backfill RPC for existing data
