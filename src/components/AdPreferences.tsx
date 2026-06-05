@@ -24,6 +24,7 @@ const AdPreferences = () => {
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [partnerDataOpen, setPartnerDataOpen] = useState(false);
   const [audienceBasedOpen, setAudienceBasedOpen] = useState(false);
+  const [adsAboutToneOpen, setAdsAboutToneOpen] = useState(false);
   const [profileData, setProfileData] = useState({ birth_year: 0, country: '' });
 
   useEffect(() => {
@@ -436,18 +437,34 @@ const AdPreferences = () => {
             <h3 className="text-sm font-semibold text-foreground mb-3">Ads About Tone</h3>
             <div
               className="flex items-center justify-between px-4 py-3 border rounded-lg hover:bg-muted/40 transition-colors cursor-pointer"
-              onClick={() => updateSettings({ use_activity_for_external_ads: !adSettings.use_activity_for_external_ads })}
+              onClick={() => setAdsAboutToneOpen(true)}
             >
               <div>
                 <p className="text-sm font-medium text-foreground">Ads regarding the platform</p>
                 <p className="text-xs text-muted-foreground">Decide whether we leverage your engagement to display ads about Tone on other services.</p>
-                <p className="text-xs text-primary font-medium mt-0.5">
-                  {adSettings.use_activity_for_external_ads ? 'Leveraging this data' : 'Not leveraging this data'}
-                </p>
               </div>
               <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 ml-3" />
             </div>
           </div>
+
+          <Dialog open={adsAboutToneOpen} onOpenChange={setAdsAboutToneOpen}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Ads About Tone</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                Advertisements related to Tone's services themselves.
+              </p>
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={() => setAdsAboutToneOpen(false)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground"
+                >
+                  Close
+                </button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <Separator />
 
