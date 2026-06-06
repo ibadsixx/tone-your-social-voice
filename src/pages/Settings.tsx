@@ -91,6 +91,10 @@ const Settings = () => {
     return 'landing';
   };
   const [activeSection, setActiveSection] = useState(getSectionFromPath(location.pathname));
+
+  useEffect(() => {
+    setActiveSection(getSectionFromPath(location.pathname));
+  }, [location.pathname]);
   
   // Check if user is admin (simple check - you can enhance this with proper role system)
   const [isAdmin, setIsAdmin] = useState(false);

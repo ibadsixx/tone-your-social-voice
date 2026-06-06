@@ -742,17 +742,23 @@ The page now shows only the Contact Settings card with the three toggles. "Uploa
 **Files:**
 - `src/components/AdPreferences.tsx` — 6 new dialog state variables, replaced all inline `onClick` toggles with dialog-open handlers, Allow/Don't Allow/Enabled/Disabled buttons, informational Ads About Tone dialog, improved status labels
 
-## 2026-06-05 (latest)
+## 2026-06-06
 
-### Privacy Checkup — dedicated `/settings/privacycheckup` route
+### Privacy Checkup — SVG illustrations, email array display, wizard dialog conversion, DB persistence fixes
 
-**Problem:** Privacy Checkup had no dedicated URL — it was only accessible as an inline section inside `/settings` with no way to link or bookmark it.
+**Problem:** The privacy checkup used static PNG images that didn't match the design system. The sharing intro/discover wizard modals had duplicate close buttons (custom X + DialogContent built-in). The email field displayed `TEXT[]` data as a concatenated string. The Date of Birth visibility showed "Public" instead of "Everyone" due to case-sensitive option matching. The data/security/ads cards opened inline detail views instead of dialog modals like sharing/discoverability. The "Settings Preferences" link didn't actually navigate to `/settings`.
 
 **Fixes:**
-- **Route added** — `<Route path="settings/privacycheckup" element={<Settings />} />` in App.tsx
-- **Path mapping** — `getSectionFromPath` in Settings.tsx maps `/settings/privacycheckup` to `'privacy'`
-- **Sidebar navigation** — clicking Privacy Checkup icon navigates to `/settings/privacycheckup`
+- **SVG illustrations** — replaced 5 PNG imports (`who-can-see.png`, `how-people-find.png`, etc.) with inline `PrivacyIllustrations.tsx` SVG components (SharingIllustration, DiscoverabilityIllustration, DataControlsIllustration, SecurityIllustration, AdPreferencesIllustration) using theme-aligned colors per card
+- **Duplicate X buttons removed** — removed 4 custom close buttons from sharing/discover intro and wizard modals; DialogContent's built-in `DialogPrimitive.Close` already renders one and calls `onOpenChange` which resets wizard step state
+- **Email array display** — added `parseEmails()` helper that handles JS arrays, JSON-stringified arrays, and plain strings from `profiles.email` TEXT[] column; emails now render vertically (one per line) in both the sharing wizard and data dialog
+- **Case-insensitive visibility matching** — `visibilityLabel()` now does case-insensitive lookup against `privacyOptions` so `"Public"`/`"public"`/`"PUBLIC"` all correctly map to "Everyone"; `updateProfileVisibility()` normalizes to lowercase before saving; `fetchUserData()` normalizes fetched values
+- **Date of Birth defaults to Everyone** — `birth_date_visibility` and `birth_year_visibility` default to `'public'` (label: "Everyone") instead of `'friends'`
+- **Dialog-based cards (data, security, ads)** — "Your data controls", "How to keep your account secure", and "Your ad preferences" now open as Dialog modals with matching illustrations in the header, scrollable content areas, and Done buttons; removed all dead inline `renderDataView`/`renderSecurityView`/`renderAdsView`/`renderDiscoverabilityView`/`renderBackButton` code
+- **Privacy checkup "Settings Preferences" link wired** — `PrivacyCheckup.tsx` now uses `useNavigate` to navigate to `/settings`
+- **Settings.tsx URL sync** — added `useEffect` watching `location.pathname` to update `activeSection` so navigating from `/settings/privacycheckup` to `/settings` actually renders the landing page
 
 **Files:**
-- `src/App.tsx` — new route
-- `src/pages/Settings.tsx` — path mapping + sidebar nav
+- `src/components/privacy/PrivacyIllustrations.tsx` — new SVG illustration components for all 5 cards
+- `src/components/PrivacyCheckup.tsx` — PNG→SVG imports, email array parsing, case-insensitive visibility, 3 new dialogs (data/security/ads), Settings Preferences link, removed unused detail views
+- `src/pages/Settings.tsx` — `useEffect` for URL-path `activeSection` sync

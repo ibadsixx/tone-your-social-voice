@@ -9,17 +9,20 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Trash2, User, Monitor, Tag, ShieldBan, X, ChevronRight, Check, UserPlus, Phone, Search } from 'lucide-react';
+import { ArrowLeft, Trash2, User, Monitor, Tag, ShieldBan, ChevronRight, Check, UserPlus, Phone, Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
-import whoCanSeeImg from '@/assets/privacy/who-can-see.png';
-import howPeopleFindImg from '@/assets/privacy/how-people-find.png';
-import dataSettingsImg from '@/assets/privacy/data-settings.png';
-import accountSecureImg from '@/assets/privacy/account-secure.png';
-import adPreferencesImg from '@/assets/privacy/ad-preferences.png';
+import {
+  SharingIllustration,
+  DiscoverabilityIllustration,
+  DataControlsIllustration,
+  SecurityIllustration,
+  AdPreferencesIllustration,
+} from '@/components/privacy/PrivacyIllustrations';
 
 interface ProfileData {
-  email: string;
+  email: string | string[];
   birthday: string;
   relationship: string;
   email_visibility: string;
@@ -29,6 +32,19 @@ interface ProfileData {
   friends_visibility: string;
   following_visibility: string;
 }
+
+const parseEmails = (email: string | string[] | null | undefined): string[] => {
+  if (!email) return [];
+  if (Array.isArray(email)) return email;
+  if (typeof email === 'string') {
+    try {
+      const parsed = JSON.parse(email);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+    return [email];
+  }
+  return [];
+};
 
 interface BlockedUser {
   blocked_user_id: string;
@@ -52,7 +68,7 @@ const privacyOptions = [
 
 const visibilityLabel = (val: string | null | undefined) => {
   if (!val) return 'Allies';
-  const found = privacyOptions.find(o => o.value === val);
+  const found = privacyOptions.find(o => o.value.toLowerCase() === val.toLowerCase());
   return found?.label || val.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 };
 
@@ -65,6 +81,7 @@ const fallbackBlockedProfile = {
 const PrivacyCheckup = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [activeView, setActiveView] = useState<ActiveView>(null);
   const [sharingStep, setSharingStep] = useState<SharingStep>('intro');
   const [showSharingIntro, setShowSharingIntro] = useState(false);
@@ -72,10 +89,13 @@ const PrivacyCheckup = () => {
   const [discoverStep, setDiscoverStep] = useState<DiscoverStep>('intro');
   const [showDiscoverIntro, setShowDiscoverIntro] = useState(false);
   const [showDiscoverWizard, setShowDiscoverWizard] = useState(false);
+  const [showDataIntro, setShowDataIntro] = useState(false);
+  const [showSecurityIntro, setShowSecurityIntro] = useState(false);
+  const [showAdsIntro, setShowAdsIntro] = useState(false);
   const [profileData, setProfileData] = useState<ProfileData>({
     email: '', birthday: '', relationship: '',
-    email_visibility: 'only_me', birth_date_visibility: 'friends',
-    birth_year_visibility: 'friends', relationship_visibility: 'friends',
+    email_visibility: 'only_me', birth_date_visibility: 'public',
+    birth_year_visibility: 'public', relationship_visibility: 'friends',
     friends_visibility: 'only_me', following_visibility: 'only_me',
   });
   const [privacySettings, setPrivacySettings] = useState<Record<string, string>>({});
@@ -117,9 +137,9 @@ const PrivacyCheckup = () => {
         email: profileRes.data?.email || '',
         birthday: profileRes.data?.birthday || '',
         relationship: profileRes.data?.relationship || '',
-        email_visibility: profileRes.data?.email_visibility || 'only_me',
-        birth_date_visibility: profileRes.data?.birth_date_visibility || 'friends',
-        birth_year_visibility: profileRes.data?.birth_year_visibility || 'friends',
+        email_visibility: (profileRes.data?.email_visibility || 'only_me').toLowerCase(),
+        birth_date_visibility: (profileRes.data?.birth_date_visibility || 'public').toLowerCase(),
+        birth_year_visibility: (profileRes.data?.birth_year_visibility || 'public').toLowerCase(),
         relationship_visibility: profileRes.data?.relationship_visibility || 'friends',
         friends_visibility: profileRes.data?.friends_visibility || 'only_me',
         following_visibility: String(profileRes.data?.following_visibility ?? 'only_me'),
@@ -182,11 +202,12 @@ const PrivacyCheckup = () => {
 
   const updateProfileVisibility = async (field: string, value: string) => {
     if (!user?.id) return;
-    setProfileData(prev => ({ ...prev, [field]: value }));
+    const normalized = value.toLowerCase();
+    setProfileData(prev => ({ ...prev, [field]: normalized }));
     
     const { error } = await supabase
       .from('profiles')
-      .update({ [field]: value })
+      .update({ [field]: normalized })
       .eq('id', user.id);
 
     if (error) {
@@ -332,12 +353,40 @@ const PrivacyCheckup = () => {
       {/* Email Section */}
       <div>
         <h4 className="text-sm font-bold text-foreground px-1 pt-2 pb-1">Email address</h4>
-        <VisibilityRow
-          label={profileData.email || 'No email set'}
-          sublabel={visibilityLabel(profileData.email_visibility)}
-          field="email_visibility"
-          value={profileData.email_visibility}
-        />
+        <div className="relative">
+          <button
+            className="w-full flex items-center justify-between py-3 px-1 hover:bg-muted/50 rounded-lg transition-colors text-left"
+            onClick={() => setEditingField(editingField === 'email_visibility' ? null : 'email_visibility')}
+          >
+            <div>
+              {parseEmails(profileData.email).length > 0 ? (
+                <div className="space-y-1">
+                  {parseEmails(profileData.email).map((e, i) => (
+                    <p key={i} className="text-sm font-semibold text-foreground">{e}</p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm font-semibold text-foreground">No email set</p>
+              )}
+              <p className="text-xs text-muted-foreground mt-1">{visibilityLabel(profileData.email_visibility)}</p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </button>
+          {editingField === 'email_visibility' && (
+            <div className="pb-3 px-1">
+              <Select value={profileData.email_visibility} onValueChange={(v) => { updateProfileVisibility('email_visibility', v); setEditingField(null); }}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {privacyOptions.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Birthday Section */}
@@ -885,12 +934,12 @@ const PrivacyCheckup = () => {
     completion: renderDiscoverCompletionStep,
   };
 
-  const cards: { id: ActiveView; title: string; image: string; bg: string }[] = [
-    { id: 'sharing', title: 'Who can observe what you share', image: whoCanSeeImg, bg: 'bg-amber-100 dark:bg-amber-950/30' },
-    { id: 'discoverability', title: 'How others can discover you on Tone', image: howPeopleFindImg, bg: 'bg-sky-100 dark:bg-sky-950/30' },
-    { id: 'data', title: 'Your data controls on Tone', image: dataSettingsImg, bg: 'bg-emerald-100 dark:bg-emerald-950/30' },
-    { id: 'security', title: 'How to keep your account secure', image: accountSecureImg, bg: 'bg-blue-100 dark:bg-blue-950/30' },
-    { id: 'ads', title: 'Your ad preferences on Tone', image: adPreferencesImg, bg: 'bg-pink-100 dark:bg-pink-950/30' },
+  const cards: { id: ActiveView; title: string; illustration: React.FC<{ className?: string }>; bg: string }[] = [
+    { id: 'sharing', title: 'Who can observe what you share', illustration: SharingIllustration, bg: 'bg-amber-100 dark:bg-amber-950/30' },
+    { id: 'discoverability', title: 'How others can discover you on Tone', illustration: DiscoverabilityIllustration, bg: 'bg-sky-100 dark:bg-sky-950/30' },
+    { id: 'data', title: 'Your data controls on Tone', illustration: DataControlsIllustration, bg: 'bg-emerald-100 dark:bg-emerald-950/30' },
+    { id: 'security', title: 'How to keep your account secure', illustration: SecurityIllustration, bg: 'bg-blue-100 dark:bg-blue-950/30' },
+    { id: 'ads', title: 'Your ad preferences on Tone', illustration: AdPreferencesIllustration, bg: 'bg-pink-100 dark:bg-pink-950/30' },
   ];
 
   // Landing page
@@ -914,13 +963,19 @@ const PrivacyCheckup = () => {
                 } else if (card.id === 'discoverability') {
                   setDiscoverStep('intro');
                   setShowDiscoverIntro(true);
+                } else if (card.id === 'data') {
+                  setShowDataIntro(true);
+                } else if (card.id === 'security') {
+                  setShowSecurityIntro(true);
+                } else if (card.id === 'ads') {
+                  setShowAdsIntro(true);
                 } else {
                   setActiveView(card.id);
                 }
               }}
               className={`${card.bg} rounded-xl overflow-hidden text-left transition-all hover:shadow-lg hover:scale-[1.02] border border-border/30`}
             >
-              <img src={card.image} alt={card.title} className="w-full h-36 object-cover" />
+              <card.illustration className="w-full h-36" />
               <p className="font-semibold text-sm text-foreground p-3 pt-2">{card.title}</p>
             </button>
           ))}
@@ -929,10 +984,20 @@ const PrivacyCheckup = () => {
           {cards.slice(2).map(card => (
             <button
               key={card.id}
-              onClick={() => setActiveView(card.id)}
+              onClick={() => {
+                if (card.id === 'data') {
+                  setShowDataIntro(true);
+                } else if (card.id === 'security') {
+                  setShowSecurityIntro(true);
+                } else if (card.id === 'ads') {
+                  setShowAdsIntro(true);
+                } else {
+                  setActiveView(card.id);
+                }
+              }}
               className={`${card.bg} rounded-xl overflow-hidden text-left transition-all hover:shadow-lg hover:scale-[1.02] border border-border/30`}
             >
-              <img src={card.image} alt={card.title} className="w-full h-28 object-cover" />
+              <card.illustration className="w-full h-28" />
               <p className="font-semibold text-sm text-foreground p-3 pt-2">{card.title}</p>
             </button>
           ))}
@@ -940,20 +1005,14 @@ const PrivacyCheckup = () => {
 
         <p className="text-sm text-muted-foreground">
           You can review more privacy controls in{' '}
-          <span className="text-primary font-medium cursor-pointer">Settings Preferences</span>
+          <span className="text-primary font-medium cursor-pointer" onClick={() => navigate('/settings')}>Settings Preferences</span>
         </p>
 
         {/* Sharing Intro Modal */}
         <Dialog open={showSharingIntro} onOpenChange={setShowSharingIntro}>
           <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-xl border-border">
-            <div className="bg-primary/80 relative">
-              <img src={whoCanSeeImg} alt="Who can observe what you share" className="w-full h-48 object-cover" />
-              <button
-                onClick={() => setShowSharingIntro(false)}
-                className="absolute top-3 right-3 bg-background/80 hover:bg-background rounded-full p-1.5 transition-colors"
-              >
-                <X className="h-4 w-4 text-foreground" />
-              </button>
+            <div className="bg-primary/80">
+              <SharingIllustration className="w-full h-48" />
             </div>
             <div className="p-6 pt-4 space-y-4">
               <div>
@@ -1014,9 +1073,7 @@ const PrivacyCheckup = () => {
                 <ArrowLeft className="h-5 w-5 text-foreground" />
               </button>
               <h3 className="text-base font-bold text-foreground">{sharingStepTitles[sharingStep] || 'Profile Particulars'}</h3>
-              <button onClick={() => { setShowSharingWizard(false); setSharingStep('intro'); }} className="p-1 hover:bg-muted rounded-full transition-colors">
-                <X className="h-5 w-5 text-foreground" />
-              </button>
+              <div />
             </div>
 
             {/* Content */}
@@ -1050,14 +1107,8 @@ const PrivacyCheckup = () => {
         {/* Discover Intro Modal */}
         <Dialog open={showDiscoverIntro} onOpenChange={setShowDiscoverIntro}>
           <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-xl border-border">
-            <div className="bg-primary/80 relative">
-              <img src={howPeopleFindImg} alt="How others can discover you on Tone" className="w-full h-48 object-cover" />
-              <button
-                onClick={() => setShowDiscoverIntro(false)}
-                className="absolute top-3 right-3 bg-background/80 hover:bg-background rounded-full p-1.5 transition-colors"
-              >
-                <X className="h-4 w-4 text-foreground" />
-              </button>
+            <div className="bg-primary/80">
+              <DiscoverabilityIllustration className="w-full h-48" />
             </div>
             <div className="p-6 pt-4 space-y-4">
               <div>
@@ -1112,9 +1163,7 @@ const PrivacyCheckup = () => {
                 <ArrowLeft className="h-5 w-5 text-foreground" />
               </button>
               <h3 className="text-base font-bold text-foreground">{discoverStepTitles[discoverStep] || 'Companion Appeals'}</h3>
-              <button onClick={() => { setShowDiscoverWizard(false); setDiscoverStep('intro'); }} className="p-1 hover:bg-muted rounded-full transition-colors">
-                <X className="h-5 w-5 text-foreground" />
-              </button>
+              <div />
             </div>
 
             {/* Content */}
@@ -1144,180 +1193,139 @@ const PrivacyCheckup = () => {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Data Intro Modal */}
+        <Dialog open={showDataIntro} onOpenChange={setShowDataIntro}>
+          <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-xl border-border max-h-[85vh] flex flex-col">
+            <div className="bg-primary/80">
+              <DataControlsIllustration className="w-full h-48" />
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4">
+              <h3 className="text-lg font-bold text-foreground">Your data controls on Tone</h3>
+              <div>
+                <Label>Email Address</Label>
+                <div className="space-y-1.5">
+                  {parseEmails(profileData.email).map((e, i) => (
+                    <Input key={i} type="email" value={e} readOnly className="bg-muted/50" />
+                  ))}
+                  {parseEmails(profileData.email).length === 0 && (
+                    <Input type="email" value="" readOnly placeholder="No email set" className="bg-muted/50" />
+                  )}
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="data-birthday">Date of Birth</Label>
+                <Input
+                  id="data-birthday"
+                  type="date"
+                  value={profileData.birthday}
+                  onChange={e => setProfileData(prev => ({ ...prev, birthday: e.target.value }))}
+                  onBlur={() => saveProfileField('birthday', profileData.birthday)}
+                />
+              </div>
+              <div>
+                <Label>Union Status</Label>
+                <Select
+                  value={profileData.relationship}
+                  onValueChange={(value) => {
+                    setProfileData(prev => ({ ...prev, relationship: value }));
+                    saveProfileField('relationship', value);
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pick union status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="single">Uncommitted</SelectItem>
+                    <SelectItem value="in_relationship">In a Union</SelectItem>
+                    <SelectItem value="married">Married</SelectItem>
+                    <SelectItem value="its_complicated">It&apos;s Complex</SelectItem>
+                    <SelectItem value="prefer_not_to_say">Prefer Not to Say</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Who can observe people, Pages, and lists you track?</Label>
+                <Select value={privacySettings.following_visibility || 'friends'} onValueChange={v => updatePrivacySetting('following_visibility', v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{privacyOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <Button className="w-full" onClick={() => setShowDataIntro(false)}>
+                Done
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Security Intro Modal */}
+        <Dialog open={showSecurityIntro} onOpenChange={setShowSecurityIntro}>
+          <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-xl border-border max-h-[85vh] flex flex-col">
+            <div className="bg-primary/80">
+              <SecurityIllustration className="w-full h-48" />
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4">
+              <h3 className="text-lg font-bold text-foreground">How to keep your account secure</h3>
+              <div>
+                <h4 className="font-semibold text-foreground mb-2">Barred Users</h4>
+                {blockedUsers.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No barred users for now</p>
+                ) : (
+                  <div className="space-y-3">
+                    {blockedUsers.map(blocked => (
+                      <div key={blocked.blocked_user_id} className="flex items-center justify-between p-3 border border-border rounded-lg">
+                        <div className="flex items-center space-x-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage src={blocked.profiles?.profile_pic || ''} />
+                            <AvatarFallback>{blocked.profiles?.display_name?.charAt(0)?.toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium text-foreground">{blocked.profiles?.display_name}</p>
+                            <p className="text-sm text-muted-foreground">@{blocked.profiles?.username}</p>
+                          </div>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => unblockUser(blocked.blocked_user_id)} className="text-destructive hover:text-destructive/80">
+                          <Trash2 className="h-4 w-4 mr-2" /> Remove Restriction
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <Separator />
+              <div>
+                <h4 className="font-semibold text-foreground mb-2">Mention Audience Expansion</h4>
+                <Label>When you&apos;re cited in a post, who can be appended to the audience?</Label>
+                <Select value={privacySettings.tag_audience_expansion || 'friends'} onValueChange={v => updatePrivacySetting('tag_audience_expansion', v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{privacyOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <Button className="w-full" onClick={() => setShowSecurityIntro(false)}>
+                Done
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Ads Intro Modal */}
+        <Dialog open={showAdsIntro} onOpenChange={setShowAdsIntro}>
+          <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-xl border-border">
+            <div className="bg-primary/80">
+              <AdPreferencesIllustration className="w-full h-48" />
+            </div>
+            <div className="p-6 pt-4 space-y-4">
+              <h3 className="text-lg font-bold text-foreground">Your ad preferences on Tone</h3>
+              <p className="text-muted-foreground text-sm">
+                Tailor how ads are customized for you. Go to Ad Preferences in Settings for full controls.
+              </p>
+              <Button className="w-full" onClick={() => setShowAdsIntro(false)}>
+                Done
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
-
-  // Detail views
-  const renderBackButton = () => (
-    <Button variant="ghost" size="sm" onClick={() => setActiveView(null)} className="mb-4 -ml-2 text-muted-foreground hover:text-foreground">
-      <ArrowLeft className="h-4 w-4 mr-1" /> Back to overview
-    </Button>
-  );
-
-  const renderDiscoverabilityView = () => (
-    <div className="space-y-6">
-      {renderBackButton()}
-      <h3 className="text-xl font-bold text-foreground">How others can discover you on Tone</h3>
-
-      <div className="space-y-4">
-        <div>
-          <Label>Who can send you ally requests?</Label>
-          <Select value={privacySettings.friend_requests_from || 'everyone'} onValueChange={v => updatePrivacySetting('friend_requests_from', v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="everyone">Everyone</SelectItem>
-              <SelectItem value="friends_of_friends">Wider Circle</SelectItem>
-              <SelectItem value="no_one">Nobody</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label>Who can discover your profile with your email address?</Label>
-          <Select value={privacySettings.findable_by_email || 'friends'} onValueChange={v => updatePrivacySetting('findable_by_email', v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="everyone">Everyone</SelectItem>
-              <SelectItem value="friends">Allies</SelectItem>
-              <SelectItem value="no_one">Nobody</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label>Who can discover your profile with your phone number?</Label>
-          <Select value={privacySettings.findable_by_phone || 'friends'} onValueChange={v => updatePrivacySetting('findable_by_phone', v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="everyone">Everyone</SelectItem>
-              <SelectItem value="friends">Allies</SelectItem>
-              <SelectItem value="no_one">Nobody</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center justify-between">
-          <div>
-            <Label className="text-sm font-medium">Allow search engines to list your profile</Label>
-            <p className="text-sm text-muted-foreground">Let search engines outside Tone reference your profile</p>
-          </div>
-          <Switch checked={privacySettings.search_engine_indexing === 'true'} onCheckedChange={c => updatePrivacySetting('search_engine_indexing', c.toString())} />
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderDataView = () => (
-    <div className="space-y-6">
-      {renderBackButton()}
-      <h3 className="text-xl font-bold text-foreground">Your data controls on Tone</h3>
-
-      <div className="space-y-4">
-        <div>
-          <Label htmlFor="email">Email Address</Label>
-          <Input
-            id="email"
-            type="email"
-            value={profileData.email}
-            onChange={e => setProfileData(prev => ({ ...prev, email: e.target.value }))}
-            onBlur={() => saveProfileField('email', profileData.email)}
-            placeholder="Enter your email"
-          />
-        </div>
-        <div>
-          <Label htmlFor="birthday">Date of Birth</Label>
-          <Input
-            id="birthday"
-            type="date"
-            value={profileData.birthday}
-            onChange={e => setProfileData(prev => ({ ...prev, birthday: e.target.value }))}
-            onBlur={() => saveProfileField('birthday', profileData.birthday)}
-          />
-        </div>
-        <div>
-          <Label htmlFor="relationship">Union Status</Label>
-          <Select
-            value={profileData.relationship}
-            onValueChange={(value) => {
-              setProfileData(prev => ({ ...prev, relationship: value }));
-              saveProfileField('relationship', value);
-            }}
-          >
-            <SelectTrigger><SelectValue placeholder="Pick union status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="single">Uncommitted</SelectItem>
-              <SelectItem value="in_relationship">In a Union</SelectItem>
-              <SelectItem value="married">Married</SelectItem>
-              <SelectItem value="its_complicated">It&apos;s Complex</SelectItem>
-              <SelectItem value="prefer_not_to_say">Prefer Not to Say</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label>Who can observe people, Pages, and lists you track?</Label>
-          <Select value={privacySettings.following_visibility || 'friends'} onValueChange={v => updatePrivacySetting('following_visibility', v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>{privacyOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderSecurityView = () => (
-    <div className="space-y-6">
-      {renderBackButton()}
-      <h3 className="text-xl font-bold text-foreground">How to keep your account secure</h3>
-
-      <div className="space-y-4">
-        <h4 className="font-semibold text-foreground">Barred Users</h4>
-        {blockedUsers.length === 0 ? (
-          <p className="text-muted-foreground">No barred users for now</p>
-        ) : (
-          <div className="space-y-3">
-            {blockedUsers.map(blocked => (
-              <div key={blocked.blocked_user_id} className="flex items-center justify-between p-3 border border-border rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage src={blocked.profiles?.profile_pic || ''} />
-                    <AvatarFallback>{blocked.profiles?.display_name?.charAt(0)?.toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium text-foreground">{blocked.profiles?.display_name}</p>
-                    <p className="text-sm text-muted-foreground">@{blocked.profiles?.username}</p>
-                  </div>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => unblockUser(blocked.blocked_user_id)} className="text-destructive hover:text-destructive/80">
-                  <Trash2 className="h-4 w-4 mr-2" /> Remove Restriction
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <Separator />
-
-      <div className="space-y-4">
-        <h4 className="font-semibold text-foreground">Mention Audience Expansion</h4>
-        <div>
-          <Label>When you&apos;re cited in a post, who can be appended to the audience?</Label>
-          <Select value={privacySettings.tag_audience_expansion || 'friends'} onValueChange={v => updatePrivacySetting('tag_audience_expansion', v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>{privacyOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderAdsView = () => (
-    <div className="space-y-6">
-      {renderBackButton()}
-      <h3 className="text-xl font-bold text-foreground">Your ad preferences on Tone</h3>
-      <p className="text-muted-foreground text-sm">
-        Tailor how ads are customized for you. Go to Ad Preferences in Settings for full controls.
-      </p>
-    </div>
-  );
 
   const views: Record<string, () => JSX.Element> = {
     sharing: () => {
@@ -1336,9 +1344,6 @@ const PrivacyCheckup = () => {
       }
       return <div />;
     },
-    data: renderDataView,
-    security: renderSecurityView,
-    ads: renderAdsView,
   };
 
   return <div className="max-w-2xl mx-auto">{views[activeView]?.()}</div>;
