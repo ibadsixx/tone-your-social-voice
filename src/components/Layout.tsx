@@ -28,7 +28,6 @@ import {
   ChevronRight,
   ChevronUp,
   Plus,
-  CirclePlay,
   HelpCircle,
   Moon,
   MessageSquareWarning,
@@ -42,6 +41,7 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
   const { actingPage, switchToPage, switchToPersonal } = usePageSwitch();
   const navigate = useNavigate();
   const [ownedPages, setOwnedPages] = useState<Array<{ id: string; name: string; cover_image: string | null; profile_pic: string | null }>>([]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -154,24 +154,59 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
       <div className="my-2 border-t" />
 
       <nav className="px-2 space-y-1">
-        {[
-          { icon: CirclePlay, label: 'Meta Business Suite', to: '/pages', trailing: <ChevronRight className="h-4 w-4 text-muted-foreground rotate-[-45deg]" /> },
-          { icon: Settings, label: 'Settings & privacy', to: '/settings', trailing: <ChevronRight className="h-4 w-4 text-muted-foreground" /> },
-          { icon: HelpCircle, label: 'Help & support', to: '/settings', trailing: <ChevronRight className="h-4 w-4 text-muted-foreground" /> },
-          { icon: Moon, label: 'Display & accessibility', to: '/settings', trailing: <ChevronRight className="h-4 w-4 text-muted-foreground" /> },
-        ].map(({ icon: Icon, label, to, trailing }) => (
-          <Link
-            key={label}
-            to={to}
-            className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm"
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(prev => !prev)}
+            className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm text-left"
           >
             <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-              <Icon className="h-5 w-5 text-foreground" />
+              <Settings className="h-5 w-5 text-foreground" />
             </span>
-            <span className="flex-1 truncate font-medium">{label}</span>
-            {trailing}
-          </Link>
-        ))}
+            <span className="flex-1 truncate font-medium">Settings & privacy</span>
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${settingsOpen ? 'rotate-90' : ''}`} />
+          </button>
+          {settingsOpen && (
+            <div className="ml-12 mt-1 mb-1 space-y-1 border-l-2 border-muted pl-3">
+              {[
+                { label: 'Settings', to: '/settings' },
+                { label: 'Profiles & personal details', to: '/settings/details' },
+                { label: 'Password & Security', to: '/settings/security' },
+                { label: 'Information & Permissions', to: '/settings/information' },
+                { label: 'Manage Blocking', to: '/settings/blocked' },
+              ].map(({ label, to }) => (
+                <Link
+                  key={label}
+                  to={to}
+                  onClick={() => setSettingsOpen(false)}
+                  className="block w-full px-3 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                >
+                  {label}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+        <Link
+          to="/settings"
+          className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm"
+        >
+          <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+            <HelpCircle className="h-5 w-5 text-foreground" />
+          </span>
+          <span className="flex-1 truncate font-medium">Help & support</span>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </Link>
+        <Link
+          to="/settings"
+          className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm"
+        >
+          <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+            <Moon className="h-5 w-5 text-foreground" />
+          </span>
+          <span className="flex-1 truncate font-medium">Display & accessibility</span>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </Link>
         <button
           type="button"
           className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm text-left"
