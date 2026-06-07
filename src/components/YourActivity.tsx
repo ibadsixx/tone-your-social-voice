@@ -7,22 +7,24 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { 
-  FileText, 
-  Image, 
-  Users, 
-  MessageCircle, 
-  UserPlus, 
-  UserMinus, 
+import {
+  FileText,
+  Image,
+  Users,
+  MessageCircle,
+  UserPlus,
+  UserMinus,
   Heart,
   Trash2,
   Settings,
   Camera,
-  Calendar,
   Clock,
-  Eye
+  Eye,
+  Search,
+  Bell,
+  Smile
 } from 'lucide-react';
-import { formatDistanceToNow, format, isToday, isYesterday, isThisWeek } from 'date-fns';
+import { formatDistanceToNow, isToday, isYesterday, isThisWeek } from 'date-fns';
 
 interface UserActivity {
   id: string;
@@ -38,6 +40,32 @@ interface ActivityGroup {
   activities: UserActivity[];
 }
 
+type Section = 'all' | 'posts' | 'comments' | 'likes' | 'pokes' | 'search';
+
+interface SectionTab {
+  id: Section;
+  label: string;
+  icon: React.ReactNode;
+}
+
+const SECTIONS: SectionTab[] = [
+  { id: 'all', label: 'All', icon: <Clock className="h-4 w-4" /> },
+  { id: 'posts', label: 'Posts', icon: <FileText className="h-4 w-4" /> },
+  { id: 'comments', label: 'Comments', icon: <MessageCircle className="h-4 w-4" /> },
+  { id: 'likes', label: 'Likes & Reactions', icon: <Heart className="h-4 w-4" /> },
+  { id: 'pokes', label: 'Pokes', icon: <Bell className="h-4 w-4" /> },
+  { id: 'search', label: 'Search', icon: <Search className="h-4 w-4" /> },
+];
+
+const SECTION_TYPES: Record<Section, string[]> = {
+  all: [],
+  posts: ['post_created', 'photo_uploaded', 'group_post', 'page_post', 'post_deleted', 'group_deleted', 'page_deleted'],
+  comments: ['comment_created', 'comment_deleted'],
+  likes: ['like_created', 'reaction_created'],
+  pokes: ['poke_created'],
+  search: ['search_query'],
+};
+
 const YourActivity: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -46,6 +74,7 @@ const YourActivity: React.FC = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
+  const [activeSection, setActiveSection] = useState<Section>('all');
   const limit = 20;
 
   useEffect(() => {
@@ -53,6 +82,10 @@ const YourActivity: React.FC = () => {
       fetchActivities(true);
     }
   }, [user]);
+
+  const filteredActivities = activeSection === 'all'
+    ? activities
+    : activities.filter(a => SECTION_TYPES[activeSection].includes(a.type));
 
   const fetchActivities = async (reset = false) => {
     try {
@@ -64,7 +97,7 @@ const YourActivity: React.FC = () => {
       }
 
       const currentOffset = reset ? 0 : offset;
-      
+
       const { data, error } = await supabase
         .from('user_activity')
         .select('*')
@@ -123,6 +156,14 @@ const YourActivity: React.FC = () => {
       case 'group_deleted':
       case 'page_deleted':
         return <Trash2 className="h-4 w-4" />;
+      case 'like_created':
+        return <Heart className="h-4 w-4" />;
+      case 'reaction_created':
+        return <Smile className="h-4 w-4" />;
+      case 'poke_created':
+        return <Bell className="h-4 w-4" />;
+      case 'search_query':
+        return <Search className="h-4 w-4" />;
       default:
         return <Clock className="h-4 w-4" />;
     }
@@ -130,7 +171,7 @@ const YourActivity: React.FC = () => {
 
   const getActivityText = (activity: UserActivity): string => {
     const { type, metadata } = activity;
-    
+
     switch (type) {
       case 'post_created':
         return 'You posted a new status';
@@ -168,6 +209,14 @@ const YourActivity: React.FC = () => {
         return `You unfollowed ${metadata.user_name || 'someone'}`;
       case 'unfriend':
         return `You unfriended ${metadata.friend_name || 'someone'}`;
+      case 'like_created':
+        return 'You liked a post';
+      case 'reaction_created':
+        return `You reacted with ${metadata.reaction_type || 'like'} to a post`;
+      case 'poke_created':
+        return `You poked ${metadata.poked_user_name || 'someone'}`;
+      case 'search_query':
+        return `You searched for "${metadata.query || ''}"`;
       default:
         return 'Activity recorded';
     }
@@ -175,30 +224,36 @@ const YourActivity: React.FC = () => {
 
   const getActivityPreview = (activity: UserActivity): string | null => {
     const { type, metadata } = activity;
-    
+
     if (type === 'post_created' && metadata.content) {
-      return metadata.content.length > 100 
+      return metadata.content.length > 100
         ? `${metadata.content.substring(0, 100)}...`
         : metadata.content;
     }
-    
+
     if (type === 'comment_created' && metadata.comment_content) {
       return metadata.comment_content.length > 80
         ? `${metadata.comment_content.substring(0, 80)}...`
         : metadata.comment_content;
     }
-    
+
+    if (type === 'search_query' && metadata.query) {
+      return metadata.query.length > 100
+        ? `${metadata.query.substring(0, 100)}...`
+        : metadata.query;
+    }
+
     return null;
   };
 
   const groupActivitiesByDate = (activities: UserActivity[]): ActivityGroup[] => {
     const groups: { [key: string]: ActivityGroup } = {};
-    
+
     activities.forEach(activity => {
       const date = new Date(activity.created_at);
       let label: string;
       let groupKey: string;
-      
+
       if (isToday(date)) {
         label = 'Today';
         groupKey = 'today';
@@ -212,7 +267,7 @@ const YourActivity: React.FC = () => {
         label = 'Older';
         groupKey = 'older';
       }
-      
+
       if (!groups[groupKey]) {
         groups[groupKey] = {
           date: groupKey,
@@ -220,11 +275,10 @@ const YourActivity: React.FC = () => {
           activities: []
         };
       }
-      
+
       groups[groupKey].activities.push(activity);
     });
-    
-    // Return in order: Today, Yesterday, This Week, Older
+
     const order = ['today', 'yesterday', 'thisweek', 'older'];
     return order
       .filter(key => groups[key])
@@ -257,7 +311,7 @@ const YourActivity: React.FC = () => {
     );
   }
 
-  const groupedActivities = groupActivitiesByDate(activities);
+  const groupedActivities = groupActivitiesByDate(filteredActivities);
 
   return (
     <Card>
@@ -271,12 +325,43 @@ const YourActivity: React.FC = () => {
         </p>
       </CardHeader>
       <CardContent>
-        {activities.length === 0 ? (
+        <div className="flex flex-wrap gap-1.5 mb-6">
+          {SECTIONS.map(section => {
+            const isActive = activeSection === section.id;
+            const count = section.id === 'all'
+              ? activities.length
+              : activities.filter(a => SECTION_TYPES[section.id].includes(a.type)).length;
+
+            return (
+              <button
+                key={section.id}
+                onClick={() => setActiveSection(section.id)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
+                  isActive
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted'
+                }`}
+              >
+                {section.icon}
+                <span>{section.label}</span>
+                {count > 0 && (
+                  <span className={`text-xs ml-0.5 ${isActive ? 'text-primary-foreground/70' : 'text-muted-foreground/70'}`}>
+                    ({count})
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {filteredActivities.length === 0 ? (
           <div className="text-center py-8">
             <Eye className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-medium mb-2">No Activity Yet</h3>
             <p className="text-muted-foreground">
-              Your activities will appear here as you interact with the platform
+              {activeSection === 'all'
+                ? 'Your activities will appear here as you interact with the platform'
+                : `No ${SECTIONS.find(s => s.id === activeSection)?.label.toLowerCase()} activity yet`}
             </p>
           </div>
         ) : (
@@ -290,11 +375,11 @@ const YourActivity: React.FC = () => {
                     </Badge>
                     <Separator className="flex-1" />
                   </div>
-                  
+
                   <div className="space-y-3">
                     {group.activities.map((activity) => {
                       const preview = getActivityPreview(activity);
-                      
+
                       return (
                         <div
                           key={activity.id}
@@ -303,18 +388,18 @@ const YourActivity: React.FC = () => {
                           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                             {getActivityIcon(activity.type)}
                           </div>
-                          
+
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-foreground">
                               {getActivityText(activity)}
                             </p>
-                            
+
                             {preview && (
                               <p className="text-xs text-muted-foreground mt-1 bg-muted/50 rounded p-2">
                                 "{preview}"
                               </p>
                             )}
-                            
+
                             <p className="text-xs text-muted-foreground mt-1">
                               {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
                             </p>
@@ -325,7 +410,7 @@ const YourActivity: React.FC = () => {
                   </div>
                 </div>
               ))}
-              
+
               {hasMore && (
                 <div className="text-center pt-4">
                   <Button
