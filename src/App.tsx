@@ -86,6 +86,8 @@ const App = () => (
                 <Route path="settings/information/contacts" element={<Settings />} />
                 <Route path="settings/information" element={<Settings />} />
                 <Route path="settings/activity" element={<Settings />} />
+                <Route path="settings/hashtags" element={<Settings />} />
+                <Route path="settings/blocked" element={<Settings />} />
                 <Route path="saved" element={<Saved />} />
                 <Route path="mentions" element={<Mentions />} />
                 <Route path="hashtag/:tag" element={<Hashtag />} />

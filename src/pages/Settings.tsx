@@ -89,6 +89,8 @@ const Settings = () => {
     if (path === '/settings/privacycheckup') return 'privacy';
     if (path === '/settings/ads') return 'ads';
     if (path === '/settings/activity') return 'activity';
+    if (path === '/settings/hashtags') return 'notifications';
+    if (path === '/settings/blocked') return 'blocked';
     if (path.startsWith('/settings/information')) return 'permissions';
     return 'landing';
   };
@@ -220,7 +222,7 @@ const Settings = () => {
     { id: 'ads', title: 'Ad preferences', icon: Target },
     { id: 'privacy', title: 'Privacy Checkup', icon: Eye },
     { id: 'activity', title: 'Your activity', icon: Activity },
-    { id: 'notifications', title: 'Notification Settings', icon: Hash },
+    { id: 'notifications', title: 'Hashtags Settings', icon: Hash },
     { id: 'blocked', title: 'Blocked Users', icon: UserX },
     ...(isAdmin ? [{ id: 'admin', title: 'Admin Reports', icon: SettingsIcon }] : [])
   ];
@@ -864,6 +866,10 @@ const Settings = () => {
                             navigate('/settings/ads');
                           } else if (option.id === 'activity') {
                             navigate('/settings/activity');
+                          } else if (option.id === 'notifications') {
+                            navigate('/settings/hashtags');
+                          } else if (option.id === 'blocked') {
+                            navigate('/settings/blocked');
                           } else {
                             navigate('/settings');
                           }
