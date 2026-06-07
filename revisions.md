@@ -762,3 +762,78 @@ The page now shows only the Contact Settings card with the three toggles. "Uploa
 - `src/components/privacy/PrivacyIllustrations.tsx` — new SVG illustration components for all 5 cards
 - `src/components/PrivacyCheckup.tsx` — PNG→SVG imports, email array parsing, case-insensitive visibility, 3 new dialogs (data/security/ads), Settings Preferences link, removed unused detail views
 - `src/pages/Settings.tsx` — `useEffect` for URL-path `activeSection` sync
+
+## 2026-06-07
+
+### Your Activity — dedicated `/settings/activity` route, wired to `user_activity` table
+
+**Problem:** Clicking "Your activity" in the settings sidebar navigated to `/settings` (the landing page URL) and relied on in-memory state to show the section. The page showed hardcoded sample data with no database connection.
+
+**Fixes:**
+- **New route** — `src/App.tsx`: added `<Route path="settings/activity" element={<Settings />} />`
+- **URL-aware section** — `Settings.tsx`: `getSectionFromPath` returns `'activity'` for `/settings/activity`; sidebar navigates to `/settings/activity`
+- **Live DB component** — Replaced hardcoded activity JSX with `<YourActivity />`, which fetches from `user_activity` table via Supabase (uses `supabase` client from `.env` — project `ojdhztcetykgvrcwlwen`)
+
+**Files:**
+- `src/App.tsx` — added `settings/activity` route
+- `src/pages/Settings.tsx` — `getSectionFromPath` mapping, sidebar navigation, replaced hardcoded UI with `<YourActivity />`
+
+### Your Activity — section tabs (Posts, Comments, Likes & Reactions, Pokes, Search)
+
+**Problem:** The activity page showed all activity types in a single flat list with no way to filter by category. Only post/comment/follow/profile-pic activities had DB triggers — likes, reactions, pokes, and search queries were never recorded.
+
+**Fixes:**
+- **Section tabs** — `YourActivity.tsx` now has pill-shaped filter tabs at the top: All, Posts, Comments, Likes & Reactions, Pokes, Search. Each tab filters activities by type with live counts. Empty state shows a section-specific message.
+- **Type mapping** — `SECTION_TYPES` defines which activity types belong to each section (e.g. Posts includes `post_created`, `photo_uploaded`, `group_post`, `page_post`, `post_deleted`)
+- **New activity icons/text** — Added icon + text handlers for `like_created` (Heart), `reaction_created` (Smile + reaction type), `poke_created` (Bell + target name), `search_query` (Search + query preview)
+- **Migration: likes trigger** — `log_like_activity()` fires on `likes` INSERT; records `like_created` with `post_id`
+- **Migration: reactions trigger** — `log_reaction_activity()` fires on `reactions` INSERT; records `reaction_created` with `post_id` + `reaction_type`
+- **Migration: pokes table + trigger** — Creates `public.pokes` table (`id`, `poking_user_id`, `poked_user_id`, `created_at`) with RLS; `log_poke_activity()` trigger records `poke_created` with target user name
+- **Migration: search trigger** — `log_search_activity()` fires on `search_history` INSERT; records `search_query` with the query text
+
+**Files:**
+- `src/components/YourActivity.tsx` — section tabs, filtered activity list, new activity types
+- `supabase/migrations/20260607000001_add_activity_sections.sql` — likes/reactions/pokes/search triggers + pokes table
+
+### Notification Settings — mapped to `/settings/hashtags` route
+
+**Problem:** The "Notification Settings" page had no dedicated URL — clicking it in the sidebar navigated to `/settings` and relied on in-memory state.
+
+**Fix:** Added `/settings/hashtags` route in `App.tsx`; `getSectionFromPath` returns `'notifications'` for `/settings/hashtags`; sidebar navigates there on click.
+
+**Files:**
+- `src/App.tsx` — added `settings/hashtags` route
+- `src/pages/Settings.tsx` — `getSectionFromPath` mapping, sidebar navigation
+
+### Blocked Users — `/settings/blocked` route, Manage Blocking menu with 6 sections
+
+**Problem:** The Blocked Users page had no dedicated URL and only showed a flat list of blocked profiles. No support for restricted users, nickname blocking, or blocking by message/app/event invite sender.
+
+**Fixes:**
+- **Dedicated route** — `App.tsx`: added `settings/blocked` route; `Settings.tsx` maps path to `'blocked'` section
+- **Manage Blocking menu** — `BlockedUsersManager.tsx` rewritten with 6 pill-tab sections:
+  - **Restricted list** — search users, add/remove from `restricted_users` table
+  - **Block profiles and Pages** — existing `blocks` table list with unblock
+  - **Blocked nicknames** — text-based blocking via `blocked_nicknames` table
+  - **Block messages** — search users, block/unblock via `blocked_message_senders` table
+  - **Block app invites** — search users, block/unblock via `blocked_app_invite_senders` table
+  - **Block event invites** — search users, block/unblock via `blocked_event_invite_senders` table
+- **Migration: 4 new tables** — `blocked_nicknames`, `blocked_message_senders`, `blocked_app_invite_senders`, `blocked_event_invite_senders` with RLS + indexes
+
+**Files:**
+- `src/App.tsx` — added `settings/blocked` route
+- `src/pages/Settings.tsx` — `getSectionFromPath` mapping, sidebar navigation
+- `src/components/BlockedUsersManager.tsx` — full rewrite with 6-section Manage Blocking UI, search results in PopoverContent dropdowns
+- `supabase/migrations/20260607000002_add_blocking_management_tables.sql` — 4 new blocking tables
+
+### Header avatar menu — Settings & privacy dropdown submenu
+
+**Problem:** Clicking "Settings & privacy" in the header avatar menu navigated directly to `/settings`. There was no way to reach specific settings sections (details, security, information, blocked) from the menu without going through the settings landing page.
+
+**Fixes:**
+- **Removed "Meta Business Suite"** — deleted the menu item and unused `CirclePlay` import
+- **Settings & privacy dropdown** — replaced the direct `Link` with a button + toggleable submenu containing 5 options: Settings (`/settings`), Profiles & personal details (`/settings/details`), Password & Security (`/settings/security`), Information & Permissions (`/settings/information`), Manage Blocking (`/settings/blocked`)
+- Submenu rendered with indented border-left style, chevron rotates on open
+
+**Files:**
+- `src/components/Layout.tsx` — Settings & privacy dropdown submenu, removed Meta Business Suite
