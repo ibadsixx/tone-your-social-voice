@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { UserX, Ban, MessageSquare, Bell, CalendarX, Shield, Slash, Plus, X, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -25,6 +26,13 @@ const SECTIONS: SectionTab[] = [
   { id: 'app-invites', label: 'Block app invites', icon: <Bell className="h-4 w-4" /> },
   { id: 'event-invites', label: 'Block event invites', icon: <CalendarX className="h-4 w-4" /> },
 ];
+
+interface ProfileResult {
+  id: string;
+  username: string;
+  display_name: string;
+  profile_pic: string | null;
+}
 
 interface BlockedUser {
   id: string;
@@ -47,9 +55,13 @@ interface ActiveRow {
   created_at: string;
 }
 
+interface NicknameRow {
+  id: string;
+  nickname: string;
+  created_at: string;
+}
+
 const BlockedUsersManager = () => {
-  const { user } = useAuth();
-  const { toast } = useToast();
   const [activeSection, setActiveSection] = useState<Section>('restricted');
 
   return (
@@ -95,13 +107,39 @@ const BlockedUsersManager = () => {
   );
 };
 
+function searchProfiles(userId: string | undefined, query: string): Promise<ProfileResult[]> {
+  if (query.length < 2) return Promise.resolve([]);
+  return supabase
+    .from('profiles')
+    .select('id, username, display_name, profile_pic')
+    .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
+    .neq('id', userId)
+    .limit(10)
+    .then(({ data }) => (data || []) as ProfileResult[]);
+}
+
+function enrichRows<T extends { target_id: string }>(
+  rows: T[],
+  profiles: ProfileResult[] | null
+): (T & { display_name: string; username: string; profile_pic: string | null })[] {
+  return rows.map(r => {
+    const p = profiles?.find(pr => pr.id === r.target_id);
+    return {
+      ...r,
+      display_name: p?.display_name || 'Unknown User',
+      username: p?.username || 'unknown',
+      profile_pic: p?.profile_pic || null,
+    };
+  });
+}
+
 const RestrictedSection = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [rows, setRows] = useState<ActiveRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<ProfileResult[]>([]);
   const [adding, setAdding] = useState(false);
 
   const fetchRestricted = useCallback(async () => {
@@ -137,8 +175,9 @@ const RestrictedSection = () => {
           created_at: r.created_at,
         };
       }));
-    } catch (err: any) {
-      toast({ title: 'Error', description: 'Failed to load restricted users', variant: 'destructive' });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load restricted users';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -146,19 +185,12 @@ const RestrictedSection = () => {
 
   useEffect(() => { fetchRestricted(); }, [fetchRestricted]);
 
-  const searchUsers = async (q: string) => {
+  const handleSearch = useCallback(async (q: string) => {
     setSearchQuery(q);
     if (q.length < 2) { setSearchResults([]); return; }
-    try {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, profile_pic')
-        .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
-        .neq('id', user?.id)
-        .limit(10);
-      setSearchResults(data || []);
-    } catch { }
-  };
+    const results = await searchProfiles(user?.id, q);
+    setSearchResults(results);
+  }, [user?.id]);
 
   const addRestricted = async (targetId: string) => {
     setAdding(true);
@@ -171,8 +203,9 @@ const RestrictedSection = () => {
       setSearchResults([]);
       toast({ title: 'User restricted' });
       fetchRestricted();
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to restrict user';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
     } finally { setAdding(false); }
   };
 
@@ -186,24 +219,30 @@ const RestrictedSection = () => {
     }
   };
 
+  useEffect(() => {
+    if (!searchQuery) setSearchResults([]);
+  }, [searchQuery]);
+
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search users to restrict..."
-            value={searchQuery}
-            onChange={e => searchUsers(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-      </div>
-      {searchResults.length > 0 && (
-        <Card className="border-border/50">
-          <CardContent className="p-2 space-y-1">
+      <Popover open={searchResults.length > 0} onOpenChange={() => {}}>
+        <PopoverTrigger asChild>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search users to restrict..."
+                value={searchQuery}
+                onChange={e => handleSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </div>
+        </PopoverTrigger>
+        <PopoverContent className="w-full p-2" align="start" sideOffset={8}>
+          <div className="space-y-1">
             {searchResults.map(r => (
-              <div key={r.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50">
+              <div key={r.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer">
                 <div className="flex items-center gap-2">
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={r.profile_pic || undefined} />
@@ -219,9 +258,9 @@ const RestrictedSection = () => {
                 </Button>
               </div>
             ))}
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </PopoverContent>
+      </Popover>
       {loading ? (
         <div className="text-center py-4 text-muted-foreground">Loading...</div>
       ) : rows.length === 0 ? (
@@ -269,7 +308,7 @@ const BlockedProfilesSection = () => {
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchBlockedUsers = async () => {
+  const fetchBlockedUsers = useCallback(async () => {
     if (!user?.id) return;
     try {
       const { data: blocks, error: blocksError } = await supabase
@@ -297,12 +336,15 @@ const BlockedProfilesSection = () => {
           id: block.blocked_id, username: 'unknown', display_name: 'Unknown User', profile_pic: null
         }
       })));
-    } catch (error: any) {
-      toast({ title: 'Error', description: 'Failed to load blocked users', variant: 'destructive' });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load blocked users';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.id, toast]);
+
+  useEffect(() => { fetchBlockedUsers(); }, [fetchBlockedUsers]);
 
   const unblockUser = async (blockId: string, username: string) => {
     try {
@@ -313,8 +355,6 @@ const BlockedProfilesSection = () => {
       toast({ title: 'Error', description: 'Failed to unblock user.', variant: 'destructive' });
     }
   };
-
-  useEffect(() => { fetchBlockedUsers(); }, [user?.id]);
 
   if (loading) return <div className="text-center py-4 text-muted-foreground">Loading blocked users...</div>;
 
@@ -366,12 +406,12 @@ const BlockedProfilesSection = () => {
 const BlockedNicknamesSection = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [nicknames, setNicknames] = useState<{ id: string; nickname: string; created_at: string }[]>([]);
+  const [nicknames, setNicknames] = useState<NicknameRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [newNickname, setNewNickname] = useState('');
   const [adding, setAdding] = useState(false);
 
-  const fetchNicknames = async () => {
+  const fetchNicknames = useCallback(async () => {
     if (!user) return;
     try {
       const { data } = await supabase
@@ -379,11 +419,13 @@ const BlockedNicknamesSection = () => {
         .select('id, nickname, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
-      setNicknames((data || []) as any);
-    } catch {} finally { setLoading(false); }
-  };
+      setNicknames((data || []) as NicknameRow[]);
+    } catch {
+      console.warn('Failed to fetch nicknames');
+    } finally { setLoading(false); }
+  }, [user]);
 
-  useEffect(() => { fetchNicknames(); }, [user]);
+  useEffect(() => { fetchNicknames(); }, [fetchNicknames]);
 
   const addNickname = async () => {
     if (!newNickname.trim()) return;
@@ -396,8 +438,9 @@ const BlockedNicknamesSection = () => {
       setNewNickname('');
       toast({ title: 'Nickname blocked' });
       fetchNicknames();
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to block nickname';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
     } finally { setAdding(false); }
   };
 
@@ -473,11 +516,10 @@ const BlockedSendersSection = ({ table, title, description }: SendersSectionProp
   const [rows, setRows] = useState<ActiveRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<ProfileResult[]>([]);
 
-  const icon = table === 'blocked_message_senders' ? MessageSquare
+  const Icon = table === 'blocked_message_senders' ? MessageSquare
     : table === 'blocked_app_invite_senders' ? Bell : CalendarX;
-  const Icon = icon;
 
   const fetchRows = useCallback(async () => {
     if (!user) return;
@@ -498,78 +540,75 @@ const BlockedSendersSection = ({ table, title, description }: SendersSectionProp
         .select('id, username, display_name, profile_pic')
         .in('id', ids);
 
-      setRows(data.map(r => {
-        const p = profiles?.find(pr => pr.id === r.blocked_user_id);
-        return {
-          id: r.id, target_id: r.blocked_user_id,
-          display_name: p?.display_name || 'Unknown User',
-          username: p?.username || 'unknown',
-          profile_pic: p?.profile_pic || null,
-          created_at: r.created_at,
-        };
-      }));
-    } catch {} finally { setLoading(false); }
+      setRows(enrichRows(
+        data.map(d => ({ id: d.id, target_id: d.blocked_user_id, created_at: d.created_at })),
+        profiles
+      ));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load data';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
+    } finally { setLoading(false); }
   }, [user, table, toast]);
 
   useEffect(() => { fetchRows(); }, [fetchRows]);
 
-  const searchUsers = async (q: string) => {
+  const handleSearch = useCallback(async (q: string) => {
     setSearchQuery(q);
     if (q.length < 2) { setSearchResults([]); return; }
-    try {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, profile_pic')
-        .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
-        .neq('id', user?.id)
-        .limit(10);
-      setSearchResults(data || []);
-    } catch {}
-  };
+    const results = await searchProfiles(user?.id, q);
+    setSearchResults(results);
+  }, [user?.id]);
 
   const addSender = async (targetId: string) => {
     try {
       const { error } = await supabase.from(table).insert({
         user_id: user?.id,
         blocked_user_id: targetId,
-      } as any);
+      } as never);
       if (error) throw error;
       setSearchQuery('');
       setSearchResults([]);
       toast({ title: 'Blocked' });
       fetchRows();
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to block user';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
     }
   };
 
   const removeSender = async (id: string) => {
     try {
-      await supabase.from(table).delete().eq('id', id as any);
+      await supabase.from(table).delete().eq('id', id as never);
       setRows(prev => prev.filter(r => r.id !== id));
     } catch {
       toast({ title: 'Error', description: 'Failed to remove', variant: 'destructive' });
     }
   };
 
+  useEffect(() => {
+    if (!searchQuery) setSearchResults([]);
+  }, [searchQuery]);
+
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search users to block..."
-            value={searchQuery}
-            onChange={e => searchUsers(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-      </div>
-      {searchResults.length > 0 && (
-        <Card className="border-border/50">
-          <CardContent className="p-2 space-y-1">
+      <Popover open={searchResults.length > 0} onOpenChange={() => {}}>
+        <PopoverTrigger asChild>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search users to block..."
+                value={searchQuery}
+                onChange={e => handleSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </div>
+        </PopoverTrigger>
+        <PopoverContent className="w-full p-2" align="start" sideOffset={8}>
+          <div className="space-y-1">
             {searchResults.map(r => (
-              <div key={r.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50">
+              <div key={r.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer">
                 <div className="flex items-center gap-2">
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={r.profile_pic || undefined} />
@@ -585,9 +624,9 @@ const BlockedSendersSection = ({ table, title, description }: SendersSectionProp
                 </Button>
               </div>
             ))}
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </PopoverContent>
+      </Popover>
       {loading ? (
         <div className="text-center py-4 text-muted-foreground">Loading...</div>
       ) : rows.length === 0 ? (
