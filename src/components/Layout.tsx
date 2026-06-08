@@ -15,6 +15,7 @@ import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import GiveFeedbackDialog from '@/components/GiveFeedbackDialog';
+import FriendRequestsDropdown from '@/components/FriendRequestsDropdown';
 import { 
   Home, 
   MessageCircle, 
@@ -25,7 +26,7 @@ import {
   Users, 
   FileText,
   LogOut,
-  Heart,
+  UserPlus,
   Bookmark,
   AtSign,
   Hash,
@@ -333,9 +334,7 @@ const Layout = () => {
           <div className="flex items-center gap-3">
             <NotificationsDropdown />
             
-            <Button variant="ghost" size="sm" className="hover:bg-tone-purple/10 hover:text-tone-purple transition-colors">
-              <Heart className="h-4 w-4" />
-            </Button>
+            <FriendRequestsDropdown />
 
             <HeaderAvatar profile={profile} user={user} />
             
