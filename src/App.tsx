@@ -4,6 +4,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/hooks/useAuth";
 import { CallProvider } from "@/contexts/CallContext";
 import { PageSwitchProvider } from "@/contexts/PageSwitchContext";
@@ -46,6 +47,7 @@ const App = () => (
       <AuthProvider>
         <CallProvider>
           <PageSwitchProvider>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <TooltipProvider>
             <Toaster />
             <Sonner />
@@ -87,6 +89,7 @@ const App = () => (
                 <Route path="settings/information" element={<Settings />} />
                 <Route path="settings/activity" element={<Settings />} />
                 <Route path="settings/hashtags" element={<Settings />} />
+                <Route path="settings/display" element={<Settings />} />
                 <Route path="settings/blocked" element={<Settings />} />
                 <Route path="saved" element={<Saved />} />
                 <Route path="mentions" element={<Mentions />} />
@@ -103,6 +106,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
           </TooltipProvider>
+          </ThemeProvider>
           </PageSwitchProvider>
         </CallProvider>
       </AuthProvider>

@@ -40,8 +40,10 @@ import {
   QrCode,
   UserX,
   Settings as SettingsIcon,
-  Hash
+  Hash,
+  Monitor
 } from 'lucide-react';
+import DisplayAndAccessibility from '@/components/settings/DisplayAndAccessibility';
 import BlockedUsersManager from '@/components/BlockedUsersManager';
 import { AdminReportsManager } from '@/components/AdminReportsManager';
 import { useHashtagNotificationSettings } from '@/hooks/useHashtagNotificationSettings';
@@ -91,6 +93,7 @@ const Settings = () => {
     if (path === '/settings/activity') return 'activity';
     if (path === '/settings/hashtags') return 'notifications';
     if (path === '/settings/blocked') return 'blocked';
+    if (path === '/settings/display') return 'display';
     if (path.startsWith('/settings/information')) return 'permissions';
     return 'landing';
   };
@@ -223,6 +226,7 @@ const Settings = () => {
     { id: 'privacy', title: 'Privacy Checkup', icon: Eye },
     { id: 'activity', title: 'Your activity', icon: Activity },
     { id: 'notifications', title: 'Hashtags Settings', icon: Hash },
+    { id: 'display', title: 'Display & accessibility', icon: Monitor },
     { id: 'blocked', title: 'Blocked Users', icon: UserX },
     ...(isAdmin ? [{ id: 'admin', title: 'Admin Reports', icon: SettingsIcon }] : [])
   ];
@@ -815,6 +819,9 @@ const Settings = () => {
       case 'activity':
         return <YourActivity />;
 
+      case 'display':
+        return <DisplayAndAccessibility />;
+
       case 'blocked':
         return <BlockedUsersManager />;
 
@@ -868,6 +875,8 @@ const Settings = () => {
                             navigate('/settings/activity');
                           } else if (option.id === 'notifications') {
                             navigate('/settings/hashtags');
+                          } else if (option.id === 'display') {
+                            navigate('/settings/display');
                           } else if (option.id === 'blocked') {
                             navigate('/settings/blocked');
                           } else {

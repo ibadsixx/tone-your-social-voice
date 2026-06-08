@@ -3,6 +3,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Switch } from '@/components/ui/switch';
+import { useTheme } from 'next-themes';
 import { NotificationsDropdown } from '@/components/NotificationsDropdown';
 import { FloatingIM } from '@/components/im/FloatingIM';
 import { ChatWindowManager } from '@/components/im/ChatWindowManager';
@@ -12,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import GiveFeedbackDialog from '@/components/GiveFeedbackDialog';
 import { 
   Home, 
   MessageCircle, 
@@ -30,6 +33,7 @@ import {
   Plus,
   HelpCircle,
   Moon,
+  Sun,
   MessageSquareWarning,
   Shield,
   ArrowLeftRight,
@@ -42,6 +46,9 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
   const navigate = useNavigate();
   const [ownedPages, setOwnedPages] = useState<Array<{ id: string; name: string; cover_image: string | null; profile_pic: string | null }>>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [displayOpen, setDisplayOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     if (!user?.id) return;
@@ -62,6 +69,17 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
       setOwnedPages(unique);
     })();
   }, [user?.id]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        setFeedbackOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const firstPage = ownedPages[0] || null;
 
@@ -197,18 +215,36 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
           <span className="flex-1 truncate font-medium">Help & support</span>
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </Link>
-        <Link
-          to="/settings"
-          className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm"
-        >
-          <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-            <Moon className="h-5 w-5 text-foreground" />
-          </span>
-          <span className="flex-1 truncate font-medium">Display & accessibility</span>
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-        </Link>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setDisplayOpen(prev => !prev)}
+            className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm text-left"
+          >
+            <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+              <Moon className="h-5 w-5 text-foreground" />
+            </span>
+            <span className="flex-1 truncate font-medium">Display & accessibility</span>
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${displayOpen ? 'rotate-90' : ''}`} />
+          </button>
+          {displayOpen && (
+            <div className="ml-12 mt-1 mb-1 space-y-1 border-l-2 border-muted pl-3">
+              <div className="flex items-center justify-between px-3 py-1.5 rounded-md">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Sun className="h-4 w-4" />
+                  <span>Dark mode</span>
+                </div>
+                <Switch
+                  checked={theme === 'dark'}
+                  onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
+                />
+              </div>
+            </div>
+          )}
+        </div>
         <button
           type="button"
+          onClick={() => setFeedbackOpen(true)}
           className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm text-left"
         >
           <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
@@ -238,6 +274,8 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
   );
 
   return (
+    <>
+    <GiveFeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
     <Popover>
       <PopoverTrigger asChild>{avatar}</PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0 max-h-[80vh] overflow-y-auto">
@@ -245,6 +283,7 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
         {defaultMenu}
       </PopoverContent>
     </Popover>
+    </>
   );
 };
 
