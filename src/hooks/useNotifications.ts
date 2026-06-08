@@ -7,7 +7,10 @@ export interface Notification {
   id: string;
   user_id: string;
   actor_id: string;
-  type: 'like' | 'comment' | 'mention' | 'follow' | 'tag' | 'share';
+  type: 'like' | 'comment' | 'mention' | 'follow' | 'tag' | 'share' | 'post_from_followed' | 'group_post' | 'poke' | 'hashtag_post' | 'friend_request' | 'message_request' | 'invitation' | 'group_membership_accepted' | 'security_login';
+  group_id?: string;
+  page_id?: string;
+  hashtag?: string;
   post_id?: string;
   comment_id?: string;
   message: string;

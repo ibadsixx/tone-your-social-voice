@@ -1,4 +1,4 @@
-import { Bell, Check, Loader2 } from 'lucide-react';
+import { Bell, Check, Loader2, Heart, MessageCircle, AtSign, UserPlus, Tag, RefreshCw, FileText, Users, Hand, Hash, Mail, Handshake, ShieldCheck, Lock, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -21,30 +21,69 @@ export const NotificationsDropdown = () => {
 
   const handleNotificationClick = (notification: any) => {
     markAsRead(notification.id);
-    
+
     if (notification.post_id) {
       navigate(`/post/${notification.post_id}`);
     } else if (notification.type === 'follow' && notification.actor) {
+      navigate(`/profile/${notification.actor.username}`);
+    } else if (notification.type === 'poke' && notification.actor) {
+      navigate(`/profile/${notification.actor.username}`);
+    } else if (notification.type === 'friend_request') {
+      navigate(`/profile`);
+    } else if (notification.type === 'message_request') {
+      navigate('/messages');
+    } else if (notification.type === 'group_post' && notification.group_id) {
+      navigate(`/groups/${notification.group_id}`);
+    } else if (notification.type === 'invitation' && notification.group_id) {
+      navigate(`/groups/${notification.group_id}`);
+    } else if (notification.type === 'invitation' && notification.page_id) {
+      navigate(`/pages/${notification.page_id}`);
+    } else if (notification.type === 'group_membership_accepted' && notification.group_id) {
+      navigate(`/groups/${notification.group_id}`);
+    } else if (notification.type === 'hashtag_post') {
+      navigate(`/hashtag/${notification.hashtag || ''}`);
+    } else if (notification.type === 'security_login') {
+      navigate('/settings/security');
+    } else if (notification.actor) {
       navigate(`/profile/${notification.actor.username}`);
     }
   };
 
   const getNotificationIcon = (type: string) => {
+    const className = "h-5 w-5 text-muted-foreground";
     switch (type) {
       case 'like':
-        return '❤️';
+        return <Heart className={className} />;
       case 'comment':
-        return '💬';
+        return <MessageCircle className={className} />;
       case 'mention':
-        return '@';
+        return <AtSign className={className} />;
       case 'follow':
-        return '👤';
+        return <UserPlus className={className} />;
       case 'tag':
-        return '🏷️';
+        return <Tag className={className} />;
       case 'share':
-        return '🔄';
+        return <RefreshCw className={className} />;
+      case 'post_from_followed':
+        return <FileText className={className} />;
+      case 'group_post':
+        return <Users className={className} />;
+      case 'poke':
+        return <Hand className={className} />;
+      case 'hashtag_post':
+        return <Hash className={className} />;
+      case 'friend_request':
+        return <User className={className} />;
+      case 'message_request':
+        return <Mail className={className} />;
+      case 'invitation':
+        return <Handshake className={className} />;
+      case 'group_membership_accepted':
+        return <ShieldCheck className={className} />;
+      case 'security_login':
+        return <Lock className={className} />;
       default:
-        return '🔔';
+        return <Bell className={className} />;
     }
   };
 
@@ -104,7 +143,7 @@ export const NotificationsDropdown = () => {
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start gap-2">
-                      <span className="text-lg">{getNotificationIcon(notification.type)}</span>
+                      <span className="mt-0.5">{getNotificationIcon(notification.type)}</span>
                       <div className="flex-1">
                         <p className="text-sm">
                           <span className="font-semibold">
