@@ -20,7 +20,8 @@ import {
   MessageCircle, 
   User, 
   Search, 
-  Settings, 
+  Settings,
+  Wrench,
   Users, 
   FileText,
   LogOut,
@@ -31,12 +32,13 @@ import {
   ChevronRight,
   ChevronUp,
   Plus,
-  HelpCircle,
-  Moon,
+  LifeBuoy,
   Sun,
   MessageSquareWarning,
   Shield,
   ArrowLeftRight,
+  Bell,
+  Monitor,
 } from 'lucide-react';
 
 const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
@@ -179,7 +181,7 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
             className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm text-left"
           >
             <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-              <Settings className="h-5 w-5 text-foreground" />
+              <Wrench className="h-5 w-5 text-foreground" />
             </span>
             <span className="flex-1 truncate font-medium">Settings & privacy</span>
             <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${settingsOpen ? 'rotate-90' : ''}`} />
@@ -210,7 +212,7 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
           className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm"
         >
           <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-            <HelpCircle className="h-5 w-5 text-foreground" />
+            <LifeBuoy className="h-5 w-5 text-foreground" />
           </span>
           <span className="flex-1 truncate font-medium">Help & support</span>
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -222,7 +224,7 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
             className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm text-left"
           >
             <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-              <Moon className="h-5 w-5 text-foreground" />
+              <Monitor className="h-5 w-5 text-foreground" />
             </span>
             <span className="flex-1 truncate font-medium">Display & accessibility</span>
             <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${displayOpen ? 'rotate-90' : ''}`} />
@@ -248,22 +250,12 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
           className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm text-left"
         >
           <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-            <MessageSquareWarning className="h-5 w-5 text-foreground" />
+            <Bell className="h-5 w-5 text-foreground" />
           </span>
           <span className="flex-1">
-            <span className="block font-medium">Give feedback</span>
+            <span className="block font-medium">Feedback</span>
             <span className="block text-xs text-muted-foreground">CTRL B</span>
           </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => signOut()}
-          className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm text-left"
-        >
-          <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-            <LogOut className="h-5 w-5 text-foreground" />
-          </span>
-          <span className="flex-1 font-medium">Log out</span>
         </button>
       </nav>
 
