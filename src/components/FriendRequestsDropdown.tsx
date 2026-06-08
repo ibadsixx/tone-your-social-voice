@@ -173,7 +173,7 @@ const FriendRequestsDropdown: React.FC = () => {
         <Button variant="ghost" size="sm" className="relative hover:bg-tone-purple/10 hover:text-tone-purple transition-colors">
           <UserPlus className="h-4 w-4" />
           {requests.length > 0 && (
-            <Badge className="absolute -top-1 -right-1 h-4 w-4 p-0 text-xs bg-tone-purple text-white flex items-center justify-center">
+            <Badge className="absolute -top-1 -right-1 h-4 w-4 p-0 text-xs bg-red-500 text-white flex items-center justify-center">
               {requests.length > 9 ? '9+' : requests.length}
             </Badge>
           )}
