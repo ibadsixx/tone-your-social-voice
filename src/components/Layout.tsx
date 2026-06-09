@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { useTheme } from 'next-themes';
 import { NotificationsDropdown } from '@/components/NotificationsDropdown';
-import { FloatingIM } from '@/components/im/FloatingIM';
+
 import { ChatWindowManager } from '@/components/im/ChatWindowManager';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HeaderAvatarMenuProvider, useHeaderAvatarMenu } from '@/contexts/HeaderAvatarMenuContext';
@@ -309,7 +309,6 @@ const Layout = () => {
     { name: 'Saved', href: '/saved', icon: Bookmark },
     { name: 'Groups', href: '/groups', icon: Users },
     { name: 'Pages', href: '/pages', icon: FileText },
-    { name: 'Settings', href: '/settings', icon: Settings },
   ];
 
   const handleSignOut = async () => {
@@ -322,13 +321,8 @@ const Layout = () => {
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border/50 bg-card/80 backdrop-blur-lg supports-[backdrop-filter]:bg-card/60 shadow-tone">
         <div className="container mx-auto px-6 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-tone-gradient rounded-lg flex items-center justify-center shadow-tone-glow">
-              <span className="text-white font-bold text-lg">T</span>
-            </div>
-            <span className="text-2xl font-bold bg-gradient-to-r from-tone-purple to-tone-blue bg-clip-text text-transparent">
-              Tone
-            </span>
+          <Link to="/" className="flex items-center">
+            <img src="/favicon.ico" alt="Tone" className="h-8 w-8" />
           </Link>
           
           <div className="flex items-center gap-3">
@@ -407,8 +401,7 @@ const Layout = () => {
 
       {/* Chat windows — always visible */}
       <ChatWindowManager />
-      {/* Floating IM contacts sidebar — hidden on profile, page profile, and messages pages */}
-      {!location.pathname.startsWith('/profile') && !location.pathname.startsWith('/pages') && !location.pathname.startsWith('/messages') && !location.pathname.startsWith('/settings') && <FloatingIM />}
+
     </div>
     </HeaderAvatarMenuProvider>
   );

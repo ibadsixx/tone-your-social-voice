@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
+import { useProfile } from '@/hooks/useProfile';
 import { motion } from 'framer-motion';
 import { useStories } from '@/hooks/useStories';
 import CreateStoryDialog from './CreateStoryDialog';
@@ -12,11 +12,13 @@ import { supabase } from '@/integrations/supabase/client';
 
 const Stories = () => {
   const { user } = useAuth();
-  const [currentUserProfile, setCurrentUserProfile] = useState<{ profile_pic: string | null } | null>(null);
+  const { profile } = useProfile();
+  const [currentUserProfile, setCurrentUserProfile] = useState<{ profile_pic: string | null; display_name: string | null } | null>(null);
   const { stories, loading, markAsViewed, deleteStory } = useStories();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [selectedUserStories, setSelectedUserStories] = useState<any>(null);
+  const [imgError, setImgError] = useState(false);
 
   const handleCreateStory = () => {
     setCreateDialogOpen(true);
@@ -32,7 +34,7 @@ const Stories = () => {
       if (!user) return;
       const { data } = await supabase
         .from('profiles')
-        .select('profile_pic')
+        .select('profile_pic, display_name')
         .eq('id', user.id)
         .single();
       setCurrentUserProfile(data);
@@ -67,18 +69,21 @@ const Stories = () => {
                 onClick={handleCreateStory}
                 className="relative w-[110px] h-[190px] cursor-pointer overflow-hidden border-border/50 hover:shadow-lg transition-shadow"
               >
+                {!imgError && currentUserProfile?.profile_pic ? (
+                  <img
+                    src={currentUserProfile.profile_pic}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover"
+                    onError={() => setImgError(true)}
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/40 flex items-center justify-center">
+                    <span className="text-6xl font-bold text-primary/60">
+                      {profile?.display_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || '?'}
+                    </span>
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-b from-background/60 to-background/90" />
-                <div className="absolute top-3 left-1/2 -translate-x-1/2">
-                  <Avatar className="h-12 w-12 border-2 border-primary">
-                    <AvatarImage 
-                      src={currentUserProfile?.profile_pic || '/default-avatar.png'} 
-                      className="object-cover"
-                    />
-                    <AvatarFallback className="bg-primary text-primary-foreground">
-                      {user?.email?.[0].toUpperCase() || 'U'}
-                    </AvatarFallback>
-                  </Avatar>
-                </div>
                 <div className="absolute bottom-0 left-0 right-0 p-2 text-center">
                   <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-primary flex items-center justify-center">
                     <Plus className="w-5 h-5 text-primary-foreground" />
@@ -101,27 +106,14 @@ const Stories = () => {
                 onClick={() => handleStoryClick(userStories)}
                 className="relative w-[110px] h-[190px] cursor-pointer overflow-hidden border-border/50 hover:shadow-lg transition-shadow group"
               >
-                {/* Story Background Image */}
+                {/* Profile Picture as full-frame background */}
                 <div
                   className="absolute inset-0 bg-cover bg-center"
-                  style={{ backgroundImage: `url(${userStories.stories[0].media_url})` }}
+                  style={{ backgroundImage: `url(${userStories.profile_pic || '/default-avatar.png'})` }}
                 />
-                
+
                 {/* Gradient Overlay */}
                 <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60" />
-
-                {/* User Avatar */}
-                <div className="absolute top-2 left-2">
-                  <Avatar className="h-12 w-12 border-2 border-primary ring-2 ring-background">
-                    <AvatarImage 
-                      src={userStories.profile_pic || '/default-avatar.png'} 
-                      className="object-cover"
-                    />
-                    <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                      {userStories.display_name[0]?.toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                </div>
 
                 {/* Username */}
                 <div className="absolute bottom-0 left-0 right-0 p-2">

@@ -11,7 +11,7 @@ import { useHomeFeed } from '@/hooks/useHomeFeed';
 import Post from '@/components/Post';
 import NewPost from '@/components/NewPost';
 import Stories from '@/components/Stories';
-import { TrendingHashtags } from '@/components/TrendingHashtags';
+
 import HorizontalReelsSection from '@/components/reels/HorizontalReelsSection';
 import { PeopleYouMayKnow } from '@/components/PeopleYouMayKnow';
 
@@ -199,7 +199,6 @@ const Home = () => {
           {/* Right Column - Trending Hashtags */}
           <div className="hidden lg:block">
             <div className="sticky top-6">
-              <TrendingHashtags />
             </div>
           </div>
         </div>

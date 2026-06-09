@@ -1,11 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { X, Plus, Loader2 } from 'lucide-react';
+import { X, Loader2, MessageCircle, Search } from 'lucide-react';
 import { MiniChatWindow } from './MiniChatWindow';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface ChatContact {
   id: string;
@@ -65,15 +66,14 @@ export const ChatWindowManager: React.FC = () => {
     saveChats(openChats);
   }, [openChats]);
 
-  const [newChatOpen, setNewChatOpen] = useState(false);
-  const [newChatQuery, setNewChatQuery] = useState('');
-  const [newChatResults, setNewChatResults] = useState<ChatContact[]>([]);
-  const [newChatLoading, setNewChatLoading] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
+  const [contactsOpen, setContactsOpen] = useState(false);
+  const [contacts, setContacts] = useState<ChatContact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactsQuery, setContactsQuery] = useState('');
+  const contactsRef = useRef<HTMLDivElement>(null);
 
-  const isFloatingIMHidden = location.pathname.startsWith('/profile') || location.pathname.startsWith('/pages');
   const isMessagesPage = location.pathname.startsWith('/messages');
-  const minimizedSide = isFloatingIMHidden ? 'right-4' : 'left-4';
+  const minimizedSide = 'left-4';
 
   const currentUserId = user?.id;
 
@@ -89,47 +89,78 @@ export const ChatWindowManager: React.FC = () => {
     );
   }, []);
 
-  // Search users when typing in new-chat popover
+  // Fetch contacts when popover opens
   useEffect(() => {
-    if (!currentUserId) return;
-    if (!newChatQuery.trim() || newChatQuery.trim().length < 2) {
-      setNewChatResults([]);
-      return;
-    }
-    const q = newChatQuery.trim();
-    const timer = setTimeout(async () => {
-      setNewChatLoading(true);
+    if (!contactsOpen || !currentUserId) return;
+    setContactsLoading(true);
+    const fetchContacts = async () => {
       try {
-        const pattern = `%${q}%`;
-        const { data } = await supabase
+        const [friendsRes, convsRes] = await Promise.all([
+          supabase
+            .from('friends')
+            .select('requester_id, receiver_id')
+            .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
+            .eq('status', 'accepted'),
+          supabase
+            .from('conversation_participants')
+            .select('conversation_id, user_id')
+            .neq('user_id', currentUserId)
+        ]);
+
+        const userIdSet = new Set<string>();
+
+        friendsRes.data?.forEach((f) => {
+          userIdSet.add(f.requester_id === currentUserId ? f.receiver_id : f.requester_id);
+        });
+
+        if (convsRes.data?.length) {
+          const { data: myConvs } = await supabase
+            .from('conversation_participants')
+            .select('conversation_id')
+            .eq('user_id', currentUserId);
+
+          const myConvIds = new Set(myConvs?.map(c => c.conversation_id) || []);
+          convsRes.data.forEach((cp) => {
+            if (myConvIds.has(cp.conversation_id)) {
+              userIdSet.add(cp.user_id);
+            }
+          });
+        }
+
+        const allIds = Array.from(userIdSet);
+        if (!allIds.length) {
+          setContacts([]);
+          setContactsLoading(false);
+          return;
+        }
+
+        const { data: profiles } = await supabase
           .from('profiles')
           .select('id, username, display_name, profile_pic')
-          .neq('id', currentUserId)
-          .or(`display_name.ilike.${pattern},username.ilike.${pattern}`)
-          .limit(10);
-        setNewChatResults(data || []);
+          .in('id', allIds);
+
+        setContacts(profiles || []);
       } catch {
-        setNewChatResults([]);
+        setContacts([]);
       } finally {
-        setNewChatLoading(false);
+        setContactsLoading(false);
       }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [newChatQuery, currentUserId]);
+    };
+    fetchContacts();
+  }, [contactsOpen, currentUserId]);
 
   // Close popover on outside click
   useEffect(() => {
-    if (!newChatOpen) return;
+    if (!contactsOpen) return;
     const handler = (e: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setNewChatOpen(false);
-        setNewChatQuery('');
-        setNewChatResults([]);
+      if (contactsRef.current && !contactsRef.current.contains(e.target as Node)) {
+        setContactsOpen(false);
+        setContactsQuery('');
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [newChatOpen]);
+  }, [contactsOpen]);
 
   if (!currentUserId || isMessagesPage) return null;
 
@@ -152,64 +183,72 @@ export const ChatWindowManager: React.FC = () => {
           </div>
         ))}
       </div>
-      {/* Persistent new-chat bubble - always on the left */}
+      {/* Persistent chat bubble - shows contacts list */}
       <div className="fixed bottom-0 right-4 z-50">
-        <div className="relative" ref={searchRef}>
+        <div className="relative" ref={contactsRef}>
           <button
-            onClick={() => setNewChatOpen(!newChatOpen)}
+            onClick={() => setContactsOpen(!contactsOpen)}
             className="relative group shrink-0"
-            title="New message"
+            title="Contacts"
           >
-            <div className="h-12 w-12 rounded-full bg-primary flex items-center justify-center shadow-lg cursor-pointer hover:bg-primary/90 transition-colors">
-              <Plus className="h-6 w-6 text-primary-foreground" />
+            <div className="h-12 w-12 rounded-full bg-primary flex items-center justify-center shadow-lg cursor-pointer hover:bg-primary/90 transition-colors relative">
+              <MessageCircle className="h-6 w-6 text-primary-foreground" />
+              <span className="absolute text-[10px] font-bold text-primary-foreground leading-none -mt-0.5">...</span>
             </div>
           </button>
-          {newChatOpen && (
+          {contactsOpen && (
             <div className="absolute bottom-16 right-0 w-72 bg-card border border-border rounded-lg shadow-xl overflow-hidden">
               <div className="p-3 border-b border-border">
-                <p className="text-sm font-semibold mb-2">New message</p>
-                <Input
-                  value={newChatQuery}
-                  onChange={(e) => setNewChatQuery(e.target.value)}
-                  placeholder="Search people..."
-                  className="h-9 text-sm"
-                  autoFocus
-                />
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={contactsQuery}
+                    onChange={(e) => setContactsQuery(e.target.value)}
+                    placeholder="Search contacts..."
+                    className="h-9 text-sm pl-8"
+                    autoFocus
+                  />
+                </div>
               </div>
-              <div className="max-h-60 overflow-y-auto">
-                {newChatLoading ? (
-                  <div className="flex justify-center py-6">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : newChatResults.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-6">
-                    {newChatQuery.trim().length >= 2 ? 'No results found' : 'Type at least 2 characters'}
-                  </p>
-                ) : (
-                  <div className="py-1">
-                    {newChatResults.map((contact) => (
-                      <button
-                        key={contact.id}
-                        onClick={() => {
-                          openChatWindow(contact);
-                          setNewChatOpen(false);
-                          setNewChatQuery('');
-                          setNewChatResults([]);
-                        }}
-                        className="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-accent text-left"
-                      >
-                        <Avatar className="h-8 w-8 shrink-0">
-                          <AvatarImage src={contact.profile_pic || ''} />
-                          <AvatarFallback className="text-xs">{contact.display_name[0]}</AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="font-medium truncate">{contact.display_name}</p>
-                          <p className="text-xs text-muted-foreground truncate">@{contact.username}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
+              <div className="h-[260px]">
+                <ScrollArea className="h-full">
+                  {contactsLoading ? (
+                    <div className="flex justify-center py-6">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <div className="py-1">
+                      {contacts
+                        .filter((c) =>
+                          !contactsQuery || c.display_name.toLowerCase().includes(contactsQuery.toLowerCase()) ||
+                          c.username.toLowerCase().includes(contactsQuery.toLowerCase())
+                        )
+                        .map((contact) => (
+                          <button
+                            key={contact.id}
+                            onClick={() => {
+                              openChatWindow(contact);
+                              setContactsOpen(false);
+                              setContactsQuery('');
+                            }}
+                            className="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-accent text-left"
+                          >
+                            <Avatar className="h-8 w-8 shrink-0">
+                              <AvatarImage src={contact.profile_pic || ''} />
+                              <AvatarFallback className="text-xs">{contact.display_name[0]}</AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="font-medium truncate">{contact.display_name}</p>
+                              <p className="text-xs text-muted-foreground truncate">@{contact.username}</p>
+                            </div>
+                          </button>
+                        ))}
+                      {contacts.length === 0 && (
+                        <p className="text-sm text-muted-foreground text-center py-6">No contacts yet</p>
+                      )}
+                    </div>
+                  )}
+                </ScrollArea>
               </div>
             </div>
           )}
