@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { initConversationEncryption, decryptContent, isEncryptionReady } from '@/lib/conversationEncryption';
 import { loadEcdhPrivateKey } from '@/hooks/useEncryptionKeys';
+import { playMessageNotification } from '@/lib/notificationSounds';
 
 async function tryDecryptMessage(msg: Message, convId: string): Promise<Message> {
   if (msg.encrypted_content && msg.encryption_iv) {
@@ -815,6 +816,7 @@ export const useConversations = (currentUserId?: string) => {
                 }
                 return [...prev, fullMessage];
               });
+              playMessageNotification();
             }
           }
         }
