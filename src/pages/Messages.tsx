@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/useAuth';
-import { PenSquare, MessageCircle, MoreHorizontal, Settings, Inbox, Archive, Ban, Shield, HelpCircle, CircleDot, Bell, BellOff, Moon, Pencil, Check, Search, Loader2, X, ArrowLeft, Users } from 'lucide-react';
+import { PenSquare, MessageCircle, MoreHorizontal, Settings, Inbox, Archive, Ban, Shield, HelpCircle, CircleDot, Bell, BellOff, Moon, Pencil, Check, Search, Loader2, X, ArrowLeft, Users, UserPlus } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -228,6 +228,17 @@ const Messages = () => {
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <h1 className="text-2xl font-bold text-foreground">{viewMode === 'pending' ? 'Pending' : 'Archive'}</h1>
+                {viewMode === 'archive' && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowNewConversation(true)}
+                    className="ml-auto h-9 gap-1.5 rounded-full bg-muted hover:bg-muted/80"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    <span className="text-sm">Add people</span>
+                  </Button>
+                )}
               </>
             ) : (
               <>
