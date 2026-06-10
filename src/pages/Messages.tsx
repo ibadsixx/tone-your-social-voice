@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
 import { PenSquare, MessageCircle, MoreHorizontal, Settings, Inbox, Archive, Ban, Shield, HelpCircle, CircleDot, Bell, BellOff, Moon, Pencil, Check, Search, Loader2, X, ArrowLeft, Users, UserPlus } from 'lucide-react';
 import {
   DropdownMenu,
@@ -55,6 +56,7 @@ const Messages = () => {
   const urlConversationId = params['*'] || '';
   const { user, loading: authLoading } = useAuth();
   const currentUserId = user?.id || null;
+  const { toast } = useToast();
 
   usePresence(currentUserId || undefined);
   const { profile } = useProfile(currentUserId || undefined);
@@ -173,9 +175,10 @@ const Messages = () => {
         .insert({ user_id: currentUserId, restricted_user_id: targetId });
       setRestrictedSearch('');
       setRestrictedSearchResults([]);
+      toast({ title: 'User restricted', description: 'They won\'t be notified.' });
       fetchRestricted();
     } catch {
-      // silent
+      toast({ title: 'Error', description: 'Failed to restrict user.', variant: 'destructive' });
     } finally {
       setRestrictedAdding(false);
     }
@@ -184,6 +187,7 @@ const Messages = () => {
   const removeRestriction = async (id: string) => {
     await supabase.from('restricted_users').delete().eq('id', id);
     setRestrictedUsers(prev => prev.filter(r => r.id !== id));
+    toast({ title: 'Restriction removed' });
   };
 
   // Search users to restrict
@@ -550,7 +554,14 @@ const Messages = () => {
             </ScrollArea>
           ) : viewMode === 'restricted' ? (
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="p-4 pb-2">
+              <div className="px-4 pt-3 pb-1">
+                <div className="bg-muted/50 rounded-lg p-3 mb-3 text-xs text-muted-foreground space-y-1">
+                  <p className="font-medium text-foreground text-sm mb-1">What happens when you restrict someone?</p>
+                  <p>• They remain your friend — they won't know they've been restricted</p>
+                  <p>• They only see your public posts or posts they're tagged in</p>
+                  <p>• They won't see your private stories</p>
+                  <p>• Their comments on your posts will only be visible to them</p>
+                </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
