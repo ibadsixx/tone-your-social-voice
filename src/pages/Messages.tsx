@@ -36,7 +36,9 @@ const Messages = () => {
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [showDndDialog, setShowDndDialog] = useState(false);
   const [statusMode, setStatusMode] = useState<'all' | 'on_for_some' | 'off_for_some'>('all');
-  const [viewMode, setViewMode] = useState<'chats' | 'pending'>('chats');
+  const [viewMode, setViewMode] = useState<'chats' | 'pending' | 'archive'>('chats');
+  const [archivedConversations, setArchivedConversations] = useState<any[]>([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
   const [showPeopleSelector, setShowPeopleSelector] = useState(false);
   const [peopleSelectorMode, setPeopleSelectorMode] = useState<'on_for_some' | 'off_for_some'>('on_for_some');
   const [selectedPeople, setSelectedPeople] = useState<{ id: string; display_name: string; username: string; profile_pic?: string | null }[]>([]);
@@ -79,6 +81,33 @@ const Messages = () => {
     setManualStatus(online ? null : 'offline');
   };
   
+  const fetchArchived = async () => {
+    if (!currentUserId) return;
+    setArchivedLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('get_archived_conversations', {
+        p_user_id: currentUserId
+      });
+      if (!error) setArchivedConversations(data || []);
+    } catch {
+      // silent
+    } finally {
+      setArchivedLoading(false);
+    }
+  };
+
+  const archiveConversation = async (convId: string) => {
+    await supabase.rpc('archive_conversation', { p_conversation_id: convId });
+    refetchConversations();
+    fetchArchived();
+  };
+
+  const unarchiveConversation = async (convId: string) => {
+    await supabase.rpc('unarchive_conversation', { p_conversation_id: convId });
+    refetchConversations();
+    fetchArchived();
+  };
+
   const {
     conversations,
     messages,
@@ -188,7 +217,7 @@ const Messages = () => {
         {/* Header */}
         <div className="p-4 border-b border-border">
           <div className="flex items-center mb-4">
-            {viewMode === 'pending' ? (
+            {viewMode === 'pending' || viewMode === 'archive' ? (
               <>
                 <Button
                   variant="ghost"
@@ -198,7 +227,7 @@ const Messages = () => {
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <h1 className="text-2xl font-bold text-foreground">Pending</h1>
+                <h1 className="text-2xl font-bold text-foreground">{viewMode === 'pending' ? 'Pending' : 'Archive'}</h1>
               </>
             ) : (
               <>
@@ -231,7 +260,7 @@ const Messages = () => {
                         <Inbox className="mr-2 h-4 w-4" />
                         <span>Pending Messages</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => { setViewMode('archive'); fetchArchived(); }}>
                         <Archive className="mr-2 h-4 w-4" />
                         <span>Archive</span>
                       </DropdownMenuItem>
@@ -255,7 +284,7 @@ const Messages = () => {
           </div>
         </div>
 
-        {/* List */}
+          {/* List */}
         {viewMode === 'pending' ? (
           <ScrollArea className="flex-1">
             {pendingLoading ? (
@@ -367,6 +396,49 @@ const Messages = () => {
               </Tabs>
             )}
           </ScrollArea>
+        ) : viewMode === 'archive' ? (
+          <ScrollArea className="flex-1">
+            {archivedLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : archivedConversations.length === 0 ? (
+              <div className="text-center py-12 px-4">
+                <Archive className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground">No archived conversations</p>
+              </div>
+            ) : (
+              archivedConversations.map((conv: any) => (
+                <button
+                  key={conv.conversation_id}
+                  onClick={() => {
+                    handleSelectConversation(conv.conversation_id);
+                    setViewMode('chats');
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent transition-colors text-left"
+                >
+                  <Avatar className="h-10 w-10 shrink-0">
+                    <AvatarImage src={conv.other_user_profile_pic || ''} className="object-cover" />
+                    <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                      {(conv.other_user_display_name || '?').charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{conv.other_user_display_name || 'Unknown'}</p>
+                    <p className="text-xs text-muted-foreground truncate">{conv.last_message_content || 'No messages'}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={(e) => { e.stopPropagation(); unarchiveConversation(conv.conversation_id); }}
+                  >
+                    <Archive className="h-4 w-4" />
+                  </Button>
+                </button>
+              ))
+            )}
+          </ScrollArea>
         ) : (
           <ConversationList
             conversations={conversations}
@@ -374,6 +446,7 @@ const Messages = () => {
             onSelectConversation={handleSelectConversation}
             loading={loading}
             currentUserId={currentUserId}
+            onArchiveConversation={archiveConversation}
           />
         )}
       </div>

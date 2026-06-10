@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Inbox, Search, X, Users, Hash } from 'lucide-react';
+import { Inbox, Search, X, Users, Hash, Archive } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { MessageRequestsModal } from './MessageRequestsModal';
 import { useMessageRequests } from '@/hooks/useMessageRequests';
@@ -37,6 +37,7 @@ interface ConversationListProps {
   onSelectConversation: (conversationId: string) => void;
   loading: boolean;
   currentUserId?: string;
+  onArchiveConversation?: (conversationId: string) => void;
 }
 
 const formatLastMessage = (message?: Conversation['last_message']) => {
@@ -49,10 +50,12 @@ const ConversationItem = memo(({
   conversation,
   isActive,
   onSelect,
+  onArchive,
 }: {
   conversation: Conversation;
   isActive: boolean;
   onSelect: (id: string) => void;
+  onArchive?: (id: string) => void;
 }) => {
   const isGroup = conversation.type === 'group';
   const isChannel = conversation.type === 'channel';
@@ -72,7 +75,7 @@ const ConversationItem = memo(({
     <button
       onClick={() => onSelect(conversation.conversation_id)}
       className={cn(
-        "w-full flex items-center gap-2 p-2 rounded-lg transition-colors text-left",
+        "group w-full flex items-center gap-2 p-2 rounded-lg transition-colors text-left",
         isActive
           ? "bg-primary/10"
           : "hover:bg-accent"
@@ -157,6 +160,16 @@ const ConversationItem = memo(({
           </p>
         )}
       </div>
+      {onArchive && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => { e.stopPropagation(); onArchive(conversation.conversation_id); }}
+        >
+          <Archive className="h-4 w-4" />
+        </Button>
+      )}
     </button>
   );
 });
@@ -166,7 +179,8 @@ export const ConversationList: React.FC<ConversationListProps> = ({
   activeConversationId,
   onSelectConversation,
   loading,
-  currentUserId
+  currentUserId,
+  onArchiveConversation
 }) => {
   const [requestsModalOpen, setRequestsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -276,6 +290,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
                 conversation={conversation}
                 isActive={activeConversationId === conversation.conversation_id}
                 onSelect={onSelectConversation}
+                onArchive={onArchiveConversation}
               />
             ))
           )}
