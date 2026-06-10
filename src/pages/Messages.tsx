@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { ConversationList } from '@/components/messages/ConversationList';
 import { ChatWindow } from '@/components/messages/ChatWindow';
 import { NewConversationDialog } from '@/components/messages/NewConversationDialog';
+import { AddPeopleDialog } from '@/components/messages/AddPeopleDialog';
 import { useConversations } from '@/hooks/useConversations';
 import { usePresence } from '@/hooks/usePresence';
 import { useProfile } from '@/hooks/useProfile';
@@ -32,6 +33,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 const Messages = () => {
   const [showNewConversation, setShowNewConversation] = useState(false);
+  const [showAddPeople, setShowAddPeople] = useState(false);
   const [showAccountPreferences, setShowAccountPreferences] = useState(false);
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [showDndDialog, setShowDndDialog] = useState(false);
@@ -106,6 +108,15 @@ const Messages = () => {
     await supabase.rpc('unarchive_conversation', { p_conversation_id: convId });
     refetchConversations();
     fetchArchived();
+  };
+
+  const handleAddPerson = async (userId: string) => {
+    const conversationId = await getOrCreateDM(userId);
+    if (conversationId) {
+      await supabase.rpc('archive_conversation', { p_conversation_id: conversationId });
+      setShowAddPeople(false);
+      fetchArchived();
+    }
   };
 
   const {
@@ -232,7 +243,7 @@ const Messages = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setShowNewConversation(true)}
+                    onClick={() => setShowAddPeople(true)}
                     className="ml-auto h-9 gap-1.5 rounded-full bg-muted hover:bg-muted/80"
                   >
                     <UserPlus className="h-4 w-4" />
@@ -500,6 +511,14 @@ const Messages = () => {
         onGroupCreated={handleGroupCreated}
         onChannelCreated={handleChannelCreated}
         currentUserId={currentUserId}
+      />
+
+      {/* Add People Dialog (Archive) */}
+      <AddPeopleDialog
+        open={showAddPeople}
+        onOpenChange={setShowAddPeople}
+        currentUserId={currentUserId}
+        onAddPerson={handleAddPerson}
       />
 
       {/* Account Preferences Dialog */}
