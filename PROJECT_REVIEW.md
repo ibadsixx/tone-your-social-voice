@@ -85,6 +85,14 @@
   - **Account** — clickable avatar + name navigates to `/profile/:username`; Status option opens a status dialog
   - **Notifications** — toggles for Notification sounds, Do Not Disturb (with duration picker), and Dark Mode
 - **Pending Messages view** — clicking "Pending Messages" in the dropdown switches `viewMode` to `'pending'`, showing a back arrow + "Pending" heading and a tabbed list of message requests divided into "Maybe you know" and "Spam" tabs using shadcn/ui Tabs
+- **Archive view** — More dropdown → Archive shows archived conversations with back button, unarchive button on each item, and an "Add people" button in the header that opens `AddPeopleDialog`
+- **Restricted Users view** — More dropdown → Restricted Users shows:
+  - Info banner explaining restriction behavior (remains friend, only public/tagged posts, no private stories, comments hidden)
+  - Search input to find and restrict users with inline results
+  - List of currently restricted users with avatar, name, and Remove button
+  - "Add people" button in the header that opens `AddPeopleDialog` (restricts instead of archives)
+  - Toast notifications on restrict/remove
+- **AddPeopleDialog** (`src/components/messages/AddPeopleDialog.tsx`) — reusable dialog with search input + friends list; when used from Archive view creates DM + archives it, when used from Restricted view restricts the selected user
 
 ### Status & Visibility (`src/hooks/useStatusVisibility.ts`, `src/lib/notificationSounds.ts`)
 
