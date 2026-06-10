@@ -118,11 +118,20 @@ const Messages = () => {
   };
 
   const handleAddPerson = async (userId: string) => {
-    const conversationId = await getOrCreateDM(userId);
-    if (conversationId) {
-      await supabase.rpc('archive_conversation', { p_conversation_id: conversationId });
+    if (viewMode === 'restricted') {
+      await supabase
+        .from('restricted_users')
+        .insert({ user_id: currentUserId, restricted_user_id: userId });
       setShowAddPeople(false);
-      fetchArchived();
+      toast({ title: 'User restricted', description: 'They won\'t be notified.' });
+      fetchRestricted();
+    } else {
+      const conversationId = await getOrCreateDM(userId);
+      if (conversationId) {
+        await supabase.rpc('archive_conversation', { p_conversation_id: conversationId });
+        setShowAddPeople(false);
+        fetchArchived();
+      }
     }
   };
 
@@ -338,6 +347,17 @@ const Messages = () => {
                     className="ml-auto h-9 gap-1.5 rounded-full bg-muted hover:bg-muted/80"
                   >
                     <UserPlus className="h-4 w-4" />
+                    <span className="text-sm">Add people</span>
+                  </Button>
+                )}
+                {viewMode === 'restricted' && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowAddPeople(true)}
+                    className="ml-auto h-9 gap-1.5 rounded-full bg-muted hover:bg-muted/80"
+                  >
+                    <Ban className="h-4 w-4" />
                     <span className="text-sm">Add people</span>
                   </Button>
                 )}
