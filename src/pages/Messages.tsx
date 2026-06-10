@@ -38,9 +38,14 @@ const Messages = () => {
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [showDndDialog, setShowDndDialog] = useState(false);
   const [statusMode, setStatusMode] = useState<'all' | 'on_for_some' | 'off_for_some'>('all');
-  const [viewMode, setViewMode] = useState<'chats' | 'pending' | 'archive'>('chats');
+  const [viewMode, setViewMode] = useState<'chats' | 'pending' | 'archive' | 'restricted'>('chats');
   const [archivedConversations, setArchivedConversations] = useState<any[]>([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
+  const [restrictedUsers, setRestrictedUsers] = useState<any[]>([]);
+  const [restrictedLoading, setRestrictedLoading] = useState(false);
+  const [restrictedSearch, setRestrictedSearch] = useState('');
+  const [restrictedSearchResults, setRestrictedSearchResults] = useState<any[]>([]);
+  const [restrictedAdding, setRestrictedAdding] = useState(false);
   const [showPeopleSelector, setShowPeopleSelector] = useState(false);
   const [peopleSelectorMode, setPeopleSelectorMode] = useState<'on_for_some' | 'off_for_some'>('on_for_some');
   const [selectedPeople, setSelectedPeople] = useState<{ id: string; display_name: string; username: string; profile_pic?: string | null }[]>([]);
@@ -118,6 +123,86 @@ const Messages = () => {
       fetchArchived();
     }
   };
+
+  const fetchRestricted = async () => {
+    if (!currentUserId) return;
+    setRestrictedLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('restricted_users')
+        .select('id, restricted_user_id, created_at')
+        .eq('user_id', currentUserId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        setRestrictedUsers([]);
+        return;
+      }
+
+      const ids = data.map(r => r.restricted_user_id);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, profile_pic')
+        .in('id', ids);
+
+      setRestrictedUsers(data.map(r => {
+        const p = profiles?.find(pr => pr.id === r.restricted_user_id);
+        return {
+          id: r.id,
+          target_id: r.restricted_user_id,
+          display_name: p?.display_name || 'Unknown User',
+          username: p?.username || 'unknown',
+          profile_pic: p?.profile_pic || null,
+          created_at: r.created_at,
+        };
+      }));
+    } catch {
+      // silent
+    } finally {
+      setRestrictedLoading(false);
+    }
+  };
+
+  const addRestricted = async (targetId: string) => {
+    setRestrictedAdding(true);
+    try {
+      await supabase
+        .from('restricted_users')
+        .insert({ user_id: currentUserId, restricted_user_id: targetId });
+      setRestrictedSearch('');
+      setRestrictedSearchResults([]);
+      fetchRestricted();
+    } catch {
+      // silent
+    } finally {
+      setRestrictedAdding(false);
+    }
+  };
+
+  const removeRestriction = async (id: string) => {
+    await supabase.from('restricted_users').delete().eq('id', id);
+    setRestrictedUsers(prev => prev.filter(r => r.id !== id));
+  };
+
+  // Search users to restrict
+  useEffect(() => {
+    if (!restrictedSearch.trim() || restrictedSearch.length < 2) {
+      setRestrictedSearchResults([]);
+      return;
+    }
+    const delay = setTimeout(async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, profile_pic')
+        .neq('id', currentUserId)
+        .or(`username.ilike.%${restrictedSearch}%,display_name.ilike.%${restrictedSearch}%`)
+        .limit(10);
+      setRestrictedSearchResults(data || []);
+    }, 300);
+    return () => clearTimeout(delay);
+  }, [restrictedSearch, currentUserId]);
 
   const {
     conversations,
@@ -228,7 +313,7 @@ const Messages = () => {
         {/* Header */}
         <div className="p-4 border-b border-border">
           <div className="flex items-center mb-4">
-            {viewMode === 'pending' || viewMode === 'archive' ? (
+            {viewMode === 'pending' || viewMode === 'archive' || viewMode === 'restricted' ? (
               <>
                 <Button
                   variant="ghost"
@@ -238,7 +323,9 @@ const Messages = () => {
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <h1 className="text-2xl font-bold text-foreground">{viewMode === 'pending' ? 'Pending' : 'Archive'}</h1>
+                <h1 className="text-2xl font-bold text-foreground">
+                  {viewMode === 'pending' ? 'Pending' : viewMode === 'restricted' ? 'Restricted Users' : 'Archive'}
+                </h1>
                 {viewMode === 'archive' && (
                   <Button
                     variant="ghost"
@@ -286,7 +373,7 @@ const Messages = () => {
                         <Archive className="mr-2 h-4 w-4" />
                         <span>Archive</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => { setViewMode('restricted'); fetchRestricted(); }}>
                         <Ban className="mr-2 h-4 w-4" />
                         <span>Restricted Users</span>
                       </DropdownMenuItem>
@@ -460,9 +547,92 @@ const Messages = () => {
                 </button>
               ))
             )}
-          </ScrollArea>
-        ) : (
-          <ConversationList
+            </ScrollArea>
+          ) : viewMode === 'restricted' ? (
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="p-4 pb-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search users to restrict..."
+                    value={restrictedSearch}
+                    onChange={(e) => setRestrictedSearch(e.target.value)}
+                    className="pl-9 h-9 text-sm"
+                  />
+                </div>
+                {restrictedSearchResults.length > 0 && (
+                  <div className="mt-1 border border-border rounded-lg bg-card shadow-sm overflow-hidden">
+                    {restrictedSearchResults.map((r) => {
+                      const already = restrictedUsers.some(u => u.target_id === r.id);
+                      return (
+                        <button
+                          key={r.id}
+                          onClick={() => !already && addRestricted(r.id)}
+                          disabled={already || restrictedAdding}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-accent transition-colors text-left disabled:opacity-50"
+                        >
+                          <Avatar className="h-8 w-8 shrink-0">
+                            <AvatarImage src={r.profile_pic || ''} />
+                            <AvatarFallback className="text-xs">{(r.display_name || '?')[0]}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{r.display_name}</p>
+                            <p className="text-xs text-muted-foreground truncate">@{r.username}</p>
+                          </div>
+                          {already ? (
+                            <span className="text-xs text-muted-foreground shrink-0">Already restricted</span>
+                          ) : (
+                            <Ban className="h-4 w-4 text-muted-foreground shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <ScrollArea className="flex-1 px-4">
+                {restrictedLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : restrictedUsers.length === 0 && !restrictedSearch.trim() ? (
+                  <div className="text-center py-12">
+                    <Ban className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-muted-foreground">No restricted users</p>
+                    <p className="text-xs text-muted-foreground mt-1">Search for someone above to restrict them</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1 pb-2">
+                    {restrictedUsers.map((u) => (
+                      <div
+                        key={u.id}
+                        className="flex items-center gap-3 px-3 py-2.5 hover:bg-accent transition-colors rounded-lg"
+                      >
+                        <Avatar className="h-9 w-9 shrink-0">
+                          <AvatarImage src={u.profile_pic || ''} />
+                          <AvatarFallback className="text-xs">{(u.display_name || '?')[0]}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{u.display_name}</p>
+                          <p className="text-xs text-muted-foreground truncate">@{u.username}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeRestriction(u.id)}
+                          className="h-8 text-xs text-muted-foreground hover:text-destructive shrink-0"
+                        >
+                          <X className="h-3.5 w-3.5 mr-1" />
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
+          ) : (
+            <ConversationList
             conversations={conversations}
             activeConversationId={activeConversationId}
             onSelectConversation={handleSelectConversation}
