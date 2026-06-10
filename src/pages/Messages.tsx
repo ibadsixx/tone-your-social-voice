@@ -7,13 +7,15 @@ import { useConversations } from '@/hooks/useConversations';
 import { usePresence } from '@/hooks/usePresence';
 import { useProfile } from '@/hooks/useProfile';
 import { useStatusVisibility } from '@/hooks/useStatusVisibility';
+import { useMessageRequests } from '@/hooks/useMessageRequests';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/useAuth';
-import { PenSquare, MessageCircle, MoreHorizontal, Settings, Inbox, Archive, Ban, Shield, HelpCircle, CircleDot, Bell, BellOff, Moon, Pencil, Check, Search, Loader2, X } from 'lucide-react';
+import { PenSquare, MessageCircle, MoreHorizontal, Settings, Inbox, Archive, Ban, Shield, HelpCircle, CircleDot, Bell, BellOff, Moon, Pencil, Check, Search, Loader2, X, ArrowLeft, Users } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -34,6 +36,7 @@ const Messages = () => {
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [showDndDialog, setShowDndDialog] = useState(false);
   const [statusMode, setStatusMode] = useState<'all' | 'on_for_some' | 'off_for_some'>('all');
+  const [viewMode, setViewMode] = useState<'chats' | 'pending'>('chats');
   const [showPeopleSelector, setShowPeopleSelector] = useState(false);
   const [peopleSelectorMode, setPeopleSelectorMode] = useState<'on_for_some' | 'off_for_some'>('on_for_some');
   const [selectedPeople, setSelectedPeople] = useState<{ id: string; display_name: string; username: string; profile_pic?: string | null }[]>([]);
@@ -63,6 +66,13 @@ const Messages = () => {
     loading: statusLoading,
     refetch: refetchStatus,
   } = useStatusVisibility();
+
+  const {
+    requests: pendingRequests,
+    loading: pendingLoading,
+    acceptRequest,
+    declineRequest,
+  } = useMessageRequests(currentUserId || undefined);
 
   const isOnline = manualStatus === null || manualStatus === 'online';
   const setIsOnline = (online: boolean) => {
@@ -178,65 +188,194 @@ const Messages = () => {
         {/* Header */}
         <div className="p-4 border-b border-border">
           <div className="flex items-center mb-4">
-            <h1 className="text-2xl font-bold text-foreground">Chats</h1>
-            <div className="flex items-center gap-1 ml-auto">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowNewConversation(true)}
-                className="h-9 w-9 rounded-full bg-muted hover:bg-muted/80 shrink-0"
-              >
-                <PenSquare className="h-4 w-4" />
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+            {viewMode === 'pending' ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setViewMode('chats')}
+                  className="h-9 w-9 rounded-full bg-muted hover:bg-muted/80 shrink-0 mr-2"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <h1 className="text-2xl font-bold text-foreground">Pending</h1>
+              </>
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold text-foreground">Chats</h1>
+                <div className="flex items-center gap-1 ml-auto">
                   <Button
                     variant="ghost"
                     size="icon"
+                    onClick={() => setShowNewConversation(true)}
                     className="h-9 w-9 rounded-full bg-muted hover:bg-muted/80 shrink-0"
                   >
-                    <MoreHorizontal className="h-4 w-4" />
+                    <PenSquare className="h-4 w-4" />
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuItem onSelect={() => setShowAccountPreferences(true)}>
-                    <Settings className="mr-2 h-4 w-4" />
-                    <span>Account Preferences</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Inbox className="mr-2 h-4 w-4" />
-                    <span>Pending Messages</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Archive className="mr-2 h-4 w-4" />
-                    <span>Archive</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Ban className="mr-2 h-4 w-4" />
-                    <span>Restricted Users</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Shield className="mr-2 h-4 w-4" />
-                    <span>Privacy & Security</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <HelpCircle className="mr-2 h-4 w-4" />
-                    <span>Support Center</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 rounded-full bg-muted hover:bg-muted/80 shrink-0"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuItem onSelect={() => setShowAccountPreferences(true)}>
+                        <Settings className="mr-2 h-4 w-4" />
+                        <span>Account Preferences</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => setViewMode('pending')}>
+                        <Inbox className="mr-2 h-4 w-4" />
+                        <span>Pending Messages</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <Archive className="mr-2 h-4 w-4" />
+                        <span>Archive</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <Ban className="mr-2 h-4 w-4" />
+                        <span>Restricted Users</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <Shield className="mr-2 h-4 w-4" />
+                        <span>Privacy & Security</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <HelpCircle className="mr-2 h-4 w-4" />
+                        <span>Support Center</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Conversation List */}
-        <ConversationList
-          conversations={conversations}
-          activeConversationId={activeConversationId}
-          onSelectConversation={handleSelectConversation}
-          loading={loading}
-          currentUserId={currentUserId}
-        />
+        {/* List */}
+        {viewMode === 'pending' ? (
+          <ScrollArea className="flex-1">
+            {pendingLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <Tabs defaultValue="you_may_know" className="w-full">
+                <div className="px-4 pt-2">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="you_may_know" className="flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      <span>Maybe you know</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="spam" className="flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      <span>Spam</span>
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+                <TabsContent value="you_may_know" className="mt-0">
+                  {pendingRequests.filter(r => r.category === 'you_may_know').length === 0 ? (
+                    <p className="text-sm text-muted-foreground px-4 py-2">No requests</p>
+                  ) : (
+                    pendingRequests.filter(r => r.category === 'you_may_know').map((req) => (
+                      <div
+                        key={req.id}
+                        className="flex items-center gap-3 px-4 py-3 hover:bg-accent transition-colors"
+                      >
+                        <Avatar className="h-10 w-10 shrink-0">
+                          <AvatarImage src={req.sender_profile?.profile_pic || ''} className="object-cover" />
+                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                            {req.sender_profile?.display_name?.charAt(0)?.toUpperCase() || '?'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {req.sender_profile?.display_name || 'Unknown'}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            @{req.sender_profile?.username || 'unknown'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            size="sm"
+                            className="h-8 px-2"
+                            onClick={() => acceptRequest(req.id, req.sender_id)}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-2"
+                            onClick={() => declineRequest(req.id)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </TabsContent>
+                <TabsContent value="spam" className="mt-0">
+                  {pendingRequests.filter(r => r.category === 'spam').length === 0 ? (
+                    <p className="text-sm text-muted-foreground px-4 py-2">No spam requests</p>
+                  ) : (
+                    pendingRequests.filter(r => r.category === 'spam').map((req) => (
+                      <div
+                        key={req.id}
+                        className="flex items-center gap-3 px-4 py-3 hover:bg-accent transition-colors"
+                      >
+                        <Avatar className="h-10 w-10 shrink-0">
+                          <AvatarImage src={req.sender_profile?.profile_pic || ''} className="object-cover" />
+                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                            {req.sender_profile?.display_name?.charAt(0)?.toUpperCase() || '?'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {req.sender_profile?.display_name || 'Unknown'}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            @{req.sender_profile?.username || 'unknown'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            size="sm"
+                            className="h-8 px-2"
+                            onClick={() => acceptRequest(req.id, req.sender_id)}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-2"
+                            onClick={() => declineRequest(req.id)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </TabsContent>
+              </Tabs>
+            )}
+          </ScrollArea>
+        ) : (
+          <ConversationList
+            conversations={conversations}
+            activeConversationId={activeConversationId}
+            onSelectConversation={handleSelectConversation}
+            loading={loading}
+            currentUserId={currentUserId}
+          />
+        )}
       </div>
 
       {/* Chat Window */}
