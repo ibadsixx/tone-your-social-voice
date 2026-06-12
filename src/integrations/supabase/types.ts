@@ -4158,6 +4158,44 @@ export type Database = {
         }
         Relationships: []
       }
+      media_library: {
+        Row: {
+          id: string
+          user_id: string
+          file_url: string
+          file_type: string
+          file_size: number | null
+          file_name: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          file_url: string
+          file_type: string
+          file_size?: number | null
+          file_name?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          file_url?: string
+          file_type?: string
+          file_size?: number | null
+          file_name?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_library_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       trusted_devices: {
         Row: {
           id: string

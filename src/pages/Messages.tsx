@@ -259,6 +259,30 @@ const Messages = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserId, urlConversationId, activeConversationId, loading]);
 
+  // Always persist remember_browser as true
+  useEffect(() => {
+    if (currentUserId) {
+      setRememberBrowser(true);
+    }
+  }, [currentUserId]);
+
+  // Always remember this browser — register device on vault open
+  useEffect(() => {
+    if (!showVaultDialog || !currentUserId) return;
+    setRememberBrowser(true);
+    let deviceId = localStorage.getItem('tone_device_id');
+    if (!deviceId) {
+      deviceId = crypto.randomUUID();
+      localStorage.setItem('tone_device_id', deviceId);
+    }
+    supabase.from('trusted_devices').upsert({
+      user_id: currentUserId,
+      device_id: deviceId,
+      user_agent: navigator.userAgent,
+      last_used_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,device_id' });
+  }, [showVaultDialog, currentUserId]);
+
   const handleSelectConversation = (conversationId: string) => {
     setActiveConversationId(conversationId);
     setActivePage(0);
@@ -1062,26 +1086,7 @@ const Messages = () => {
                 <Smartphone className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm">Remember this browser</span>
               </div>
-              <Switch checked={rememberBrowser} onCheckedChange={async (value) => {
-                setRememberBrowser(value);
-                let deviceId = localStorage.getItem('tone_device_id');
-                if (!deviceId) {
-                  deviceId = crypto.randomUUID();
-                  localStorage.setItem('tone_device_id', deviceId);
-                }
-                if (value) {
-                  await supabase.from('trusted_devices').upsert({
-                    user_id: currentUserId,
-                    device_id: deviceId,
-                    user_agent: navigator.userAgent,
-                    last_used_at: new Date().toISOString(),
-                  }, { onConflict: 'user_id,device_id' });
-                } else {
-                  await supabase.from('trusted_devices').delete()
-                    .eq('user_id', currentUserId)
-                    .eq('device_id', deviceId);
-                }
-              }} />
+              <Switch checked={true} onCheckedChange={() => {}} />
             </div>
 
             <div className="flex items-center justify-between py-2">

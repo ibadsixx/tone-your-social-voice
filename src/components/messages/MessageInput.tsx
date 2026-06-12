@@ -5,6 +5,8 @@ import { Card } from '@/components/ui/card';
 import { Send, Image, X, Paperclip, Mic, SmilePlus, Reply, Flame } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFileUpload } from '@/hooks/useFileUpload';
+import { useAutoUpload } from '@/hooks/useAutoUpload';
+import { useStatusVisibility } from '@/hooks/useStatusVisibility';
 import { EmojiPickerPanel } from '@/components/EmojiPicker';
 import { Emoji } from '@/components/Emoji';
 import { EmojiAsset, normalizeEmojiToUnicode } from '@/components/EmojiAsset';
@@ -63,6 +65,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const stickerPickerRef = useRef<HTMLDivElement>(null);
   const { uploadFile, uploading } = useFileUpload();
+  const { upload: autoUpload } = useAutoUpload();
+  const { disableAutoUploads } = useStatusVisibility();
 
   // Close pickers when clicking outside
   useEffect(() => {
@@ -151,6 +155,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
         const url = URL.createObjectURL(file);
         setPreviewUrl(url);
+      }
+
+      if (!disableAutoUploads) {
+        autoUpload([file]);
       }
     }
   };

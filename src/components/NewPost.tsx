@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
+import { useStatusVisibility } from '@/hooks/useStatusVisibility';
+import { useAutoUpload } from '@/hooks/useAutoUpload';
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { cn } from '@/lib/utils';
 import TagPeopleModal from './TagPeopleModal';
@@ -77,6 +79,8 @@ const NewPost = ({ onCreatePost, className }: NewPostProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { disableAutoUploads } = useStatusVisibility();
+  const { upload: autoUpload } = useAutoUpload();
 
   const handleFileSelect = (files: FileList | null, type: 'image' | 'video') => {
     if (!files) return;
@@ -90,6 +94,10 @@ const NewPost = ({ onCreatePost, className }: NewPostProps) => {
     });
     
     setSelectedFiles(prev => [...prev, ...newFiles]);
+
+    if (!disableAutoUploads && newFiles.length > 0) {
+      autoUpload(newFiles);
+    }
   };
 
   const removeFile = (index: number) => {

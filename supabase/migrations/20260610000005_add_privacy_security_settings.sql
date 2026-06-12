@@ -22,3 +22,24 @@ CREATE POLICY "Users can manage their own trusted devices"
   FOR ALL
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS media_library (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  file_url TEXT NOT NULL,
+  file_type TEXT NOT NULL,
+  file_size BIGINT,
+  file_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE media_library ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage their own media library"
+  ON media_library
+  FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+INSERT INTO storage.buckets (id, name, public) VALUES ('media_backups', 'media_backups', true)
+ON CONFLICT (id) DO NOTHING;
