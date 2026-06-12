@@ -2865,6 +2865,12 @@ export type Database = {
           function_visibility: string | null
           gender: string | null
           gender_visibility: string | null
+          check_keys_in_conversations: boolean | null
+          show_read_indicator: boolean | null
+          disable_auto_uploads: boolean | null
+          remember_browser: boolean | null
+          vault_pin: string | null
+          vault_recovery_code: string | null
           high_school: string | null
           high_school_id: string | null
           high_school_visibility: string | null
@@ -2935,6 +2941,12 @@ export type Database = {
           relationship?: string | null
           relationship_status?: string | null
           relationship_visibility?: string | null
+          show_read_indicator?: boolean | null
+          check_keys_in_conversations?: boolean | null
+          disable_auto_uploads?: boolean | null
+          remember_browser?: boolean | null
+          vault_pin?: string | null
+          vault_recovery_code?: string | null
           updated_at?: string
           username: string
           websites_social_links?: Json | null
@@ -2986,6 +2998,12 @@ export type Database = {
           relationship?: string | null
           relationship_status?: string | null
           relationship_visibility?: string | null
+          show_read_indicator?: boolean | null
+          check_keys_in_conversations?: boolean | null
+          disable_auto_uploads?: boolean | null
+          remember_browser?: boolean | null
+          vault_pin?: string | null
+          vault_recovery_code?: string | null
           updated_at?: string
           username?: string
           websites_social_links?: Json | null

@@ -17,7 +17,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { PenSquare, MessageCircle, MoreHorizontal, Settings, Inbox, Archive, Ban, Shield, HelpCircle, CircleDot, Bell, BellOff, Moon, Pencil, Check, Search, Loader2, X, ArrowLeft, Users, UserPlus } from 'lucide-react';
+import { PenSquare, MessageCircle, MoreHorizontal, Settings, Inbox, Archive, Ban, Shield, HelpCircle, CircleDot, Bell, BellOff, Moon, Pencil, Check, Search, Loader2, X, ArrowLeft, Users, UserPlus, Lock, Eye, Flag, Key, Download, Smartphone, Clock, CreditCard } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -36,6 +36,11 @@ const Messages = () => {
   const [showNewConversation, setShowNewConversation] = useState(false);
   const [showAddPeople, setShowAddPeople] = useState(false);
   const [showAccountPreferences, setShowAccountPreferences] = useState(false);
+  const [showVaultDialog, setShowVaultDialog] = useState(false);
+  const [vaultPinInput, setVaultPinInput] = useState('');
+  const [isCreatingPin, setIsCreatingPin] = useState(false);
+  const [showRecoveryCode, setShowRecoveryCode] = useState(false);
+  const [showSecurityMethods, setShowSecurityMethods] = useState(false);
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [showDndDialog, setShowDndDialog] = useState(false);
   const [statusMode, setStatusMode] = useState<'all' | 'on_for_some' | 'off_for_some'>('all');
@@ -50,6 +55,7 @@ const Messages = () => {
   const [showPeopleSelector, setShowPeopleSelector] = useState(false);
   const [peopleSelectorMode, setPeopleSelectorMode] = useState<'on_for_some' | 'off_for_some'>('on_for_some');
   const [selectedPeople, setSelectedPeople] = useState<{ id: string; display_name: string; username: string; profile_pic?: string | null }[]>([]);
+  const [privacyView, setPrivacyView] = useState<'main' | 'encryption_chats' | null>(null);
   const [activePage, setActivePage] = useState(0);
   const navigate = useNavigate();
   const params = useParams();
@@ -69,9 +75,21 @@ const Messages = () => {
     doNotDisturb,
     doNotDisturbLabel,
     darkMode,
+    showReadIndicator,
+    checkKeysInConversations,
+    rememberBrowser,
+    disableAutoUploads,
     setNotificationSounds,
     setDoNotDisturbDuration,
     setDarkMode,
+    setShowReadIndicator,
+    setCheckKeysInConversations,
+    setRememberBrowser,
+    setDisableAutoUploads,
+    vaultPin,
+    vaultRecoveryCode,
+    setVaultPin,
+    setVaultRecoveryCode,
     addVisibilityOverride,
     removeVisibilityOverride,
     loading: statusLoading,
@@ -374,7 +392,7 @@ const Messages = () => {
                   >
                     <PenSquare className="h-4 w-4" />
                   </Button>
-                  <DropdownMenu>
+                  <DropdownMenu onOpenChange={(open) => { if (!open) setPrivacyView(null); }}>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
@@ -385,30 +403,94 @@ const Messages = () => {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
-                      <DropdownMenuItem onSelect={() => setShowAccountPreferences(true)}>
-                        <Settings className="mr-2 h-4 w-4" />
-                        <span>Account Preferences</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => setViewMode('pending')}>
-                        <Inbox className="mr-2 h-4 w-4" />
-                        <span>Pending Messages</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => { setViewMode('archive'); fetchArchived(); }}>
-                        <Archive className="mr-2 h-4 w-4" />
-                        <span>Archive</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => { setViewMode('restricted'); fetchRestricted(); }}>
-                        <Ban className="mr-2 h-4 w-4" />
-                        <span>Restricted Users</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <Shield className="mr-2 h-4 w-4" />
-                        <span>Privacy & Security</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <HelpCircle className="mr-2 h-4 w-4" />
-                        <span>Support Center</span>
-                      </DropdownMenuItem>
+                      {privacyView === 'encryption_chats' ? (
+                        <>
+                          <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setPrivacyView('main'); }}>
+                            <ArrowLeft className="mr-2 h-4 w-4" />
+                            <span className="font-medium">Encryption chats</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => setShowVaultDialog(true)}>
+                            <Lock className="mr-2 h-4 w-4" />
+                            <span>Message Vault</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <Eye className="mr-2 h-4 w-4" />
+                            <span>Preview Mode</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <Shield className="mr-2 h-4 w-4" />
+                            <span>Security Warnings</span>
+                          </DropdownMenuItem>
+                        </>
+                      ) : privacyView === 'main' ? (
+                        <>
+                          <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setPrivacyView(null); }}>
+                            <ArrowLeft className="mr-2 h-4 w-4" />
+                            <span className="font-medium">Privacy & security</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setPrivacyView('encryption_chats'); }}>
+                            <Lock className="mr-2 h-4 w-4" />
+                            <span>Encryption chats</span>
+                          </DropdownMenuItem>
+                          <div
+                            className="flex items-center justify-between px-2 py-1.5 text-sm cursor-default hover:bg-accent"
+                            onSelect={(e: any) => e.preventDefault()}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Eye className="h-4 w-4" />
+                              <span>Show reading indicator</span>
+                            </div>
+                            <Switch
+                              checked={showReadIndicator}
+                              onCheckedChange={setShowReadIndicator}
+                            />
+                          </div>
+                          <DropdownMenuItem>
+                            <Flag className="mr-2 h-4 w-4" />
+                            <span>Reported conversations</span>
+                          </DropdownMenuItem>
+                          <div
+                            className="flex items-center justify-between px-2 py-1.5 text-sm cursor-default hover:bg-accent"
+                            onSelect={(e: any) => e.preventDefault()}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Key className="h-4 w-4" />
+                              <span>Checking the keys in conversations</span>
+                            </div>
+                            <Switch
+                              checked={checkKeysInConversations}
+                              onCheckedChange={setCheckKeysInConversations}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <DropdownMenuItem onSelect={() => setShowAccountPreferences(true)}>
+                            <Settings className="mr-2 h-4 w-4" />
+                            <span>Account Preferences</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => setViewMode('pending')}>
+                            <Inbox className="mr-2 h-4 w-4" />
+                            <span>Pending Messages</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => { setViewMode('archive'); fetchArchived(); }}>
+                            <Archive className="mr-2 h-4 w-4" />
+                            <span>Archive</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => { setViewMode('restricted'); fetchRestricted(); }}>
+                            <Ban className="mr-2 h-4 w-4" />
+                            <span>Restricted Users</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setPrivacyView('main'); }}>
+                            <Shield className="mr-2 h-4 w-4" />
+                            <span>Privacy & Security</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <HelpCircle className="mr-2 h-4 w-4" />
+                            <span>Support Center</span>
+                          </DropdownMenuItem>
+                        </>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -916,6 +998,183 @@ const Messages = () => {
                 onClick={() => setShowStatusDialog(false)}
               >
                 Save
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Message Vault Dialog */}
+      <Dialog open={showVaultDialog} onOpenChange={setShowVaultDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="text-center sm:text-center">
+            <div className="flex items-center justify-center gap-2">
+              <Lock className="h-5 w-5 text-primary" />
+              <DialogTitle>Message Vault</DialogTitle>
+            </div>
+          </DialogHeader>
+          <div className="space-y-5">
+            <p className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
+              Your encrypted messages are securely stored in your backup.{' '}
+              <button className="text-primary hover:underline cursor-pointer">Learn more</button>
+            </p>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between py-2 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Last backup</span>
+                </div>
+                <span className="text-sm text-muted-foreground">Today at 3:42 PM</span>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Date created</span>
+                </div>
+                <span className="text-sm text-muted-foreground">Jan 15, 2026</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => { setIsCreatingPin(true); setVaultPinInput(''); }}
+              className="flex items-center gap-2 text-sm font-medium cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              <Key className="h-4 w-4 text-muted-foreground" />
+              PIN
+            </button>
+
+            <Button variant="outline" size="sm" className="w-full justify-start gap-2 h-9" onClick={() => setShowSecurityMethods(true)}>
+              <Shield className="h-4 w-4" />
+              Manage security methods
+            </Button>
+
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <Smartphone className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm">Remember this browser</span>
+              </div>
+              <Switch checked={rememberBrowser} onCheckedChange={setRememberBrowser} />
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <Download className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm">Turn off automatic uploads</span>
+              </div>
+              <Switch checked={disableAutoUploads} onCheckedChange={setDisableAutoUploads} />
+            </div>
+
+            <Button variant="outline" size="sm" className="w-full justify-start gap-2 h-9">
+              <Download className="h-4 w-4" />
+              Download message storage data
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Security Methods Dialog */}
+      <Dialog open={showSecurityMethods} onOpenChange={setShowSecurityMethods}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader className="text-center sm:text-center">
+            <div className="flex items-center justify-center gap-2">
+              <Shield className="h-5 w-5 text-primary" />
+              <DialogTitle>Manage security methods</DialogTitle>
+            </div>
+          </DialogHeader>
+          <div className="space-y-2">
+            <button
+              onClick={() => { setShowSecurityMethods(false); setIsCreatingPin(true); setVaultPinInput(''); }}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-accent transition-colors text-left border border-border"
+            >
+              <Key className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">PIN</p>
+                <p className="text-xs text-muted-foreground">Use a numeric PIN to unlock your vault</p>
+              </div>
+            </button>
+            <button
+              onClick={() => { setShowSecurityMethods(false); setShowRecoveryCode(true); }}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-accent transition-colors text-left border border-border"
+            >
+              <Key className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">40-character code</p>
+                <p className="text-xs text-muted-foreground">Use a recovery code to access your vault</p>
+              </div>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create PIN Dialog */}
+      <Dialog open={isCreatingPin} onOpenChange={setIsCreatingPin}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader className="text-center sm:text-center">
+            <div className="flex items-center justify-center gap-2">
+              <Key className="h-5 w-5 text-primary" />
+              <DialogTitle>Create a new PIN</DialogTitle>
+            </div>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground text-center">
+              Set a PIN to protect your encrypted message vault.
+            </p>
+              <Input
+                type="password"
+                maxLength={6}
+                placeholder="Enter new PIN"
+                value={vaultPinInput}
+                onChange={(e) => setVaultPinInput(e.target.value)}
+                className="h-9 text-center"
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => { setIsCreatingPin(false); setVaultPinInput(''); }}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={async () => {
+                  await setVaultPin(vaultPinInput || null);
+                  setIsCreatingPin(false);
+                }}>
+                Save
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Recovery Code Dialog */}
+      <Dialog open={showRecoveryCode} onOpenChange={setShowRecoveryCode}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader className="text-center sm:text-center">
+            <div className="flex items-center justify-center gap-2">
+              <Key className="h-5 w-5 text-primary" />
+              <DialogTitle>Recovery Code</DialogTitle>
+            </div>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground text-center">
+              Use this 40-character code to recover access to your vault.
+            </p>
+            {vaultRecoveryCode ? (
+              <div className="bg-muted rounded-lg p-3 text-center">
+                <code className="text-xs font-mono break-all">{vaultRecoveryCode}</code>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center">No recovery code set.</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setShowRecoveryCode(false)}>
+                Close
+              </Button>
+              <Button size="sm" onClick={async () => {
+                const code = Array.from({ length: 40 }, () =>
+                  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 62)]
+                ).join('');
+                await setVaultRecoveryCode(code);
+              }}>
+                Generate
               </Button>
             </div>
           </div>

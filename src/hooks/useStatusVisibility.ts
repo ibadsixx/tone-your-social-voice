@@ -40,6 +40,12 @@ export function useStatusVisibility() {
   const [notificationSounds, setNotificationSoundsState] = useState(true);
   const [doNotDisturbUntil, setDoNotDisturbUntilState] = useState<string | null>(null);
   const [darkMode, setDarkModeState] = useState(false);
+  const [showReadIndicator, setShowReadIndicatorState] = useState(true);
+  const [checkKeysInConversations, setCheckKeysInConversationsState] = useState(false);
+  const [rememberBrowser, setRememberBrowserState] = useState(false);
+  const [disableAutoUploads, setDisableAutoUploadsState] = useState(false);
+  const [vaultPin, setVaultPinState] = useState<string | null>(null);
+  const [vaultRecoveryCode, setVaultRecoveryCodeState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchStatusData = useCallback(async () => {
@@ -47,7 +53,7 @@ export function useStatusVisibility() {
     setLoading(true);
     try {
       const [profileRes, visibleRes, hiddenRes] = await Promise.all([
-        supabase.from('profiles').select('manual_status, notification_sounds, do_not_disturb_until, dark_mode').eq('id', user.id).single(),
+        supabase.from('profiles').select('manual_status, notification_sounds, do_not_disturb_until, dark_mode, show_read_indicator, check_keys_in_conversations, remember_browser, disable_auto_uploads, vault_pin, vault_recovery_code').eq('id', user.id).single(),
         supabase
           .from('status_visibility')
           .select('target_user_id, profiles!status_visibility_target_user_id_fkey(id, display_name, username, profile_pic)')
@@ -70,6 +76,12 @@ export function useStatusVisibility() {
         const dbDarkMode = profileRes.data.dark_mode ?? false;
         setDarkModeState(dbDarkMode);
         setTheme(dbDarkMode ? 'dark' : 'light');
+        setShowReadIndicatorState(profileRes.data.show_read_indicator ?? true);
+        setCheckKeysInConversationsState(profileRes.data.check_keys_in_conversations ?? false);
+        setRememberBrowserState(profileRes.data.remember_browser ?? false);
+        setDisableAutoUploadsState(profileRes.data.disable_auto_uploads ?? false);
+        setVaultPinState(profileRes.data.vault_pin ?? null);
+        setVaultRecoveryCodeState(profileRes.data.vault_recovery_code ?? null);
       }
 
       if (visibleRes.data) {
@@ -190,6 +202,60 @@ export function useStatusVisibility() {
       .eq('id', user.id);
   };
 
+  const setShowReadIndicator = async (value: boolean) => {
+    setShowReadIndicatorState(value);
+    if (!user?.id) return;
+    await supabase
+      .from('profiles')
+      .update({ show_read_indicator: value })
+      .eq('id', user.id);
+  };
+
+  const setCheckKeysInConversations = async (value: boolean) => {
+    setCheckKeysInConversationsState(value);
+    if (!user?.id) return;
+    await supabase
+      .from('profiles')
+      .update({ check_keys_in_conversations: value })
+      .eq('id', user.id);
+  };
+
+  const setRememberBrowser = async (value: boolean) => {
+    setRememberBrowserState(value);
+    if (!user?.id) return;
+    await supabase
+      .from('profiles')
+      .update({ remember_browser: value })
+      .eq('id', user.id);
+  };
+
+  const setDisableAutoUploads = async (value: boolean) => {
+    setDisableAutoUploadsState(value);
+    if (!user?.id) return;
+    await supabase
+      .from('profiles')
+      .update({ disable_auto_uploads: value })
+      .eq('id', user.id);
+  };
+
+  const setVaultPin = async (pin: string | null) => {
+    setVaultPinState(pin);
+    if (!user?.id) return;
+    await supabase
+      .from('profiles')
+      .update({ vault_pin: pin })
+      .eq('id', user.id);
+  };
+
+  const setVaultRecoveryCode = async (code: string | null) => {
+    setVaultRecoveryCodeState(code);
+    if (!user?.id) return;
+    await supabase
+      .from('profiles')
+      .update({ vault_recovery_code: code })
+      .eq('id', user.id);
+  };
+
   const doNotDisturb = isDoNotDisturbActive(doNotDisturbUntil);
   const doNotDisturbLabel = doNotDisturb ? `Until ${formatDoNotDisturbEnd(doNotDisturbUntil)}` : 'Off';
 
@@ -202,10 +268,22 @@ export function useStatusVisibility() {
     doNotDisturbUntil,
     doNotDisturbLabel,
     darkMode,
+    showReadIndicator,
+    checkKeysInConversations,
+    rememberBrowser,
+    disableAutoUploads,
+    vaultPin,
+    vaultRecoveryCode,
     setManualStatus,
     setNotificationSounds,
     setDoNotDisturbDuration,
     setDarkMode,
+    setShowReadIndicator,
+    setCheckKeysInConversations,
+    setRememberBrowser,
+    setDisableAutoUploads,
+    setVaultPin,
+    setVaultRecoveryCode,
     addVisibilityOverride,
     removeVisibilityOverride,
     loading,
