@@ -44,7 +44,7 @@ export function useStatusVisibility() {
   const [checkKeysInConversations, setCheckKeysInConversationsState] = useState(false);
   const [rememberBrowser, setRememberBrowserState] = useState(false);
   const [disableAutoUploads, setDisableAutoUploadsState] = useState(false);
-  const [previewMode, setPreviewModeState] = useState(false);
+  const [previewMode, setPreviewModeState] = useState(true);
   const [vaultPin, setVaultPinState] = useState<string | null>(null);
   const [vaultRecoveryCode, setVaultRecoveryCodeState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,7 +81,7 @@ export function useStatusVisibility() {
         setCheckKeysInConversationsState(profileRes.data.check_keys_in_conversations ?? false);
         setRememberBrowserState(profileRes.data.remember_browser ?? false);
         setDisableAutoUploadsState(profileRes.data.disable_auto_uploads ?? false);
-        setPreviewModeState(profileRes.data.preview_mode ?? false);
+        setPreviewModeState(profileRes.data.preview_mode ?? true);
         setVaultPinState(profileRes.data.vault_pin ?? null);
         setVaultRecoveryCodeState(profileRes.data.vault_recovery_code ?? null);
       }
