@@ -1008,9 +1008,17 @@ const Messages = () => {
       <Dialog open={showVaultDialog} onOpenChange={setShowVaultDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="text-center sm:text-center">
-            <div className="flex items-center justify-center gap-2">
-              <Lock className="h-5 w-5 text-primary" />
-              <DialogTitle>Message Vault</DialogTitle>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowVaultDialog(false)}
+                className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center shrink-0"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-2 flex-1 justify-center mr-8">
+                <Lock className="h-5 w-5 text-primary" />
+                <DialogTitle>Message Vault</DialogTitle>
+              </div>
             </div>
           </DialogHeader>
           <div className="space-y-5">
@@ -1060,7 +1068,7 @@ const Messages = () => {
             <div className="flex items-center justify-between py-2">
               <div className="flex items-center gap-2">
                 <Download className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">Turn off automatic uploads</span>
+                <span className="text-sm">Automatic uploads</span>
               </div>
               <Switch checked={disableAutoUploads} onCheckedChange={setDisableAutoUploads} />
             </div>
@@ -1077,9 +1085,17 @@ const Messages = () => {
       <Dialog open={showSecurityMethods} onOpenChange={setShowSecurityMethods}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader className="text-center sm:text-center">
-            <div className="flex items-center justify-center gap-2">
-              <Shield className="h-5 w-5 text-primary" />
-              <DialogTitle>Manage security methods</DialogTitle>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowSecurityMethods(false)}
+                className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center shrink-0"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-2 flex-1 justify-center mr-8">
+                <Shield className="h-5 w-5 text-primary" />
+                <DialogTitle>Manage security methods</DialogTitle>
+              </div>
             </div>
           </DialogHeader>
           <div className="space-y-2">
@@ -1111,9 +1127,17 @@ const Messages = () => {
       <Dialog open={isCreatingPin} onOpenChange={setIsCreatingPin}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader className="text-center sm:text-center">
-            <div className="flex items-center justify-center gap-2">
-              <Key className="h-5 w-5 text-primary" />
-              <DialogTitle>Create a new PIN</DialogTitle>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsCreatingPin(false)}
+                className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center shrink-0"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-2 flex-1 justify-center mr-8">
+                <Key className="h-5 w-5 text-primary" />
+                <DialogTitle>Create a new PIN</DialogTitle>
+              </div>
             </div>
           </DialogHeader>
           <div className="space-y-4">
