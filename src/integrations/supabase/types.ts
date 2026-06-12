@@ -4158,6 +4158,41 @@ export type Database = {
         }
         Relationships: []
       }
+      trusted_devices: {
+        Row: {
+          id: string
+          user_id: string
+          device_id: string
+          user_agent: string | null
+          created_at: string | null
+          last_used_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          device_id: string
+          user_agent?: string | null
+          created_at?: string | null
+          last_used_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          device_id?: string
+          user_agent?: string | null
+          created_at?: string | null
+          last_used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trusted_devices_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       hashtag_analytics: {

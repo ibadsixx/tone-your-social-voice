@@ -1062,7 +1062,26 @@ const Messages = () => {
                 <Smartphone className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm">Remember this browser</span>
               </div>
-              <Switch checked={rememberBrowser} onCheckedChange={setRememberBrowser} />
+              <Switch checked={rememberBrowser} onCheckedChange={async (value) => {
+                setRememberBrowser(value);
+                let deviceId = localStorage.getItem('tone_device_id');
+                if (!deviceId) {
+                  deviceId = crypto.randomUUID();
+                  localStorage.setItem('tone_device_id', deviceId);
+                }
+                if (value) {
+                  await supabase.from('trusted_devices').upsert({
+                    user_id: currentUserId,
+                    device_id: deviceId,
+                    user_agent: navigator.userAgent,
+                    last_used_at: new Date().toISOString(),
+                  }, { onConflict: 'user_id,device_id' });
+                } else {
+                  await supabase.from('trusted_devices').delete()
+                    .eq('user_id', currentUserId)
+                    .eq('device_id', deviceId);
+                }
+              }} />
             </div>
 
             <div className="flex items-center justify-between py-2">
