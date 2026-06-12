@@ -44,6 +44,7 @@ export function useStatusVisibility() {
   const [checkKeysInConversations, setCheckKeysInConversationsState] = useState(false);
   const [rememberBrowser, setRememberBrowserState] = useState(false);
   const [disableAutoUploads, setDisableAutoUploadsState] = useState(false);
+  const [previewMode, setPreviewModeState] = useState(false);
   const [vaultPin, setVaultPinState] = useState<string | null>(null);
   const [vaultRecoveryCode, setVaultRecoveryCodeState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +54,7 @@ export function useStatusVisibility() {
     setLoading(true);
     try {
       const [profileRes, visibleRes, hiddenRes] = await Promise.all([
-        supabase.from('profiles').select('manual_status, notification_sounds, do_not_disturb_until, dark_mode, show_read_indicator, check_keys_in_conversations, remember_browser, disable_auto_uploads, vault_pin, vault_recovery_code').eq('id', user.id).single(),
+        supabase.from('profiles').select('manual_status, notification_sounds, do_not_disturb_until, dark_mode, show_read_indicator, check_keys_in_conversations, remember_browser, disable_auto_uploads, vault_pin, vault_recovery_code, preview_mode').eq('id', user.id).single(),
         supabase
           .from('status_visibility')
           .select('target_user_id, profiles!status_visibility_target_user_id_fkey(id, display_name, username, profile_pic)')
@@ -80,6 +81,7 @@ export function useStatusVisibility() {
         setCheckKeysInConversationsState(profileRes.data.check_keys_in_conversations ?? false);
         setRememberBrowserState(profileRes.data.remember_browser ?? false);
         setDisableAutoUploadsState(profileRes.data.disable_auto_uploads ?? false);
+        setPreviewModeState(profileRes.data.preview_mode ?? false);
         setVaultPinState(profileRes.data.vault_pin ?? null);
         setVaultRecoveryCodeState(profileRes.data.vault_recovery_code ?? null);
       }
@@ -238,6 +240,15 @@ export function useStatusVisibility() {
       .eq('id', user.id);
   };
 
+  const setPreviewMode = async (value: boolean) => {
+    setPreviewModeState(value);
+    if (!user?.id) return;
+    await supabase
+      .from('profiles')
+      .update({ preview_mode: value })
+      .eq('id', user.id);
+  };
+
   const setVaultPin = async (pin: string | null) => {
     setVaultPinState(pin);
     if (!user?.id) return;
@@ -272,6 +283,7 @@ export function useStatusVisibility() {
     checkKeysInConversations,
     rememberBrowser,
     disableAutoUploads,
+    previewMode,
     vaultPin,
     vaultRecoveryCode,
     setManualStatus,
@@ -282,6 +294,7 @@ export function useStatusVisibility() {
     setCheckKeysInConversations,
     setRememberBrowser,
     setDisableAutoUploads,
+    setPreviewMode,
     setVaultPin,
     setVaultRecoveryCode,
     addVisibilityOverride,

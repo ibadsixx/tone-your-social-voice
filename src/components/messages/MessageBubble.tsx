@@ -38,6 +38,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { MessageLinkPreview } from './MessageLinkPreview';
 
 
 export interface Message {
@@ -109,6 +110,7 @@ interface MessageBubbleProps {
   onReport?: (message: Message) => void;
   onScrollToMessage?: (messageId: string) => void;
   showSeenStatus?: boolean;
+  previewMode?: boolean;
 }
 
 // Theme gradient mappings
@@ -139,7 +141,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onPin,
   onReport,
   onScrollToMessage,
-  showSeenStatus = true
+  showSeenStatus = true,
+  previewMode = false
 }) => {
   const themeClass = THEME_GRADIENTS[chatTheme] || THEME_GRADIENTS['default'];
   const currentUserReactionKey: ReactionKey | null = (() => {
@@ -786,6 +789,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
               {/* Media content */}
               {renderMediaContent()}
+
+              {/* Link previews */}
+              {previewMode && message.content && message.message_type !== 'poll' && (
+                <MessageLinkPreview content={message.content} />
+              )}
             </>
           )}
 

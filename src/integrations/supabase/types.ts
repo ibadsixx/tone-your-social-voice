@@ -2871,6 +2871,7 @@ export type Database = {
           remember_browser: boolean | null
           vault_pin: string | null
           vault_recovery_code: string | null
+          preview_mode: boolean | null
           high_school: string | null
           high_school_id: string | null
           high_school_visibility: string | null
@@ -2947,6 +2948,7 @@ export type Database = {
           remember_browser?: boolean | null
           vault_pin?: string | null
           vault_recovery_code?: string | null
+          preview_mode?: boolean | null
           updated_at?: string
           username: string
           websites_social_links?: Json | null
@@ -3004,6 +3006,7 @@ export type Database = {
           remember_browser?: boolean | null
           vault_pin?: string | null
           vault_recovery_code?: string | null
+          preview_mode?: boolean | null
           updated_at?: string
           username?: string
           websites_social_links?: Json | null

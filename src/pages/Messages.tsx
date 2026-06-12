@@ -79,6 +79,7 @@ const Messages = () => {
     checkKeysInConversations,
     rememberBrowser,
     disableAutoUploads,
+    previewMode,
     setNotificationSounds,
     setDoNotDisturbDuration,
     setDarkMode,
@@ -86,6 +87,7 @@ const Messages = () => {
     setCheckKeysInConversations,
     setRememberBrowser,
     setDisableAutoUploads,
+    setPreviewMode,
     vaultPin,
     vaultRecoveryCode,
     setVaultPin,
@@ -266,6 +268,22 @@ const Messages = () => {
     }
   }, [currentUserId]);
 
+  // Performance & preview optimizations when preview mode is on
+  useEffect(() => {
+    const html = document.documentElement;
+    if (previewMode) {
+      html.classList.add('preview-mode');
+      html.classList.add('reduce-motion');
+    } else {
+      html.classList.remove('preview-mode');
+      html.classList.remove('reduce-motion');
+    }
+    return () => {
+      html.classList.remove('preview-mode');
+      html.classList.remove('reduce-motion');
+    };
+  }, [previewMode]);
+
   // Always remember this browser — register device on vault open
   useEffect(() => {
     if (!showVaultDialog || !currentUserId) return;
@@ -437,10 +455,19 @@ const Messages = () => {
                             <Lock className="mr-2 h-4 w-4" />
                             <span>Message Vault</span>
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Eye className="mr-2 h-4 w-4" />
-                            <span>Preview Mode</span>
-                          </DropdownMenuItem>
+                          <div
+                            className="flex items-center justify-between px-2 py-1.5 text-sm cursor-default hover:bg-accent"
+                            onSelect={(e: any) => e.preventDefault()}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Eye className="h-4 w-4" />
+                              <span>Preview Mode</span>
+                            </div>
+                            <Switch
+                              checked={previewMode}
+                              onCheckedChange={setPreviewMode}
+                            />
+                          </div>
                           <DropdownMenuItem>
                             <Shield className="mr-2 h-4 w-4" />
                             <span>Security Warnings</span>
@@ -807,6 +834,7 @@ const Messages = () => {
           }}
           hasMoreMessages={hasMoreMessages}
           loading={loading}
+          previewMode={previewMode}
         />
       </div>
 

@@ -50,6 +50,7 @@ interface ChatWindowProps {
   onClearHistory?: () => void;
   hasMoreMessages: boolean;
   loading?: boolean;
+  previewMode?: boolean;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -67,7 +68,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onLoadMore,
   onClearHistory,
   hasMoreMessages,
-  loading = false
+  loading = false,
+  previewMode = false
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -706,6 +708,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         chatTheme={chatTheme}
                         isVanishing={vanishingMessagesEnabled}
                         showSeenStatus={readReceiptsEnabled}
+                        previewMode={previewMode}
                       onReact={handleReaction}
                       onReply={(msg) => {
                         const replyInfo = {
