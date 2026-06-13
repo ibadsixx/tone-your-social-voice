@@ -4208,6 +4208,8 @@ export type Database = {
           user_id: string
           device_id: string
           user_agent: string | null
+          ip_address: string | null
+          location: string | null
           created_at: string | null
           last_used_at: string | null
         }
@@ -4216,6 +4218,8 @@ export type Database = {
           user_id: string
           device_id: string
           user_agent?: string | null
+          ip_address?: string | null
+          location?: string | null
           created_at?: string | null
           last_used_at?: string | null
         }
@@ -4224,6 +4228,8 @@ export type Database = {
           user_id?: string
           device_id?: string
           user_agent?: string | null
+          ip_address?: string | null
+          location?: string | null
           created_at?: string | null
           last_used_at?: string | null
         }

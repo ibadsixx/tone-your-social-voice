@@ -16,8 +16,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/useAuth';
+import { parseUserAgent, formatLastSeen, fetchLocation } from '@/utils/deviceInfo';
 import { useToast } from '@/hooks/use-toast';
-import { PenSquare, MessageCircle, MoreHorizontal, Settings, Inbox, Archive, Ban, Shield, HelpCircle, CircleDot, Bell, BellOff, Moon, Pencil, Check, Search, Loader2, X, ArrowLeft, Users, UserPlus, Lock, Eye, Flag, Key, Download, Smartphone, Clock, CreditCard, LogIn, AlertTriangle } from 'lucide-react';
+import { PenSquare, MessageCircle, MoreHorizontal, Settings, Inbox, Archive, Ban, Shield, HelpCircle, CircleDot, Bell, BellOff, Moon, Pencil, Check, Search, Loader2, X, ArrowLeft, Users, UserPlus, Lock, Eye, Flag, Key, Download, Smartphone, Clock, CreditCard, LogIn, AlertTriangle, Monitor, Globe } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -56,6 +57,9 @@ const Messages = () => {
   const [peopleSelectorMode, setPeopleSelectorMode] = useState<'on_for_some' | 'off_for_some'>('on_for_some');
   const [selectedPeople, setSelectedPeople] = useState<{ id: string; display_name: string; username: string; profile_pic?: string | null }[]>([]);
   const [showSecurityWarningsDialog, setShowSecurityWarningsDialog] = useState(false);
+  const [showLoginManagement, setShowLoginManagement] = useState(false);
+  const [loginDevices, setLoginDevices] = useState<any[]>([]);
+  const [loginDevicesLoading, setLoginDevicesLoading] = useState(false);
   const [privacyView, setPrivacyView] = useState<'main' | 'encryption_chats' | null>(null);
   const [activePage, setActivePage] = useState(0);
   const navigate = useNavigate();
@@ -286,6 +290,59 @@ const Messages = () => {
       html.classList.remove('reduce-motion');
     };
   }, [previewMode]);
+
+  // Fetch devices when Login Management opens
+  useEffect(() => {
+    if (!showLoginManagement || !currentUserId) return;
+
+    const load = async () => {
+      try {
+        const location = await fetchLocation();
+        let deviceId = localStorage.getItem('tone_device_id');
+        if (!deviceId) {
+          deviceId = crypto.randomUUID();
+          localStorage.setItem('tone_device_id', deviceId);
+        }
+
+        await supabase.from('trusted_devices').upsert({
+          user_id: currentUserId,
+          device_id: deviceId,
+          user_agent: navigator.userAgent,
+          location,
+          last_used_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,device_id' });
+
+        const { data: dbDevices } = await supabase
+          .from('trusted_devices')
+          .select('*')
+          .eq('user_id', currentUserId)
+          .order('last_used_at', { ascending: false });
+
+        if (dbDevices && dbDevices.length > 0) {
+          // Merge fresh location into matching DB entry
+          const withLocation = dbDevices.map((d: any) =>
+            d.device_id === deviceId && !d.location ? { ...d, location } : d
+          );
+          setLoginDevices(withLocation);
+        } else {
+          setLoginDevices([{
+            id: 'current',
+            device_id: deviceId,
+            user_agent: navigator.userAgent,
+            location,
+            last_used_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          }]);
+        }
+      } catch {
+        setLoginDevices([{ id: 'current', device_id: 'unknown', user_agent: navigator.userAgent, location: null, last_used_at: new Date().toISOString(), created_at: new Date().toISOString() }]);
+      } finally {
+        setLoginDevicesLoading(false);
+      }
+    };
+
+    load();
+  }, [showLoginManagement, currentUserId]);
 
   // Always remember this browser — register device on vault open
   useEffect(() => {
@@ -1283,7 +1340,10 @@ const Messages = () => {
               <button className="text-primary hover:underline cursor-pointer">See more</button>
             </p>
             <div className="space-y-1">
-              <button className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-accent transition-colors text-left border border-border">
+              <button
+                onClick={() => { setShowSecurityWarningsDialog(false); setShowLoginManagement(true); setLoginDevicesLoading(true); }}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-accent transition-colors text-left border border-border"
+              >
                 <LogIn className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm font-medium">See logins</p>
@@ -1302,6 +1362,64 @@ const Messages = () => {
                 </div>
               </button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Login Management Dialog */}
+      <Dialog open={showLoginManagement} onOpenChange={setShowLoginManagement}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="text-center sm:text-center">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowLoginManagement(false)}
+                className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center shrink-0"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-2 flex-1 justify-center mr-8">
+                <LogIn className="h-5 w-5 text-primary" />
+                <DialogTitle>Login Management</DialogTitle>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
+              These devices allow you to send and receive encrypted messages and calls. Go to Settings to see a full list of devices you're logged into.
+            </p>
+            <ScrollArea className="max-h-80">
+              {loginDevicesLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : loginDevices.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No devices found</p>
+              ) : (
+                <div className="space-y-2">
+                  {loginDevices.map((device) => {
+                    const info = parseUserAgent(device.user_agent || '');
+                    return (
+                      <div
+                        key={device.id}
+                        className="flex items-start gap-3 p-3 rounded-lg border border-border"
+                      >
+                        <Monitor className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{info.deviceName}</p>
+                          <p className="text-xs text-muted-foreground">{info.os} &middot; {info.browser}</p>
+                          <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                            <Globe className="h-3 w-3" />
+                            <span>{device.location || 'Unknown location'}</span>
+                            <span className="text-muted-foreground/50">&middot;</span>
+                            <span>{formatLastSeen(device.last_used_at)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </ScrollArea>
           </div>
         </DialogContent>
       </Dialog>
