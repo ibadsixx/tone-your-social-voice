@@ -17,7 +17,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { PenSquare, MessageCircle, MoreHorizontal, Settings, Inbox, Archive, Ban, Shield, HelpCircle, CircleDot, Bell, BellOff, Moon, Pencil, Check, Search, Loader2, X, ArrowLeft, Users, UserPlus, Lock, Eye, Flag, Key, Download, Smartphone, Clock, CreditCard } from 'lucide-react';
+import { PenSquare, MessageCircle, MoreHorizontal, Settings, Inbox, Archive, Ban, Shield, HelpCircle, CircleDot, Bell, BellOff, Moon, Pencil, Check, Search, Loader2, X, ArrowLeft, Users, UserPlus, Lock, Eye, Flag, Key, Download, Smartphone, Clock, CreditCard, LogIn, AlertTriangle } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -55,6 +55,7 @@ const Messages = () => {
   const [showPeopleSelector, setShowPeopleSelector] = useState(false);
   const [peopleSelectorMode, setPeopleSelectorMode] = useState<'on_for_some' | 'off_for_some'>('on_for_some');
   const [selectedPeople, setSelectedPeople] = useState<{ id: string; display_name: string; username: string; profile_pic?: string | null }[]>([]);
+  const [showSecurityWarningsDialog, setShowSecurityWarningsDialog] = useState(false);
   const [privacyView, setPrivacyView] = useState<'main' | 'encryption_chats' | null>(null);
   const [activePage, setActivePage] = useState(0);
   const navigate = useNavigate();
@@ -80,6 +81,7 @@ const Messages = () => {
     rememberBrowser,
     disableAutoUploads,
     previewMode,
+    securityWarnings,
     setNotificationSounds,
     setDoNotDisturbDuration,
     setDarkMode,
@@ -88,6 +90,7 @@ const Messages = () => {
     setRememberBrowser,
     setDisableAutoUploads,
     setPreviewMode,
+    setSecurityWarnings,
     vaultPin,
     vaultRecoveryCode,
     setVaultPin,
@@ -468,7 +471,7 @@ const Messages = () => {
                               onCheckedChange={setPreviewMode}
                             />
                           </div>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => setShowSecurityWarningsDialog(true)}>
                             <Shield className="mr-2 h-4 w-4" />
                             <span>Security Warnings</span>
                           </DropdownMenuItem>
@@ -1252,6 +1255,52 @@ const Messages = () => {
               }}>
                 Generate
               </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Security Warnings Dialog */}
+      <Dialog open={showSecurityWarningsDialog} onOpenChange={setShowSecurityWarningsDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader className="text-center sm:text-center">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowSecurityWarningsDialog(false)}
+                className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center shrink-0"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-2 flex-1 justify-center mr-8">
+                <Shield className="h-5 w-5 text-primary" />
+                <DialogTitle>Security Warnings</DialogTitle>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
+              You can review any device you don't recognize and compare keys when they are changed for the security of your conversations.{' '}
+              <button className="text-primary hover:underline cursor-pointer">See more</button>
+            </p>
+            <div className="space-y-1">
+              <button className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-accent transition-colors text-left border border-border">
+                <LogIn className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">See logins</p>
+                </div>
+              </button>
+              <button className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-accent transition-colors text-left border border-border">
+                <Shield className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">Manage security warnings</p>
+                </div>
+              </button>
+              <button className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-accent transition-colors text-left border border-border">
+                <AlertTriangle className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">View security warnings</p>
+                </div>
+              </button>
             </div>
           </div>
         </DialogContent>
