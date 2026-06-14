@@ -1,11 +1,7 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Upload, Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
-import { uploadVideo, getVideoMetadata } from '@/lib/storage';
-import { toast } from '@/hooks/use-toast';
+import { useStories } from '@/hooks/useStories';
 
 interface CreateStoryDialogProps {
   open: boolean;
@@ -13,142 +9,44 @@ interface CreateStoryDialogProps {
 }
 
 const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string>('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
-  const navigate = useNavigate();
-  const { user } = useAuth();
+  const { createStory } = useStories();
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
-    // Validate file type
     if (!selectedFile.type.startsWith('image/') && !selectedFile.type.startsWith('video/')) {
       alert('Please select an image or video file');
       return;
     }
 
-    // Validate file size (50MB max)
     if (selectedFile.size > 50 * 1024 * 1024) {
       alert('File size must be less than 50MB');
       return;
     }
 
-    // Only handle video files
-    if (selectedFile.type.startsWith('video/')) {
-      console.log('[CreateStoryDialog] 📁 FILE DETAILS:', {
-        name: selectedFile.name,
-        size: selectedFile.size,
-        type: selectedFile.type,
-      });
+    setUploading(true);
+    setUploadProgress('Uploading...');
 
-      if (selectedFile.size === 0) {
-        alert('Selected file is empty');
-        return;
-      }
+    try {
+      const result = await createStory(selectedFile);
 
-      if (!user?.id) {
-        console.error('[CreateStoryDialog] ❌ User not authenticated');
-        alert('Please log in to create a story');
-        return;
-      }
-
-      setUploading(true);
-      setUploadProgress('Uploading to storage...');
-      
-      try {
-        // Use shared upload utility
-        const { publicUrl } = await uploadVideo(selectedFile, user.id);
-        
-        console.log('[CreateStoryDialog] ✅ UPLOAD COMPLETE:', publicUrl);
-
-        // Get video metadata
-        setUploadProgress('Loading metadata...');
-        const metadata = await getVideoMetadata(publicUrl);
-
-        // Create editor project in database
-        setUploadProgress('Creating project...');
-        
-        const projectJson = {
-          tracks: [
-            {
-              id: 'track-video',
-              type: 'video',
-              clips: [
-                {
-                  id: `video-${Date.now()}`,
-                  type: 'video',
-                  src: publicUrl,
-                  fileName: selectedFile.name,
-                  start: 0,
-                  end: metadata.duration,
-                  duration: metadata.duration,
-                  volume: 1,
-                }
-              ]
-            }
-          ],
-          settings: {
-            duration: metadata.duration,
-            fps: 30,
-            resolution: { width: 1080, height: 1920 },
-            contentType: 'story',
-          }
-        };
-        
-        const { data: projectData, error: projectError } = await supabase
-          .from('editor_projects')
-          .insert({
-            owner_id: user.id,
-            title: selectedFile.name.replace(/\.[^/.]+$/, ''),
-            project_json: projectJson,
-            status: 'draft',
-          })
-          .select()
-          .single();
-
-        if (projectError) {
-          console.error('[CreateStoryDialog] ❌ Project creation failed:', projectError);
-          throw new Error('Failed to create project');
-        }
-
-        console.log('[PROJECT] ========================================');
-        console.log('[PROJECT] saved -> id:', projectData.id);
-        console.log('[PROJECT] video URL:', publicUrl);
-        console.log('[PROJECT] ========================================');
-        
-        toast({
-          title: 'Video uploaded',
-          description: 'Opening editor...',
-        });
-
+      if (result) {
         onOpenChange(false);
-        
-        // Navigate with projectId
-        navigate(`/editor?projectId=${projectData.id}`);
-        
-      } catch (error) {
-        console.error('[CreateStoryDialog] ❌ Failed:', error);
-        alert(error instanceof Error ? error.message : 'Failed to upload video');
-      } finally {
-        setUploading(false);
-        setUploadProgress('');
       }
-    } else {
-      // Images still use old flow (for now)
-      setFile(selectedFile);
-      setPreview(URL.createObjectURL(selectedFile));
+    } catch (error) {
+      console.error('[CreateStoryDialog] ❌ Failed:', error);
+      alert(error instanceof Error ? error.message : 'Failed to create story');
+    } finally {
+      setUploading(false);
+      setUploadProgress('');
     }
   };
 
   const handleClose = () => {
-    if (preview) {
-      URL.revokeObjectURL(preview);
-    }
-    setFile(null);
-    setPreview('');
+    if (uploading) return;
     onOpenChange(false);
   };
 
@@ -173,15 +71,14 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                   <p className="mb-2 text-sm text-muted-foreground">
                     <span className="font-semibold">Click to upload</span> or drag and drop
                   </p>
-                  <p className="text-xs text-muted-foreground">Video (MAX. 50MB)</p>
-                  <p className="text-xs text-primary mt-2">Add filters, stickers & music</p>
+                  <p className="text-xs text-muted-foreground">Image or Video (MAX. 50MB)</p>
                 </>
               )}
             </div>
             <input
               type="file"
               className="hidden"
-              accept="video/*"
+              accept="image/*,video/*"
               onChange={handleFileSelect}
               disabled={uploading}
             />
