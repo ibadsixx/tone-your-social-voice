@@ -2,6 +2,19 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Upload, Loader2 } from 'lucide-react';
 import { useStories } from '@/hooks/useStories';
+import StoryMusicPicker from './StoryMusicPicker';
+
+interface MusicData {
+  url: string;
+  title: string;
+  artist?: string;
+  startAt: number;
+  endAt: number;
+  duration: number;
+  source_type: string;
+  video_id?: string | null;
+  thumbnail_url?: string | null;
+}
 
 interface CreateStoryDialogProps {
   open: boolean;
@@ -11,6 +24,7 @@ interface CreateStoryDialogProps {
 const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
+  const [music, setMusic] = useState<MusicData | null>(null);
   const { createStory } = useStories();
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -31,7 +45,20 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
     setUploadProgress('Uploading...');
 
     try {
-      const result = await createStory(selectedFile);
+      const result = await createStory(
+        selectedFile,
+        undefined,
+        music?.url,
+        music?.title,
+        'public',
+        music ? {
+          startAt: music.startAt,
+          duration: music.duration,
+          source_type: music.source_type,
+          video_id: music.video_id,
+          thumbnail_url: music.thumbnail_url,
+        } : undefined
+      );
 
       if (result) {
         onOpenChange(false);
@@ -47,6 +74,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
 
   const handleClose = () => {
     if (uploading) return;
+    setMusic(null);
     onOpenChange(false);
   };
 
@@ -83,6 +111,8 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
               disabled={uploading}
             />
           </label>
+
+          <StoryMusicPicker onSelectMusic={setMusic} selectedMusic={music} />
         </div>
       </DialogContent>
     </Dialog>
