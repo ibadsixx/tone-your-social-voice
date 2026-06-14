@@ -3,7 +3,9 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Upload, Loader2, Type, Music, Sparkles, X, Check, ChevronLeft } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Upload, Loader2, Type, Music, Sparkles, X, Check, ChevronLeft, Italic, Underline, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import { useStories } from '@/hooks/useStories';
 import StoryMusicPicker from './StoryMusicPicker';
 import { FilterControls } from '@/components/video-preview/FilterControls';
@@ -29,17 +31,72 @@ interface TextOverlay {
   color: string;
   x: number;
   y: number;
+  fontFamily: string;
+  fontSize: number;
+  fontWeight: number;
+  fontStyle: 'normal' | 'italic';
+  textDecoration: 'none' | 'underline';
+  textAlign: 'left' | 'center' | 'right';
+  backgroundColor: string | undefined;
 }
 
-const TEXT_COLORS = [
-  '#FFFFFF', '#000000', '#FF0000', '#FF6B00', '#FFD700',
-  '#00FF00', '#00BFFF', '#8A2BE2', '#FF69B4', '#808080',
+const FONT_OPTIONS = [
+  { id: 'inter', name: 'Inter', css: "'Inter', sans-serif" },
+  { id: 'poppins', name: 'Poppins', css: "'Poppins', sans-serif" },
+  { id: 'montserrat', name: 'Montserrat', css: "'Montserrat', sans-serif" },
+  { id: 'roboto', name: 'Roboto', css: "'Roboto', sans-serif" },
+  { id: 'open-sans', name: 'Open Sans', css: "'Open Sans', sans-serif" },
+  { id: 'playfair', name: 'Playfair Display', css: "'Playfair Display', serif" },
+  { id: 'bebas', name: 'Bebas Neue', css: "'Bebas Neue', sans-serif" },
+  { id: 'oswald', name: 'Oswald', css: "'Oswald', sans-serif" },
+  { id: 'lato', name: 'Lato', css: "'Lato', sans-serif" },
+  { id: 'dancing', name: 'Dancing Script', css: "'Dancing Script', cursive" },
+  { id: 'georgia', name: 'Georgia', css: "'Georgia', serif" },
+  { id: 'arial', name: 'Arial', css: "'Arial', sans-serif" },
+  { id: 'times', name: 'Times New Roman', css: "'Times New Roman', serif" },
+  { id: 'courier', name: 'Courier New', css: "'Courier New', monospace" },
+  { id: 'mono', name: 'Monospace', css: 'monospace' },
 ];
+
+const FONT_WEIGHTS = [
+  { value: 300, label: 'Light' },
+  { value: 400, label: 'Regular' },
+  { value: 500, label: 'Medium' },
+  { value: 600, label: 'SemiBold' },
+  { value: 700, label: 'Bold' },
+  { value: 800, label: 'ExtraBold' },
+];
+
+const TEXT_COLORS = [
+  '#FFFFFF', '#000000', '#FF0000', '#00FF00', '#0000FF',
+  '#FFFF00', '#FF00FF', '#00FFFF', '#FF6B6B', '#4ECDC4',
+  '#45B7D1', '#96CEB4', '#FFEAA7', '#DFE6E9', '#FD79A8',
+];
+
+function getFontCss(fontName: string): string {
+  const font = FONT_OPTIONS.find((f) => f.name === fontName);
+  return font?.css || "'Inter', sans-serif";
+}
 
 interface CreateStoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
+
+const defaultTextOverlay = (text: string, color: string): TextOverlay => ({
+  id: `text-${Date.now()}`,
+  text,
+  color,
+  x: 50,
+  y: 50,
+  fontFamily: 'Inter',
+  fontSize: 32,
+  fontWeight: 700,
+  fontStyle: 'normal',
+  textDecoration: 'none',
+  textAlign: 'center',
+  backgroundColor: undefined,
+});
 
 const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
   const [step, setStep] = useState<'select' | 'edit'>('select');
@@ -52,6 +109,13 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
   const [currentText, setCurrentText] = useState('');
   const [textColor, setTextColor] = useState('#FFFFFF');
+  const [textFont, setTextFont] = useState('Inter');
+  const [textFontSize, setTextFontSize] = useState(32);
+  const [textFontWeight, setTextFontWeight] = useState(700);
+  const [textItalic, setTextItalic] = useState(false);
+  const [textUnderline, setTextUnderline] = useState(false);
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
+  const [textBg, setTextBg] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<'text' | 'music' | 'filters'>('filters');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { createStory } = useStories();
@@ -68,6 +132,13 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
     setTextOverlays([]);
     setCurrentText('');
     setTextColor('#FFFFFF');
+    setTextFont('Inter');
+    setTextFontSize(32);
+    setTextFontWeight(700);
+    setTextItalic(false);
+    setTextUnderline(false);
+    setTextAlign('center');
+    setTextBg(undefined);
     setActiveTab('filters');
   }, [previewUrl]);
 
@@ -92,12 +163,15 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
 
   const handleAddText = () => {
     if (!currentText.trim()) return;
-    const overlay: TextOverlay = {
-      id: `text-${Date.now()}`,
-      text: currentText.trim(),
-      color: textColor,
-      x: 50,
-      y: 50,
+    const overlay = {
+      ...defaultTextOverlay(currentText.trim(), textColor),
+      fontFamily: textFont,
+      fontSize: textFontSize,
+      fontWeight: textFontWeight,
+      fontStyle: textItalic ? 'italic' as const : 'normal' as const,
+      textDecoration: textUnderline ? 'underline' as const : 'none' as const,
+      textAlign,
+      backgroundColor: textBg,
     };
     setTextOverlays([...textOverlays, overlay]);
     setCurrentText('');
@@ -171,17 +245,12 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
     return (
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="sm:max-w-4xl h-[90vh] p-0 gap-0 flex flex-col">
-          {/* Top bar */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <Button variant="ghost" size="icon" onClick={handleBack}>
               <ChevronLeft className="h-5 w-5" />
             </Button>
             <h1 className="text-lg font-semibold">Edit Story</h1>
-            <Button
-              onClick={handleCreate}
-              disabled={uploading}
-              size="sm"
-            >
+            <Button onClick={handleCreate} disabled={uploading} size="sm">
               {uploading ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-1" />
               ) : (
@@ -191,9 +260,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
             </Button>
           </div>
 
-          {/* Main content */}
           <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-            {/* Preview */}
             <div className="flex-1 bg-black flex items-center justify-center p-4 min-h-[300px]">
               <div className="relative w-full max-w-sm aspect-[9/16] bg-black rounded-lg overflow-hidden">
                 {isVideo ? (
@@ -201,10 +268,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                     src={previewUrl}
                     className="w-full h-full object-contain"
                     style={{ filter: getFilterStyle() }}
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
+                    autoPlay muted loop playsInline
                   />
                 ) : (
                   <img
@@ -217,33 +281,36 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                 {textOverlays.map((t) => (
                   <div
                     key={t.id}
-                    className="absolute cursor-move select-none"
+                    className="absolute select-none"
                     style={{
                       left: `${t.x}%`,
                       top: `${t.y}%`,
                       transform: 'translate(-50%, -50%)',
                       color: t.color,
-                      textShadow: '2px 2px 4px rgba(0,0,0,0.7)',
-                      fontSize: '1.5rem',
-                      fontWeight: 700,
+                      fontFamily: getFontCss(t.fontFamily),
+                      fontSize: `${t.fontSize}px`,
+                      fontWeight: t.fontWeight,
+                      fontStyle: t.fontStyle,
+                      textDecoration: t.textDecoration,
+                      textAlign: t.textAlign,
+                      backgroundColor: t.backgroundColor || 'transparent',
+                      padding: t.backgroundColor ? '4px 8px' : '0',
+                      borderRadius: t.backgroundColor ? '4px' : '0',
                       maxWidth: '80%',
                       wordBreak: 'break-word',
                       lineHeight: 1.2,
+                      textShadow: t.backgroundColor ? 'none' : '2px 2px 4px rgba(0,0,0,0.7)',
+                      cursor: 'pointer',
                     }}
                     onClick={() => handleRemoveText(t.id)}
                   >
                     {t.text}
-                    <span className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100">
-                      <X className="h-4 w-4" />
-                    </span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Sidebar tools */}
             <div className="w-full md:w-80 border-t md:border-t-0 md:border-l border-border bg-background flex flex-col">
-              {/* Tab buttons */}
               <div className="flex border-b border-border">
                 <button
                   onClick={() => setActiveTab('filters')}
@@ -280,7 +347,6 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                 </button>
               </div>
 
-              {/* Tab content */}
               <ScrollArea className="flex-1 p-4">
                 {activeTab === 'filters' && (
                   <FilterControls filter={filter} onChange={setFilter} />
@@ -302,20 +368,136 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                     </div>
 
                     <div className="space-y-2">
+                      <Label className="text-xs font-medium">Font</Label>
+                      <Select value={textFont} onValueChange={setTextFont}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {FONT_OPTIONS.map((font) => (
+                            <SelectItem key={font.id} value={font.name} style={{ fontFamily: font.css }}>
+                              {font.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium">Size</Label>
+                        <span className="text-xs text-muted-foreground">{textFontSize}px</span>
+                      </div>
+                      <Slider
+                        value={[textFontSize]}
+                        onValueChange={([v]) => setTextFontSize(v)}
+                        min={8}
+                        max={120}
+                        step={1}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">Weight</Label>
+                      <Select value={String(textFontWeight)} onValueChange={(v) => setTextFontWeight(Number(v))}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {FONT_WEIGHTS.map((w) => (
+                            <SelectItem key={w.value} value={String(w.value)}>
+                              {w.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        variant={textItalic ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setTextItalic(!textItalic)}
+                      >
+                        <Italic className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant={textUnderline ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setTextUnderline(!textUnderline)}
+                      >
+                        <Underline className="h-4 w-4" />
+                      </Button>
+                      <div className="flex-1" />
+                      <Button
+                        variant={textAlign === 'left' ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setTextAlign('left')}
+                      >
+                        <AlignLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant={textAlign === 'center' ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setTextAlign('center')}
+                      >
+                        <AlignCenter className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant={textAlign === 'right' ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setTextAlign('right')}
+                      >
+                        <AlignRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2">
                       <Label className="text-xs font-medium">Color</Label>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex gap-1 flex-wrap">
                         {TEXT_COLORS.map((color) => (
                           <button
                             key={color}
-                            onClick={() => setTextColor(color)}
-                            className={`w-8 h-8 rounded-full border-2 transition-all ${
-                              textColor === color
-                                ? 'border-primary scale-110'
-                                : 'border-transparent hover:scale-110'
+                            className={`w-6 h-6 rounded border-2 ${
+                              textColor === color ? 'border-primary scale-110' : 'border-transparent'
                             }`}
                             style={{ backgroundColor: color }}
+                            onClick={() => setTextColor(color)}
                           />
                         ))}
+                        <input
+                          type="color"
+                          value={textColor}
+                          onChange={(e) => setTextColor(e.target.value)}
+                          className="w-6 h-6 rounded cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">Background</Label>
+                      <div className="flex gap-2 items-center">
+                        <Button
+                          variant={textBg ? 'outline' : 'default'}
+                          size="sm"
+                          className="text-xs h-7"
+                          onClick={() => setTextBg(textBg ? undefined : 'rgba(0,0,0,0.5)')}
+                        >
+                          {textBg ? 'Remove' : 'Add Background'}
+                        </Button>
+                        {textBg && (
+                          <input
+                            type="color"
+                            value={textBg.startsWith('rgba') ? '#000000' : textBg}
+                            onChange={(e) => setTextBg(e.target.value)}
+                            className="w-6 h-6 rounded cursor-pointer"
+                          />
+                        )}
                       </div>
                     </div>
 
@@ -324,10 +506,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                         <Label className="text-xs font-medium">Added Text</Label>
                         <div className="space-y-1">
                           {textOverlays.map((t) => (
-                            <div
-                              key={t.id}
-                              className="flex items-center gap-2 px-3 py-2 rounded-md bg-secondary/50 text-sm"
-                            >
+                            <div key={t.id} className="flex items-center gap-2 px-3 py-2 rounded-md bg-secondary/50 text-sm">
                               <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
                               <span className="flex-1 truncate">{t.text}</span>
                               <button onClick={() => handleRemoveText(t.id)}>
