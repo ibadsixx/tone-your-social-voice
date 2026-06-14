@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -25,6 +24,9 @@ interface MusicData {
   thumbnail_url?: string | null;
 }
 
+type TextShadow = 'none' | 'soft' | 'hard' | 'outline';
+type TextDirection = 'ltr' | 'rtl';
+
 interface TextOverlay {
   id: string;
   text: string;
@@ -37,7 +39,9 @@ interface TextOverlay {
   fontStyle: 'normal' | 'italic';
   textDecoration: 'none' | 'underline';
   textAlign: 'left' | 'center' | 'right';
+  direction: TextDirection;
   backgroundColor: string | undefined;
+  shadow: TextShadow;
 }
 
 const FONT_OPTIONS = [
@@ -73,9 +77,24 @@ const TEXT_COLORS = [
   '#45B7D1', '#96CEB4', '#FFEAA7', '#DFE6E9', '#FD79A8',
 ];
 
+const FONT_SIZE_PRESETS = [24, 32, 48, 64, 96];
+
 function getFontCss(fontName: string): string {
   const font = FONT_OPTIONS.find((f) => f.name === fontName);
   return font?.css || "'Inter', sans-serif";
+}
+
+function getShadowCss(shadow: TextShadow, color: string): string {
+  switch (shadow) {
+    case 'none':
+      return 'none';
+    case 'soft':
+      return '2px 2px 4px rgba(0,0,0,0.7)';
+    case 'hard':
+      return '3px 3px 0 rgba(0,0,0,0.9)';
+    case 'outline':
+      return `${color === '#FFFFFF' ? '2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000' : '2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000'}`;
+  }
 }
 
 interface CreateStoryDialogProps {
@@ -83,20 +102,9 @@ interface CreateStoryDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const defaultTextOverlay = (text: string, color: string): TextOverlay => ({
-  id: `text-${Date.now()}`,
-  text,
-  color,
-  x: 50,
-  y: 50,
-  fontFamily: 'Inter',
-  fontSize: 32,
-  fontWeight: 700,
-  fontStyle: 'normal',
-  textDecoration: 'none',
-  textAlign: 'center',
-  backgroundColor: undefined,
-});
+function createId(): string {
+  return `text-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
 
 const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
   const [step, setStep] = useState<'select' | 'edit'>('select');
@@ -107,17 +115,10 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
   const [music, setMusic] = useState<MusicData | null>(null);
   const [filter, setFilter] = useState<VideoFilter>(defaultVideoFilter);
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
-  const [currentText, setCurrentText] = useState('');
-  const [textColor, setTextColor] = useState('#FFFFFF');
-  const [textFont, setTextFont] = useState('Inter');
-  const [textFontSize, setTextFontSize] = useState(32);
-  const [textFontWeight, setTextFontWeight] = useState(700);
-  const [textItalic, setTextItalic] = useState(false);
-  const [textUnderline, setTextUnderline] = useState(false);
-  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
-  const [textBg, setTextBg] = useState<string | undefined>(undefined);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'text' | 'music' | 'filters'>('filters');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editRef = useRef<HTMLDivElement>(null);
   const { createStory } = useStories();
 
   const reset = useCallback(() => {
@@ -130,15 +131,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
     setMusic(null);
     setFilter(defaultVideoFilter);
     setTextOverlays([]);
-    setCurrentText('');
-    setTextColor('#FFFFFF');
-    setTextFont('Inter');
-    setTextFontSize(32);
-    setTextFontWeight(700);
-    setTextItalic(false);
-    setTextUnderline(false);
-    setTextAlign('center');
-    setTextBg(undefined);
+    setEditingTextId(null);
     setActiveTab('filters');
   }, [previewUrl]);
 
@@ -161,24 +154,83 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
     setStep('edit');
   };
 
-  const handleAddText = () => {
-    if (!currentText.trim()) return;
-    const overlay = {
-      ...defaultTextOverlay(currentText.trim(), textColor),
-      fontFamily: textFont,
-      fontSize: textFontSize,
-      fontWeight: textFontWeight,
-      fontStyle: textItalic ? 'italic' as const : 'normal' as const,
-      textDecoration: textUnderline ? 'underline' as const : 'none' as const,
-      textAlign,
-      backgroundColor: textBg,
+  const editingOverlay = editingTextId
+    ? textOverlays.find((t) => t.id === editingTextId)
+    : null;
+
+  const handlePreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (activeTab !== 'text') return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    const newOverlay: TextOverlay = {
+      id: createId(),
+      text: '',
+      color: '#FFFFFF',
+      x,
+      y,
+      fontFamily: editingOverlay?.fontFamily || 'Inter',
+      fontSize: editingOverlay?.fontSize || 32,
+      fontWeight: editingOverlay?.fontWeight || 700,
+      fontStyle: editingOverlay?.fontStyle || 'normal',
+      textDecoration: editingOverlay?.textDecoration || 'none',
+      textAlign: editingOverlay?.textAlign || 'center',
+      direction: editingOverlay?.direction || 'ltr',
+      backgroundColor: editingOverlay?.backgroundColor || undefined,
+      shadow: editingOverlay?.shadow || 'soft',
     };
-    setTextOverlays([...textOverlays, overlay]);
-    setCurrentText('');
+
+    setTextOverlays([...textOverlays, newOverlay]);
+    setEditingTextId(newOverlay.id);
+    setTimeout(() => {
+      if (editRef.current) {
+        editRef.current.focus();
+        const range = document.createRange();
+        const sel = window.getSelection();
+        range.selectNodeContents(editRef.current);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+    }, 0);
+  };
+
+  const commitText = (id: string) => {
+    const el = editRef.current;
+    if (!el) {
+      setEditingTextId(null);
+      return;
+    }
+    const text = el.innerText.trim();
+    if (!text) {
+      setTextOverlays((prev) => prev.filter((t) => t.id !== id));
+    } else {
+      setTextOverlays((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, text } : t))
+      );
+    }
+    setEditingTextId(null);
+  };
+
+  const selectText = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (activeTab !== 'text') return;
+    const overlay = textOverlays.find((t) => t.id === id);
+    if (!overlay) return;
+    setEditingTextId(id);
   };
 
   const handleRemoveText = (id: string) => {
     setTextOverlays(textOverlays.filter((t) => t.id !== id));
+    if (editingTextId === id) setEditingTextId(null);
+  };
+
+  const updateEditing = (updates: Partial<TextOverlay>) => {
+    if (!editingTextId) return;
+    setTextOverlays((prev) =>
+      prev.map((t) => (t.id === editingTextId ? { ...t, ...updates } : t))
+    );
   };
 
   const getFilterStyle = (): string => {
@@ -197,6 +249,11 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
 
   const handleCreate = async () => {
     if (!file) return;
+
+    if (editingTextId) {
+      commitText(editingTextId);
+    }
+
     setUploading(true);
     setUploadProgress('Uploading...');
 
@@ -239,8 +296,88 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
     reset();
   };
 
+  const renderTextOverlay = (t: TextOverlay) => {
+    const isEditing = editingTextId === t.id;
+
+    return (
+      <div
+        key={t.id}
+        className="absolute"
+        style={{
+          left: `${t.x}%`,
+          top: `${t.y}%`,
+          transform: 'translate(-50%, -50%)',
+          direction: t.direction,
+        }}
+        onClick={(e) => selectText(t.id, e)}
+      >
+        {isEditing ? (
+          <div
+            ref={editRef}
+            contentEditable
+            suppressContentEditableWarning
+            onBlur={() => commitText(t.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.currentTarget.blur();
+              }
+            }}
+            className="outline-dashed outline-2 outline-white/70 rounded px-1 min-w-[20px]"
+            style={{
+              color: t.color,
+              fontFamily: getFontCss(t.fontFamily),
+              fontSize: `${t.fontSize}px`,
+              fontWeight: t.fontWeight,
+              fontStyle: t.fontStyle,
+              textDecoration: t.textDecoration,
+              textAlign: t.textAlign,
+              backgroundColor: t.backgroundColor || 'transparent',
+              padding: t.backgroundColor ? '4px 8px' : '2px 4px',
+              borderRadius: t.backgroundColor ? '4px' : '0',
+              maxWidth: '80vw',
+              wordBreak: 'break-word',
+              lineHeight: 1.2,
+              textShadow: getShadowCss(t.shadow, t.color),
+              caretColor: t.color,
+            }}
+          />
+        ) : (
+          <div
+            className={`select-none ${activeTab === 'text' ? 'cursor-pointer hover:ring-2 hover:ring-primary/50 rounded' : ''}`}
+            style={{
+              color: t.color,
+              fontFamily: getFontCss(t.fontFamily),
+              fontSize: `${t.fontSize}px`,
+              fontWeight: t.fontWeight,
+              fontStyle: t.fontStyle,
+              textDecoration: t.textDecoration,
+              textAlign: t.textAlign,
+              backgroundColor: t.backgroundColor || 'transparent',
+              padding: t.backgroundColor ? '4px 8px' : '0',
+              borderRadius: t.backgroundColor ? '4px' : '0',
+              maxWidth: '80%',
+              wordBreak: 'break-word',
+              lineHeight: 1.2,
+              textShadow: getShadowCss(t.shadow, t.color),
+              pointerEvents: activeTab === 'text' ? 'auto' : 'none',
+            }}
+            onClick={(e) => {
+              if (activeTab === 'text') {
+                e.stopPropagation();
+                setEditingTextId(t.id);
+              }
+            }}
+          >
+            {t.text}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (step === 'edit' && previewUrl) {
     const isVideo = file?.type.startsWith('video/');
+    const isTextMode = activeTab === 'text';
 
     return (
       <Dialog open={open} onOpenChange={handleClose}>
@@ -261,7 +398,11 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
           </div>
 
           <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-            <div className="flex-1 bg-black flex items-center justify-center p-4 min-h-[300px]">
+            <div
+              className="flex-1 bg-black flex items-center justify-center p-4 min-h-[300px]"
+              onClick={isTextMode ? handlePreviewClick : undefined}
+              style={{ cursor: isTextMode ? 'text' : 'default' }}
+            >
               <div className="relative w-full max-w-sm aspect-[9/16] bg-black rounded-lg overflow-hidden">
                 {isVideo ? (
                   <video
@@ -278,42 +419,22 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                     style={{ filter: getFilterStyle() }}
                   />
                 )}
-                {textOverlays.map((t) => (
-                  <div
-                    key={t.id}
-                    className="absolute select-none"
-                    style={{
-                      left: `${t.x}%`,
-                      top: `${t.y}%`,
-                      transform: 'translate(-50%, -50%)',
-                      color: t.color,
-                      fontFamily: getFontCss(t.fontFamily),
-                      fontSize: `${t.fontSize}px`,
-                      fontWeight: t.fontWeight,
-                      fontStyle: t.fontStyle,
-                      textDecoration: t.textDecoration,
-                      textAlign: t.textAlign,
-                      backgroundColor: t.backgroundColor || 'transparent',
-                      padding: t.backgroundColor ? '4px 8px' : '0',
-                      borderRadius: t.backgroundColor ? '4px' : '0',
-                      maxWidth: '80%',
-                      wordBreak: 'break-word',
-                      lineHeight: 1.2,
-                      textShadow: t.backgroundColor ? 'none' : '2px 2px 4px rgba(0,0,0,0.7)',
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => handleRemoveText(t.id)}
-                  >
-                    {t.text}
+                {textOverlays.map(renderTextOverlay)}
+                {isTextMode && textOverlays.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <p className="text-white/50 text-sm">Tap anywhere to add text</p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
 
             <div className="w-full md:w-80 border-t md:border-t-0 md:border-l border-border bg-background flex flex-col">
               <div className="flex border-b border-border">
                 <button
-                  onClick={() => setActiveTab('filters')}
+                  onClick={() => {
+                    if (editingTextId) commitText(editingTextId);
+                    setActiveTab('filters');
+                  }}
                   className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-colors ${
                     activeTab === 'filters'
                       ? 'text-primary border-b-2 border-primary'
@@ -335,7 +456,10 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                   Text
                 </button>
                 <button
-                  onClick={() => setActiveTab('music')}
+                  onClick={() => {
+                    if (editingTextId) commitText(editingTextId);
+                    setActiveTab('music');
+                  }}
                   className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-colors ${
                     activeTab === 'music'
                       ? 'text-primary border-b-2 border-primary'
@@ -354,168 +478,246 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
 
                 {activeTab === 'text' && (
                   <div className="space-y-4">
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Type your text..."
-                        value={currentText}
-                        onChange={(e) => setCurrentText(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddText()}
-                        className="flex-1"
-                      />
-                      <Button onClick={handleAddText} size="sm" disabled={!currentText.trim()}>
-                        Add
-                      </Button>
-                    </div>
+                    {editingOverlay ? (
+                      <>
+                        <p className="text-xs text-muted-foreground">
+                          Type directly on the story &middot; click away to finish
+                        </p>
 
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium">Font</Label>
-                      <Select value={textFont} onValueChange={setTextFont}>
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {FONT_OPTIONS.map((font) => (
-                            <SelectItem key={font.id} value={font.name} style={{ fontFamily: font.css }}>
-                              {font.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs font-medium">Size</Label>
-                        <span className="text-xs text-muted-foreground">{textFontSize}px</span>
-                      </div>
-                      <Slider
-                        value={[textFontSize]}
-                        onValueChange={([v]) => setTextFontSize(v)}
-                        min={8}
-                        max={120}
-                        step={1}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium">Weight</Label>
-                      <Select value={String(textFontWeight)} onValueChange={(v) => setTextFontWeight(Number(v))}>
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {FONT_WEIGHTS.map((w) => (
-                            <SelectItem key={w.value} value={String(w.value)}>
-                              {w.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button
-                        variant={textItalic ? 'default' : 'outline'}
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                        onClick={() => setTextItalic(!textItalic)}
-                      >
-                        <Italic className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant={textUnderline ? 'default' : 'outline'}
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                        onClick={() => setTextUnderline(!textUnderline)}
-                      >
-                        <Underline className="h-4 w-4" />
-                      </Button>
-                      <div className="flex-1" />
-                      <Button
-                        variant={textAlign === 'left' ? 'default' : 'outline'}
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                        onClick={() => setTextAlign('left')}
-                      >
-                        <AlignLeft className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant={textAlign === 'center' ? 'default' : 'outline'}
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                        onClick={() => setTextAlign('center')}
-                      >
-                        <AlignCenter className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant={textAlign === 'right' ? 'default' : 'outline'}
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                        onClick={() => setTextAlign('right')}
-                      >
-                        <AlignRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium">Color</Label>
-                      <div className="flex gap-1 flex-wrap">
-                        {TEXT_COLORS.map((color) => (
-                          <button
-                            key={color}
-                            className={`w-6 h-6 rounded border-2 ${
-                              textColor === color ? 'border-primary scale-110' : 'border-transparent'
-                            }`}
-                            style={{ backgroundColor: color }}
-                            onClick={() => setTextColor(color)}
-                          />
-                        ))}
-                        <input
-                          type="color"
-                          value={textColor}
-                          onChange={(e) => setTextColor(e.target.value)}
-                          className="w-6 h-6 rounded cursor-pointer"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium">Background</Label>
-                      <div className="flex gap-2 items-center">
-                        <Button
-                          variant={textBg ? 'outline' : 'default'}
-                          size="sm"
-                          className="text-xs h-7"
-                          onClick={() => setTextBg(textBg ? undefined : 'rgba(0,0,0,0.5)')}
-                        >
-                          {textBg ? 'Remove' : 'Add Background'}
-                        </Button>
-                        {textBg && (
-                          <input
-                            type="color"
-                            value={textBg.startsWith('rgba') ? '#000000' : textBg}
-                            onChange={(e) => setTextBg(e.target.value)}
-                            className="w-6 h-6 rounded cursor-pointer"
-                          />
-                        )}
-                      </div>
-                    </div>
-
-                    {textOverlays.length > 0 && (
-                      <div className="space-y-2 pt-2 border-t border-border">
-                        <Label className="text-xs font-medium">Added Text</Label>
-                        <div className="space-y-1">
-                          {textOverlays.map((t) => (
-                            <div key={t.id} className="flex items-center gap-2 px-3 py-2 rounded-md bg-secondary/50 text-sm">
-                              <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
-                              <span className="flex-1 truncate">{t.text}</span>
-                              <button onClick={() => handleRemoveText(t.id)}>
-                                <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                              </button>
-                            </div>
-                          ))}
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium">Font</Label>
+                          <Select
+                            value={editingOverlay.fontFamily}
+                            onValueChange={(v) => updateEditing({ fontFamily: v })}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {FONT_OPTIONS.map((font) => (
+                                <SelectItem key={font.id} value={font.name} style={{ fontFamily: font.css }}>
+                                  {font.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
-                        <p className="text-xs text-muted-foreground">Tap text on preview to remove</p>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium">Size</Label>
+                            <span className="text-xs text-muted-foreground">{editingOverlay.fontSize}px</span>
+                          </div>
+                          <div className="flex gap-1 mb-1">
+                            {FONT_SIZE_PRESETS.map((size) => (
+                              <button
+                                key={size}
+                                onClick={() => updateEditing({ fontSize: size })}
+                                className={`flex-1 text-xs py-1 rounded ${
+                                  editingOverlay.fontSize === size
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-secondary hover:bg-secondary/80'
+                                }`}
+                              >
+                                {size}
+                              </button>
+                            ))}
+                          </div>
+                          <Slider
+                            value={[editingOverlay.fontSize]}
+                            onValueChange={([v]) => updateEditing({ fontSize: v })}
+                            min={8}
+                            max={120}
+                            step={1}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium">Weight</Label>
+                          <Select
+                            value={String(editingOverlay.fontWeight)}
+                            onValueChange={(v) => updateEditing({ fontWeight: Number(v) })}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {FONT_WEIGHTS.map((w) => (
+                                <SelectItem key={w.value} value={String(w.value)}>
+                                  {w.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button
+                            variant={editingOverlay.fontStyle === 'italic' ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() =>
+                              updateEditing({
+                                fontStyle: editingOverlay.fontStyle === 'italic' ? 'normal' : 'italic',
+                              })
+                            }
+                          >
+                            <Italic className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant={editingOverlay.textDecoration === 'underline' ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() =>
+                              updateEditing({
+                                textDecoration:
+                                  editingOverlay.textDecoration === 'underline' ? 'none' : 'underline',
+                              })
+                            }
+                          >
+                            <Underline className="h-4 w-4" />
+                          </Button>
+                          <div className="flex-1" />
+                          <Button
+                            variant={editingOverlay.textAlign === 'left' ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => updateEditing({ textAlign: 'left' })}
+                          >
+                            <AlignLeft className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant={editingOverlay.textAlign === 'center' ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => updateEditing({ textAlign: 'center' })}
+                          >
+                            <AlignCenter className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant={editingOverlay.textAlign === 'right' ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => updateEditing({ textAlign: 'right' })}
+                          >
+                            <AlignRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium">Direction</Label>
+                          <div className="flex gap-2">
+                            <Button
+                              variant={editingOverlay.direction === 'ltr' ? 'default' : 'outline'}
+                              size="sm"
+                              className="flex-1 text-xs h-8"
+                              onClick={() => updateEditing({ direction: 'ltr' })}
+                            >
+                              LTR
+                            </Button>
+                            <Button
+                              variant={editingOverlay.direction === 'rtl' ? 'default' : 'outline'}
+                              size="sm"
+                              className="flex-1 text-xs h-8"
+                              onClick={() => updateEditing({ direction: 'rtl' })}
+                            >
+                              RTL
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium">Color</Label>
+                          <div className="flex gap-1 flex-wrap">
+                            {TEXT_COLORS.map((color) => (
+                              <button
+                                key={color}
+                                className={`w-6 h-6 rounded border-2 ${
+                                  editingOverlay.color === color ? 'border-primary scale-110' : 'border-transparent'
+                                }`}
+                                style={{ backgroundColor: color }}
+                                onClick={() => updateEditing({ color })}
+                              />
+                            ))}
+                            <input
+                              type="color"
+                              value={editingOverlay.color}
+                              onChange={(e) => updateEditing({ color: e.target.value })}
+                              className="w-6 h-6 rounded cursor-pointer"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium">Background</Label>
+                          <div className="flex gap-2 items-center">
+                            <Button
+                              variant={editingOverlay.backgroundColor ? 'outline' : 'default'}
+                              size="sm"
+                              className="text-xs h-7"
+                              onClick={() =>
+                                updateEditing({
+                                  backgroundColor: editingOverlay.backgroundColor ? undefined : 'rgba(0,0,0,0.5)',
+                                })
+                              }
+                            >
+                              {editingOverlay.backgroundColor ? 'Remove' : 'Add Background'}
+                            </Button>
+                            {editingOverlay.backgroundColor && (
+                              <input
+                                type="color"
+                                value={
+                                  editingOverlay.backgroundColor.startsWith('rgba')
+                                    ? '#000000'
+                                    : editingOverlay.backgroundColor
+                                }
+                                onChange={(e) => updateEditing({ backgroundColor: e.target.value })}
+                                className="w-6 h-6 rounded cursor-pointer"
+                              />
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium">Shading</Label>
+                          <div className="flex gap-1">
+                            {(['none', 'soft', 'hard', 'outline'] as TextShadow[]).map((s) => (
+                              <button
+                                key={s}
+                                onClick={() => updateEditing({ shadow: s })}
+                                className={`flex-1 text-xs py-1.5 rounded capitalize ${
+                                  editingOverlay.shadow === s
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-secondary hover:bg-secondary/80'
+                                }`}
+                              >
+                                {s}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-border">
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => handleRemoveText(editingTextId!)}
+                          >
+                            <X className="h-4 w-4 mr-1" />
+                            Remove Text
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <Type className="h-8 w-8 text-muted-foreground mb-3" />
+                        <p className="text-sm text-muted-foreground">Tap anywhere on the story to add text</p>
+                        {textOverlays.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Tap existing text to edit its style
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
