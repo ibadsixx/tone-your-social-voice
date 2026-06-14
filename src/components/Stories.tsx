@@ -106,11 +106,18 @@ const Stories = () => {
                 onClick={() => handleStoryClick(userStories)}
                 className="relative w-[110px] h-[190px] cursor-pointer overflow-hidden border-border/50 hover:shadow-lg transition-shadow group"
               >
-                {/* Profile Picture as full-frame background */}
-                <div
-                  className="absolute inset-0 bg-cover bg-center"
-                  style={{ backgroundImage: `url(${userStories.profile_pic || '/default-avatar.png'})` }}
-                />
+                {userStories.profile_pic ? (
+                  <div
+                    className="absolute inset-0 bg-cover bg-center"
+                    style={{ backgroundImage: `url(${userStories.profile_pic})` }}
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/40 flex items-center justify-center">
+                    <span className="text-6xl font-bold text-primary/60">
+                      {userStories.display_name?.[0]?.toUpperCase() || '?'}
+                    </span>
+                  </div>
+                )}
 
                 {/* Gradient Overlay */}
                 <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60" />
