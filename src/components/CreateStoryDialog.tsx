@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -117,8 +117,11 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'text' | 'music' | 'filters'>('filters');
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const dragStart = useRef<{ x: number; y: number; elX: number; elY: number; moved: boolean } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const { createStory } = useStories();
 
   const reset = useCallback(() => {
@@ -213,14 +216,6 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
     setEditingTextId(null);
   };
 
-  const selectText = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (activeTab !== 'text') return;
-    const overlay = textOverlays.find((t) => t.id === id);
-    if (!overlay) return;
-    setEditingTextId(id);
-  };
-
   const handleRemoveText = (id: string) => {
     setTextOverlays(textOverlays.filter((t) => t.id !== id));
     if (editingTextId === id) setEditingTextId(null);
@@ -232,6 +227,54 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
       prev.map((t) => (t.id === editingTextId ? { ...t, ...updates } : t))
     );
   };
+
+  const handleDragStart = (id: string, e: React.MouseEvent) => {
+    if (editingTextId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const overlay = textOverlays.find((t) => t.id === id);
+    if (!overlay) return;
+    dragStart.current = { x: e.clientX, y: e.clientY, elX: overlay.x, elY: overlay.y, moved: false };
+    setDraggingId(id);
+  };
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!dragStart.current || !draggingId) return;
+    const rect = previewRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const dx = ((e.clientX - dragStart.current.x) / rect.width) * 100;
+    const dy = ((e.clientY - dragStart.current.y) / rect.height) * 100;
+    if (Math.abs(e.clientX - dragStart.current.x) > 3 || Math.abs(e.clientY - dragStart.current.y) > 3) {
+      dragStart.current.moved = true;
+    }
+    setTextOverlays((prev) =>
+      prev.map((t) =>
+        t.id === draggingId
+          ? { ...t, x: Math.max(0, Math.min(100, dragStart.current!.elX + dx)), y: Math.max(0, Math.min(100, dragStart.current!.elY + dy)) }
+          : t
+      )
+    );
+  }, [draggingId]);
+
+  const handleMouseUp = useCallback(() => {
+    if (!dragStart.current || !draggingId) return;
+    const wasDrag = dragStart.current.moved;
+    dragStart.current = null;
+    setDraggingId(null);
+    if (!wasDrag) {
+      setEditingTextId(draggingId);
+    }
+  }, [draggingId]);
+
+  useEffect(() => {
+    if (!draggingId) return;
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingId, handleMouseMove, handleMouseUp]);
 
   const getFilterStyle = (): string => {
     const parts: string[] = [];
@@ -309,7 +352,6 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
           transform: 'translate(-50%, -50%)',
           direction: t.direction,
         }}
-        onClick={(e) => selectText(t.id, e)}
       >
         {isEditing ? (
           <div
@@ -343,7 +385,13 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
           />
         ) : (
           <div
-            className={`select-none ${activeTab === 'text' ? 'cursor-pointer hover:ring-2 hover:ring-primary/50 rounded' : ''}`}
+            className={`select-none ${
+              activeTab === 'text'
+                ? draggingId === t.id
+                  ? 'cursor-grabbing'
+                  : 'cursor-grab hover:ring-2 hover:ring-primary/50 rounded'
+                : ''
+            }`}
             style={{
               color: t.color,
               fontFamily: getFontCss(t.fontFamily),
@@ -361,10 +409,9 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
               textShadow: getShadowCss(t.shadow, t.color),
               pointerEvents: activeTab === 'text' ? 'auto' : 'none',
             }}
-            onClick={(e) => {
-              if (activeTab === 'text') {
-                e.stopPropagation();
-                setEditingTextId(t.id);
+            onMouseDown={(e) => {
+              if (activeTab === 'text' && editingTextId !== t.id) {
+                handleDragStart(t.id, e);
               }
             }}
           >
@@ -403,7 +450,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
               onClick={isTextMode ? handlePreviewClick : undefined}
               style={{ cursor: isTextMode ? 'text' : 'default' }}
             >
-              <div className="relative w-full max-w-sm aspect-[9/16] bg-black rounded-lg overflow-hidden">
+              <div ref={previewRef} className="relative w-full max-w-sm aspect-[9/16] bg-black rounded-lg overflow-hidden">
                 {isVideo ? (
                   <video
                     src={previewUrl}
