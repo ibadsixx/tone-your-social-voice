@@ -4,6 +4,34 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { createNotification } from '@/hooks/useNotifications';
 
+function getVideoDimensions(url: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      resolve({ width: video.videoWidth, height: video.videoHeight });
+      video.remove();
+    };
+    video.onerror = () => {
+      video.remove();
+      reject(new Error('Failed to load video metadata'));
+    };
+    video.src = url;
+  });
+}
+
+function classifyVideoAspectRatio(width: number, height: number): { type: 'reel' | 'normal_post'; aspectRatio: string } {
+  const ratio = width / height;
+  const TOLERANCE = 0.1;
+  if (Math.abs(ratio - 16 / 9) / (16 / 9) < TOLERANCE) {
+    return { type: 'reel', aspectRatio: '16:9' };
+  }
+  if (Math.abs(ratio - 9 / 16) / (9 / 16) < TOLERANCE) {
+    return { type: 'reel', aspectRatio: '9:16' };
+  }
+  return { type: 'normal_post', aspectRatio: `${width}:${height}` };
+}
+
 export interface HomeFeedPost {
   id: string;
   user_id: string;
@@ -215,13 +243,15 @@ export const useHomeFeed = () => {
     audience?: any,
     feeling?: { type: string; emoji: string; text: string; targetText?: string; targetId?: string },
     scheduledAt?: Date,
-    location?: { name: string; address: string; lat: number; lng: number; provider: string; provider_place_id?: string }
+    location?: { name: string; address: string; lat: number; lng: number; provider: string; provider_place_id?: string },
+    preUploadedMedia?: { url: string; mediaType: 'image' | 'video' }[]
   ): Promise<string | undefined> => {
-    if (!user || (!content.trim() && !media?.length)) return;
+    if (!user || (!content.trim() && !media?.length && !preUploadedMedia?.length)) return;
 
     console.log('[createPost] Starting post creation', {
       hasContent: !!content?.trim(),
       mediaCount: media?.length || 0,
+      preUploadedCount: preUploadedMedia?.length || 0,
       mediaFiles: media?.map(f => ({ name: f.name, type: f.type, size: f.size }))
     });
 
@@ -285,11 +315,15 @@ export const useHomeFeed = () => {
         feeling_activity_target_id: feeling.targetId || null
       } : {};
 
-      // Upload first media file and get URL
       let mediaUrl: string | null = null;
       let mediaType: 'image' | 'video' | null = null;
 
-      if (media && media.length > 0) {
+      if (preUploadedMedia && preUploadedMedia.length > 0) {
+        const item = preUploadedMedia[0];
+        mediaUrl = item.url;
+        mediaType = item.mediaType;
+        console.log('[createPost] Using pre-uploaded media:', mediaUrl);
+      } else if (media && media.length > 0) {
         const file = media[0];
         const fileExt = file.name.split('.').pop()?.toLowerCase();
         const isVideo = file.type.startsWith('video/');
@@ -329,12 +363,28 @@ export const useHomeFeed = () => {
         console.log('[createPost] Public URL generated:', mediaUrl);
       }
 
+      let postType: 'normal_post' | 'reel' = 'normal_post';
+      let aspectRatio: string | null = null;
+
+      if (mediaType === 'video' && mediaUrl) {
+        try {
+          const dims = await getVideoDimensions(mediaUrl);
+          const classified = classifyVideoAspectRatio(dims.width, dims.height);
+          postType = classified.type;
+          aspectRatio = classified.aspectRatio;
+          console.log('[createPost] Video dimensions:', dims, '→', classified);
+        } catch (e) {
+          console.warn('[createPost] Could not detect video dimensions, using normal_post');
+        }
+      }
+
       const postData: any = {
         content: content || null,
         user_id: user.id,
-        type: 'normal_post' as const,
+        type: postType,
         media_url: mediaUrl,
         media_type: mediaType,
+        aspect_ratio: aspectRatio,
         ...audienceData,
         ...feelingData,
         ...(location && {

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,12 +15,15 @@ import {
   Clock,
   Users,
   Send,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useStatusVisibility } from '@/hooks/useStatusVisibility';
 import { useAutoUpload } from '@/hooks/useAutoUpload';
+import { useHasActiveStories } from '@/hooks/useHasActiveStories';
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { cn } from '@/lib/utils';
 import TagPeopleModal from './TagPeopleModal';
@@ -45,8 +48,13 @@ interface TaggedUser {
   profile_pic: string | null;
 }
 
+interface MediaUpload {
+  url: string;
+  mediaType: 'image' | 'video';
+}
+
 interface NewPostProps {
-  onCreatePost?: (content: string, media?: File[], taggedUsers?: TaggedUser[], audience?: AudienceSelection, feeling?: FeelingData, scheduledAt?: Date, location?: LocationData) => Promise<string | undefined>;
+  onCreatePost?: (content: string, media?: File[], taggedUsers?: TaggedUser[], audience?: AudienceSelection, feeling?: FeelingData, scheduledAt?: Date, location?: LocationData, preUploadedMedia?: MediaUpload[]) => Promise<string | undefined>;
   className?: string;
 }
 
@@ -60,6 +68,7 @@ const NewPost = ({ onCreatePost, className }: NewPostProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [mediaItems, setMediaItems] = useState<{ file: File; localUrl: string; url?: string; mediaType: 'image' | 'video'; status: 'uploading' | 'done' | 'error' }[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [taggedUsers, setTaggedUsers] = useState<TaggedUser[]>([]);
   const [showTagModal, setShowTagModal] = useState(false);
@@ -79,28 +88,76 @@ const NewPost = ({ onCreatePost, className }: NewPostProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const { disableAutoUploads } = useStatusVisibility();
   const { upload: autoUpload } = useAutoUpload();
+  const hasActiveStories = useHasActiveStories(user?.id);
 
-  const handleFileSelect = (files: FileList | null, type: 'image' | 'video') => {
+  useEffect(() => {
+    if (!isExpanded) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (cardRef.current && !cardRef.current.contains(target)) {
+        if ((target as Element)?.closest?.('[role="dialog"], [role="presentation"], [data-radix-popper-content-wrapper]')) return;
+        setIsExpanded(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside, true);
+    return () => document.removeEventListener('mousedown', handleClickOutside, true);
+  }, [isExpanded]);
+
+  const handleFileSelect = (files: FileList | null, _type: 'image' | 'video') => {
     if (!files) return;
     
-    const newFiles = Array.from(files).filter(file => {
-      if (type === 'image') {
-        return file.type.startsWith('image/');
-      } else {
-        return file.type.startsWith('video/');
-      }
-    });
-    
+    const newFiles = Array.from(files);
+    if (newFiles.length === 0) return;
+
+    const items: typeof mediaItems = [];
+
+    for (const file of newFiles) {
+      const isVideo = file.type.startsWith('video/');
+      const mediaType = isVideo ? 'video' : 'image';
+      const localUrl = URL.createObjectURL(file);
+      items.push({ file, localUrl, mediaType, status: 'uploading' });
+    }
+
+    setMediaItems(prev => [...prev, ...items]);
     setSelectedFiles(prev => [...prev, ...newFiles]);
 
-    if (!disableAutoUploads && newFiles.length > 0) {
+    if (!disableAutoUploads) {
       autoUpload(newFiles);
+    }
+
+    for (const item of items) {
+      const isVideo = item.mediaType === 'video';
+      const bucket = isVideo ? 'stories' : 'avatars';
+      const fileExt = item.file.name.split('.').pop()?.toLowerCase() || 'bin';
+      const fileName = `${user?.id || 'unknown'}/${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+
+      supabase.storage
+        .from(bucket)
+        .upload(fileName, item.file, { contentType: item.file.type })
+        .then(({ error }) => {
+          if (error) {
+            console.error('Upload failed:', error);
+            setMediaItems(prev => prev.map(m => m.localUrl === item.localUrl ? { ...m, status: 'error' } : m));
+            return;
+          }
+
+          const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(fileName);
+          if (urlData?.publicUrl) {
+            setMediaItems(prev => prev.map(m => m.localUrl === item.localUrl ? { ...m, url: urlData.publicUrl, status: 'done' } : m));
+          }
+        });
     }
   };
 
   const removeFile = (index: number) => {
+    setMediaItems(prev => {
+      const item = prev[index];
+      if (item) URL.revokeObjectURL(item.localUrl);
+      return prev.filter((_, i) => i !== index);
+    });
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -202,11 +259,11 @@ const NewPost = ({ onCreatePost, className }: NewPostProps) => {
   };
 
   const handleSubmit = async () => {
-    if (!content.trim() && selectedFiles.length === 0) return;
+    if (!content.trim() && mediaItems.length === 0) return;
     
     setIsCreating(true);
     try {
-      const postId = await onCreatePost?.(content, selectedFiles, taggedUsers, audience, feeling || undefined, scheduledAt || undefined, location || undefined);
+      const postId = await onCreatePost?.(content, selectedFiles, taggedUsers, audience, feeling || undefined, scheduledAt || undefined, location || undefined, mediaItems.filter(m => m.url).map(m => ({ url: m.url!, mediaType: m.mediaType })));
       
       // Save mentions and hashtags if post was created successfully
       if (postId && typeof postId === 'string') {
@@ -215,6 +272,7 @@ const NewPost = ({ onCreatePost, className }: NewPostProps) => {
       
       setContent('');
       setSelectedFiles([]);
+      setMediaItems([]);
       setTaggedUsers([]);
       setAudience({ type: 'friends' });
       setFeeling(null);
@@ -249,6 +307,7 @@ const NewPost = ({ onCreatePost, className }: NewPostProps) => {
   return (
     <motion.div
       layout
+      ref={cardRef}
       className={cn("w-full max-w-2xl mx-auto", className)}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
@@ -258,12 +317,23 @@ const NewPost = ({ onCreatePost, className }: NewPostProps) => {
         <CardContent className="p-6">
           {/* Header with Avatar */}
           <div className="flex items-start space-x-4 mb-4">
-            <Avatar className="w-12 h-12 border-2 border-primary/20">
-              <AvatarImage src={actingPage?.profile_pic || profile?.profile_pic || undefined} />
-              <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                {actingPage ? actingPage.name.charAt(0).toUpperCase() : profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
-              </AvatarFallback>
-            </Avatar>
+            {hasActiveStories ? (
+              <div className="p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600">
+                <Avatar className="w-12 h-12 border-4 border-background ring-0">
+                  <AvatarImage src={actingPage?.profile_pic || profile?.profile_pic || undefined} />
+                  <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                    {actingPage ? actingPage.name.charAt(0).toUpperCase() : profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+              </div>
+            ) : (
+              <Avatar className="w-12 h-12 border-2 border-primary/20">
+                <AvatarImage src={actingPage?.profile_pic || profile?.profile_pic || undefined} />
+                <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                  {actingPage ? actingPage.name.charAt(0).toUpperCase() : profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+                </AvatarFallback>
+              </Avatar>
+            )}
             
             <div className="flex-1">
               <motion.div layout className="relative">
@@ -273,6 +343,12 @@ const NewPost = ({ onCreatePost, className }: NewPostProps) => {
                   value={content}
                   onChange={handleContentChange}
                   onFocus={() => setIsExpanded(true)}
+                  onBlur={(e) => {
+                    const relatedTarget = e.relatedTarget as Node;
+                    if (cardRef.current && relatedTarget && !cardRef.current.contains(relatedTarget)) {
+                      setIsExpanded(false);
+                    }
+                  }}
                   className={cn(
                     "min-h-[60px] resize-none border-0 bg-transparent text-base pr-10",
                     "placeholder:text-muted-foreground focus-visible:ring-0 p-0",
@@ -373,7 +449,7 @@ const NewPost = ({ onCreatePost, className }: NewPostProps) => {
 
           {/* Selected Files Preview */}
           <AnimatePresence>
-            {selectedFiles.length > 0 && (
+            {mediaItems.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -381,19 +457,42 @@ const NewPost = ({ onCreatePost, className }: NewPostProps) => {
                 className="mb-4"
               >
                 <div className="flex flex-wrap gap-2">
-                  {selectedFiles.map((file, index) => (
+                  {mediaItems.map((item, index) => (
                     <motion.div
-                      key={index}
+                      key={item.localUrl}
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.8 }}
                       className="relative group"
                     >
-                      <div className="w-20 h-20 bg-muted rounded-lg flex items-center justify-center border">
-                        {file.type.startsWith('image/') ? (
-                          <ImageIcon className="w-6 h-6 text-muted-foreground" />
+                      <div className="w-24 h-24 bg-muted rounded-lg overflow-hidden border relative">
+                        {item.mediaType === 'image' ? (
+                          <img
+                            src={item.url || item.localUrl}
+                            alt="Preview"
+                            className="w-full h-full object-cover"
+                          />
                         ) : (
-                          <VideoIcon className="w-6 h-6 text-muted-foreground" />
+                          <div className="relative w-full h-full">
+                            <video
+                              src={item.url || item.localUrl}
+                              className="w-full h-full object-cover"
+                              preload="metadata"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                              <PlayCircle className="w-8 h-8 text-white" />
+                            </div>
+                          </div>
+                        )}
+                        {item.status === 'uploading' && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                            <Loader2 className="w-5 h-5 text-white animate-spin" />
+                          </div>
+                        )}
+                        {item.status === 'error' && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-destructive/80 text-destructive-foreground text-[10px] text-center py-0.5">
+                            Upload failed
+                          </div>
                         )}
                       </div>
                       <button
@@ -497,7 +596,7 @@ const NewPost = ({ onCreatePost, className }: NewPostProps) => {
                     />
                     <Button
                       onClick={handleSubmit}
-                      disabled={(!content.trim() && selectedFiles.length === 0) || isCreating}
+                      disabled={(!content.trim() && mediaItems.length === 0) || isCreating}
                       className="bg-primary hover:bg-primary/90 px-6"
                       size="sm"
                     >

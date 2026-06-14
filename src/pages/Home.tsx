@@ -19,9 +19,9 @@ const Home = () => {
   const { user } = useAuth();
   const { posts, loading, hasMore, loadMore, createPost, toggleLike } = useHomeFeed();
 
-  const handleCreatePost = async (content: string, media?: File[], taggedUsers?: any[], audience?: any, feeling?: any, scheduledAt?: Date, location?: any) => {
-    if (!content.trim() && !media?.length) return;
-    const postId = await createPost(content, media, taggedUsers, audience, feeling, scheduledAt, location);
+  const handleCreatePost = async (content: string, media?: File[], taggedUsers?: any[], audience?: any, feeling?: any, scheduledAt?: Date, location?: any, preUploadedMedia?: { url: string; mediaType: 'image' | 'video' }[]) => {
+    if (!content.trim() && !media?.length && !preUploadedMedia?.length) return;
+    const postId = await createPost(content, media, taggedUsers, audience, feeling, scheduledAt, location, preUploadedMedia);
     return postId;
   };
 

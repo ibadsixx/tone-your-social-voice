@@ -17,6 +17,7 @@ import { useFollow } from '@/hooks/useFollow';
 import { useBlocks } from '@/hooks/useBlocks';
 import { ReportProfileDialog } from './ReportProfileDialog';
 import { useProfileReports } from '@/hooks/useProfileReports';
+import { useHasActiveStories } from '@/hooks/useHasActiveStories';
 import BlockButton from './BlockButton';
 import { MessageButton } from './MessageButton';
 
@@ -50,6 +51,7 @@ const ProfileHeader = ({
   const { followStatus, follow, unfollow } = useFollow(profile.id, user?.id);
   const { blockStatus, blockUser, unblockUser } = useBlocks(profile.id, user?.id);
   const { hasReported, refreshReportStatus } = useProfileReports(isOwnProfile ? undefined : profile.id);
+  const hasActiveStories = useHasActiveStories(profile.id);
 
   // Filter other names that should show at top
   const topOtherNames = otherNames.filter(name => name.show_at_top);
@@ -210,12 +212,23 @@ const ProfileHeader = ({
         <div className="flex flex-col md:flex-row md:items-end md:justify-between -mt-16 md:-mt-20">
           {/* Avatar */}
           <div className="relative mb-4 md:mb-0">
-            <Avatar className="h-32 w-32 border-4 border-background shadow-lg">
-              <AvatarImage src={profile.profile_pic || ''} />
-              <AvatarFallback className="text-4xl bg-muted">
-                {profile.display_name.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            {hasActiveStories ? (
+              <div className="p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600">
+                <Avatar className="h-32 w-32 border-4 border-background shadow-lg ring-0">
+                  <AvatarImage src={profile.profile_pic || ''} />
+                  <AvatarFallback className="text-4xl bg-muted">
+                    {profile.display_name.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              </div>
+            ) : (
+              <Avatar className="h-32 w-32 border-4 border-background shadow-lg">
+                <AvatarImage src={profile.profile_pic || ''} />
+                <AvatarFallback className="text-4xl bg-muted">
+                  {profile.display_name.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+            )}
             {isOwnProfile && (
               <div className="absolute bottom-0 right-0">
                 <PhotoUploadDialog
