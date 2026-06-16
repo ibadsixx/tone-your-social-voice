@@ -451,12 +451,6 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
               >
                 ↻
               </span>
-              <span className="text-[10px] text-white/80 bg-black/40 rounded px-1.5 py-0.5 min-w-[24px] text-center font-medium">
-                {t.rotation}°
-              </span>
-
-              <span className="w-px h-5 bg-white/20" />
-
               <span
                 className="w-7 h-7 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-xs transition-colors select-none cursor-pointer"
                 title="Decrease font size"
@@ -467,9 +461,6 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                 }}
               >
                 A−
-              </span>
-              <span className="text-[10px] text-white/80 bg-black/40 rounded px-1.5 py-0.5 min-w-[24px] text-center font-medium">
-                {t.fontSize}
               </span>
               <span
                 className="w-7 h-7 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-xs transition-colors select-none cursor-pointer"
@@ -495,9 +486,6 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                 }}
               >
                 ◁
-              </span>
-              <span className="text-[10px] text-white/80 bg-black/40 rounded px-1.5 py-0.5 min-w-[28px] text-center font-medium">
-                {t.frameWidth}
               </span>
               <span
                 className="w-7 h-7 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-xs transition-colors select-none cursor-pointer"
