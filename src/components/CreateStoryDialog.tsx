@@ -473,31 +473,6 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
               >
                 A+
               </span>
-
-              <span className="w-px h-5 bg-white/20" />
-
-              <span
-                className="w-7 h-7 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-xs transition-colors select-none cursor-pointer"
-                title="Shrink frame"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  updateEditing({ frameWidth: Math.max(60, t.frameWidth - 20) });
-                }}
-              >
-                ◁
-              </span>
-              <span
-                className="w-7 h-7 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-xs transition-colors select-none cursor-pointer"
-                title="Expand frame"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  updateEditing({ frameWidth: Math.min(600, t.frameWidth + 20) });
-                }}
-              >
-                ▷
-              </span>
             </div>
           </div>
         ) : (
