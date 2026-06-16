@@ -675,6 +675,44 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
             </Button>
           </div>
 
+          <div className="flex items-center justify-center gap-1.5 px-4 py-2 border-b border-border bg-muted/30">
+            <span className="text-xs text-muted-foreground mr-1">Media</span>
+            <span
+              className="w-7 h-7 rounded-full bg-background hover:bg-accent border border-border flex items-center justify-center text-xs transition-colors cursor-pointer select-none"
+              title="Reset transform"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                mediaTransformRef.current = defaultMediaTransform;
+                applyTransform();
+                setMediaTransform(defaultMediaTransform);
+              }}
+            >
+              ⊘
+            </span>
+            <span
+              className="w-7 h-7 rounded-full bg-background hover:bg-accent border border-border flex items-center justify-center text-xs transition-colors cursor-pointer select-none"
+              title="Rotate 90° clockwise"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRotate90();
+              }}
+            >
+              ↻
+            </span>
+            <span
+              className="w-7 h-7 rounded-full bg-background hover:bg-accent border border-border flex items-center justify-center text-xs transition-colors cursor-pointer select-none"
+              title="Flip horizontally"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleFlip();
+              }}
+            >
+              ⇔
+            </span>
+          </div>
           <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
             <div
               className="flex-1 bg-black flex items-center justify-center p-4 min-h-[300px]"
@@ -713,30 +751,6 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                     <p className="text-white/50 text-sm">Tap anywhere to add text</p>
                   </div>
                 )}
-                <div className="absolute top-2 right-2 flex gap-1.5">
-                  <span
-                    className="w-7 h-7 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center text-white text-xs transition-colors cursor-pointer select-none"
-                    title="Rotate 90°"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRotate90();
-                    }}
-                  >
-                    ↻
-                  </span>
-                  <span
-                    className="w-7 h-7 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center text-white text-xs transition-colors cursor-pointer select-none"
-                    title="Flip horizontally"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleFlip();
-                    }}
-                  >
-                    ⇔
-                  </span>
-                </div>
               </div>
             </div>
 
