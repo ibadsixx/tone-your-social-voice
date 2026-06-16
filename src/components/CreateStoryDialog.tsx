@@ -879,25 +879,29 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
-        <div className="p-6">
-          <h2 className="text-lg font-semibold mb-4">Create Story</h2>
-          <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-border rounded-lg cursor-pointer hover:bg-accent/50 transition-colors">
-            <div className="flex flex-col items-center justify-center pt-5 pb-6">
-              <Upload className="w-10 h-10 mb-3 text-muted-foreground" />
-              <p className="mb-2 text-sm text-muted-foreground">
-                <span className="font-semibold">Click to upload</span> or drag and drop
-              </p>
-              <p className="text-xs text-muted-foreground">Image or Video (MAX. 50MB)</p>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              accept="image/*,video/*"
-              onChange={handleFileSelect}
+        <div className="p-6 space-y-4">
+          <h2 className="text-lg font-semibold">Create Story</h2>
+          <div className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-border rounded-lg bg-accent/30">
+            <Upload className="w-10 h-10 mb-3 text-muted-foreground" />
+            <p className="mb-2 text-sm text-muted-foreground">Image or Video (MAX. 50MB)</p>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-            />
-          </label>
+            >
+              <Upload className="h-4 w-4 mr-1.5" />
+              Choose File
+            </Button>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept="image/*,video/*"
+            onChange={handleFileSelect}
+            disabled={uploading}
+          />
         </div>
       </DialogContent>
     </Dialog>
