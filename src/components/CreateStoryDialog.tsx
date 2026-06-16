@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -113,8 +113,18 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
   const [uploadProgress, setUploadProgress] = useState('');
   const [music, setMusic] = useState<MusicData | null>(null);
   const [filter, setFilter] = useState<VideoFilter>(defaultVideoFilter);
-  const [mediaRotation, setMediaRotation] = useState(0);
-  const [mediaFlipX, setMediaFlipX] = useState(false);
+  interface MediaTransform { x: number; y: number; scale: number; rotation: number; flipX: boolean; }
+  const defaultMediaTransform: MediaTransform = { x: 0, y: 0, scale: 1, rotation: 0, flipX: false };
+  const [mediaTransform, setMediaTransform] = useState<MediaTransform>(defaultMediaTransform);
+  const mediaTransformRef = useRef<MediaTransform>(defaultMediaTransform);
+  const mediaWrapperRef = useRef<HTMLDivElement>(null);
+  const gestureRef = useRef<{
+    active: boolean;
+    startX: number; startY: number;
+    startDist: number; startScale: number;
+    startAngle: number; startRotation: number;
+    startTx: number; startTy: number;
+  } | null>(null);
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'text' | 'music' | 'filters'>('filters');
@@ -137,8 +147,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
     setUploadProgress('');
     setMusic(null);
     setFilter(defaultVideoFilter);
-    setMediaRotation(0);
-    setMediaFlipX(false);
+    setMediaTransform(defaultMediaTransform);
     setTextOverlays([]);
     setEditingTextId(null);
     setActiveTab('filters');
@@ -368,6 +377,99 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
     reset();
   };
 
+  const applyTransform = useCallback(() => {
+    const el = mediaWrapperRef.current;
+    if (!el) return;
+    const t = mediaTransformRef.current;
+    el.style.transform = `translate(${t.x}px, ${t.y}px) scale(${t.scale}) rotate(${t.rotation}deg) scaleX(${t.flipX ? -1 : 1})`;
+  }, []);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 0) return;
+    const t = mediaTransformRef.current;
+    if (e.touches.length === 1) {
+      gestureRef.current = {
+        active: true,
+        startX: e.touches[0].clientX, startY: e.touches[0].clientY,
+        startDist: 0, startScale: t.scale,
+        startAngle: 0, startRotation: t.rotation,
+        startTx: t.x, startTy: t.y,
+      };
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[1].clientX - e.touches[0].clientX;
+      const dy = e.touches[1].clientY - e.touches[0].clientY;
+      gestureRef.current = {
+        active: true,
+        startX: e.touches[0].clientX, startY: e.touches[0].clientY,
+        startDist: Math.hypot(dx, dy), startScale: t.scale,
+        startAngle: Math.atan2(dy, dx) * (180 / Math.PI), startRotation: t.rotation,
+        startTx: t.x, startTy: t.y,
+      };
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const g = gestureRef.current;
+    if (!g || !g.active) return;
+    e.preventDefault();
+    const t = mediaTransformRef.current;
+    if (e.touches.length === 1) {
+      if (g.startDist !== 0) {
+        g.startX = e.touches[0].clientX;
+        g.startY = e.touches[0].clientY;
+        g.startTx = t.x;
+        g.startTy = t.y;
+        g.startDist = 0;
+      }
+      t.x = g.startTx + (e.touches[0].clientX - g.startX);
+      t.y = g.startTy + (e.touches[0].clientY - g.startY);
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[1].clientX - e.touches[0].clientX;
+      const dy = e.touches[1].clientY - e.touches[0].clientY;
+      const dist = Math.hypot(dx, dy);
+      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+      if (g.startDist === 0) {
+        g.startDist = dist;
+        g.startScale = t.scale;
+        g.startAngle = angle;
+        g.startRotation = t.rotation;
+      }
+      t.scale = Math.max(0.3, Math.min(5, g.startScale * (dist / g.startDist)));
+      t.rotation = g.startRotation + (angle - g.startAngle);
+    }
+    applyTransform();
+  }, [applyTransform]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const g = gestureRef.current;
+    if (!g || !g.active) return;
+    g.active = false;
+    const t = mediaTransformRef.current;
+    setMediaTransform({ ...t });
+  }, []);
+
+  const handleRotate90 = useCallback(() => {
+    setMediaTransform((prev) => {
+      const next = { ...prev, rotation: prev.rotation + 90 };
+      mediaTransformRef.current = next;
+      applyTransform();
+      return next;
+    });
+  }, [applyTransform]);
+
+  const handleFlip = useCallback(() => {
+    setMediaTransform((prev) => {
+      const next = { ...prev, flipX: !prev.flipX };
+      mediaTransformRef.current = next;
+      applyTransform();
+      return next;
+    });
+  }, [applyTransform]);
+
+  useLayoutEffect(() => {
+    applyTransform();
+  });
+
   const renderTextOverlay = (t: TextOverlay) => {
     const isEditing = editingTextId === t.id;
 
@@ -495,7 +597,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
               textDecoration: t.textDecoration,
               textAlign: t.textAlign,
               backgroundColor: t.backgroundColor || 'transparent',
-              padding: t.backgroundColor ? `${t.framePadding}px` : '0',
+              padding: t.backgroundColor ? '4px 8px' : '0',
               borderRadius: t.backgroundColor ? '4px' : '0',
               maxWidth: `${t.frameWidth}px`,
               wordBreak: 'break-word',
@@ -550,22 +652,31 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
               onClick={isTextMode ? handlePreviewClick : undefined}
               style={{ cursor: isTextMode ? 'text' : 'default' }}
             >
-              <div ref={previewRef} className="relative w-full max-w-sm aspect-[9/16] bg-black rounded-lg overflow-hidden">
-                {isVideo ? (
-                  <video
-                    src={previewUrl}
-                    className="w-full h-full object-contain"
-                    style={{ filter: getFilterStyle(), transform: `rotate(${mediaRotation}deg) scaleX(${mediaFlipX ? -1 : 1})` }}
-                    autoPlay muted loop playsInline
-                  />
-                ) : (
-                  <img
-                    src={previewUrl}
-                    alt=""
-                    className="w-full h-full object-contain"
-                    style={{ filter: getFilterStyle(), transform: `rotate(${mediaRotation}deg) scaleX(${mediaFlipX ? -1 : 1})` }}
-                  />
-                )}
+              <div ref={previewRef} className="relative w-full max-w-sm aspect-[9/16] bg-black rounded-lg overflow-hidden touch-none">
+                <div
+                  ref={mediaWrapperRef}
+                  className="w-full h-full flex items-center justify-center"
+                  style={{ touchAction: 'none' }}
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                >
+                  {isVideo ? (
+                    <video
+                      src={previewUrl}
+                      className="w-full h-full object-contain pointer-events-none"
+                      style={{ filter: getFilterStyle() }}
+                      autoPlay muted loop playsInline
+                    />
+                  ) : (
+                    <img
+                      src={previewUrl}
+                      alt=""
+                      className="w-full h-full object-contain pointer-events-none"
+                      style={{ filter: getFilterStyle() }}
+                    />
+                  )}
+                </div>
                 {textOverlays.map(renderTextOverlay)}
                 {isTextMode && textOverlays.length === 0 && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -579,7 +690,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setMediaRotation((r) => r + 90);
+                      handleRotate90();
                     }}
                   >
                     ↻
@@ -590,7 +701,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setMediaFlipX((f) => !f);
+                      handleFlip();
                     }}
                   >
                     ⇔
