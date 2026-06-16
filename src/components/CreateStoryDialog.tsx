@@ -124,6 +124,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
     startDist: number; startScale: number;
     startAngle: number; startRotation: number;
     startTx: number; startTy: number;
+    startMidX: number; startMidY: number;
   } | null>(null);
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
@@ -394,16 +395,20 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
         startDist: 0, startScale: t.scale,
         startAngle: 0, startRotation: t.rotation,
         startTx: t.x, startTy: t.y,
+        startMidX: 0, startMidY: 0,
       };
     } else if (e.touches.length === 2) {
       const dx = e.touches[1].clientX - e.touches[0].clientX;
       const dy = e.touches[1].clientY - e.touches[0].clientY;
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       gestureRef.current = {
         active: true,
         startX: e.touches[0].clientX, startY: e.touches[0].clientY,
         startDist: Math.hypot(dx, dy), startScale: t.scale,
         startAngle: Math.atan2(dy, dx) * (180 / Math.PI), startRotation: t.rotation,
         startTx: t.x, startTy: t.y,
+        startMidX: midX, startMidY: midY,
       };
     }
   }, []);
@@ -428,14 +433,20 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
       const dy = e.touches[1].clientY - e.touches[0].clientY;
       const dist = Math.hypot(dx, dy);
       const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       if (g.startDist === 0) {
         g.startDist = dist;
         g.startScale = t.scale;
         g.startAngle = angle;
         g.startRotation = t.rotation;
+        g.startMidX = midX;
+        g.startMidY = midY;
       }
       t.scale = Math.max(0.3, Math.min(5, g.startScale * (dist / g.startDist)));
       t.rotation = g.startRotation + (angle - g.startAngle);
+      t.x = g.startTx + (midX - g.startMidX);
+      t.y = g.startTy + (midY - g.startMidY);
     }
     applyTransform();
   }, [applyTransform]);
@@ -443,10 +454,28 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     const g = gestureRef.current;
     if (!g || !g.active) return;
+    if (e.touches.length > 0) {
+      if (e.touches.length === 1) {
+        g.startX = e.touches[0].clientX;
+        g.startY = e.touches[0].clientY;
+        g.startTx = mediaTransformRef.current.x;
+        g.startTy = mediaTransformRef.current.y;
+      }
+      return;
+    }
     g.active = false;
     const t = mediaTransformRef.current;
     setMediaTransform({ ...t });
   }, []);
+
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const t = mediaTransformRef.current;
+    const delta = -e.deltaY * 0.001;
+    t.scale = Math.max(0.3, Math.min(5, t.scale * (1 + delta)));
+    applyTransform();
+    setMediaTransform({ ...t });
+  }, [applyTransform]);
 
   const handleRotate90 = useCallback(() => {
     setMediaTransform((prev) => {
@@ -660,6 +689,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                   onTouchStart={handleTouchStart}
                   onTouchMove={handleTouchMove}
                   onTouchEnd={handleTouchEnd}
+                  onWheel={handleWheel}
                 >
                   {isVideo ? (
                     <video
