@@ -2,7 +2,6 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Upload, Loader2, Type, Music, Sparkles, X, Check, ChevronLeft, Italic, Underline, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import { useStories } from '@/hooks/useStories';
@@ -78,8 +77,6 @@ const TEXT_COLORS = [
   '#FFFF00', '#FF00FF', '#00FFFF', '#FF6B6B', '#4ECDC4',
   '#45B7D1', '#96CEB4', '#FFEAA7', '#DFE6E9', '#FD79A8',
 ];
-
-const FONT_SIZE_PRESETS = [24, 32, 48, 64, 96];
 
 function getFontCss(fontName: string): string {
   const font = FONT_OPTIONS.find((f) => f.name === fontName);
@@ -686,35 +683,6 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                               ))}
                             </SelectContent>
                           </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs font-medium">Size</Label>
-                            <span className="text-xs text-muted-foreground">{editingOverlay.fontSize}px</span>
-                          </div>
-                          <div className="flex gap-1 mb-1">
-                            {FONT_SIZE_PRESETS.map((size) => (
-                              <button
-                                key={size}
-                                onClick={() => updateEditing({ fontSize: size })}
-                                className={`flex-1 text-xs py-1 rounded ${
-                                  editingOverlay.fontSize === size
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'bg-secondary hover:bg-secondary/80'
-                                }`}
-                              >
-                                {size}
-                              </button>
-                            ))}
-                          </div>
-                          <Slider
-                            value={[editingOverlay.fontSize]}
-                            onValueChange={([v]) => updateEditing({ fontSize: v })}
-                            min={8}
-                            max={120}
-                            step={1}
-                          />
                         </div>
 
                         <div className="space-y-2">
