@@ -43,6 +43,8 @@ interface TextOverlay {
   backgroundColor: string | undefined;
   shadow: TextShadow;
   rotation: number;
+  frameWidth: number;
+  framePadding: number;
 }
 
 const FONT_OPTIONS = [
@@ -193,6 +195,8 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
       backgroundColor: editingOverlay?.backgroundColor || undefined,
       shadow: editingOverlay?.shadow || 'soft',
       rotation: editingOverlay?.rotation || 0,
+      frameWidth: editingOverlay?.frameWidth || 320,
+      framePadding: editingOverlay?.framePadding || 8,
     };
 
     setTextOverlays([...textOverlays, newOverlay]);
@@ -382,7 +386,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
         }}
       >
         {isEditing ? (
-          <div className="flex flex-col items-center gap-1">
+          <div className="flex flex-col items-center gap-1.5">
             <div
               ref={editRef}
               contentEditable
@@ -393,7 +397,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                   e.currentTarget.blur();
                 }
               }}
-              className="outline-dashed outline-2 outline-white/70 rounded px-1 min-w-[20px]"
+              className="outline-dashed outline-2 outline-white/70 rounded min-w-[20px]"
               style={{
                 color: t.color,
                 fontFamily: getFontCss(t.fontFamily),
@@ -403,18 +407,18 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                 textDecoration: t.textDecoration,
                 textAlign: t.textAlign,
                 backgroundColor: t.backgroundColor || 'transparent',
-                padding: t.backgroundColor ? '4px 8px' : '2px 4px',
+                padding: `${t.framePadding}px`,
                 borderRadius: t.backgroundColor ? '4px' : '0',
-                maxWidth: '80vw',
+                maxWidth: `${t.frameWidth}px`,
                 wordBreak: 'break-word',
                 lineHeight: 1.2,
                 textShadow: getShadowCss(t.shadow, t.color),
                 caretColor: t.color,
               }}
             />
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
               <span
-                className="w-8 h-8 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-sm transition-colors cursor-grab active:cursor-grabbing select-none touch-none"
+                className="w-7 h-7 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-xs transition-colors cursor-grab active:cursor-grabbing select-none touch-none"
                 title="Drag to rotate freely"
                 onPointerDown={(e) => {
                   e.preventDefault();
@@ -452,8 +456,92 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
               >
                 ↻
               </span>
-              <span className="text-[10px] text-white/80 bg-black/40 rounded px-1.5 py-0.5 min-w-[28px] text-center font-medium">
+              <span className="text-[10px] text-white/80 bg-black/40 rounded px-1.5 py-0.5 min-w-[24px] text-center font-medium">
                 {t.rotation}°
+              </span>
+
+              <span className="w-px h-5 bg-white/20" />
+
+              <span
+                className="w-7 h-7 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-xs transition-colors select-none cursor-pointer"
+                title="Decrease font size"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateEditing({ fontSize: Math.max(8, t.fontSize - 2) });
+                }}
+              >
+                A−
+              </span>
+              <span className="text-[10px] text-white/80 bg-black/40 rounded px-1.5 py-0.5 min-w-[24px] text-center font-medium">
+                {t.fontSize}
+              </span>
+              <span
+                className="w-7 h-7 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-xs transition-colors select-none cursor-pointer"
+                title="Increase font size"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateEditing({ fontSize: Math.min(120, t.fontSize + 2) });
+                }}
+              >
+                A+
+              </span>
+
+              <span className="w-px h-5 bg-white/20" />
+
+              <span
+                className="w-7 h-7 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-xs transition-colors select-none cursor-pointer"
+                title="Shrink frame"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateEditing({ frameWidth: Math.max(60, t.frameWidth - 20) });
+                }}
+              >
+                ◁
+              </span>
+              <span className="text-[10px] text-white/80 bg-black/40 rounded px-1.5 py-0.5 min-w-[28px] text-center font-medium">
+                {t.frameWidth}
+              </span>
+              <span
+                className="w-7 h-7 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-xs transition-colors select-none cursor-pointer"
+                title="Expand frame"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateEditing({ frameWidth: Math.min(600, t.frameWidth + 20) });
+                }}
+              >
+                ▷
+              </span>
+
+              <span className="w-px h-5 bg-white/20" />
+
+              <span
+                className="w-7 h-7 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-xs transition-colors select-none cursor-pointer"
+                title="Decrease padding"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateEditing({ framePadding: Math.max(0, t.framePadding - 4) });
+                }}
+              >
+                ⊟−
+              </span>
+              <span className="text-[10px] text-white/80 bg-black/40 rounded px-1.5 py-0.5 min-w-[24px] text-center font-medium">
+                {t.framePadding}
+              </span>
+              <span
+                className="w-7 h-7 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-xs transition-colors select-none cursor-pointer"
+                title="Increase padding"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateEditing({ framePadding: Math.min(40, t.framePadding + 4) });
+                }}
+              >
+                ⊟+
               </span>
             </div>
           </div>
@@ -475,9 +563,9 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
               textDecoration: t.textDecoration,
               textAlign: t.textAlign,
               backgroundColor: t.backgroundColor || 'transparent',
-              padding: t.backgroundColor ? '4px 8px' : '0',
+              padding: t.backgroundColor ? `${t.framePadding}px` : '0',
               borderRadius: t.backgroundColor ? '4px' : '0',
-              maxWidth: '80%',
+              maxWidth: `${t.frameWidth}px`,
               wordBreak: 'break-word',
               lineHeight: 1.2,
               textShadow: getShadowCss(t.shadow, t.color),
