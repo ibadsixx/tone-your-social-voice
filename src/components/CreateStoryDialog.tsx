@@ -42,6 +42,7 @@ interface TextOverlay {
   direction: TextDirection;
   backgroundColor: string | undefined;
   shadow: TextShadow;
+  rotation: number;
 }
 
 const FONT_OPTIONS = [
@@ -114,11 +115,15 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
   const [uploadProgress, setUploadProgress] = useState('');
   const [music, setMusic] = useState<MusicData | null>(null);
   const [filter, setFilter] = useState<VideoFilter>(defaultVideoFilter);
+  const [mediaRotation, setMediaRotation] = useState(0);
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'text' | 'music' | 'filters'>('filters');
   const [draggingId, setDraggingId] = useState<string | null>(null);
+
   const dragStart = useRef<{ x: number; y: number; elX: number; elY: number; moved: boolean } | null>(null);
+  const isRotating = useRef(false);
+  const rotateDrag = useRef<{ id: string; centerX: number; centerY: number; startAngle: number; startRotation: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -133,9 +138,13 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
     setUploadProgress('');
     setMusic(null);
     setFilter(defaultVideoFilter);
+    setMediaRotation(0);
     setTextOverlays([]);
     setEditingTextId(null);
     setActiveTab('filters');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }, [previewUrl]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -183,6 +192,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
       direction: editingOverlay?.direction || 'ltr',
       backgroundColor: editingOverlay?.backgroundColor || undefined,
       shadow: editingOverlay?.shadow || 'soft',
+      rotation: editingOverlay?.rotation || 0,
     };
 
     setTextOverlays([...textOverlays, newOverlay]);
@@ -205,6 +215,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
       setEditingTextId(null);
       return;
     }
+    if (isRotating.current) return;
     const text = el.innerText.trim();
     if (!text) {
       setTextOverlays((prev) => prev.filter((t) => t.id !== id));
@@ -275,6 +286,23 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [draggingId, handleMouseMove, handleMouseUp]);
+
+
+
+  useEffect(() => {
+    if (!editingTextId || !editRef.current) return;
+    const overlay = textOverlays.find((t) => t.id === editingTextId);
+    if (!overlay) return;
+    if (editRef.current.innerText !== overlay.text) {
+      editRef.current.innerText = overlay.text;
+    }
+    const range = document.createRange();
+    const sel = window.getSelection();
+    range.selectNodeContents(editRef.current);
+    range.collapse(false);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }, [editingTextId]);
 
   const getFilterStyle = (): string => {
     const parts: string[] = [];
@@ -349,40 +377,86 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
         style={{
           left: `${t.x}%`,
           top: `${t.y}%`,
-          transform: 'translate(-50%, -50%)',
+          transform: `translate(-50%, -50%) rotate(${t.rotation}deg)`,
           direction: t.direction,
         }}
       >
         {isEditing ? (
-          <div
-            ref={editRef}
-            contentEditable
-            suppressContentEditableWarning
-            onBlur={() => commitText(t.id)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.currentTarget.blur();
-              }
-            }}
-            className="outline-dashed outline-2 outline-white/70 rounded px-1 min-w-[20px]"
-            style={{
-              color: t.color,
-              fontFamily: getFontCss(t.fontFamily),
-              fontSize: `${t.fontSize}px`,
-              fontWeight: t.fontWeight,
-              fontStyle: t.fontStyle,
-              textDecoration: t.textDecoration,
-              textAlign: t.textAlign,
-              backgroundColor: t.backgroundColor || 'transparent',
-              padding: t.backgroundColor ? '4px 8px' : '2px 4px',
-              borderRadius: t.backgroundColor ? '4px' : '0',
-              maxWidth: '80vw',
-              wordBreak: 'break-word',
-              lineHeight: 1.2,
-              textShadow: getShadowCss(t.shadow, t.color),
-              caretColor: t.color,
-            }}
-          />
+          <div className="flex flex-col items-center gap-1">
+            <div
+              ref={editRef}
+              contentEditable
+              suppressContentEditableWarning
+              onBlur={() => commitText(t.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.currentTarget.blur();
+                }
+              }}
+              className="outline-dashed outline-2 outline-white/70 rounded px-1 min-w-[20px]"
+              style={{
+                color: t.color,
+                fontFamily: getFontCss(t.fontFamily),
+                fontSize: `${t.fontSize}px`,
+                fontWeight: t.fontWeight,
+                fontStyle: t.fontStyle,
+                textDecoration: t.textDecoration,
+                textAlign: t.textAlign,
+                backgroundColor: t.backgroundColor || 'transparent',
+                padding: t.backgroundColor ? '4px 8px' : '2px 4px',
+                borderRadius: t.backgroundColor ? '4px' : '0',
+                maxWidth: '80vw',
+                wordBreak: 'break-word',
+                lineHeight: 1.2,
+                textShadow: getShadowCss(t.shadow, t.color),
+                caretColor: t.color,
+              }}
+            />
+            <div className="flex items-center gap-2">
+              <span
+                className="w-8 h-8 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center text-white text-sm transition-colors cursor-grab active:cursor-grabbing select-none touch-none"
+                title="Drag to rotate freely"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                  isRotating.current = true;
+                  if (!previewRef.current) return;
+                  const pr = previewRef.current.getBoundingClientRect();
+                  const cx = pr.left + (t.x / 100) * pr.width;
+                  const cy = pr.top + (t.y / 100) * pr.height;
+                  const sa = Math.atan2(e.clientY - cy, e.clientX - cx) * (180 / Math.PI);
+                  rotateDrag.current = { id: t.id, centerX: cx, centerY: cy, startAngle: sa, startRotation: t.rotation };
+                }}
+                onPointerMove={(e) => {
+                  if (!rotateDrag.current || rotateDrag.current.id !== t.id) return;
+                  const dx = e.clientX - rotateDrag.current.centerX;
+                  const dy = e.clientY - rotateDrag.current.centerY;
+                  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+                  const delta = angle - rotateDrag.current.startAngle;
+                  setTextOverlays((prev) =>
+                    prev.map((o) =>
+                      o.id === t.id
+                        ? { ...o, rotation: Math.round(rotateDrag.current!.startRotation + delta) }
+                        : o
+                    )
+                  );
+                }}
+                onPointerUp={(e) => {
+                  if (!rotateDrag.current || rotateDrag.current.id !== t.id) return;
+                  rotateDrag.current = null;
+                  isRotating.current = false;
+                  e.stopPropagation();
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                ↻
+              </span>
+              <span className="text-[10px] text-white/80 bg-black/40 rounded px-1.5 py-0.5 min-w-[28px] text-center font-medium">
+                {t.rotation}°
+              </span>
+            </div>
+          </div>
         ) : (
           <div
             className={`select-none ${
@@ -412,6 +486,12 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
             onMouseDown={(e) => {
               if (activeTab === 'text' && editingTextId !== t.id) {
                 handleDragStart(t.id, e);
+              }
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (activeTab === 'text' && editingTextId !== t.id) {
+                setEditingTextId(t.id);
               }
             }}
           >
@@ -455,7 +535,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                   <video
                     src={previewUrl}
                     className="w-full h-full object-contain"
-                    style={{ filter: getFilterStyle() }}
+                    style={{ filter: getFilterStyle(), transform: `rotate(${mediaRotation}deg)` }}
                     autoPlay muted loop playsInline
                   />
                 ) : (
@@ -463,7 +543,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                     src={previewUrl}
                     alt=""
                     className="w-full h-full object-contain"
-                    style={{ filter: getFilterStyle() }}
+                    style={{ filter: getFilterStyle(), transform: `rotate(${mediaRotation}deg)` }}
                   />
                 )}
                 {textOverlays.map(renderTextOverlay)}
