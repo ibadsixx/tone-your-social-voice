@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
 import { Upload, Type, Music, X, Check, ChevronLeft, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Trash2 } from 'lucide-react';
 import { Stage, Layer, Text as KonvaText, Image as KonvaImage, Transformer, Group, Rect } from 'react-konva';
+import Konva from 'konva';
 import { useStories } from '@/hooks/useStories';
 
 const STAGE_W = 360;
@@ -242,6 +243,106 @@ function MusicTab({ music, onSelect }: { music: MusicData | null; onSelect: (m: 
   );
 }
 
+function BlurredImageBg({ src }: { src: string }) {
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const shapeRef = useRef<any>(null);
+
+  useEffect(() => {
+    const i = new window.Image();
+    i.crossOrigin = 'anonymous';
+    i.onload = () => setImg(i);
+    i.src = src;
+  }, [src]);
+
+  useEffect(() => {
+    if (shapeRef.current && img) shapeRef.current.cache();
+  }, [img]);
+
+  if (!img) return null;
+
+  const scale = Math.max(STAGE_W / img.width, STAGE_H / img.height);
+  const x = (STAGE_W - img.width * scale) / 2;
+  const y = (STAGE_H - img.height * scale) / 2;
+
+  return (
+    <Group x={x} y={y} scaleX={scale} scaleY={scale} listening={false}>
+      <KonvaImage
+        ref={shapeRef}
+        image={img}
+        width={img.width}
+        height={img.height}
+        filters={[Konva.Filters.Blur]}
+        blurRadius={40}
+      />
+    </Group>
+  );
+}
+
+function BlurredVideoBg({ src }: { src: string }) {
+  const [video, setVideo] = useState<HTMLVideoElement | null>(null);
+  const [dimensions, setDimensions] = useState<{ w: number; h: number } | null>(null);
+  const imageRef = useRef<any>(null);
+  const animRef = useRef<number>(0);
+  const cachedRef = useRef(false);
+
+  useEffect(() => {
+    const vid = document.createElement('video');
+    vid.src = src;
+    vid.loop = true;
+    vid.muted = true;
+    vid.playsInline = true;
+    vid.autoplay = true;
+    vid.crossOrigin = 'anonymous';
+    const onMeta = () => setDimensions({ w: vid.videoWidth, h: vid.videoHeight });
+    const onData = () => setVideo(vid);
+    vid.addEventListener('loadedmetadata', onMeta);
+    vid.addEventListener('loadeddata', onData);
+    return () => {
+      vid.pause();
+      vid.removeAttribute('src');
+      vid.load();
+      vid.removeEventListener('loadedmetadata', onMeta);
+      vid.removeEventListener('loadeddata', onData);
+      cancelAnimationFrame(animRef.current);
+    };
+  }, [src]);
+
+  useEffect(() => {
+    if (!video) return;
+    const draw = () => {
+      if (imageRef.current) {
+        imageRef.current.getLayer()?.batchDraw();
+        if (!cachedRef.current) {
+          imageRef.current.cache();
+          cachedRef.current = true;
+        }
+      }
+      animRef.current = requestAnimationFrame(draw);
+    };
+    animRef.current = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(animRef.current);
+  }, [video]);
+
+  if (!video || !dimensions) return null;
+
+  const scale = Math.max(STAGE_W / dimensions.w, STAGE_H / dimensions.h);
+  const x = (STAGE_W - dimensions.w * scale) / 2;
+  const y = (STAGE_H - dimensions.h * scale) / 2;
+
+  return (
+    <Group x={x} y={y} scaleX={scale} scaleY={scale} listening={false}>
+      <KonvaImage
+        ref={imageRef}
+        image={video}
+        width={dimensions.w}
+        height={dimensions.h}
+        filters={[Konva.Filters.Blur]}
+        blurRadius={40}
+      />
+    </Group>
+  );
+}
+
 export default function CreateStoryDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const [step, setStep] = useState<'select' | 'edit'>('select');
   const [file, setFile] = useState<File | null>(null);
@@ -473,8 +574,8 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
             </Button>
           </div>
 
-          <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-            <div ref={containerRef} className="flex-1 bg-black flex items-center justify-center p-4 min-h-[300px] relative overflow-hidden">
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+            <div ref={containerRef} className="flex-1 bg-background flex items-center justify-center p-4 min-h-[300px] relative overflow-hidden">
               <div style={{ width: STAGE_W * scale, height: STAGE_H * scale, position: 'relative' }}>
                 {editingTextId && editingOverlay && (
                   <EditableTextInput
@@ -504,9 +605,17 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
                   onClick={handleStageClick}
                   onTap={handleStageClick}
                 >
+                  {/* Layer 1: Background blur - cover fill + dark overlay */}
                   <Layer>
-                    <Rect x={0} y={0} width={STAGE_W} height={STAGE_H} fill="#000000" listening={false} />
-
+                    {previewUrl && (
+                      <>
+                        {isVideo ? <BlurredVideoBg src={previewUrl} /> : <BlurredImageBg src={previewUrl} />}
+                        <Rect x={0} y={0} width={STAGE_W} height={STAGE_H} fill="rgba(0,0,0,0.25)" listening={false} />
+                      </>
+                    )}
+                  </Layer>
+                  {/* Layer 2: Main draggable media + overlays */}
+                  <Layer>
                     {previewUrl && (
                       <Group
                         id="__bg__"
