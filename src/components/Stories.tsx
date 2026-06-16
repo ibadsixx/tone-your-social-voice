@@ -6,6 +6,7 @@ import { useProfile } from '@/hooks/useProfile';
 import { motion } from 'framer-motion';
 import { useStories } from '@/hooks/useStories';
 import StoryViewer from './StoryViewer';
+import CreateStoryDialog from './CreateStoryDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -15,6 +16,7 @@ const Stories = () => {
   const [currentUserProfile, setCurrentUserProfile] = useState<{ profile_pic: string | null; display_name: string | null } | null>(null);
   const { stories, loading, markAsViewed, deleteStory } = useStories();
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [selectedUserStories, setSelectedUserStories] = useState<any>(null);
   const [imgError, setImgError] = useState(false);
 
@@ -60,7 +62,8 @@ const Stories = () => {
               className="flex-shrink-0"
             >
               <Card
-                className="relative w-[110px] h-[190px] overflow-hidden border-border/50 hover:shadow-lg transition-shadow"
+                onClick={() => setCreateOpen(true)}
+                className="relative w-[110px] h-[190px] cursor-pointer overflow-hidden border-border/50 hover:shadow-lg transition-shadow"
               >
                 {!imgError && currentUserProfile?.profile_pic ? (
                   <img
@@ -126,6 +129,8 @@ const Stories = () => {
           ))}
         </div>
       </div>
+
+      <CreateStoryDialog open={createOpen} onOpenChange={setCreateOpen} />
 
       {selectedUserStories && (
         <StoryViewer
