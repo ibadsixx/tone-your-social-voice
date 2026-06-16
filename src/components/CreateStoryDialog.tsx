@@ -114,6 +114,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
   const [music, setMusic] = useState<MusicData | null>(null);
   const [filter, setFilter] = useState<VideoFilter>(defaultVideoFilter);
   const [mediaRotation, setMediaRotation] = useState(0);
+  const [mediaFlipX, setMediaFlipX] = useState(false);
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'text' | 'music' | 'filters'>('filters');
@@ -137,6 +138,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
     setMusic(null);
     setFilter(defaultVideoFilter);
     setMediaRotation(0);
+    setMediaFlipX(false);
     setTextOverlays([]);
     setEditingTextId(null);
     setActiveTab('filters');
@@ -553,7 +555,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                   <video
                     src={previewUrl}
                     className="w-full h-full object-contain"
-                    style={{ filter: getFilterStyle(), transform: `rotate(${mediaRotation}deg)` }}
+                    style={{ filter: getFilterStyle(), transform: `rotate(${mediaRotation}deg) scaleX(${mediaFlipX ? -1 : 1})` }}
                     autoPlay muted loop playsInline
                   />
                 ) : (
@@ -561,7 +563,7 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                     src={previewUrl}
                     alt=""
                     className="w-full h-full object-contain"
-                    style={{ filter: getFilterStyle(), transform: `rotate(${mediaRotation}deg)` }}
+                    style={{ filter: getFilterStyle(), transform: `rotate(${mediaRotation}deg) scaleX(${mediaFlipX ? -1 : 1})` }}
                   />
                 )}
                 {textOverlays.map(renderTextOverlay)}
@@ -570,6 +572,30 @@ const CreateStoryDialog = ({ open, onOpenChange }: CreateStoryDialogProps) => {
                     <p className="text-white/50 text-sm">Tap anywhere to add text</p>
                   </div>
                 )}
+                <div className="absolute top-2 right-2 flex gap-1.5">
+                  <span
+                    className="w-7 h-7 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center text-white text-xs transition-colors cursor-pointer select-none"
+                    title="Rotate 90°"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMediaRotation((r) => r + 90);
+                    }}
+                  >
+                    ↻
+                  </span>
+                  <span
+                    className="w-7 h-7 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center text-white text-xs transition-colors cursor-pointer select-none"
+                    title="Flip horizontally"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMediaFlipX((f) => !f);
+                    }}
+                  >
+                    ⇔
+                  </span>
+                </div>
               </div>
             </div>
 
