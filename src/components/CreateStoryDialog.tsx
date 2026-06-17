@@ -296,31 +296,29 @@ function BlurredVideoBg({ src }: { src: string }) {
     let cancelled = false;
 
     const onMeta = () => {
+      if (cancelled || !vid.videoWidth || !vid.videoHeight) return;
+      vid.currentTime = Math.min(vid.duration / 2, 1);
+    };
+
+    const onSeek = () => {
       if (cancelled) return;
       const w = vid.videoWidth;
       const h = vid.videoHeight;
-      vid.currentTime = 0;
-      const onSeek = () => {
-        if (cancelled) return;
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d')!;
-        ctx.drawImage(vid, 0, 0, w, h);
-        const img = new window.Image();
-        img.onload = () => {
-          if (!cancelled) setFrame({ img, w, h });
-        };
-        img.src = canvas.toDataURL();
-        vid.removeEventListener('seeked', onSeek);
+      if (!w || !h) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(vid, 0, 0);
+      const img = new window.Image();
+      img.onload = () => {
+        if (!cancelled) setFrame({ img, w, h });
       };
-      vid.addEventListener('seeked', onSeek);
-      vid.src = src;
-      vid.load();
+      img.src = canvas.toDataURL();
     };
 
     vid.addEventListener('loadedmetadata', onMeta);
-    vid.preload = 'metadata';
+    vid.addEventListener('seeked', onSeek);
     vid.src = src;
     vid.load();
 
@@ -330,6 +328,7 @@ function BlurredVideoBg({ src }: { src: string }) {
       vid.removeAttribute('src');
       vid.load();
       vid.removeEventListener('loadedmetadata', onMeta);
+      vid.removeEventListener('seeked', onSeek);
     };
   }, [src]);
 
