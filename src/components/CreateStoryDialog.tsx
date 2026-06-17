@@ -110,7 +110,7 @@ function KonvaVideoImage({ src, width, height, muted: mutedProp }: { src: string
     const vid = document.createElement('video');
     vid.src = src;
     vid.loop = true;
-    vid.muted = mutedProp;
+    vid.muted = true;
     vid.playsInline = true;
     vid.autoplay = true;
     vid.crossOrigin = 'anonymous';
@@ -374,7 +374,7 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
   const [selectedBg, setSelectedBg] = useState(false);
   const [bgTransform, setBgTransform] = useState({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 });
   const [mediaRotation, setMediaRotation] = useState(0);
-  const [videoMuted, setVideoMuted] = useState(true);
+  const [videoMuted, setVideoMuted] = useState(false);
 
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -397,7 +397,7 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
     setSelectedBg(false);
     setBgTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 });
     setMediaRotation(0);
-    setVideoMuted(true);
+    setVideoMuted(false);
     setEditingTextId(null);
     setMusic(null);
     setActiveTab('text');
