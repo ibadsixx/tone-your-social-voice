@@ -524,7 +524,14 @@ const StoryViewer = ({
                   className="max-w-full max-h-full object-contain"
                   style={{ maxWidth: '100%', maxHeight: '100%' }}
                   autoPlay
-                  muted
+                  muted={(() => {
+                    try {
+                      const captionData = JSON.parse(currentStory.caption || '{}');
+                      return captionData.videoMuted !== false;
+                    } catch {
+                      return true;
+                    }
+                  })()}
                   playsInline
                   loop={false}
                   onEnded={() => {

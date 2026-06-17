@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
-import { Upload, Type, Music, X, Check, ChevronLeft, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Trash2 } from 'lucide-react';
+import { Upload, Type, Music, X, Check, ChevronLeft, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Trash2, RotateCw } from 'lucide-react';
 import { Stage, Layer, Text as KonvaText, Image as KonvaImage, Transformer, Group, Rect } from 'react-konva';
 import Konva from 'konva';
 import { useStories } from '@/hooks/useStories';
@@ -101,7 +101,7 @@ function KonvaImageLoader({ src, width, height }: { src: string; width: number; 
   return <KonvaImage image={img} width={width} height={height} />;
 }
 
-function KonvaVideoImage({ src, width, height }: { src: string; width: number; height: number }) {
+function KonvaVideoImage({ src, width, height, muted: mutedProp }: { src: string; width: number; height: number; muted: boolean }) {
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const imageRef = useRef<any>(null);
   const animRef = useRef<number>(0);
@@ -110,12 +110,13 @@ function KonvaVideoImage({ src, width, height }: { src: string; width: number; h
     const vid = document.createElement('video');
     vid.src = src;
     vid.loop = true;
-    vid.muted = true;
+    vid.muted = mutedProp;
     vid.playsInline = true;
     vid.autoplay = true;
     vid.crossOrigin = 'anonymous';
     const onData = () => { setVideo(vid); };
     vid.addEventListener('loadeddata', onData);
+    vid.play().catch(() => {});
     return () => {
       vid.pause();
       vid.removeAttribute('src');
@@ -124,6 +125,10 @@ function KonvaVideoImage({ src, width, height }: { src: string; width: number; h
       cancelAnimationFrame(animRef.current);
     };
   }, [src]);
+
+  useEffect(() => {
+    if (video) video.muted = mutedProp;
+  }, [video, mutedProp]);
 
   useEffect(() => {
     if (!video) return;
@@ -279,63 +284,75 @@ function BlurredImageBg({ src }: { src: string }) {
 }
 
 function BlurredVideoBg({ src }: { src: string }) {
-  const [video, setVideo] = useState<HTMLVideoElement | null>(null);
-  const [dimensions, setDimensions] = useState<{ w: number; h: number } | null>(null);
+  const [frame, setFrame] = useState<{ img: HTMLImageElement; w: number; h: number } | null>(null);
   const imageRef = useRef<any>(null);
-  const animRef = useRef<number>(0);
   const cachedRef = useRef(false);
 
   useEffect(() => {
     const vid = document.createElement('video');
-    vid.src = src;
-    vid.loop = true;
     vid.muted = true;
     vid.playsInline = true;
-    vid.autoplay = true;
     vid.crossOrigin = 'anonymous';
-    const onMeta = () => setDimensions({ w: vid.videoWidth, h: vid.videoHeight });
-    const onData = () => setVideo(vid);
+    let cancelled = false;
+
+    const onMeta = () => {
+      if (cancelled) return;
+      const w = vid.videoWidth;
+      const h = vid.videoHeight;
+      vid.currentTime = 0;
+      const onSeek = () => {
+        if (cancelled) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(vid, 0, 0, w, h);
+        const img = new window.Image();
+        img.onload = () => {
+          if (!cancelled) setFrame({ img, w, h });
+        };
+        img.src = canvas.toDataURL();
+        vid.removeEventListener('seeked', onSeek);
+      };
+      vid.addEventListener('seeked', onSeek);
+      vid.src = src;
+      vid.load();
+    };
+
     vid.addEventListener('loadedmetadata', onMeta);
-    vid.addEventListener('loadeddata', onData);
+    vid.preload = 'metadata';
+    vid.src = src;
+    vid.load();
+
     return () => {
+      cancelled = true;
       vid.pause();
       vid.removeAttribute('src');
       vid.load();
       vid.removeEventListener('loadedmetadata', onMeta);
-      vid.removeEventListener('loadeddata', onData);
-      cancelAnimationFrame(animRef.current);
     };
   }, [src]);
 
   useEffect(() => {
-    if (!video) return;
-    const draw = () => {
-      if (imageRef.current) {
-        imageRef.current.getLayer()?.batchDraw();
-        if (!cachedRef.current) {
-          imageRef.current.cache();
-          cachedRef.current = true;
-        }
-      }
-      animRef.current = requestAnimationFrame(draw);
-    };
-    animRef.current = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(animRef.current);
-  }, [video]);
+    if (imageRef.current && !cachedRef.current) {
+      imageRef.current.cache();
+      cachedRef.current = true;
+    }
+  }, [frame]);
 
-  if (!video || !dimensions) return null;
+  if (!frame) return null;
 
-  const scale = Math.max(STAGE_W / dimensions.w, STAGE_H / dimensions.h);
-  const x = (STAGE_W - dimensions.w * scale) / 2;
-  const y = (STAGE_H - dimensions.h * scale) / 2;
+  const scale = Math.max(STAGE_W / frame.w, STAGE_H / frame.h);
+  const x = (STAGE_W - frame.w * scale) / 2;
+  const y = (STAGE_H - frame.h * scale) / 2;
 
   return (
     <Group x={x} y={y} scaleX={scale} scaleY={scale} listening={false}>
       <KonvaImage
         ref={imageRef}
-        image={video}
-        width={dimensions.w}
-        height={dimensions.h}
+        image={frame.img}
+        width={frame.w}
+        height={frame.h}
         filters={[Konva.Filters.Blur]}
         blurRadius={40}
       />
@@ -357,6 +374,8 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
   const [music, setMusic] = useState<MusicData | null>(null);
   const [selectedBg, setSelectedBg] = useState(false);
   const [bgTransform, setBgTransform] = useState({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 });
+  const [mediaRotation, setMediaRotation] = useState(0);
+  const [videoMuted, setVideoMuted] = useState(true);
 
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -378,6 +397,8 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
     setSelectedId(null);
     setSelectedBg(false);
     setBgTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 });
+    setMediaRotation(0);
+    setVideoMuted(true);
     setEditingTextId(null);
     setMusic(null);
     setActiveTab('text');
@@ -496,6 +517,18 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
     setBgTransform(prev => ({ ...prev, x: node.x(), y: node.y(), rotation: node.rotation(), scaleX: node.scaleX(), scaleY: node.scaleY() }));
   };
 
+  const handleRotate = () => {
+    setMediaRotation(prev => (prev + 90) % 360);
+  };
+
+  const handleRotateOverlay = () => {
+    if (!selectedId) return;
+    const overlay = overlays.find(o => o.id === selectedId);
+    if (!overlay) return;
+    const newRotation = ((overlay.rotation || 0) + 90) % 360;
+    updateOverlay(selectedId, { rotation: newRotation });
+  };
+
   const handleTextDblClick = (id: string) => {
     const overlay = overlays.find((o) => o.id === id);
     if (!overlay || overlay.type !== 'text') return;
@@ -535,6 +568,8 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
           textAlign: o.textAlign, fill: o.fill, src: o.src, emoji: o.emoji,
         })),
         bgTransform,
+        mediaRotation,
+        videoMuted,
       };
       const result = await createStory(
         file,
@@ -630,11 +665,21 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
                         onDragEnd={handleBgDragEnd}
                         onTransformEnd={handleBgTransformEnd}
                       >
-                        {isVideo ? (
-                          <KonvaVideoImage src={previewUrl} width={STAGE_W} height={STAGE_H} />
-                        ) : (
-                          <KonvaImageLoader src={previewUrl} width={STAGE_W} height={STAGE_H} />
-                        )}
+                        <Group
+                          x={STAGE_W / 2}
+                          y={STAGE_H / 2}
+                          rotation={mediaRotation}
+                          offsetX={STAGE_W / 2}
+                          offsetY={STAGE_H / 2}
+                          scaleX={mediaRotation % 180 !== 0 ? STAGE_W / STAGE_H : 1}
+                          scaleY={mediaRotation % 180 !== 0 ? STAGE_W / STAGE_H : 1}
+                        >
+                          {isVideo ? (
+                            <KonvaVideoImage src={previewUrl} width={STAGE_W} height={STAGE_H} muted={videoMuted} />
+                          ) : (
+                            <KonvaImageLoader src={previewUrl} width={STAGE_W} height={STAGE_H} />
+                          )}
+                        </Group>
                       </Group>
                     )}
 
@@ -781,13 +826,6 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs font-medium">Size</Label>
-                            <span className="text-xs text-muted-foreground">{selectedOverlay.fontSize}px</span>
-                          </div>
-                          <Slider value={[selectedOverlay.fontSize || 36]} onValueChange={([v]) => updateOverlay(selectedOverlay.id, { fontSize: v })} min={12} max={120} step={1} />
-                        </div>
-                        <div className="space-y-2">
                           <Label className="text-xs font-medium">Weight</Label>
                           <Select value={String(selectedOverlay.fontWeight)} onValueChange={(v) => updateOverlay(selectedOverlay.id, { fontWeight: Number(v) })}>
                             <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
@@ -842,6 +880,24 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
                       <p className="text-xs text-muted-foreground text-center py-8">
                         Select a text overlay on the canvas to edit its style
                       </p>
+                    )}
+                    {isVideo && (
+                      <div className="space-y-2 border-t border-border pt-3">
+                        <Label className="text-xs font-medium">Video Audio</Label>
+                        <Button
+                          variant={videoMuted ? 'default' : 'outline'}
+                          size="sm"
+                          className="w-full h-9"
+                          onClick={() => setVideoMuted(prev => !prev)}
+                        >
+                          {videoMuted ? 'Unmute' : 'Mute'}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          {videoMuted
+                            ? 'Video audio is muted — add background music from the Music tab'
+                            : 'Video audio is playing'}
+                        </p>
+                      </div>
                     )}
                   </div>
                 )}
