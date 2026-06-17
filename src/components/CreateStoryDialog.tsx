@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
-import { Upload, Type, Music, X, Check, ChevronLeft, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Trash2, RotateCw } from 'lucide-react';
+import { Upload, Type, Music, X, Check, ChevronLeft, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Trash2, RotateCw, Volume2, VolumeX } from 'lucide-react';
 import { Stage, Layer, Text as KonvaText, Image as KonvaImage, Transformer, Group, Rect } from 'react-konva';
 import Konva from 'konva';
 import { useStories } from '@/hooks/useStories';
@@ -913,21 +913,20 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
                   <div className="space-y-4">
                     <MusicTab music={music} onSelect={setMusic} />
                     {isVideo && (
-                      <div className="space-y-2 border-t border-border pt-3">
-                        <Label className="text-xs font-medium">Original Video Audio</Label>
-                        <Button
-                          variant={videoMuted ? 'default' : 'outline'}
-                          size="sm"
-                          className="w-full h-9"
-                          onClick={() => setVideoMuted(prev => !prev)}
-                        >
-                          {videoMuted ? 'Unmute' : 'Mute'}
-                        </Button>
-                        <p className="text-xs text-muted-foreground">
-                          {videoMuted
-                            ? 'Muted — add background music above to overlay new audio'
-                            : 'Original video audio is playing'}
-                        </p>
+                      <div className="border-t border-border pt-3">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="w-7 h-7"
+                            onClick={() => setVideoMuted(prev => !prev)}
+                          >
+                            {videoMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                          </Button>
+                          <span className="text-xs text-muted-foreground">
+                            {videoMuted ? 'Video muted' : 'Video audio playing'}
+                          </span>
+                        </div>
                       </div>
                     )}
                   </div>
