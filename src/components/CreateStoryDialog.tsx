@@ -880,24 +880,6 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
                         Select a text overlay on the canvas to edit its style
                       </p>
                     )}
-                    {isVideo && (
-                      <div className="space-y-2 border-t border-border pt-3">
-                        <Label className="text-xs font-medium">Video Audio</Label>
-                        <Button
-                          variant={videoMuted ? 'default' : 'outline'}
-                          size="sm"
-                          className="w-full h-9"
-                          onClick={() => setVideoMuted(prev => !prev)}
-                        >
-                          {videoMuted ? 'Unmute' : 'Mute'}
-                        </Button>
-                        <p className="text-xs text-muted-foreground">
-                          {videoMuted
-                            ? 'Video audio is muted — add background music from the Music tab'
-                            : 'Video audio is playing'}
-                        </p>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -928,7 +910,27 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
                 )}
 
                 {activeTab === 'music' && (
-                  <MusicTab music={music} onSelect={setMusic} />
+                  <div className="space-y-4">
+                    <MusicTab music={music} onSelect={setMusic} />
+                    {isVideo && (
+                      <div className="space-y-2 border-t border-border pt-3">
+                        <Label className="text-xs font-medium">Original Video Audio</Label>
+                        <Button
+                          variant={videoMuted ? 'default' : 'outline'}
+                          size="sm"
+                          className="w-full h-9"
+                          onClick={() => setVideoMuted(prev => !prev)}
+                        >
+                          {videoMuted ? 'Unmute' : 'Mute'}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          {videoMuted
+                            ? 'Muted — add background music above to overlay new audio'
+                            : 'Original video audio is playing'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 )}
               </ScrollArea>
             </div>
