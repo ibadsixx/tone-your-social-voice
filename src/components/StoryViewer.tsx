@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,58 @@ interface StoryViewerProps {
   initialIndex?: number;
 }
 
+function DrawingCanvas({ drawings, scale, width, height }: { drawings: any[]; scale: number; width: number; height: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, width, height);
+
+    for (const stroke of drawings) {
+      const pts = stroke.points;
+      if (pts.length < 4) continue;
+
+      ctx.beginPath();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.miterLimit = 2;
+      ctx.globalCompositeOperation = stroke.tool === 'eraser' ? 'destination-out' : 'source-over';
+      ctx.strokeStyle = stroke.tool === 'eraser' ? '#000000' : stroke.color;
+      ctx.lineWidth = (stroke.tool === 'highlighter' ? stroke.size * 2.5 : stroke.size) * scale;
+      ctx.globalAlpha = stroke.tool === 'highlighter' ? 0.35 : 1;
+      if (stroke.tool === 'neon') {
+        ctx.shadowColor = stroke.color;
+        ctx.shadowBlur = 15 * scale;
+      } else {
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+      }
+
+      ctx.moveTo(pts[0] * scale, pts[1] * scale);
+      for (let i = 2; i < pts.length - 1; i += 2) {
+        const xc = (pts[i] * scale + pts[i + 2] * scale) / 2;
+        const yc = (pts[i + 1] * scale + pts[i + 3] * scale) / 2;
+        ctx.quadraticCurveTo(pts[i] * scale, pts[i + 1] * scale, xc, yc);
+      }
+      const last = pts.length - 2;
+      ctx.lineTo(pts[last] * scale, pts[last + 1] * scale);
+      ctx.stroke();
+    }
+  }, [drawings, scale, width, height]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={width}
+      height={height}
+      className="absolute inset-0 z-10"
+      style={{ pointerEvents: 'none' }}
+    />
+  );
+}
+
 const StoryViewer = ({
   stories,
   username,
@@ -58,6 +110,8 @@ const StoryViewer = ({
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [contentBounds, setContentBounds] = useState({ w: 360, h: 640 });
   const currentStory = stories[currentIndex];
   const currentStoryId = currentStory?.id;
   const currentStoryDuration = currentStory?.duration;
@@ -99,6 +153,24 @@ const StoryViewer = ({
   
   // Fetch interactive elements using stable ID
   const { mentions } = useStoryMentions(currentStoryId);
+
+  const drawings = useMemo(() => {
+    if (!currentStory?.caption) return [];
+    try {
+      const captionData = JSON.parse(currentStory.caption);
+      return captionData.drawings || [];
+    } catch { return []; }
+  }, [currentStory?.caption]);
+
+  const mentionOverlays = useMemo(() => {
+    if (!currentStory?.caption) return [];
+    try {
+      const captionData = JSON.parse(currentStory.caption);
+      return (captionData.overlays || []).filter((o: any) => o.type === 'mention');
+    } catch {
+      return [];
+    }
+  }, [currentStory?.caption]);
   const { poll, vote } = useStoryPolls(currentStoryId);
   const { question, respond } = useStoryQuestions(currentStoryId);
 
@@ -338,6 +410,33 @@ const StoryViewer = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open, handleNext, handlePrev, onOpenChange]);
 
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      setContentBounds({ w: width, h: height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const storyAspect = 9 / 16;
+  const cAspect = contentBounds.w / contentBounds.h;
+  let displayW: number, displayH: number, offX: number, offY: number;
+  if (cAspect > storyAspect) {
+    displayH = contentBounds.h;
+    displayW = displayH * storyAspect;
+    offX = (contentBounds.w - displayW) / 2;
+    offY = 0;
+  } else {
+    displayW = contentBounds.w;
+    displayH = displayW / storyAspect;
+    offX = 0;
+    offY = (contentBounds.h - displayH) / 2;
+  }
+  const scale = displayW / 360;
+
   if (!currentStory) return null;
 
   return (
@@ -420,6 +519,7 @@ const StoryViewer = ({
 
         {/* Story content */}
         <div 
+          ref={contentRef}
           className="relative w-full h-full flex items-center justify-center overflow-hidden"
           style={{ maxHeight: 'calc(90vh - 8rem)' }}
           onMouseDown={handlePressStart}
@@ -549,6 +649,45 @@ const StoryViewer = ({
               )}
             </motion.div>
           </AnimatePresence>
+
+          {/* Drawings canvas + Mention overlays from caption JSON */}
+          <div
+            className="absolute z-20"
+            style={{
+              left: offX,
+              top: offY,
+              width: displayW,
+              height: displayH,
+              pointerEvents: 'none',
+            }}
+          >
+            {drawings.length > 0 && (
+              <DrawingCanvas drawings={drawings} scale={scale} width={displayW} height={displayH} />
+            )}
+            {mentionOverlays.map((m: any) => (
+                <div
+                  key={m.id}
+                  className="absolute flex items-center justify-center cursor-pointer pointer-events-auto"
+                  style={{
+                    left: m.x * scale,
+                    top: m.y * scale,
+                    width: (m.width || 160) * (m.scaleX || 1) * scale,
+                    height: (m.height || 40) * (m.scaleY || 1) * scale,
+                  }}
+                  onClick={(e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    if (m.mentionedUsername) {
+                      navigate(`/profile/${m.mentionedUsername}`);
+                      onOpenChange(false);
+                    }
+                  }}
+                >
+                  <span className="text-white text-base font-bold" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>
+                    {m.text || `@${m.mentionedUsername || 'user'}`}
+                  </span>
+                </div>
+              ))}
+          </div>
 
           {/* Navigation buttons (optional visual indicators) */}
           {currentIndex > 0 && (

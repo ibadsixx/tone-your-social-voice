@@ -6,9 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
-import { Upload, Type, Music, X, Check, ChevronLeft, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Trash2, RotateCw, Volume2, VolumeX } from 'lucide-react';
-import { Stage, Layer, Text as KonvaText, Image as KonvaImage, Transformer, Group, Rect } from 'react-konva';
+import { Upload, Type, Music, X, Check, ChevronLeft, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Trash2, RotateCw, Volume2, VolumeX, AtSign, Pen, Undo2, Redo2, Eraser } from 'lucide-react';
+import { Stage, Layer, Text as KonvaText, Image as KonvaImage, Transformer, Group, Rect, Line } from 'react-konva';
 import Konva from 'konva';
+import { supabase } from '@/integrations/supabase/client';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useAuth } from '@/hooks/useAuth';
 import { useStories } from '@/hooks/useStories';
 
 const STAGE_W = 360;
@@ -42,9 +45,29 @@ const TEXT_COLORS = [
 
 const STICKER_EMOJIS = ['😀', '😂', '❤️', '🔥', '🎉', '✨', '🌟', '💪', '🙌', '👏', '😍', '🥰', '💯', '⭐', '🌈', '🎶', '📸', '💡', '🎯', '🚀'];
 
+const DRAW_COLORS = [
+  '#FFFFFF', '#FF0000', '#FF6B00', '#FFD700', '#00FF00',
+  '#00BFFF', '#0000FF', '#8A2BE2', '#FF00FF', '#FF1493',
+  '#000000', '#808080',
+];
+
+const DRAW_TOOLS = [
+  { id: 'pen', label: 'Pen' },
+  { id: 'neon', label: 'Neon' },
+  { id: 'highlighter', label: 'Marker' },
+] as const;
+
+interface DrawingStroke {
+  id: string;
+  points: number[];
+  color: string;
+  size: number;
+  tool: 'pen' | 'neon' | 'highlighter' | 'eraser';
+}
+
 interface CanvasOverlay {
   id: string;
-  type: 'text' | 'image' | 'sticker';
+  type: 'text' | 'image' | 'sticker' | 'mention';
   x: number;
   y: number;
   rotation: number;
@@ -62,6 +85,9 @@ interface CanvasOverlay {
   fill?: string;
   src?: string;
   emoji?: string;
+  mentionedUserId?: string;
+  mentionedUsername?: string;
+  mentionedDisplayName?: string;
 }
 
 interface MusicData {
@@ -375,12 +401,25 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
   const [bgTransform, setBgTransform] = useState({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 });
   const [mediaRotation, setMediaRotation] = useState(0);
   const [videoMuted, setVideoMuted] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState('');
+  const [mentionResults, setMentionResults] = useState<{ id: string; username: string; display_name: string; profile_pic: string | null }[]>([]);
+  const [mentionSearching, setMentionSearching] = useState(false);
+  const [drawingMode, setDrawingMode] = useState(false);
+  const [activeDrawTool, setActiveDrawTool] = useState<'pen' | 'neon' | 'highlighter'>('pen');
+  const [drawColor, setDrawColor] = useState('#FFFFFF');
+  const [brushSize, setBrushSize] = useState(4);
+  const [strokes, setStrokes] = useState<DrawingStroke[]>([]);
+  const [undoStack, setUndoStack] = useState<DrawingStroke[][]>([]);
+  const [redoStack, setRedoStack] = useState<DrawingStroke[][]>([]);
+  const isDrawingRef = useRef(false);
+  const drawingLineRef = useRef<any>(null);
 
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const transformerRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const stickerInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
   const { createStory } = useStories();
 
   const selectedOverlay = overlays.find((o) => o.id === selectedId);
@@ -401,6 +440,15 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
     setEditingTextId(null);
     setMusic(null);
     setActiveTab('text');
+    setMentionSearch('');
+    setMentionResults([]);
+    setDrawingMode(false);
+    setActiveDrawTool('pen');
+    setDrawColor('#FFFFFF');
+    setBrushSize(4);
+    setStrokes([]);
+    setUndoStack([]);
+    setRedoStack([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [previewUrl]);
 
@@ -553,11 +601,116 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
     transformerRef.current.getLayer()?.batchDraw();
   }, [selectedId, selectedBg, overlays]);
 
+  useEffect(() => {
+    if (!drawingMode && isDrawingRef.current) {
+      handleDrawingEnd();
+    }
+  }, [drawingMode]);
+
+  useEffect(() => {
+    if (!mentionSearch.trim()) { setMentionResults([]); return; }
+    const timer = setTimeout(async () => {
+      setMentionSearching(true);
+      try {
+        const pattern = `%${mentionSearch.trim()}%`;
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, profile_pic')
+          .or(`display_name.ilike.${pattern},username.ilike.${pattern}`)
+          .limit(10);
+        if (data) setMentionResults(data);
+      } catch { /* ignore */ }
+      finally { setMentionSearching(false); }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [mentionSearch]);
+
+  const handleSelectMention = (user: { id: string; username: string; display_name: string }) => {
+    const newOverlay: CanvasOverlay = {
+      id: createId(),
+      type: 'mention',
+      text: `@${user.username}`,
+      x: 120,
+      y: 200,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+      width: 160,
+      height: 40,
+      fill: '#1877F2',
+      mentionedUserId: user.id,
+      mentionedUsername: user.username,
+      mentionedDisplayName: user.display_name,
+    };
+    setOverlays(prev => [...prev, newOverlay]);
+    setSelectedId(newOverlay.id);
+    setSelectedBg(false);
+    setMentionSearch('');
+    setMentionResults([]);
+  };
+
+  const handleDrawingStart = (pos: { x: number; y: number }) => {
+    isDrawingRef.current = true;
+    if (drawingLineRef.current) {
+      drawingLineRef.current.points([pos.x, pos.y, pos.x, pos.y]);
+      drawingLineRef.current.stroke(drawColor);
+      drawingLineRef.current.strokeWidth(brushSize);
+      drawingLineRef.current.globalCompositeOperation(
+        activeDrawTool === 'eraser' ? 'destination-out' : 'source-over'
+      );
+    }
+  };
+
+  const handleDrawingMove = (pos: { x: number; y: number }) => {
+    if (!isDrawingRef.current || !drawingLineRef.current) return;
+    const oldPoints = drawingLineRef.current.points();
+    const newPoints = [...oldPoints, pos.x, pos.y];
+    drawingLineRef.current.points(newPoints);
+    drawingLineRef.current.getLayer()?.batchDraw();
+  };
+
+  const handleDrawingEnd = () => {
+    if (!isDrawingRef.current) return;
+    isDrawingRef.current = false;
+    if (drawingLineRef.current) {
+      const points = drawingLineRef.current.points();
+      if (points.length >= 4) {
+        const stroke: DrawingStroke = {
+          id: createId(),
+          points: [...points],
+          color: drawColor,
+          size: brushSize,
+          tool: activeDrawTool,
+        };
+        setStrokes(prev => {
+          setUndoStack(u => [...u, prev]);
+          return [...prev, stroke];
+        });
+        setRedoStack([]);
+      }
+      drawingLineRef.current.points([]);
+    }
+  };
+
+  const handleUndo = () => {
+    if (strokes.length === 0) return;
+    setRedoStack(prev => [...prev, strokes]);
+    setStrokes(prev => prev.slice(0, -1));
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const last = redoStack[redoStack.length - 1];
+    setRedoStack(prev => prev.slice(0, -1));
+    setStrokes(last);
+  };
+
   const handleCreate = async () => {
     if (!file) return;
     setUploading(true);
     setUploadProgress('Uploading...');
     try {
+      const mentionOverlays = overlays.filter(o => o.type === 'mention');
       const captionData: any = {
         overlays: overlays.map((o) => ({
           id: o.id, type: o.type, x: o.x, y: o.y, rotation: o.rotation,
@@ -565,10 +718,14 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
           text: o.text, fontFamily: o.fontFamily, fontSize: o.fontSize,
           fontWeight: o.fontWeight, fontStyle: o.fontStyle, textDecoration: o.textDecoration,
           textAlign: o.textAlign, fill: o.fill, src: o.src, emoji: o.emoji,
+          mentionedUserId: o.mentionedUserId,
+          mentionedUsername: o.mentionedUsername,
+          mentionedDisplayName: o.mentionedDisplayName,
         })),
         bgTransform,
         mediaRotation,
         videoMuted,
+        drawings: strokes,
       };
       const result = await createStory(
         file,
@@ -576,7 +733,21 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
         music?.url, music?.title, 'public',
         music ? { startAt: music.startAt, duration: music.duration, source_type: music.source_type, video_id: music.video_id, thumbnail_url: music.thumbnail_url } : undefined,
       );
-      if (result) { reset(); onOpenChange(false); }
+      if (result) {
+        if (mentionOverlays.length > 0) {
+          const { error: mentionError } = await supabase
+            .from('story_mentions')
+            .insert(mentionOverlays.map(o => ({
+              story_id: result.id,
+              mentioned_user_id: o.mentionedUserId,
+              created_by: user!.id,
+              position_x: Math.round(o.x),
+              position_y: Math.round(o.y),
+            })));
+          if (mentionError) console.error('[CreateStory] Failed to save mentions:', mentionError);
+        }
+        reset(); onOpenChange(false);
+      }
     } catch (error) {
       console.error('[CreateStoryDialog] Failed:', error);
       alert(error instanceof Error ? error.message : 'Failed to create story');
@@ -636,8 +807,15 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
                   height={STAGE_H * scale}
                   scaleX={scale}
                   scaleY={scale}
-                  onClick={handleStageClick}
-                  onTap={handleStageClick}
+                  onClick={!drawingMode ? handleStageClick : undefined}
+                  onTap={!drawingMode ? handleStageClick : undefined}
+                  onMouseDown={drawingMode ? (e) => handleDrawingStart(e.target.getStage().getPointerPosition()) : undefined}
+                  onMouseMove={drawingMode ? (e) => handleDrawingMove(e.target.getStage().getPointerPosition()) : undefined}
+                  onMouseUp={drawingMode ? handleDrawingEnd : undefined}
+                  onMouseLeave={drawingMode ? handleDrawingEnd : undefined}
+                  onTouchStart={drawingMode ? (e) => handleDrawingStart(e.target.getStage().getPointerPosition()) : undefined}
+                  onTouchMove={drawingMode ? (e) => handleDrawingMove(e.target.getStage().getPointerPosition()) : undefined}
+                  onTouchEnd={drawingMode ? handleDrawingEnd : undefined}
                 >
                   {/* Layer 1: Background blur - cover fill + dark overlay */}
                   <Layer>
@@ -649,7 +827,7 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
                     )}
                   </Layer>
                   {/* Layer 2: Main draggable media + overlays */}
-                  <Layer>
+                  <Layer listening={!drawingMode}>
                     {previewUrl && (
                       <Group
                         id="__bg__"
@@ -763,6 +941,38 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
                               <KonvaImageLoader src={overlay.src!} width={overlay.width} height={overlay.height} />
                             </Group>
                           );
+                        case 'mention':
+                          return (
+                            <Group
+                              key={overlay.id}
+                              id={overlay.id}
+                              x={overlay.x}
+                              y={overlay.y}
+                              rotation={overlay.rotation}
+                              scaleX={overlay.scaleX}
+                              scaleY={overlay.scaleY}
+                              draggable
+                              onClick={() => { setSelectedId(overlay.id); setSelectedBg(false); }}
+                              onTap={() => { setSelectedId(overlay.id); setSelectedBg(false); }}
+                              onDragEnd={(e) => handleDragEnd(overlay.id, e)}
+                              onTransformEnd={(e) => handleTransformEnd(overlay.id, e)}
+                            >
+                              <KonvaText
+                                text={overlay.text || ''}
+                                fontFamily="Inter"
+                                fontSize={18}
+                                fontStyle="700"
+                                fill="#FFFFFF"
+                                shadowColor="rgba(0,0,0,0.5)"
+                                shadowBlur={4}
+                                shadowOffset={{ x: 1, y: 2 }}
+                                width={overlay.width}
+                                height={overlay.height}
+                                align="center"
+                                verticalAlign="middle"
+                              />
+                            </Group>
+                          );
                         default:
                           return null;
                       }
@@ -775,8 +985,45 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
                       }}
                     />
                   </Layer>
+                  {/* Layer 3: Drawings */}
+                  <Layer>
+                    {strokes.map((stroke) => {
+                      const isEraser = stroke.tool === 'eraser';
+                      return (
+                        <Line
+                          key={stroke.id}
+                          points={stroke.points}
+                          stroke={isEraser ? 'black' : stroke.color}
+                          strokeWidth={stroke.tool === 'highlighter' ? stroke.size * 2.5 : stroke.size}
+                          opacity={stroke.tool === 'highlighter' ? 0.35 : 1}
+                          globalCompositeOperation={isEraser ? 'destination-out' : 'source-over'}
+                          lineCap="round"
+                          lineJoin="round"
+                          tension={0.5}
+                          shadowColor={stroke.tool === 'neon' ? stroke.color : undefined}
+                          shadowBlur={stroke.tool === 'neon' ? 15 : undefined}
+                          shadowOpacity={stroke.tool === 'neon' ? 1 : undefined}
+                          listening={false}
+                        />
+                      );
+                    })}
+                    <Line
+                      ref={drawingLineRef}
+                      stroke={drawColor}
+                      strokeWidth={activeDrawTool === 'highlighter' ? brushSize * 2.5 : brushSize}
+                      opacity={activeDrawTool === 'highlighter' ? 0.35 : 1}
+                      globalCompositeOperation={activeDrawTool === 'eraser' ? 'destination-out' : 'source-over'}
+                      lineCap="round"
+                      lineJoin="round"
+                      tension={0.5}
+                      shadowColor={activeDrawTool === 'neon' ? drawColor : undefined}
+                      shadowBlur={activeDrawTool === 'neon' ? 15 : undefined}
+                      shadowOpacity={activeDrawTool === 'neon' ? 1 : undefined}
+                      listening={false}
+                    />
+                  </Layer>
                 </Stage>
-                {selectedId && (
+                {selectedId && !drawingMode && (
                   <div className="absolute top-2 left-2 z-10">
                     <Button variant="destructive" size="icon" className="w-7 h-7" onClick={handleDeleteSelected}>
                       <Trash2 className="h-3.5 w-3.5" />
@@ -788,16 +1035,23 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
 
             <div className="w-full md:w-80 border-t md:border-t-0 md:border-l border-border bg-background flex flex-col">
               <div className="flex border-b border-border">
-                {(['text', 'stickers', 'music'] as const).map((tab) => (
+                {(['text', 'stickers', 'mentions', 'draw', 'music'] as const).map((tab) => (
                   <button
                     key={tab}
-                    onClick={() => setActiveTab(tab)}
+                    onClick={() => {
+                      setActiveTab(tab);
+                      setDrawingMode(tab === 'draw');
+                      setSelectedId(null);
+                      setSelectedBg(false);
+                    }}
                     className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-colors capitalize ${
                       activeTab === tab ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     {tab === 'text' && <Type className="h-4 w-4" />}
                     {tab === 'stickers' && <span className="text-base">😀</span>}
+                    {tab === 'mentions' && <AtSign className="h-4 w-4" />}
+                    {tab === 'draw' && <Pen className="h-4 w-4" />}
                     {tab === 'music' && <Music className="h-4 w-4" />}
                     {tab}
                   </button>
@@ -906,6 +1160,138 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
                       </Button>
                       <input ref={stickerInputRef} type="file" className="hidden" accept="image/*" onChange={handleAddImageSticker} />
                     </div>
+                  </div>
+                )}
+
+                {activeTab === 'mentions' && (
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-xs font-medium mb-2 block">Search People</Label>
+                      <Input
+                        placeholder="Search by name or @username..."
+                        value={mentionSearch}
+                        onChange={(e) => setMentionSearch(e.target.value)}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      {mentionSearching ? (
+                        <p className="text-xs text-muted-foreground text-center py-4">Searching...</p>
+                      ) : mentionResults.length > 0 ? (
+                        mentionResults.map((u) => (
+                          <button
+                            key={u.id}
+                            onClick={() => handleSelectMention(u)}
+                            className="w-full flex items-center gap-3 p-2 hover:bg-accent rounded-lg transition-colors"
+                          >
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={u.profile_pic || undefined} />
+                              <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                                {u.display_name[0]?.toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="text-left">
+                              <p className="font-semibold text-sm">{u.display_name}</p>
+                              <p className="text-xs text-muted-foreground">@{u.username}</p>
+                            </div>
+                          </button>
+                        ))
+                      ) : mentionSearch.trim() ? (
+                        <p className="text-xs text-muted-foreground text-center py-4">No users found</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground text-center py-4">
+                          Type a name or username to mention someone
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'draw' && (
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-xs font-medium mb-2 block">Tool</Label>
+                      <div className="flex gap-1">
+                        {DRAW_TOOLS.map((tool) => (
+                          <Button
+                            key={tool.id}
+                            variant={activeDrawTool === tool.id ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-8 flex-1 text-xs"
+                            onClick={() => setActiveDrawTool(tool.id as 'pen' | 'neon' | 'highlighter')}
+                          >
+                            {tool.label}
+                          </Button>
+                        ))}
+                        <Button
+                          variant={activeDrawTool === 'eraser' ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-8 px-2 text-xs"
+                          onClick={() => setActiveDrawTool('eraser')}
+                        >
+                          <Eraser className="h-3.5 w-3.5 mr-1" />
+                          Eraser
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium mb-2 block">Color</Label>
+                      <div className="flex gap-1 flex-wrap">
+                        {DRAW_COLORS.map((color) => (
+                          <button
+                            key={color}
+                            className={`w-6 h-6 rounded-full border-2 ${drawColor === color ? 'border-primary scale-110' : 'border-transparent'}`}
+                            style={{ backgroundColor: color }}
+                            onClick={() => setDrawColor(color)}
+                          />
+                        ))}
+                        <input
+                          type="color"
+                          value={drawColor}
+                          onChange={(e) => setDrawColor(e.target.value)}
+                          className="w-6 h-6 rounded-full cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium mb-2 block">Size: {brushSize}px</Label>
+                      <Slider
+                        value={[brushSize]}
+                        onValueChange={([v]) => setBrushSize(v)}
+                        min={2}
+                        max={30}
+                        step={1}
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={handleUndo}
+                        disabled={strokes.length === 0}
+                      >
+                        <Undo2 className="h-4 w-4 mr-1.5" />
+                        Undo
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={handleRedo}
+                        disabled={redoStack.length === 0}
+                      >
+                        <Redo2 className="h-4 w-4 mr-1.5" />
+                        Redo
+                      </Button>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground text-center pt-2">
+                      Draw directly on the story canvas
+                    </p>
                   </div>
                 )}
 
