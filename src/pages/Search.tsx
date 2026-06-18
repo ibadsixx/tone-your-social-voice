@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import ExplorePostGrid from '@/components/ExplorePostGrid';
 import PostModal from '@/components/PostModal';
 import { cn } from '@/lib/utils';
+import PageContainer from '@/components/PageContainer';
 
 const Search = () => {
   const [query, setQuery] = useState('');
@@ -274,10 +275,10 @@ const Search = () => {
 
   return (
     <>
-      <div className="max-w-4xl mx-auto">
+      <PageContainer size="md">
         <div className="relative" ref={resultsRef}>
           {/* Search Input - Fixed at top */}
-          <div className="sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-40 border-b px-6 py-4">
+          <div className="sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-40 -mx-4 md:-mx-6 border-b px-4 md:px-6 py-4">
             <div className="relative">
               <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -352,13 +353,13 @@ const Search = () => {
           </div>
 
           {/* Content Area */}
-          <div className="px-6 py-4">
+          <div className="py-4">
             <AnimatePresence mode="wait">
               {!showResults && !query && <ExploreSection />}
             </AnimatePresence>
           </div>
         </div>
-      </div>
+      </PageContainer>
 
       {/* Post Modal */}
       <PostModal 

@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import PageContainer from '@/components/PageContainer';
 import { usePhotoUpload } from '@/hooks/usePhotoUpload';
 import { supabase } from '@/integrations/supabase/client';
 import PhotoUploadDialog from '@/components/PhotoUploadDialog';
@@ -846,7 +847,7 @@ const Settings = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto p-6">
+      <PageContainer>
         <div className="flex gap-6">
           {/* Left Sidebar - icon only */}
           <div className="w-12 shrink-0">
@@ -906,7 +907,7 @@ const Settings = () => {
             </div>
           </div>
         </div>
-      </div>
+      </PageContainer>
     </div>
   );
 };

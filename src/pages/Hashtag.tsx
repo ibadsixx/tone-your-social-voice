@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import Post from '@/components/Post';
 import { Loader2, Hash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import PageContainer from '@/components/PageContainer';
 
 const Hashtag = () => {
   const { tag } = useParams<{ tag: string }>();
@@ -21,7 +22,7 @@ const Hashtag = () => {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-4">
+    <PageContainer size="sm">
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
@@ -69,7 +70,7 @@ const Hashtag = () => {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 };
 

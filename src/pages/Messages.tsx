@@ -368,6 +368,11 @@ const Messages = () => {
     navigate(`/messages/${conversationId}`);
   };
 
+  const handleBackToList = () => {
+    setActiveConversationId(null);
+    navigate('/messages');
+  };
+
   const handleSendMessage = async (content?: string, mediaUrl?: string, replyToId?: string) => {
     if (!activeConversationId || !currentUserId) return;
 
@@ -442,7 +447,9 @@ const Messages = () => {
   return (
     <div className="h-[calc(100vh-4rem)] flex bg-background overflow-hidden">
       {/* Conversations Sidebar */}
-      <div className="w-80 lg:w-96 border-r border-border flex flex-col bg-card shrink-0">
+      <div className={`w-full md:w-80 lg:w-96 border-r border-border flex-col bg-card shrink-0 ${
+        activeConversationId ? 'hidden md:flex' : 'flex'
+      }`}>
         {/* Header */}
         <div className="p-4 border-b border-border">
           <div className="flex items-center mb-4">
@@ -868,7 +875,9 @@ const Messages = () => {
       </div>
 
       {/* Chat Window */}
-      <div className="flex-1 min-w-0 h-full overflow-hidden">
+      <div className={`flex-1 min-w-0 h-full overflow-hidden ${
+        !activeConversationId ? 'hidden md:flex' : 'flex'
+      }`}>
         <ChatWindow
           key={activeConversationId || 'no-conversation'}
           otherUser={activeConversation?.other_user || null}
@@ -892,6 +901,7 @@ const Messages = () => {
             refetchConversations();
             navigate('/messages');
           }}
+          onBack={handleBackToList}
           hasMoreMessages={hasMoreMessages}
           loading={loading}
           previewMode={previewMode}

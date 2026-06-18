@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSavedPostsList } from '@/hooks/useSavedPostsList';
 import Post from '@/components/Post';
 import { Loader2, Bookmark } from 'lucide-react';
+import PageContainer from '@/components/PageContainer';
 
 const Saved = () => {
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ const Saved = () => {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-4">
+    <PageContainer size="sm">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <Bookmark className="h-6 w-6" />
@@ -57,7 +58,7 @@ const Saved = () => {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 };
 

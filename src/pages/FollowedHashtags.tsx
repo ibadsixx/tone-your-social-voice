@@ -5,6 +5,7 @@ import { Loader2, Hash, Heart } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
+import PageContainer from '@/components/PageContainer';
 
 const FollowedHashtags = () => {
   const { user } = useAuth();
@@ -12,7 +13,7 @@ const FollowedHashtags = () => {
 
   if (!user) {
     return (
-      <div className="max-w-2xl mx-auto p-4">
+      <PageContainer size="sm">
         <Card className="p-8 text-center">
           <Hash className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
           <h2 className="text-xl font-semibold text-foreground mb-2">
@@ -25,7 +26,7 @@ const FollowedHashtags = () => {
             Sign In
           </Button>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -38,7 +39,7 @@ const FollowedHashtags = () => {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-4">
+    <PageContainer size="sm">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <Heart className="h-6 w-6 text-primary fill-primary" />
@@ -99,7 +100,7 @@ const FollowedHashtags = () => {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 };
 

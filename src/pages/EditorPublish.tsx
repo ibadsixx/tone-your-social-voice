@@ -21,6 +21,7 @@ import {
   ShoppingBag, Calendar as CalendarIcon, MessageSquareOff,
   Eye, EyeOff, Share2, X, ChevronRight, Clock
 } from 'lucide-react';
+import PageContainer from '@/components/PageContainer';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
@@ -654,7 +655,7 @@ export default function EditorPublish() {
 
       {/* Main content */}
       <ScrollArea className="h-[calc(100vh-3.5rem)]">
-        <div className="max-w-4xl mx-auto p-6 grid md:grid-cols-2 gap-6">
+        <PageContainer size="md" className="grid md:grid-cols-2 gap-6">
           {/* Video Preview */}
           <Card>
             <CardHeader>
@@ -1067,7 +1068,7 @@ export default function EditorPublish() {
               <p>Last saved: {new Date(project.updated_at).toLocaleString()}</p>
             </div>
           </div>
-        </div>
+        </PageContainer>
       </ScrollArea>
 
       {/* Modals */}

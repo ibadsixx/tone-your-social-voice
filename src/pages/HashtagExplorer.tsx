@@ -8,6 +8,7 @@ import { Hash, TrendingUp, Clock, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import PageContainer from '@/components/PageContainer';
 
 export default function HashtagExplorer() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,7 +23,7 @@ export default function HashtagExplorer() {
   }));
 
   return (
-    <div className="container max-w-4xl py-8">
+    <PageContainer size="md">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Explore Hashtags</h1>
         <p className="text-muted-foreground">
@@ -82,7 +83,7 @@ export default function HashtagExplorer() {
             />
           </TabsContent>
         </Tabs>
-      </div>
+      </PageContainer>
     );
   }
 

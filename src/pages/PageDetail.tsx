@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 
+import PageContainer from '@/components/PageContainer';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   ArrowLeft,
@@ -726,8 +727,8 @@ const PageDetail = () => {
   });
 
   return (
-    <div className="max-w-5xl mx-auto pb-10">
-      <div className="px-4 pt-4">
+    <PageContainer size="lg" className="pb-10">
+      <div className="px-0 pt-4">
         <Button variant="ghost" size="sm" onClick={() => navigate('/pages')}>
           <ArrowLeft className="h-4 w-4 mr-2" /> Back to Pages
         </Button>
@@ -1892,7 +1893,7 @@ const PageDetail = () => {
         </DialogContent>
       </Dialog>
 
-    </div>
+    </PageContainer>
   );
 };
 

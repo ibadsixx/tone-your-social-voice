@@ -8,6 +8,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import ProfileHeader from '@/components/ProfileHeader';
 import ProfileTabs from '@/components/ProfileTabs';
+import PageContainer from '@/components/PageContainer';
 
 
 interface Profile {
@@ -77,9 +78,9 @@ const ProfilePage = () => {
 
   if (loading) {
     return (
-      <div className="p-6 max-w-4xl mx-auto">
+      <PageContainer size="md">
         <div className="text-center">Loading profile...</div>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -90,7 +91,7 @@ const ProfilePage = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <PageContainer size="md" className="space-y-6">
       {/* Back Button */}
       {!isOwnProfile && (
         <Button variant="ghost" onClick={() => navigate(-1)}>
@@ -112,7 +113,7 @@ const ProfilePage = () => {
 
       {/* Profile Tabs */}
       <ProfileTabs profileId={profile.id} isOwnProfile={isOwnProfile} />
-    </div>
+    </PageContainer>
   );
 };
 

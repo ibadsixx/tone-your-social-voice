@@ -16,6 +16,8 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import GiveFeedbackDialog from '@/components/GiveFeedbackDialog';
 import FriendRequestsDropdown from '@/components/FriendRequestsDropdown';
+import MobileNav from '@/components/MobileNav';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { 
   Home, 
   MessageCircle, 
@@ -40,6 +42,9 @@ import {
   ArrowLeftRight,
   Bell,
   Monitor,
+  Image,
+  Video,
+  Clapperboard,
 } from 'lucide-react';
 
 const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
@@ -286,6 +291,7 @@ const Layout = () => {
   const { actingPage, switchToPersonal } = usePageSwitch();
   const navigate = useNavigate();
   const location = useLocation();
+  const isMobile = useIsMobile();
 
   if (loading) {
     return (
@@ -320,12 +326,31 @@ const Layout = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border/50 bg-card/80 backdrop-blur-lg supports-[backdrop-filter]:bg-card/60 shadow-tone">
-        <div className="container mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="container mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center">
             <img src="/favicon.ico" alt="Tone" className="h-8 w-8" />
           </Link>
           
           <div className="flex items-center gap-3">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
+                  <Plus className="h-5 w-5" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-40 p-1">
+                <Link to="/" className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm">
+                  <Image className="h-4 w-4" /> Post
+                </Link>
+                <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm text-left">
+                  <Video className="h-4 w-4" /> Story
+                </button>
+                <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm text-left">
+                  <Clapperboard className="h-4 w-4" /> Reel
+                </button>
+              </PopoverContent>
+            </Popover>
+
             <NotificationsDropdown />
             
             <FriendRequestsDropdown />
@@ -361,9 +386,9 @@ const Layout = () => {
       )}
 
       <div className="flex">
-        {/* Sidebar - hidden on settings pages */}
+        {/* Sidebar - hidden on mobile, hidden on settings pages */}
         {!location.pathname.startsWith('/settings') && (
-          <aside className="w-16 h-[calc(100vh-4rem)] border-r border-border/50 bg-card/50 sticky top-16">
+          <aside className="hidden md:block w-16 h-[calc(100vh-4rem)] border-r border-border/50 bg-card/50 sticky top-16">
             <nav className="flex flex-col items-center gap-1 py-4">
               {navigation.map((item) => {
                 const Icon = item.icon;
@@ -394,10 +419,13 @@ const Layout = () => {
         )}
 
         {/* Main Content */}
-        <main className={`flex-1 min-h-[calc(100vh-4rem)] ${location.pathname.startsWith('/settings') ? '' : location.pathname.startsWith('/messages') ? '' : 'xl:mr-[260px]'}`}>
+        <main className={`flex-1 min-h-[calc(100vh-4rem)] pb-20 md:pb-0 ${location.pathname.startsWith('/settings') ? '' : location.pathname.startsWith('/messages') ? '' : 'xl:mr-[260px]'}`}>
           <Outlet />
         </main>
       </div>
+
+      {/* Bottom navigation — mobile only */}
+      <MobileNav />
 
       {/* Chat windows — always visible */}
       <ChatWindowManager />

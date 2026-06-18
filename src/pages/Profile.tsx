@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import PageContainer from '@/components/PageContainer';
 
 // This component now redirects to the dynamic profile page
 const Profile = () => {
@@ -35,9 +36,9 @@ const Profile = () => {
   }, [user, navigate]);
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <PageContainer size="sm">
       <div className="text-center">Loading profile...</div>
-    </div>
+    </PageContainer>
   );
 };
 

@@ -6,6 +6,7 @@ import { useGroups } from '@/hooks/useGroups';
 import { GroupCard } from '@/components/groups/GroupCard';
 import { CreateGroupDialog } from '@/components/groups/CreateGroupDialog';
 import { useAuth } from '@/hooks/useAuth';
+import PageContainer from '@/components/PageContainer';
 
 const Groups = () => {
   const { user } = useAuth();
@@ -23,24 +24,24 @@ const Groups = () => {
 
   if (loading) {
     return (
-      <div className="p-6 max-w-6xl mx-auto">
+      <PageContainer size="xl">
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (!user) {
     return (
-      <div className="p-6 max-w-6xl mx-auto">
+      <PageContainer size="xl">
         <Card>
           <CardContent className="py-12 text-center">
             <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p className="text-muted-foreground">Please sign in to view and join groups</p>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -51,7 +52,7 @@ const Groups = () => {
   const managedGroups = getManagedGroups();
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <PageContainer size="xl" className="space-y-6">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -252,7 +253,7 @@ const Groups = () => {
           )}
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 };
 

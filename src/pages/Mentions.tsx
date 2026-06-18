@@ -6,13 +6,14 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { MentionText } from '@/components/MentionText';
 import { formatDistanceToNow } from 'date-fns';
 import { AtSign, MessageSquare, FileText } from 'lucide-react';
+import PageContainer from '@/components/PageContainer';
 
 const Mentions = () => {
   const { mentions, loading } = useMentionsFeed();
 
   if (loading) {
     return (
-      <div className="container max-w-2xl mx-auto py-8 px-4">
+      <PageContainer size="sm">
         <h1 className="text-3xl font-bold mb-6 bg-gradient-to-r from-tone-purple to-tone-blue bg-clip-text text-transparent">
           Mentions
         </h1>
@@ -30,13 +31,13 @@ const Mentions = () => {
             </Card>
           ))}
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (mentions.length === 0) {
     return (
-      <div className="container max-w-2xl mx-auto py-8 px-4">
+      <PageContainer size="sm">
         <h1 className="text-3xl font-bold mb-6 bg-gradient-to-r from-tone-purple to-tone-blue bg-clip-text text-transparent">
           Mentions
         </h1>
@@ -47,12 +48,12 @@ const Mentions = () => {
             When someone mentions you in a post or comment, it will appear here.
           </p>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="container max-w-2xl mx-auto py-8 px-4">
+    <PageContainer size="sm">
       <h1 className="text-3xl font-bold mb-6 bg-gradient-to-r from-tone-purple to-tone-blue bg-clip-text text-transparent">
         Mentions
       </h1>
@@ -124,8 +125,8 @@ const Mentions = () => {
           );
         })}
       </div>
-    </div>
-  );
-};
-
-export default Mentions;
+      </PageContainer>
+    );
+  };
+  
+  export default Mentions;

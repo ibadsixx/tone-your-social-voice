@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import Post from '@/components/Post';
 import { usePost } from '@/hooks/usePost';
 import { useAuth } from '@/hooks/useAuth';
+import PageContainer from '@/components/PageContainer';
 
 const PostPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -25,7 +26,7 @@ const PostPage = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <div className="max-w-2xl mx-auto p-4">
+        <PageContainer size="sm">
           <div className="mb-4">
             <Skeleton className="h-10 w-32" />
           </div>
@@ -33,7 +34,7 @@ const PostPage = () => {
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-64 w-full" />
           </div>
-        </div>
+        </PageContainer>
       </div>
     );
   }
@@ -57,7 +58,7 @@ const PostPage = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-2xl mx-auto p-4">
+      <PageContainer size="sm">
         <Button
           variant="ghost"
           onClick={() => navigate('/')}
@@ -96,7 +97,7 @@ const PostPage = () => {
           likes={post.likes}
           comments={post.comments}
         />
-      </div>
+      </PageContainer>
     </div>
   );
 };

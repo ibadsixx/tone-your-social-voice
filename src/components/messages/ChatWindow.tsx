@@ -4,7 +4,7 @@ import { CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Phone, Video, Info, Users, Flame, X, Camera, Hash, UserPlus, UserCheck, Megaphone, ShieldCheck, BarChart3, MessageSquare } from 'lucide-react';
+import { Phone, Video, Info, Users, Flame, X, Camera, Hash, UserPlus, UserCheck, Megaphone, ShieldCheck, BarChart3, MessageSquare, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { MessageBubble, Message } from './MessageBubble';
@@ -51,6 +51,7 @@ interface ChatWindowProps {
   hasMoreMessages: boolean;
   loading?: boolean;
   previewMode?: boolean;
+  onBack?: () => void;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -69,7 +70,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onClearHistory,
   hasMoreMessages,
   loading = false,
-  previewMode = false
+  previewMode = false,
+  onBack
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -480,6 +482,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         )}>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="md:hidden h-9 w-9 flex items-center justify-center rounded-full hover:bg-accent transition-colors shrink-0"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+            )}
             {isChannel ? (
               <div className="w-10 h-10 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
                 <Hash className="h-5 w-5 text-orange-500" />

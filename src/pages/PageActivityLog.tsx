@@ -13,6 +13,7 @@ import {
   Calendar,
   MessageSquare,
 } from 'lucide-react';
+import PageContainer from '@/components/PageContainer';
 
 interface PageActivityData {
   id: string;
@@ -118,18 +119,18 @@ const PageActivityLog = () => {
 
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto p-6">
+      <PageContainer size="sm">
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (!page) return null;
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
+    <PageContainer size="sm" className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" onClick={() => navigate(`/pages/${page.id}`)}>
           <ArrowLeft className="h-4 w-4 mr-2" /> Back
@@ -191,7 +192,7 @@ const PageActivityLog = () => {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 };
 

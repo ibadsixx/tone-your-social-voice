@@ -30,6 +30,7 @@ import InviteToGroupDialog from '@/components/groups/InviteToGroupDialog';
 import ShareGroupDialog from '@/components/groups/ShareGroupDialog';
 import GroupSearchDialog from '@/components/groups/GroupSearchDialog';
 import GroupYourContent from '@/components/groups/GroupYourContent';
+import PageContainer from '@/components/PageContainer';
 import GroupMediaFiles from '@/components/groups/GroupMediaFiles';
 import GroupNotificationSettings from '@/components/groups/GroupNotificationSettings';
 import ReportGroupDialog from '@/components/groups/ReportGroupDialog';
@@ -480,9 +481,9 @@ const GroupDetailPage = () => {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto">
+      <PageContainer size="md">
         <Skeleton className="w-full h-64 rounded-b-xl" />
-        <div className="px-6 py-4 space-y-3">
+        <div className="py-4 space-y-3">
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-5 w-48" />
           <div className="flex gap-2">
@@ -491,15 +492,15 @@ const GroupDetailPage = () => {
             <Skeleton className="h-8 w-8 rounded-full" />
           </div>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (!group) {
     return (
-      <div className="max-w-4xl mx-auto p-6 text-center">
+      <PageContainer size="md">
         <Card>
-          <CardContent className="py-12">
+          <CardContent className="py-12 text-center">
             <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p className="text-muted-foreground">Group not found</p>
             <Button variant="outline" className="mt-4" onClick={() => navigate('/groups')}>
@@ -507,7 +508,7 @@ const GroupDetailPage = () => {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -524,7 +525,7 @@ const GroupDetailPage = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <PageContainer size="md">
       {/* Cover Photo Area */}
       <div className="relative w-full h-56 md:h-72 rounded-b-xl overflow-hidden group/cover">
         {group.cover_image ? (
@@ -812,7 +813,7 @@ const GroupDetailPage = () => {
         onOpenChange={setReportGroupOpen}
         groupName={group?.name}
       />
-    </div>
+    </PageContainer>
   );
 };
 

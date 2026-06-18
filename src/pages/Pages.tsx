@@ -6,6 +6,7 @@ import { usePages, Page } from '@/hooks/usePages';
 import { PageCard } from '@/components/PageCard';
 import { CreatePageDialog } from '@/components/CreatePageDialog';
 import { motion } from 'framer-motion';
+import PageContainer from '@/components/PageContainer';
 
 const Pages = () => {
   const [activeTab, setActiveTab] = useState('suggested');
@@ -64,7 +65,7 @@ const Pages = () => {
   );
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <PageContainer>
       {/* Header */}
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
@@ -285,8 +286,8 @@ const Pages = () => {
           </motion.div>
         </TabsContent>
       </Tabs>
-    </div>
-  );
-};
-
-export default Pages;
+      </PageContainer>
+    );
+  };
+  
+  export default Pages;

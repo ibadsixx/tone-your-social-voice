@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import PageContainer from '@/components/PageContainer';
 
 export default function HashtagAnalytics() {
   const { tag } = useParams<{ tag: string }>();
@@ -13,7 +14,7 @@ export default function HashtagAnalytics() {
 
   if (loading) {
     return (
-      <div className="container max-w-6xl py-8">
+      <PageContainer size="xl">
         <Skeleton className="h-8 w-64 mb-8" />
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-6">
           {[...Array(4)].map((_, i) => (
@@ -25,13 +26,13 @@ export default function HashtagAnalytics() {
             </Card>
           ))}
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (!analytics) {
     return (
-      <div className="container max-w-6xl py-8">
+      <PageContainer size="xl">
         <div className="text-center py-12">
           <Hash className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
           <h2 className="text-2xl font-bold mb-2">Hashtag not found</h2>
@@ -45,12 +46,12 @@ export default function HashtagAnalytics() {
             </Link>
           </Button>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="container max-w-6xl py-8">
+    <PageContainer size="xl">
         <div className="mb-8 flex items-center justify-between">
           <div>
             <Button asChild variant="ghost" size="sm" className="mb-2">
@@ -242,6 +243,6 @@ export default function HashtagAnalytics() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }

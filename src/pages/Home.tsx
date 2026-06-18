@@ -14,6 +14,7 @@ import Stories from '@/components/Stories';
 
 import HorizontalReelsSection from '@/components/reels/HorizontalReelsSection';
 import { PeopleYouMayKnow } from '@/components/PeopleYouMayKnow';
+import PageContainer from '@/components/PageContainer';
 
 const Home = () => {
   const { user } = useAuth();
@@ -35,17 +36,17 @@ const Home = () => {
 
   if (loading && posts.length === 0) {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
+      <PageContainer size="sm">
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (!user) {
     return (
-      <div className="p-6 max-w-2xl mx-auto space-y-6">
+      <PageContainer size="sm" className="space-y-6">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -63,7 +64,7 @@ const Home = () => {
             Get Started
           </Button>
         </motion.div>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -75,7 +76,7 @@ const Home = () => {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <PageContainer>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Main Feed */}
           <div className="lg:col-span-2 space-y-6">
@@ -85,7 +86,7 @@ const Home = () => {
               transition={{ duration: 0.5 }}
               className="space-y-6"
             >
-              <Card className="p-6 bg-card/80 backdrop-blur-sm border-border/50 shadow-tone">
+              <Card className="hidden md:block p-6 bg-card/80 backdrop-blur-sm border-border/50 shadow-tone">
                 <NewPost onCreatePost={handleCreatePost} />
               </Card>
 
@@ -202,7 +203,7 @@ const Home = () => {
             </div>
           </div>
         </div>
-      </div>
+      </PageContainer>
     </div>
   );
 };
