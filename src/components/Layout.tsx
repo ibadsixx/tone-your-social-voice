@@ -93,15 +93,6 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
 
   const firstPage = ownedPages[0] || null;
 
-  const avatar = (
-    <Avatar className="h-9 w-9 border-2 border-tone-purple/20 ring-2 ring-transparent hover:ring-tone-purple/30 transition-all cursor-pointer">
-      <AvatarImage src={actingPage?.profile_pic || profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
-      <AvatarFallback className="bg-tone-gradient text-white">
-        {actingPage ? actingPage.name.charAt(0).toUpperCase() : profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
-      </AvatarFallback>
-    </Avatar>
-  );
-
   const defaultMenu = (
     <div className="py-2">
       <div className="px-2">
@@ -286,13 +277,8 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
   return (
     <>
     <GiveFeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
-    <Popover>
-      <PopoverTrigger asChild>{avatar}</PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-0 max-h-[80vh] overflow-y-auto">
-        {menu && <div className="border-b">{menu}</div>}
-        {defaultMenu}
-      </PopoverContent>
-    </Popover>
+    {menu && <div className="border-b">{menu}</div>}
+    {defaultMenu}
     </>
   );
 };
@@ -377,7 +363,21 @@ const Layout = () => {
             
             <FriendRequestsDropdown />
 
-            <HeaderAvatar profile={profile} user={user} onSignOut={handleSignOut} />
+            <div className="hidden md:flex">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Avatar className="h-9 w-9 border-2 border-tone-purple/20 ring-2 ring-transparent hover:ring-tone-purple/30 transition-all cursor-pointer">
+                    <AvatarImage src={actingPage?.profile_pic || profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
+                    <AvatarFallback className="bg-tone-gradient text-white">
+                      {actingPage ? actingPage.name.charAt(0).toUpperCase() : profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-80 p-0 max-h-[80vh] overflow-y-auto">
+                  <HeaderAvatar profile={profile} user={user} onSignOut={handleSignOut} />
+                </PopoverContent>
+              </Popover>
+            </div>
 
             <Button variant="ghost" size="sm" onClick={handleSignOut} className="hidden md:flex text-muted-foreground hover:text-destructive transition-colors">
               <LogOut className="h-4 w-4" />
@@ -436,6 +436,7 @@ const Layout = () => {
                   </Tooltip>
                 );
               })}
+
             </nav>
           </aside>
         )}
@@ -447,7 +448,14 @@ const Layout = () => {
       </div>
 
       {/* Bottom navigation — mobile only */}
-      <MobileNav />
+      <MobileNav
+        profilePic={profile?.profile_pic}
+        displayName={profile?.display_name}
+        email={user?.email}
+        actingPageName={actingPage?.name}
+        actingPagePic={actingPage?.profile_pic}
+        avatarMenu={<HeaderAvatar profile={profile} user={user} onSignOut={handleSignOut} />}
+      />
 
       <CreateStoryDialog open={storyDialogOpen} onOpenChange={setStoryDialogOpen} />
       <CreateReelDialog open={reelDialogOpen} onOpenChange={setReelDialogOpen} />
