@@ -462,11 +462,11 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
         <CardHeader className="p-4 md:p-6">
           <CardTitle className="text-base md:text-lg">Contact Information</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6 pt-0 md:pt-0">
+        <CardContent className="space-y-3 md:space-y-6 p-4 md:p-6 pt-0 md:pt-0">
           {/* Email Field */}
-          <div className="space-y-2">
+          <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="email">Email</Label>
+              <Label className="text-xs md:text-sm">Email</Label>
               <PrivacySelector
                 value={formData.email_visibility || 'public'}
                 onChange={(value) => setFormData(prev => ({ ...prev, email_visibility: value }))}
@@ -477,7 +477,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
               type="email"
               value={formData.email || ''}
               disabled
-              className="bg-muted"
+              className="bg-muted h-9 md:h-10"
               placeholder="Linked to your sign-up email"
             />
             <p className="text-xs text-muted-foreground">
@@ -486,9 +486,9 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
           </div>
 
           {/* Phone Field */}
-          <div className="space-y-2">
+          <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Phone</Label>
+              <Label className="text-xs md:text-sm">Phone</Label>
               <PrivacySelector
                 value={formData.phone_visibility || 'public'}
                 onChange={(value) => setFormData(prev => ({ ...prev, phone_visibility: value }))}
@@ -499,7 +499,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                 value={formData.phone_country_code || '+1'} 
                 onValueChange={(value) => setFormData(prev => ({ ...prev, phone_country_code: value }))}
               >
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-20 md:w-32">
                   <SelectValue>
                     {COUNTRY_CODES.find(c => c.code === (formData.phone_country_code || '+1'))?.flag} {formData.phone_country_code || '+1'}
                   </SelectValue>
@@ -520,15 +520,15 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                 placeholder="Phone number"
                 value={formData.phone_number || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, phone_number: e.target.value }))}
-                className="flex-1"
+                className="flex-1 h-9 md:h-10"
               />
             </div>
           </div>
 
           {/* Websites and Social Links */}
-          <div className="space-y-2">
+          <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Websites and Social Links</Label>
+              <Label className="text-xs md:text-sm">Websites and Social Links</Label>
               <PrivacySelector
                 value={formData.websites_visibility || 'public'}
                 onChange={(value) => setFormData(prev => ({ ...prev, websites_visibility: value }))}
@@ -537,42 +537,46 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
             
             {/* Existing Websites */}
             {websites.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-1 md:space-y-2">
                 {websites.map((website, index) => (
-                  <div key={index} className="flex items-center gap-2 p-2 border rounded-md">
-                    <Badge variant="outline" className="text-xs">
-                      {website.type}
-                    </Badge>
-                    <span className="text-sm flex-1">{website.label}</span>
-                    <a 
-                      href={website.url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-xs text-primary hover:underline"
-                    >
-                      {website.url}
-                    </a>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeWebsite(index)}
-                      className="h-6 w-6 p-0"
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
+                  <div key={index} className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 p-2 border rounded-md">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {website.type}
+                      </Badge>
+                      <span className="text-xs md:text-sm flex-1">{website.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <a 
+                        href={website.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline truncate flex-1"
+                      >
+                        {website.url}
+                      </a>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeWebsite(index)}
+                        className="h-6 w-6 p-0 shrink-0"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
 
             {/* Add New Website */}
-            <div className="space-y-2 p-3 border-2 border-dashed rounded-md">
-              <div className="flex gap-2">
+            <div className="space-y-2 p-2 md:p-3 border-2 border-dashed rounded-md">
+              <div className="flex flex-col md:flex-row gap-2">
                 <Select
                   value={newWebsite.type}
                   onValueChange={(value) => setNewWebsite(prev => ({ ...prev, type: value }))}
                 >
-                  <SelectTrigger className="w-32">
+                  <SelectTrigger className="w-full md:w-32">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -590,7 +594,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                   placeholder="Label (e.g., My Blog)"
                   value={newWebsite.label}
                   onChange={(e) => setNewWebsite(prev => ({ ...prev, label: e.target.value }))}
-                  className="flex-1"
+                  className="flex-1 h-9 md:h-10"
                 />
               </div>
               <div className="flex gap-2">
@@ -598,9 +602,9 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                   placeholder="URL (https://...)"
                   value={newWebsite.url}
                   onChange={(e) => setNewWebsite(prev => ({ ...prev, url: e.target.value }))}
-                  className="flex-1"
+                  className="flex-1 h-9 md:h-10"
                 />
-                <Button onClick={addWebsite} size="sm">
+                <Button onClick={addWebsite} size="sm" className="h-9 md:h-10">
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
@@ -614,11 +618,11 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
         <CardHeader className="p-4 md:p-6">
           <CardTitle className="text-base md:text-lg">Basic Information</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6 pt-0 md:pt-0">
+        <CardContent className="space-y-3 md:space-y-6 p-4 md:p-6 pt-0 md:pt-0">
           {/* Gender */}
-          <div className="space-y-2">
+          <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Gender</Label>
+              <Label className="text-xs md:text-sm">Gender</Label>
               <PrivacySelector
                 value={formData.gender_visibility || 'public'}
                 onChange={(value) => setFormData(prev => ({ ...prev, gender_visibility: value }))}
@@ -628,7 +632,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
               value={formData.gender || ''}
               onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}
             >
-              <SelectTrigger>
+              <SelectTrigger className="h-9 md:h-10">
                 <SelectValue placeholder="Select your gender" />
               </SelectTrigger>
               <SelectContent>
@@ -642,15 +646,15 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
           </div>
 
           {/* Pronouns */}
-          <div className="space-y-2">
+          <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Pronouns</Label>
+              <Label className="text-xs md:text-sm">Pronouns</Label>
               <PrivacySelector
                 value={formData.pronouns_visibility || 'public'}
                 onChange={(value) => setFormData(prev => ({ ...prev, pronouns_visibility: value }))}
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col md:flex-row gap-2">
               <Select
                 value={formData.pronouns || ''}
                 onValueChange={(value) => setFormData(prev => ({ 
@@ -658,7 +662,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                   pronouns: value === 'Custom' ? '' : value 
                 }))}
               >
-                <SelectTrigger className="flex-1">
+                <SelectTrigger className="w-full md:flex-1 h-9 md:h-10">
                   <SelectValue placeholder="Select pronouns" />
                 </SelectTrigger>
                 <SelectContent>
@@ -674,16 +678,16 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                   placeholder="Custom pronouns"
                   value={formData.pronouns || ''}
                   onChange={(e) => setFormData(prev => ({ ...prev, pronouns: e.target.value }))}
-                  className="flex-1"
+                  className="w-full md:flex-1 h-9 md:h-10"
                 />
               )}
             </div>
           </div>
 
           {/* Birth Date */}
-          <div className="space-y-2">
+          <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Birth Date</Label>
+              <Label className="text-xs md:text-sm">Birth Date</Label>
               <PrivacySelector
                 value={formData.birth_date_visibility || 'public'}
                 onChange={(value) => setFormData(prev => ({ ...prev, birth_date_visibility: value }))}
@@ -694,7 +698,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                 value={birthDateData.day}
                 onValueChange={(value) => setBirthDate(value, birthDateData.month)}
               >
-                <SelectTrigger className="w-20">
+                <SelectTrigger className="w-16 md:w-20 h-9 md:h-10">
                   <SelectValue placeholder="Day" />
                 </SelectTrigger>
                 <SelectContent>
@@ -709,7 +713,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                 value={birthDateData.month}
                 onValueChange={(value) => setBirthDate(birthDateData.day, value)}
               >
-                <SelectTrigger className="flex-1">
+                <SelectTrigger className="flex-1 h-9 md:h-10">
                   <SelectValue placeholder="Month" />
                 </SelectTrigger>
                 <SelectContent>
@@ -724,9 +728,9 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
           </div>
 
           {/* Birth Year */}
-          <div className="space-y-2">
+          <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Birth Year (Optional)</Label>
+              <Label className="text-xs md:text-sm">Birth Year (Optional)</Label>
               <PrivacySelector
                 value={formData.birth_year_visibility || 'public'}
                 onChange={(value) => setFormData(prev => ({ ...prev, birth_year_visibility: value }))}
@@ -742,6 +746,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                 ...prev, 
                 birth_year: e.target.value ? parseInt(e.target.value) : undefined 
               }))}
+              className="h-9 md:h-10"
             />
           </div>
         </CardContent>

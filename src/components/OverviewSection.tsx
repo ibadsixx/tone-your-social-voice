@@ -195,7 +195,7 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
     return (
       <Card>
         <CardHeader className="p-4 md:p-6">
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
             <User className="h-5 w-5" />
             Overview
           </CardTitle>
@@ -211,7 +211,7 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
     return (
       <Card>
         <CardHeader className="p-4 md:p-6">
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
             <User className="h-5 w-5" />
             Overview
           </CardTitle>
@@ -495,7 +495,7 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
     return (
       <Card>
         <CardHeader className="p-4 md:p-6">
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
             <User className="h-5 w-5" />
             Overview
           </CardTitle>
