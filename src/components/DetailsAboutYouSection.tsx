@@ -134,14 +134,14 @@ export const DetailsAboutYouSection = ({
   return (
     <>
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Details About You</CardTitle>
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="text-base md:text-lg">Details About You</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6 pt-0 md:pt-0">
           {/* About You Section */}
-          <div className="space-y-2">
+          <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
-              <h4 className="font-medium">About You</h4>
+              <h4 className="text-sm md:text-base font-medium">About You</h4>
               {profile.about_you && (
                 <div className="flex items-center gap-1">
                   {(() => {
@@ -153,8 +153,8 @@ export const DetailsAboutYouSection = ({
             </div>
             
             {profile.about_you ? (
-              <div className="space-y-2">
-                <p className="text-sm text-foreground">{profile.about_you}</p>
+              <div className="space-y-1 md:space-y-2">
+                <p className="text-xs md:text-sm text-foreground">{profile.about_you}</p>
                 {isOwnProfile && (
                   <Button
                     variant="outline"
@@ -170,7 +170,7 @@ export const DetailsAboutYouSection = ({
               isOwnProfile && (
                 <Button
                   variant="ghost"
-                  className="text-left justify-start p-0 h-auto font-normal text-muted-foreground hover:text-foreground"
+                  className="text-left justify-start p-0 h-auto font-normal text-xs md:text-sm text-muted-foreground hover:text-foreground"
                   onClick={() => setAboutYouFormOpen(true)}
                 >
                   Write some details about yourself
@@ -180,9 +180,9 @@ export const DetailsAboutYouSection = ({
           </div>
 
           {/* Name Pronunciation Section */}
-          <div className="space-y-2">
+          <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
-              <h4 className="font-medium">Name Pronunciation</h4>
+              <h4 className="text-sm md:text-base font-medium">Name Pronunciation</h4>
               {profile.name_pronunciation && (
                 <div className="flex items-center gap-1">
                   {(() => {
@@ -194,8 +194,8 @@ export const DetailsAboutYouSection = ({
             </div>
             
             {profile.name_pronunciation ? (
-              <div className="space-y-2">
-                <p className="text-sm text-foreground">{profile.name_pronunciation}</p>
+              <div className="space-y-1 md:space-y-2">
+                <p className="text-xs md:text-sm text-foreground">{profile.name_pronunciation}</p>
                 {isOwnProfile && (
                   <Button
                     variant="outline"
@@ -211,7 +211,7 @@ export const DetailsAboutYouSection = ({
               isOwnProfile && (
                 <Button
                   variant="ghost"
-                  className="text-left justify-start p-0 h-auto font-normal text-muted-foreground hover:text-foreground"
+                  className="text-left justify-start p-0 h-auto font-normal text-xs md:text-sm text-muted-foreground hover:text-foreground"
                   onClick={() => setPronunciationFormOpen(true)}
                 >
                   Add a pronunciation of your name
@@ -221,9 +221,9 @@ export const DetailsAboutYouSection = ({
           </div>
 
           {/* Other Names Section */}
-          <div className="space-y-2">
+          <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
-              <h4 className="font-medium">Other Names</h4>
+              <h4 className="text-sm md:text-base font-medium">Other Names</h4>
               {isOwnProfile && (
                 <Button
                   variant="outline"
@@ -237,12 +237,12 @@ export const DetailsAboutYouSection = ({
             </div>
             
             {otherNames.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-1 md:space-y-2">
                 {otherNames.map((otherName) => (
-                  <div key={otherName.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div key={otherName.id} className="flex items-center justify-between p-2 md:p-3 border rounded-lg">
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{otherName.name}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs md:text-sm font-medium">{otherName.name}</span>
                         <Badge variant="secondary" className="text-xs">
                           {formatNameType(otherName.type)}
                         </Badge>
@@ -268,11 +268,12 @@ export const DetailsAboutYouSection = ({
                     </div>
                     
                     {isOwnProfile && (
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 shrink-0">
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleEditOtherName(otherName)}
+                          className="h-8 w-8 p-0"
                         >
                           <Edit2 className="h-3 w-3" />
                         </Button>
@@ -280,6 +281,7 @@ export const DetailsAboutYouSection = ({
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDeleteClick(otherName.id)}
+                          className="h-8 w-8 p-0"
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
@@ -290,11 +292,11 @@ export const DetailsAboutYouSection = ({
               </div>
             ) : (
               !isOwnProfile ? (
-                <p className="text-sm text-muted-foreground">No other names added</p>
+                <p className="text-xs md:text-sm text-muted-foreground">No other names added</p>
               ) : (
                 <Button
                   variant="ghost"
-                  className="text-left justify-start p-0 h-auto font-normal text-muted-foreground hover:text-foreground"
+                  className="text-left justify-start p-0 h-auto font-normal text-xs md:text-sm text-muted-foreground hover:text-foreground"
                   onClick={() => setOtherNamesFormOpen(true)}
                 >
                   Add a nickname, a birth name...

@@ -213,18 +213,18 @@ const ProfileHeader = ({
           {/* Avatar */}
           <div className="relative mb-4 md:mb-0">
             {hasActiveStories ? (
-              <div className="p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600">
-                <Avatar className="h-32 w-32 border-4 border-background shadow-lg ring-0">
+              <div className="inline-flex p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 overflow-hidden">
+                <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background ring-0">
                   <AvatarImage src={profile.profile_pic || ''} />
-                  <AvatarFallback className="text-4xl bg-muted">
+                  <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
                     {profile.display_name.charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
               </div>
             ) : (
-              <Avatar className="h-32 w-32 border-4 border-background shadow-lg">
+              <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background shadow-lg">
                 <AvatarImage src={profile.profile_pic || ''} />
-                <AvatarFallback className="text-4xl bg-muted">
+                <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
                   {profile.display_name.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
@@ -249,14 +249,8 @@ const ProfileHeader = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-2">
-            {isOwnProfile ? (
-              <EditBioDialog
-                currentBio={profile.bio}
-                userId={profile.id}
-                onBioUpdate={() => onProfileUpdate?.()}
-              />
-            ) : (
+          <div className="flex flex-wrap gap-2">
+            {!isOwnProfile && (
               <>
                 {/* Friendship Button */}
                 {renderFriendshipButton()}
@@ -316,7 +310,12 @@ const ProfileHeader = ({
         {/* Profile Details */}
         <div className="mt-4 space-y-2">
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl md:text-3xl font-bold">{profile.display_name}</h1>
+            <h1 className={`font-bold ${(() => {
+              const words = profile.display_name.trim().split(/\s+/);
+              if (words.length === 1) return 'text-2xl md:text-3xl';
+              if (words.length === 2) return 'text-xl md:text-2xl';
+              return 'text-lg md:text-xl';
+            })()}`}>{profile.display_name}</h1>
             {!isOwnProfile && friendship.status === 'ACCEPTED' && !blockStatus.isBlocked && !blockStatus.isBlockedBy && (
               <Badge variant="secondary">Friends</Badge>
             )}
@@ -329,11 +328,20 @@ const ProfileHeader = ({
             {!isOwnProfile && blockStatus.isBlocked && (
               <Badge variant="outline" className="text-muted-foreground">Blocked</Badge>
             )}
+            {isOwnProfile && (
+              <div className="ml-auto">
+                <EditBioDialog
+                  currentBio={profile.bio}
+                  userId={profile.id}
+                  onBioUpdate={() => onProfileUpdate?.()}
+                />
+              </div>
+            )}
           </div>
           
           {/* Other Names shown at top */}
           {topOtherNames.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2">
               {topOtherNames.map((otherName) => (
                 <Badge key={otherName.id} variant="outline" className="text-xs">
                   {otherName.name} • {formatNameType(otherName.type)}

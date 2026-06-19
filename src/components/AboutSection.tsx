@@ -526,8 +526,8 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
 
     return (
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between p-4 md:p-6">
+          <CardTitle className="text-base md:text-lg">
             {aboutSections.find(s => s.id === section)?.label}
           </CardTitle>
           {isOwnProfile && !isEditing && (
@@ -541,7 +541,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
             </Button>
           )}
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 md:p-6 pt-0 md:pt-0">
           {isEditing ? (
             renderEditForm(section)
           ) : (
@@ -831,12 +831,12 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
       const highSchool = details.find(d => d.field_name === 'high_school')?.field_value;
 
       return (
-        <div className="space-y-6">
+        <div className="space-y-4 md:space-y-6">
           {/* Work Section */}
           {(jobFunction || jobCompany) && (
             <div>
-              <h4 className="font-semibold text-lg mb-2">Work</h4>
-              <p className="text-muted-foreground">
+              <h4 className="font-semibold text-base md:text-lg mb-1 md:mb-2">Work</h4>
+              <p className="text-sm md:text-base text-muted-foreground">
                 {jobFunction && jobCompany 
                   ? `${jobFunction} at ${jobCompany}`
                   : jobFunction || jobCompany
@@ -848,8 +848,8 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
           {/* Education Section */}
           {(college || highSchool) && (
             <div>
-              <h4 className="font-semibold text-lg mb-2">Education</h4>
-              <div className="text-muted-foreground space-y-1">
+              <h4 className="font-semibold text-base md:text-lg mb-1 md:mb-2">Education</h4>
+              <div className="text-sm md:text-base text-muted-foreground space-y-1">
                 {college && <p>Study in {college}</p>}
                 {highSchool && <p>Postgraduate studies in {highSchool}</p>}
               </div>
@@ -880,42 +880,42 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
       }
 
       return (
-        <div className="space-y-6">
+        <div className="space-y-4 md:space-y-6">
           {/* Contact Information */}
           {hasContactInfo && (
             <div>
-              <h4 className="font-semibold text-lg mb-3">Contact Information</h4>
-              <div className="space-y-3">
+              <h4 className="font-semibold text-base md:text-lg mb-2 md:mb-3">Contact Information</h4>
+              <div className="space-y-2 md:space-y-3">
                 {profileData.email && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-muted-foreground w-20">Email:</span>
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-col md:flex-row md:items-center gap-0 md:gap-3">
+                    <span className="text-xs md:text-sm font-medium text-muted-foreground md:w-20">Email:</span>
+                    <div className="flex items-center gap-1 md:gap-2">
                       <span className="text-sm">{profileData.email}</span>
-                      <Lock className="h-3 w-3 text-muted-foreground" />
+                      <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
                       <span className="text-xs text-muted-foreground">(From account)</span>
                     </div>
                   </div>
                 )}
                 
                 {profileData.phone_country_code && profileData.phone_number && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-muted-foreground w-20">Phone:</span>
+                  <div className="flex flex-col md:flex-row md:items-center gap-0 md:gap-3">
+                    <span className="text-xs md:text-sm font-medium text-muted-foreground md:w-20">Phone:</span>
                     <span className="text-sm">{profileData.phone_country_code} {profileData.phone_number}</span>
                   </div>
                 )}
 
                 {profileData.websites_social_links && profileData.websites_social_links.length > 0 && (
                   <div>
-                    <span className="text-sm font-medium text-muted-foreground">Websites & Social:</span>
-                    <div className="mt-2 space-y-2">
+                    <span className="text-xs md:text-sm font-medium text-muted-foreground">Websites & Social:</span>
+                    <div className="mt-1 md:mt-2 space-y-1 md:space-y-2">
                       {profileData.websites_social_links.map((link, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground">{link.type}:</span>
+                        <div key={index} className="flex flex-col md:flex-row md:items-center gap-0 md:gap-2">
+                          <span className="text-xs md:text-sm text-muted-foreground">{link.type}:</span>
                           <a 
                             href={buildSocialUrl(link.type, link.url)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-sm text-primary hover:underline"
+                            className="text-sm text-primary hover:underline break-all"
                           >
                             {link.url}
                           </a>
@@ -931,25 +931,25 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
           {/* Basic Information */}
           {hasBasicInfo && (
             <div>
-              <h4 className="font-semibold text-lg mb-3">Basic Information</h4>
-              <div className="space-y-3">
+              <h4 className="font-semibold text-base md:text-lg mb-2 md:mb-3">Basic Information</h4>
+              <div className="space-y-2 md:space-y-3">
                 {profileData.gender && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-muted-foreground w-20">Gender:</span>
+                  <div className="flex flex-col md:flex-row md:items-center gap-0 md:gap-3">
+                    <span className="text-xs md:text-sm font-medium text-muted-foreground md:w-20">Gender:</span>
                     <span className="text-sm">{profileData.gender}</span>
                   </div>
                 )}
                 
                 {profileData.pronouns && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-muted-foreground w-20">Pronouns:</span>
+                  <div className="flex flex-col md:flex-row md:items-center gap-0 md:gap-3">
+                    <span className="text-xs md:text-sm font-medium text-muted-foreground md:w-20">Pronouns:</span>
                     <span className="text-sm">{profileData.pronouns}</span>
                   </div>
                 )}
 
                 {(profileData.birth_date || profileData.birth_year) && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-muted-foreground w-20">Birthday:</span>
+                  <div className="flex flex-col md:flex-row md:items-center gap-0 md:gap-3">
+                    <span className="text-xs md:text-sm font-medium text-muted-foreground md:w-20">Birthday:</span>
                     <span className="text-sm">
                       {profileData.birth_date && format(new Date(profileData.birth_date), 'MMMM d')}
                       {profileData.birth_date && profileData.birth_year && ', '}

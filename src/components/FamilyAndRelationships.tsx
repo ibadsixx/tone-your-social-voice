@@ -168,19 +168,19 @@ export const FamilyAndRelationships: React.FC<FamilyAndRelationshipsProps> = ({
   if (!isOwnProfile) {
     // Display mode for viewing other profiles
     return (
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6">
         {/* Relationship Status */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users2 className="h-5 w-5 text-primary" />
+          <CardHeader className="p-4 md:p-6">
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+              <Users2 className="h-5 w-5 text-primary shrink-0" />
               Relationship Status
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 md:p-6 pt-0 md:pt-0">
             {relationshipData.relationship_status && canViewRelationship() ? (
               <div>
-                <div className="text-sm font-medium">
+                <div className="text-xs md:text-sm font-medium">
                   {getRelationshipStatusLabel(relationshipData.relationship_status)}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
@@ -188,9 +188,9 @@ export const FamilyAndRelationships: React.FC<FamilyAndRelationshipsProps> = ({
                 </div>
               </div>
             ) : !canViewRelationship() && relationshipData.relationship_status ? (
-              <div className="text-sm text-muted-foreground">Relationship status is private</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Relationship status is private</div>
             ) : (
-              <div className="text-sm text-muted-foreground">No relationship status shared</div>
+              <div className="text-xs md:text-sm text-muted-foreground">No relationship status shared</div>
             )}
           </CardContent>
         </Card>
@@ -203,12 +203,12 @@ export const FamilyAndRelationships: React.FC<FamilyAndRelationshipsProps> = ({
 
   // Edit mode for own profile
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Relationship Status */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6">
-          <CardTitle className="flex items-center gap-2">
-            <Users2 className="h-5 w-5 text-primary" />
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 md:p-6">
+          <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+            <Users2 className="h-5 w-5 text-primary shrink-0" />
             Relationship Status
           </CardTitle>
           {!isEditing && (
@@ -217,12 +217,13 @@ export const FamilyAndRelationships: React.FC<FamilyAndRelationshipsProps> = ({
               size="sm"
               onClick={() => setIsEditing(true)}
             >
-              <Edit className="h-4 w-4 mr-2" />
-              Edit
+              <Edit className="h-4 w-4 mr-1 md:mr-2" />
+              <span className="hidden md:inline">Edit</span>
+              <span className="md:hidden">Edit</span>
             </Button>
           )}
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 md:p-6 pt-0 md:pt-0">
           {isEditing ? (
             <div className="space-y-4">
               <RelationshipSelector
@@ -250,7 +251,7 @@ export const FamilyAndRelationships: React.FC<FamilyAndRelationshipsProps> = ({
             <div>
               {relationshipData.relationship_status ? (
                 <div>
-                  <div className="text-sm font-medium mb-1">
+                  <div className="text-xs md:text-sm font-medium mb-1">
                     {getRelationshipStatusLabel(relationshipData.relationship_status)}
                   </div>
                   <div className="text-xs text-muted-foreground">
@@ -258,7 +259,7 @@ export const FamilyAndRelationships: React.FC<FamilyAndRelationshipsProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="text-sm text-muted-foreground">
+                <div className="text-xs md:text-sm text-muted-foreground">
                   Add your relationship status to let people know your current status
                 </div>
               )}

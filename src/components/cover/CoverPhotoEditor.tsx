@@ -145,7 +145,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
   return (
     <>
       <div 
-        className="relative h-48 md:h-64 rounded-lg overflow-hidden group cursor-pointer"
+        className="relative w-full h-36 md:h-56 overflow-hidden group cursor-pointer"
         style={coverStyle}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}

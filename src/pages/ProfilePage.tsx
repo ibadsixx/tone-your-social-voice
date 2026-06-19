@@ -91,25 +91,23 @@ const ProfilePage = () => {
   }
 
   return (
-    <PageContainer size="md" className="space-y-6">
+    <PageContainer size="md" className="space-y-4 md:space-y-6">
       {/* Back Button */}
       {!isOwnProfile && (
-        <Button variant="ghost" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
+        <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+          <ArrowLeft className="h-4 w-4 mr-1" />
           Back
         </Button>
       )}
 
       {/* Profile Header */}
-      <Card>
+      <Card className="overflow-hidden">
         <ProfileHeader
           profile={profile}
           isOwnProfile={isOwnProfile}
           onProfileUpdate={fetchProfile}
         />
       </Card>
-
-
 
       {/* Profile Tabs */}
       <ProfileTabs profileId={profile.id} isOwnProfile={isOwnProfile} />

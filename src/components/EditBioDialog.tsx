@@ -57,9 +57,8 @@ const EditBioDialog = ({ currentBio, userId, onBioUpdate }: EditBioDialogProps) 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline">
-          <Edit3 className="h-4 w-4 mr-2" />
-          Edit Bio
+        <Button variant="ghost" size="icon" className="h-8 w-8">
+          <Edit3 className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">

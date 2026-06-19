@@ -325,41 +325,41 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
   if (!isOwnProfile) {
     // Display mode for viewing other profiles
     return (
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6">
         {/* Contact Information */}
         <Card>
-          <CardHeader>
-            <CardTitle>Contact Information</CardTitle>
+          <CardHeader className="p-4 md:p-6">
+            <CardTitle className="text-base md:text-lg">Contact Information</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 md:space-y-4 p-4 md:p-6 pt-0 md:pt-0">
             {formData.email && canViewField(formData.email_visibility || 'public') ? (
               <div>
-                <div className="text-sm text-foreground font-medium">Email: {formData.email}</div>
+                <div className="text-xs md:text-sm text-foreground font-medium">Email: {formData.email}</div>
                 <div className="text-xs text-muted-foreground">{getPrivacyLabel(formData.email_visibility || 'public')}</div>
               </div>
             ) : !canViewField(formData.email_visibility || 'public') && formData.email ? (
-              <div className="text-sm text-muted-foreground">Email is private</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Email is private</div>
             ) : (
-              <div className="text-sm text-muted-foreground">Add your email</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Add your email</div>
             )}
             
             {formData.phone_number && formData.phone_country_code && canViewField(formData.phone_visibility || 'public') ? (
               <div>
-                <div className="text-sm text-foreground font-medium">
+                <div className="text-xs md:text-sm text-foreground font-medium">
                   Phone: {formData.phone_country_code} {formData.phone_number}
                 </div>
                 <div className="text-xs text-muted-foreground">{getPrivacyLabel(formData.phone_visibility || 'public')}</div>
               </div>
             ) : !canViewField(formData.phone_visibility || 'public') && formData.phone_number && formData.phone_country_code ? (
-              <div className="text-sm text-muted-foreground">Phone number is private</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Phone number is private</div>
             ) : (
-              <div className="text-sm text-muted-foreground">Add your phone number</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Add your phone number</div>
             )}
 
             {websites.length > 0 && canViewField(formData.websites_visibility || 'public') ? (
               <div>
-                <div className="text-sm text-foreground font-medium mb-2">Websites and Social Links:</div>
-                <div className="space-y-2">
+                <div className="text-xs md:text-sm text-foreground font-medium mb-1 md:mb-2">Websites and Social Links:</div>
+                <div className="space-y-1 md:space-y-2">
                   {websites.map((website, index) => (
                     <div key={index} className="flex items-center gap-2">
                       <Badge variant="outline" className="text-xs">
@@ -369,7 +369,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                         href={website.url} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline"
+                        className="text-xs md:text-sm text-primary hover:underline break-all"
                       >
                         {website.label}
                       </a>
@@ -379,13 +379,13 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                 <div className="text-xs text-muted-foreground mt-1">{getPrivacyLabel(formData.websites_visibility || 'public')}</div>
               </div>
             ) : !canViewField(formData.websites_visibility || 'public') && websites.length > 0 ? (
-              <div className="text-sm text-muted-foreground">Websites and social links are private</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Websites and social links are private</div>
             ) : (
-              <div className="text-sm text-muted-foreground">Add your websites and social links</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Add your websites and social links</div>
             )}
 
             {(!hasAnyContactInfo || (!canViewField(formData.email_visibility || 'public') && !canViewField(formData.phone_visibility || 'public') && !canViewField(formData.websites_visibility || 'public'))) && (
-              <div className="text-sm text-muted-foreground italic">
+              <div className="text-xs md:text-sm text-muted-foreground italic">
                 Add information to your contact and basic info section
               </div>
             )}
@@ -394,58 +394,58 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
 
         {/* Basic Information */}
         <Card>
-          <CardHeader>
-            <CardTitle>Basic Information</CardTitle>
+          <CardHeader className="p-4 md:p-6">
+            <CardTitle className="text-base md:text-lg">Basic Information</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 md:space-y-4 p-4 md:p-6 pt-0 md:pt-0">
             {formData.gender && canViewField(formData.gender_visibility || 'public') ? (
               <div>
-                <div className="text-sm text-foreground font-medium">Gender: {formData.gender}</div>
+                <div className="text-xs md:text-sm text-foreground font-medium">Gender: {formData.gender}</div>
                 <div className="text-xs text-muted-foreground">{getPrivacyLabel(formData.gender_visibility || 'public')}</div>
               </div>
             ) : !canViewField(formData.gender_visibility || 'public') && formData.gender ? (
-              <div className="text-sm text-muted-foreground">Gender is private</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Gender is private</div>
             ) : (
-              <div className="text-sm text-muted-foreground">Add your gender</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Add your gender</div>
             )}
 
             {formData.pronouns && canViewField(formData.pronouns_visibility || 'public') ? (
               <div>
-                <div className="text-sm text-foreground font-medium">System pronouns: {formData.pronouns}</div>
+                <div className="text-xs md:text-sm text-foreground font-medium">System pronouns: {formData.pronouns}</div>
                 <div className="text-xs text-muted-foreground">{getPrivacyLabel(formData.pronouns_visibility || 'public')}</div>
               </div>
             ) : !canViewField(formData.pronouns_visibility || 'public') && formData.pronouns ? (
-              <div className="text-sm text-muted-foreground">Pronouns are private</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Pronouns are private</div>
             ) : (
-              <div className="text-sm text-muted-foreground">Add your pronouns</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Add your pronouns</div>
             )}
 
             {formData.birth_date && canViewField(formData.birth_date_visibility || 'public') ? (
               <div>
-                <div className="text-sm text-foreground font-medium">
+                <div className="text-xs md:text-sm text-foreground font-medium">
                   Birth Date: {birthDateData.day} {birthDateData.month}
                 </div>
                 <div className="text-xs text-muted-foreground">{getPrivacyLabel(formData.birth_date_visibility || 'public')}</div>
               </div>
             ) : !canViewField(formData.birth_date_visibility || 'public') && formData.birth_date ? (
-              <div className="text-sm text-muted-foreground">Birth date is private</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Birth date is private</div>
             ) : (
-              <div className="text-sm text-muted-foreground">Add your birth date</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Add your birth date</div>
             )}
 
             {formData.birth_year && canViewField(formData.birth_year_visibility || 'public') ? (
               <div>
-                <div className="text-sm text-foreground font-medium">Birth Year: {formData.birth_year}</div>
+                <div className="text-xs md:text-sm text-foreground font-medium">Birth Year: {formData.birth_year}</div>
                 <div className="text-xs text-muted-foreground">{getPrivacyLabel(formData.birth_year_visibility || 'public')}</div>
               </div>
             ) : !canViewField(formData.birth_year_visibility || 'public') && formData.birth_year ? (
-              <div className="text-sm text-muted-foreground">Birth year is private</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Birth year is private</div>
             ) : (
-              <div className="text-sm text-muted-foreground">Add your birth year</div>
+              <div className="text-xs md:text-sm text-muted-foreground">Add your birth year</div>
             )}
 
             {(!hasAnyBasicInfo || (!canViewField(formData.gender_visibility || 'public') && !canViewField(formData.pronouns_visibility || 'public') && !canViewField(formData.birth_date_visibility || 'public') && !canViewField(formData.birth_year_visibility || 'public'))) && (
-              <div className="text-sm text-muted-foreground italic">
+              <div className="text-xs md:text-sm text-muted-foreground italic">
                 Add information to your contact and basic info section
               </div>
             )}
@@ -456,13 +456,13 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Contact Information */}
       <Card>
-        <CardHeader>
-          <CardTitle>Contact Information</CardTitle>
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="text-base md:text-lg">Contact Information</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6 pt-0 md:pt-0">
           {/* Email Field */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -611,10 +611,10 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
 
       {/* Basic Information */}
       <Card>
-        <CardHeader>
-          <CardTitle>Basic Information</CardTitle>
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="text-base md:text-lg">Basic Information</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6 pt-0 md:pt-0">
           {/* Gender */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">

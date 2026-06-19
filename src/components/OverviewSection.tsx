@@ -194,13 +194,13 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
   if (loading) {
     return (
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 md:p-6">
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
             Overview
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 md:p-6 pt-0 md:pt-0">
           <div className="text-muted-foreground">Loading...</div>
         </CardContent>
       </Card>
@@ -210,13 +210,13 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
   if (!extendedProfile) {
     return (
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 md:p-6">
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
             Overview
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 md:p-6 pt-0 md:pt-0">
           <div className="text-muted-foreground">No information to show</div>
         </CardContent>
       </Card>
@@ -289,14 +289,29 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
   // Contact and Basic Info Section
   const contactItems = [];
 
-  if (extendedProfile.email && isFieldVisible(extendedProfile.email_visibility)) {
+  const profileEmails: string[] = (() => {
+    const email = extendedProfile.email;
+    if (!email) return [];
+    if (Array.isArray(email)) return email;
+    try {
+      const parsed = JSON.parse(email);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+    return [email];
+  })();
+
+  if (profileEmails.length > 0) {
     contactItems.push({
       icon: <Mail className="h-4 w-4" />,
       label: 'Email',
       value: (
-        <div className="flex items-center gap-2">
-          <span>{extendedProfile.email}</span>
-          {getVisibilityIcon(extendedProfile.email_visibility)}
+        <div className="space-y-1">
+          {profileEmails.map((addr, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="break-all">{addr}</span>
+              {i === 0 && getVisibilityIcon(extendedProfile.email_visibility)}
+            </div>
+          ))}
         </div>
       )
     });
@@ -479,13 +494,13 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
   if (sections.length === 0) {
     return (
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 md:p-6">
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
             Overview
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 md:p-6 pt-0 md:pt-0">
           <div className="text-muted-foreground">No information to show</div>
         </CardContent>
       </Card>
@@ -494,31 +509,31 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="p-4 md:p-6">
         <CardTitle className="flex items-center gap-2">
           <User className="h-5 w-5" />
           Overview
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6 pt-0 md:pt-0">
         {sections.map((section, sectionIndex) => (
           <div key={section.title}>
             {sectionIndex > 0 && <Separator className="mb-4" />}
-            <div className="space-y-3">
-              <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+            <div className="space-y-2 md:space-y-3">
+              <h4 className="font-medium text-xs md:text-sm text-muted-foreground uppercase tracking-wide">
                 {section.title}
               </h4>
-              <div className="space-y-3">
+              <div className="space-y-2 md:space-y-3">
                 {section.items.map((item, itemIndex) => (
-                  <div key={itemIndex} className="flex items-start gap-3">
-                    <div className="mt-0.5 text-muted-foreground">
+                  <div key={itemIndex} className="flex items-start gap-2 md:gap-3">
+                    <div className="mt-0.5 text-muted-foreground shrink-0">
                       {item.icon}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-muted-foreground">
+                      <div className="text-xs md:text-sm font-medium text-muted-foreground">
                         {item.label}
                       </div>
-                      <div className="text-sm text-foreground break-words">
+                      <div className="text-xs md:text-sm text-foreground break-words">
                         {item.value}
                       </div>
                     </div>

@@ -25,7 +25,7 @@ const PageContainer = ({ children, className, size = '2xl', fluid }: PageContain
     <div
       className={cn(
         sizeClasses[resolvedSize],
-        'mx-auto px-4 md:px-6 py-4 md:py-8',
+        'w-full mx-auto px-4 md:px-6 py-4 md:py-8',
         className
       )}
     >

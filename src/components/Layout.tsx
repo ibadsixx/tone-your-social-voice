@@ -442,7 +442,7 @@ const Layout = () => {
         )}
 
         {/* Main Content */}
-        <main className={`flex-1 min-h-[calc(100vh-4rem)] pb-14 md:pb-0 ${location.pathname.startsWith('/settings') ? '' : location.pathname.startsWith('/messages') ? '' : 'xl:mr-[260px]'}`}>
+        <main className={`flex-1 min-w-0 min-h-[calc(100vh-4rem)] pb-14 md:pb-0 ${location.pathname.startsWith('/settings') ? '' : location.pathname.startsWith('/messages') ? '' : 'xl:mr-[260px]'}`}>
           <Outlet />
         </main>
       </div>

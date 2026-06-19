@@ -20,12 +20,27 @@ const ProfileTabs = ({ profileId, isOwnProfile }: ProfileTabsProps) => {
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-      <TabsList className={`grid w-full ${isOwnProfile ? 'grid-cols-5' : 'grid-cols-3'}`}>
-        <TabsTrigger value="posts">Posts</TabsTrigger>
-        {isOwnProfile && <TabsTrigger value="scheduled">Scheduled</TabsTrigger>}
-        {isOwnProfile && <TabsTrigger value="mentions">Mentions</TabsTrigger>}
-        <TabsTrigger value="about">About</TabsTrigger>
-        <TabsTrigger value="friends">Friends</TabsTrigger>
+      <TabsList className={`w-full grid h-9 md:h-10 ${isOwnProfile ? 'grid-cols-5' : 'grid-cols-3'}`}>
+        <TabsTrigger value="posts" className="px-1 md:px-3" aria-label="Posts">
+          <span className="md:hidden">P</span>
+          <span className="hidden md:inline text-sm">Posts</span>
+        </TabsTrigger>
+        {isOwnProfile && <TabsTrigger value="scheduled" className="px-1 md:px-3" aria-label="Scheduled">
+          <span className="md:hidden">S</span>
+          <span className="hidden md:inline text-sm">Scheduled</span>
+        </TabsTrigger>}
+        {isOwnProfile && <TabsTrigger value="mentions" className="px-1 md:px-3" aria-label="Mentions">
+          <span className="md:hidden">@</span>
+          <span className="hidden md:inline text-sm">Mentions</span>
+        </TabsTrigger>}
+        <TabsTrigger value="about" className="px-1 md:px-3" aria-label="About">
+          <span className="md:hidden">A</span>
+          <span className="hidden md:inline text-sm">About</span>
+        </TabsTrigger>
+        <TabsTrigger value="friends" className="px-1 md:px-3" aria-label="Friends">
+          <span className="md:hidden">F</span>
+          <span className="hidden md:inline text-sm">Friends</span>
+        </TabsTrigger>
       </TabsList>
       
       <TabsContent value="posts" className="mt-6">
