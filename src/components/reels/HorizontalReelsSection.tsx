@@ -36,8 +36,8 @@ const ReelThumbnailCard = ({ reel }: { reel: Reel }) => {
   return (
     <div
       className={cn(
-        'relative flex-shrink-0 w-36 rounded-xl overflow-hidden cursor-pointer',
-        'shadow-md hover:shadow-lg transition-all duration-200',
+        'relative flex-shrink-0 w-[105px] rounded-lg overflow-hidden cursor-pointer',
+        'shadow-sm hover:shadow-md transition-all duration-200',
         'group'
       )}
       style={{ aspectRatio: '9 / 16' }}
@@ -63,25 +63,20 @@ const ReelThumbnailCard = ({ reel }: { reel: Reel }) => {
       )}
 
       {/* Play button overlay - indicates tap to view */}
-      <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
-        <div className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform">
-          <Play className="w-6 h-6 text-white fill-white ml-0.5" />
+      <div className="absolute inset-0 flex items-center justify-center bg-black/15 group-hover:bg-black/25 transition-colors">
+        <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform">
+          <Play className="w-4 h-4 text-white fill-white ml-0.5" />
         </div>
       </div>
 
       {/* Gradient overlay for text readability */}
-      <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" />
+      <div className="absolute bottom-0 left-0 right-0 h-14 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" />
 
       {/* User Info */}
-      <div className="absolute bottom-0 left-0 right-0 p-2 pointer-events-none">
-        <p className="text-white text-xs font-medium truncate drop-shadow-lg">
+      <div className="absolute bottom-0 left-0 right-0 p-1.5 pointer-events-none">
+        <p className="text-white text-[10px] font-medium truncate drop-shadow-lg leading-tight">
           @{reel.profiles?.username || 'user'}
         </p>
-        {reel.content && (
-          <p className="text-white/80 text-[10px] truncate drop-shadow-md mt-0.5">
-            {reel.content}
-          </p>
-        )}
       </div>
     </div>
   );
@@ -161,16 +156,16 @@ const HorizontalReelsSection = () => {
 
   if (loading) {
     return (
-      <div className="py-4">
-        <div className="flex items-center gap-2 mb-4 px-1">
-          <Film className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold text-foreground">Reels</h2>
+      <div className="py-3">
+        <div className="flex items-center gap-2 mb-3 px-1">
+          <Film className="w-4 h-4 text-primary" />
+          <h2 className="text-sm font-semibold text-foreground">Reels</h2>
         </div>
-        <div className="flex gap-3 overflow-x-auto pb-2">
+        <div className="flex gap-2 overflow-x-auto pb-2">
           {[1, 2, 3, 4].map((i) => (
             <Skeleton 
               key={i} 
-              className="w-36 flex-shrink-0 rounded-xl bg-muted" 
+              className="w-[105px] flex-shrink-0 rounded-lg bg-muted" 
               style={{ aspectRatio: '9 / 16' }}
             />
           ))}
@@ -184,18 +179,18 @@ const HorizontalReelsSection = () => {
   }
 
   return (
-    <div className="py-4">
+    <div className="py-3">
       {/* Section Header */}
-      <div className="flex items-center gap-2 mb-4 px-1">
-        <Film className="w-5 h-5 text-primary" />
-        <h2 className="text-lg font-semibold text-foreground">Reels</h2>
+      <div className="flex items-center gap-2 mb-3 px-1">
+        <Film className="w-4 h-4 text-primary" />
+        <h2 className="text-sm font-semibold text-foreground">Reels</h2>
       </div>
 
       {/* Horizontal Scroll Container */}
       <div className="relative group/scroll">
         <div
           ref={scrollContainerRef}
-          className="flex gap-3 overflow-x-auto pb-2 scroll-smooth scrollbar-hide"
+          className="flex gap-2 overflow-x-auto pb-2 scroll-smooth scrollbar-hide"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {filteredReels.map((reel) => (
@@ -209,13 +204,13 @@ const HorizontalReelsSection = () => {
             onClick={scrollRight}
             className={cn(
               'absolute right-0 top-1/2 -translate-y-1/2 z-10',
-              'w-10 h-10 rounded-full bg-background/90 shadow-lg border border-border',
+              'w-7 h-7 rounded-full bg-background/90 shadow border border-border',
               'flex items-center justify-center',
               'opacity-0 group-hover/scroll:opacity-100 transition-opacity duration-200',
               'hover:bg-background'
             )}
           >
-            <ChevronRight className="w-5 h-5 text-foreground" />
+            <ChevronRight className="w-3.5 h-3.5 text-foreground" />
           </button>
         )}
       </div>

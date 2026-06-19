@@ -4,7 +4,6 @@ import {
   Home,
   Search,
   MessageCircle,
-  User,
   Plus,
   Image,
   Video,
@@ -24,7 +23,6 @@ const mainNav = [
   { icon: Home, label: 'Home', href: '/' },
   { icon: Search, label: 'Search', href: '/search' },
   { icon: MessageCircle, label: 'Messages', href: '/messages' },
-  { icon: User, label: 'Profile', href: '/profile' },
 ];
 
 const createOptions = [

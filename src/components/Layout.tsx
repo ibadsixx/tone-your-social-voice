@@ -427,8 +427,10 @@ const Layout = () => {
       {/* Bottom navigation — mobile only */}
       <MobileNav />
 
-      {/* Chat windows — always visible */}
-      <ChatWindowManager />
+      {/* Chat windows — hidden on mobile, visible on desktop */}
+      <div className="hidden md:block">
+        <ChatWindowManager />
+      </div>
 
     </div>
     </HeaderAvatarMenuProvider>
