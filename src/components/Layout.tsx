@@ -17,6 +17,8 @@ import { supabase } from '@/integrations/supabase/client';
 import GiveFeedbackDialog from '@/components/GiveFeedbackDialog';
 import FriendRequestsDropdown from '@/components/FriendRequestsDropdown';
 import MobileNav from '@/components/MobileNav';
+import CreateStoryDialog from '@/components/CreateStoryDialog';
+import CreateReelDialog from '@/components/CreateReelDialog';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { 
   Home, 
@@ -47,7 +49,7 @@ import {
   Clapperboard,
 } from 'lucide-react';
 
-const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
+const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; onSignOut: () => void }) => {
   const { menu } = useHeaderAvatarMenu();
   const { signOut } = useAuth();
   const { actingPage, switchToPage, switchToPersonal } = usePageSwitch();
@@ -265,6 +267,16 @@ const HeaderAvatar = ({ profile, user }: { profile: any; user: any }) => {
         </button>
       </nav>
 
+      <div className="border-t my-2 md:hidden" />
+      <button
+        type="button"
+        onClick={onSignOut}
+        className="w-full md:hidden flex items-center gap-3 px-4 py-2.5 hover:bg-accent transition-colors text-sm text-left text-destructive"
+      >
+        <LogOut className="h-5 w-5" />
+        <span className="font-medium">Log out</span>
+      </button>
+
       <div className="px-4 pt-3 pb-1 text-[11px] text-muted-foreground leading-relaxed">
         Privacy · Terms · Advertising · Ad Choices · Cookies · More
       </div>
@@ -292,6 +304,8 @@ const Layout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
+  const [storyDialogOpen, setStoryDialogOpen] = useState(false);
+  const [reelDialogOpen, setReelDialogOpen] = useState(false);
 
   if (loading) {
     return (
@@ -334,7 +348,7 @@ const Layout = () => {
           <div className="flex items-center gap-3">
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
+                <Button variant="ghost" size="icon" className="md:hidden h-9 w-9 rounded-full">
                   <Plus className="h-5 w-5" />
                 </Button>
               </PopoverTrigger>
@@ -342,10 +356,18 @@ const Layout = () => {
                 <Link to="/" className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm">
                   <Image className="h-4 w-4" /> Post
                 </Link>
-                <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm text-left">
+                <button
+                  type="button"
+                  onClick={() => setStoryDialogOpen(true)}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm text-left"
+                >
                   <Video className="h-4 w-4" /> Story
                 </button>
-                <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm text-left">
+                <button
+                  type="button"
+                  onClick={() => setReelDialogOpen(true)}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm text-left"
+                >
                   <Clapperboard className="h-4 w-4" /> Reel
                 </button>
               </PopoverContent>
@@ -355,9 +377,9 @@ const Layout = () => {
             
             <FriendRequestsDropdown />
 
-            <HeaderAvatar profile={profile} user={user} />
-            
-            <Button variant="ghost" size="sm" onClick={handleSignOut} className="text-muted-foreground hover:text-destructive transition-colors">
+            <HeaderAvatar profile={profile} user={user} onSignOut={handleSignOut} />
+
+            <Button variant="ghost" size="sm" onClick={handleSignOut} className="hidden md:flex text-muted-foreground hover:text-destructive transition-colors">
               <LogOut className="h-4 w-4" />
             </Button>
           </div>
@@ -419,13 +441,16 @@ const Layout = () => {
         )}
 
         {/* Main Content */}
-        <main className={`flex-1 min-h-[calc(100vh-4rem)] pb-20 md:pb-0 ${location.pathname.startsWith('/settings') ? '' : location.pathname.startsWith('/messages') ? '' : 'xl:mr-[260px]'}`}>
+        <main className={`flex-1 min-h-[calc(100vh-4rem)] pb-14 md:pb-0 ${location.pathname.startsWith('/settings') ? '' : location.pathname.startsWith('/messages') ? '' : 'xl:mr-[260px]'}`}>
           <Outlet />
         </main>
       </div>
 
       {/* Bottom navigation — mobile only */}
       <MobileNav />
+
+      <CreateStoryDialog open={storyDialogOpen} onOpenChange={setStoryDialogOpen} />
+      <CreateReelDialog open={reelDialogOpen} onOpenChange={setReelDialogOpen} />
 
       {/* Chat windows — hidden on mobile, visible on desktop */}
       <div className="hidden md:block">

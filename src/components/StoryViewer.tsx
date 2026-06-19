@@ -773,10 +773,7 @@ const StoryViewer = ({
               </div>
             )}
             
-            {/* Caption */}
-            {currentStory.caption && (
-              <p className="text-white text-center">{currentStory.caption}</p>
-            )}
+            {/* Caption — used as structured data for overlays, not display text */}
 
             {/* Reactions and Archive */}
             <div className="flex items-center justify-between gap-2">

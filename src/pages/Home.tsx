@@ -71,9 +71,7 @@ const Home = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Stories Section */}
-      <div className="border-b border-border/50 bg-card/80 backdrop-blur-sm">
-        <Stories />
-      </div>
+      <Stories />
 
       {/* Main Content */}
       <PageContainer>

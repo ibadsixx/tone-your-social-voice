@@ -352,19 +352,19 @@ const Post = ({
       transition={{ duration: 0.3 }}
     >
       <Card className="w-full border-border/50 shadow-sm hover:shadow-md transition-all duration-200">
-        <CardHeader className="pb-3">
+        <CardHeader className="p-3 sm:p-6 pb-2 sm:pb-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Link to={page ? `/pages/${page.id}` : `/profile/${profiles.username}`} className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
-                <Avatar className="h-10 w-10 border-2 border-primary/20">
+            <div className="flex items-center space-x-1.5 sm:space-x-3 min-w-0">
+              <Link to={page ? `/pages/${page.id}` : `/profile/${profiles.username}`} className="flex items-center space-x-1.5 sm:space-x-3 hover:opacity-80 transition-opacity min-w-0">
+                <Avatar className="h-7 w-7 sm:h-10 sm:w-10 border sm:border-2 border-primary/20 shrink-0">
                   <AvatarImage src={page ? (page.profile_pic || page.cover_image || undefined) : (profiles.profile_pic || '/default-avatar.png')} className="object-cover" />
-                  <AvatarFallback className="bg-primary/10 text-primary">
+                  <AvatarFallback className="bg-primary/10 text-primary text-xs sm:text-sm">
                     {page ? page.name.charAt(0) : (profiles.display_name?.charAt(0) || profiles.username?.charAt(0) || '?')}
                   </AvatarFallback>
                 </Avatar>
-                <div>
-                   <div className="flex items-center flex-wrap gap-x-1">
-                    <p className="font-semibold text-sm text-foreground hover:underline">{page ? page.name : profiles.display_name}</p>
+                <div className="min-w-0">
+                  <div className="flex items-center flex-wrap gap-x-1">
+                    <p className="font-semibold text-[13px] sm:text-sm text-foreground hover:underline truncate max-w-[100px] sm:max-w-none">{page ? page.name : profiles.display_name}</p>
                     {group_name && group_id && (
                       <>
                         <span className="text-sm text-muted-foreground">›</span>
@@ -495,7 +495,7 @@ const Post = ({
           </div>
         </CardHeader>
         
-        <CardContent className="space-y-4">
+        <CardContent className="p-3 sm:p-6 pt-0 space-y-3 sm:space-y-4">
           {/* Sharer's content (if any) */}
           {shared_post_id && content && (
             <p className="text-sm leading-relaxed text-foreground">
@@ -521,7 +521,7 @@ const Post = ({
               )}
               
               {mediaToDisplay.length > 0 && (
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   {mediaToDisplay.map((media, index) => (
                     <motion.div 
                       key={media.id}
@@ -534,7 +534,7 @@ const Post = ({
                         <img 
                           src={media.file_url} 
                           alt="Post media" 
-                          className="w-full h-auto"
+                          className="w-full h-auto object-cover max-h-[50vh] sm:max-h-none"
                           loading="lazy"
                         />
                       ) : type === 'reel' || (duration && aspect_ratio === '9:16') ? (
@@ -575,7 +575,7 @@ const Post = ({
                           controls 
                           muted
                           playsInline
-                          className="w-full h-auto max-h-96"
+                          className="w-full h-auto max-h-[50vh] sm:max-h-96"
                           preload="metadata"
                         >
                           <source src={media.file_url} type={media.file_url.endsWith('.mp4') ? 'video/mp4' : media.file_url.endsWith('.webm') ? 'video/webm' : 'video/quicktime'} />
@@ -591,7 +591,7 @@ const Post = ({
           
           {/* Reactions Counter Row - Facebook style */}
           {reactionsCount > 0 && (
-            <div className="flex items-center justify-between py-2.5">
+            <div className="flex items-center justify-between py-1.5 sm:py-2.5">
               <ReactionsCounter 
                 reactions={reactionCounts}
                 totalCount={reactionsCount}
@@ -611,7 +611,7 @@ const Post = ({
           )}
           
           {/* Action Buttons Row */}
-          <div className="flex items-center justify-between py-1 border-t border-border/50">
+          <div className="flex items-center justify-between py-1 border-t border-border/50 -mx-1 sm:mx-0">
             <ReactionPicker
               isLiked={!!userReaction}
               selectedReaction={userReaction}
@@ -623,33 +623,33 @@ const Post = ({
             <Button 
               variant="ghost" 
               size="sm" 
-              className={`flex items-center space-x-2 transition-colors ${
+              className={`flex items-center gap-1 sm:gap-2 transition-colors px-1 sm:px-3 ${
                 showComments ? 'text-primary hover:text-primary/80' : 'text-muted-foreground hover:text-foreground'
               }`}
               onClick={toggleComments}
             >
               <MessageCircle className="h-4 w-4" />
-              <span className="text-xs">Comment</span>
+              <span className="hidden sm:inline text-xs">Comment</span>
             </Button>
             
             <Button 
               variant="ghost" 
               size="sm" 
-              className="flex items-center space-x-2 text-muted-foreground hover:text-foreground"
+              className="flex items-center gap-1 sm:gap-2 text-muted-foreground hover:text-foreground px-1 sm:px-3"
               onClick={() => setShowSendModal(true)}
             >
               <Send className="h-4 w-4" />
-              <span className="text-xs">Send</span>
+              <span className="hidden sm:inline text-xs">Send</span>
             </Button>
             
             <Button 
               variant="ghost" 
               size="sm" 
-              className="flex items-center space-x-2 text-muted-foreground hover:text-foreground"
+              className="flex items-center gap-1 sm:gap-2 text-muted-foreground hover:text-foreground px-1 sm:px-3"
               onClick={() => setShowShareModal(true)}
             >
               <Share2 className="h-4 w-4" />
-              <span className="text-xs">Share</span>
+              <span className="hidden sm:inline text-xs">Share</span>
             </Button>
           </div>
           
@@ -661,7 +661,7 @@ const Post = ({
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.3, ease: 'easeInOut' }}
-                className="border-t border-border/50 pt-4 mt-4 space-y-4"
+                className="border-t border-border/50 pt-3 sm:pt-4 mt-3 sm:mt-4 space-y-3 sm:space-y-4"
               >
                 {/* Comments List */}
                 <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -700,9 +700,9 @@ const Post = ({
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: 0.1 }}
-                    className="flex space-x-3 pt-3 border-t border-border/30"
+                    className="flex space-x-2 sm:space-x-3 pt-2 sm:pt-3 border-t border-border/30"
                   >
-                    <Avatar className="h-8 w-8 border border-border/50">
+                    <Avatar className="h-6 w-6 sm:h-8 sm:w-8 border border-border/50 shrink-0">
                       <AvatarImage src={profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
                       <AvatarFallback className="bg-primary/10 text-primary text-xs">
                         {profile?.display_name?.charAt(0) || user?.email?.charAt(0) || 'U'}
@@ -713,7 +713,7 @@ const Post = ({
                         placeholder="Write a comment..."
                         value={newComment}
                         onChange={(e) => setNewComment(e.target.value)}
-                        className="min-h-[60px] resize-none border-border/50 focus:border-primary/50"
+                        className="min-h-[40px] sm:min-h-[60px] resize-none border-border/50 focus:border-primary/50 text-xs sm:text-sm"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
