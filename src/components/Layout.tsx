@@ -360,7 +360,17 @@ const Layout = () => {
               </PopoverContent>
             </Popover>
 
-            <NotificationsDropdown />
+            {isMobile ? (
+              <button
+                type="button"
+                onClick={() => navigate('/notifications')}
+                className="relative hover:bg-tone-purple/10 hover:text-tone-purple transition-colors h-9 w-9 rounded-full flex items-center justify-center"
+              >
+                <Bell className="h-4 w-4" />
+              </button>
+            ) : (
+              <NotificationsDropdown />
+            )}
             
             {isMobile ? (
               <button

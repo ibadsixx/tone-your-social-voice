@@ -41,6 +41,7 @@ import ReelViewer from "@/pages/ReelViewer";
 import CreatePost from "@/pages/CreatePost";
 import FeedbackPage from "@/pages/FeedbackPage";
 import FriendRequestsPage from "@/pages/FriendRequestsPage";
+import NotificationsPage from "@/pages/NotificationsPage";
 
 const queryClient = new QueryClient();
 
@@ -109,6 +110,7 @@ const App = () => (
               <Route path="/create/post" element={<CreatePost />} />
               <Route path="/feedback" element={<FeedbackPage />} />
               <Route path="/friends/requests" element={<FriendRequestsPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </TooltipProvider>
