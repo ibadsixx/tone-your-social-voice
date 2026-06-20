@@ -34,9 +34,9 @@ export const RelationshipSelector: React.FC<RelationshipSelectorProps> = ({
         <Heart className="h-4 w-4 text-primary" />
         Relationship Status
       </Label>
-      <div className="flex gap-2">
+      <div className="flex gap-1.5 md:gap-2">
         <Select value={value} onValueChange={onValueChange}>
-          <SelectTrigger className="flex-1">
+          <SelectTrigger className="flex-1 h-14 border-0">
             <SelectValue placeholder="Select relationship status">
               {relationshipOptions.find(opt => opt.value === value)?.label}
             </SelectValue>
@@ -52,7 +52,7 @@ export const RelationshipSelector: React.FC<RelationshipSelectorProps> = ({
         <VisibilitySelector
           value={visibility}
           onChange={onVisibilityChange}
-          className="w-[140px]"
+          className="w-[80px] md:w-[140px] h-14 border-0"
         />
       </div>
     </div>

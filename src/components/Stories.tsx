@@ -55,7 +55,7 @@ const Stories = () => {
     );
   }
 
-  if (!loading && stories.length === 0) {
+  if (!loading && stories.length === 0 && !user) {
     return null;
   }
 

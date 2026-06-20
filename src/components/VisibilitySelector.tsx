@@ -29,9 +29,9 @@ export const VisibilitySelector = ({
       <SelectTrigger className={className}>
         <SelectValue placeholder={placeholder}>
           {selectedOption && (
-            <div className="flex items-center gap-2">
-              <selectedOption.icon className="h-4 w-4" />
-              <span>{selectedOption.label}</span>
+            <div className="flex items-center gap-1 md:gap-2">
+              <selectedOption.icon className="h-4 w-4 shrink-0" />
+              <span className="hidden md:inline">{selectedOption.label}</span>
             </div>
           )}
         </SelectValue>

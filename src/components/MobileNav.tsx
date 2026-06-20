@@ -29,7 +29,7 @@ const MobileNav = ({ profilePic, displayName, email, actingPageName, actingPageP
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-card/80 backdrop-blur-lg supports-[backdrop-filter]:bg-card/60 md:hidden safe-area-bottom">
-      <div className="flex items-center justify-around h-12 px-2">
+      <div className="flex items-center justify-around h-10 px-2">
         {mainNav.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.href ||
@@ -39,13 +39,13 @@ const MobileNav = ({ profilePic, displayName, email, actingPageName, actingPageP
               key={item.label}
               to={item.href}
               className={cn(
-                'flex flex-col items-center justify-center gap-0 w-12 h-full rounded-lg transition-colors',
+                'flex flex-col items-center justify-center gap-0 w-10 h-full rounded-lg transition-colors',
                 isActive
                   ? 'text-primary'
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              <Icon className="h-5 w-5" />
+              <Icon className="h-4 w-4" />
             </Link>
           );
         })}
@@ -53,20 +53,20 @@ const MobileNav = ({ profilePic, displayName, email, actingPageName, actingPageP
           <SheetTrigger asChild>
             <button
               className={cn(
-                'flex flex-col items-center justify-center gap-0 w-12 h-full rounded-lg transition-colors',
+                'flex flex-col items-center justify-center gap-0 w-10 h-full rounded-lg transition-colors',
                 'text-muted-foreground hover:text-foreground'
               )}
             >
-              <Avatar className="h-6 w-6 border-2 border-tone-purple/20">
+              <Avatar className="h-5 w-5 border-2 border-tone-purple/20">
                 <AvatarImage src={actingPagePic || profilePic || '/default-avatar.png'} className="object-cover" />
-                <AvatarFallback className="bg-tone-gradient text-white text-[10px]">
+                <AvatarFallback className="bg-tone-gradient text-white text-[8px]">
                   {(actingPageName || displayName || email || '?').charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
             </button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="p-0 max-h-[80vh] overflow-y-auto rounded-t-xl">
-            <div className="px-4 pt-3 pb-1 text-center text-xs text-muted-foreground border-b">
+          <SheetContent side="bottom" className="p-0 max-h-[70vh] overflow-y-auto rounded-t-xl">
+            <div className="px-4 pt-2 pb-1 text-center text-[10px] text-muted-foreground border-b">
               Account
             </div>
             {avatarMenu}

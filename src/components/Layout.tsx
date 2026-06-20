@@ -14,7 +14,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import GiveFeedbackDialog from '@/components/GiveFeedbackDialog';
 import FriendRequestsDropdown from '@/components/FriendRequestsDropdown';
 import MobileNav from '@/components/MobileNav';
 import CreateStoryDialog from '@/components/CreateStoryDialog';
@@ -57,7 +56,6 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
   const [ownedPages, setOwnedPages] = useState<Array<{ id: string; name: string; cover_image: string | null; profile_pic: string | null }>>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [displayOpen, setDisplayOpen] = useState(false);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const { theme, setTheme } = useTheme();
 
   useEffect(() => {
@@ -84,30 +82,30 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault();
-        setFeedbackOpen(true);
+        navigate('/feedback');
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [navigate]);
 
   const firstPage = ownedPages[0] || null;
 
   const defaultMenu = (
-    <div className="py-2">
+    <div className="py-1">
       <div className="px-2">
         {actingPage ? (
           <div className="space-y-1">
-            <div className="flex items-center gap-3 px-2 py-2">
-              <Avatar className="h-9 w-9">
+            <div className="flex items-center gap-2 px-2 py-1.5">
+              <Avatar className="h-8 w-8">
                 {actingPage.profile_pic && <AvatarImage src={actingPage.profile_pic} className="object-cover" />}
-                <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                <AvatarFallback className="bg-primary/10 text-primary text-[11px] font-bold">
                   {actingPage.name.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
                 <span className="text-sm font-semibold truncate block">{actingPage.name}</span>
-                <span className="text-xs text-muted-foreground">Active page</span>
+                <span className="text-[10px] text-muted-foreground">Active page</span>
               </div>
             </div>
             <button
@@ -115,15 +113,15 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
                 switchToPersonal();
                 navigate('/');
               }}
-              className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors"
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors"
             >
-              <Avatar className="h-7 w-7">
+              <Avatar className="h-6 w-6">
                 <AvatarImage src={profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
-                <AvatarFallback className="bg-tone-gradient text-white text-xs font-bold">
+                <AvatarFallback className="bg-tone-gradient text-white text-[10px] font-bold">
                   {profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
-              <span className="text-sm flex-1">{profile?.display_name || user?.email}</span>
+              <span className="text-xs flex-1">{profile?.display_name || user?.email}</span>
               <ArrowLeftRight className="h-3 w-3 text-muted-foreground shrink-0" />
             </button>
           </div>
@@ -131,11 +129,11 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
           <>
             <Link
               to="/profile"
-              className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors"
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors"
             >
-              <Avatar className="h-9 w-9">
+              <Avatar className="h-8 w-8">
                 <AvatarImage src={profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
-                <AvatarFallback className="bg-tone-gradient text-white text-xs font-bold">
+                <AvatarFallback className="bg-tone-gradient text-white text-[11px] font-bold">
                   {profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
@@ -147,11 +145,11 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
                   switchToPage(firstPage);
                   navigate(`/pages/${firstPage.id}`);
                 }}
-                className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors"
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors"
               >
-                <Avatar className="h-9 w-9">
+                <Avatar className="h-8 w-8">
                   {firstPage.profile_pic && <AvatarImage src={firstPage.profile_pic} className="object-cover" />}
-                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                  <AvatarFallback className="bg-primary/10 text-primary text-[11px] font-bold">
                     {firstPage.name.charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
@@ -163,30 +161,30 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
         )}
         <Link
           to="/pages"
-          className="mt-2 mb-1 w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-muted hover:bg-accent transition-colors text-sm font-medium"
+          className="mt-2 mb-1 w-full flex items-center justify-center gap-1 py-1.5 rounded-lg bg-muted hover:bg-accent transition-colors text-xs font-medium"
         >
-          <Users className="h-4 w-4" />
+          <Users className="h-3 w-3" />
           See all profiles
         </Link>
       </div>
 
-      <div className="my-2 border-t" />
+      <div className="my-1 border-t" />
 
-      <nav className="px-2 space-y-1">
+      <nav className="px-2 space-y-0.5">
         <div className="relative">
           <button
             type="button"
             onClick={() => setSettingsOpen(prev => !prev)}
-            className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm text-left"
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors text-xs text-left"
           >
-            <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-              <Wrench className="h-5 w-5 text-foreground" />
+            <span className="h-7 w-7 rounded-full bg-muted flex items-center justify-center">
+              <Wrench className="h-4 w-4 text-foreground" />
             </span>
             <span className="flex-1 truncate font-medium">Settings & privacy</span>
-            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${settingsOpen ? 'rotate-90' : ''}`} />
+            <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${settingsOpen ? 'rotate-90' : ''}`} />
           </button>
           {settingsOpen && (
-            <div className="ml-12 mt-1 mb-1 space-y-1 border-l-2 border-muted pl-3">
+            <div className="ml-10 mt-1 mb-1 space-y-0.5 border-l-2 border-muted pl-2">
               {[
                 { label: 'Settings', to: '/settings' },
                 { label: 'Profiles & personal details', to: '/settings/details' },
@@ -198,7 +196,7 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
                   key={label}
                   to={to}
                   onClick={() => setSettingsOpen(false)}
-                  className="block w-full px-3 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                  className="block w-full px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                 >
                   {label}
                 </Link>
@@ -208,31 +206,31 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
         </div>
         <Link
           to="/settings"
-          className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm"
+          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors text-xs"
         >
-          <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-            <LifeBuoy className="h-5 w-5 text-foreground" />
+          <span className="h-7 w-7 rounded-full bg-muted flex items-center justify-center">
+            <LifeBuoy className="h-4 w-4 text-foreground" />
           </span>
           <span className="flex-1 truncate font-medium">Help & support</span>
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          <ChevronRight className="h-3 w-3 text-muted-foreground" />
         </Link>
         <div className="relative">
           <button
             type="button"
             onClick={() => setDisplayOpen(prev => !prev)}
-            className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm text-left"
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors text-xs text-left"
           >
-            <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-              <Monitor className="h-5 w-5 text-foreground" />
+            <span className="h-7 w-7 rounded-full bg-muted flex items-center justify-center">
+              <Monitor className="h-4 w-4 text-foreground" />
             </span>
             <span className="flex-1 truncate font-medium">Display & accessibility</span>
-            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${displayOpen ? 'rotate-90' : ''}`} />
+            <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${displayOpen ? 'rotate-90' : ''}`} />
           </button>
           {displayOpen && (
-            <div className="ml-12 mt-1 mb-1 space-y-1 border-l-2 border-muted pl-3">
-              <div className="flex items-center justify-between px-3 py-1.5 rounded-md">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Sun className="h-4 w-4" />
+            <div className="ml-10 mt-1 mb-1 space-y-0.5 border-l-2 border-muted pl-2">
+              <div className="flex items-center justify-between px-2 py-1 rounded-md">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Sun className="h-3 w-3" />
                   <span>Dark mode</span>
                 </div>
                 <Switch
@@ -245,30 +243,30 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
         </div>
         <button
           type="button"
-          onClick={() => setFeedbackOpen(true)}
-          className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent transition-colors text-sm text-left"
+          onClick={() => navigate('/feedback')}
+          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors text-xs text-left"
         >
-          <span className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-            <Bell className="h-5 w-5 text-foreground" />
+          <span className="h-7 w-7 rounded-full bg-muted flex items-center justify-center">
+            <Bell className="h-4 w-4 text-foreground" />
           </span>
           <span className="flex-1">
             <span className="block font-medium">Feedback</span>
-            <span className="block text-xs text-muted-foreground">CTRL B</span>
+            <span className="block text-[10px] text-muted-foreground">CTRL B</span>
           </span>
         </button>
       </nav>
 
-      <div className="border-t my-2 md:hidden" />
+      <div className="border-t my-1 md:hidden" />
       <button
         type="button"
         onClick={onSignOut}
-        className="w-full md:hidden flex items-center gap-3 px-4 py-2.5 hover:bg-accent transition-colors text-sm text-left text-destructive"
+        className="w-full md:hidden flex items-center gap-2 px-4 py-2 hover:bg-accent transition-colors text-xs text-left text-destructive"
       >
-        <LogOut className="h-5 w-5" />
+        <LogOut className="h-4 w-4" />
         <span className="font-medium">Log out</span>
       </button>
 
-      <div className="px-4 pt-3 pb-1 text-[11px] text-muted-foreground leading-relaxed">
+      <div className="px-3 pt-2 pb-1 text-[10px] text-muted-foreground leading-relaxed">
         Privacy · Terms · Advertising · Ad Choices · Cookies · More
       </div>
     </div>
@@ -276,7 +274,6 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
 
   return (
     <>
-    <GiveFeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
     {menu && <div className="border-b">{menu}</div>}
     {defaultMenu}
     </>
@@ -339,9 +336,13 @@ const Layout = () => {
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-40 p-1">
-                <Link to="/" className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm">
+                <button
+                  type="button"
+                  onClick={() => navigate('/create/post')}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm text-left"
+                >
                   <Image className="h-4 w-4" /> Post
-                </Link>
+                </button>
                 <button
                   type="button"
                   onClick={() => setStoryDialogOpen(true)}
@@ -361,19 +362,29 @@ const Layout = () => {
 
             <NotificationsDropdown />
             
-            <FriendRequestsDropdown />
+            {isMobile ? (
+              <button
+                type="button"
+                onClick={() => navigate('/friends/requests')}
+                className="relative hover:bg-tone-purple/10 hover:text-tone-purple transition-colors h-9 w-9 rounded-full flex items-center justify-center"
+              >
+                <UserPlus className="h-4 w-4" />
+              </button>
+            ) : (
+              <FriendRequestsDropdown />
+            )}
 
             <div className="hidden md:flex">
               <Popover>
                 <PopoverTrigger asChild>
-                  <Avatar className="h-9 w-9 border-2 border-tone-purple/20 ring-2 ring-transparent hover:ring-tone-purple/30 transition-all cursor-pointer">
+                  <Avatar className="h-8 w-8 border-2 border-tone-purple/20 ring-2 ring-transparent hover:ring-tone-purple/30 transition-all cursor-pointer">
                     <AvatarImage src={actingPage?.profile_pic || profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
                     <AvatarFallback className="bg-tone-gradient text-white">
                       {actingPage ? actingPage.name.charAt(0).toUpperCase() : profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-80 p-0 max-h-[80vh] overflow-y-auto">
+                <PopoverContent align="end" className="w-72 p-0 max-h-[80vh] overflow-y-auto">
                   <HeaderAvatar profile={profile} user={user} onSignOut={handleSignOut} />
                 </PopoverContent>
               </Popover>

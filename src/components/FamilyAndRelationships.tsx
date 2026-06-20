@@ -216,10 +216,10 @@ export const FamilyAndRelationships: React.FC<FamilyAndRelationshipsProps> = ({
               variant="outline"
               size="sm"
               onClick={() => setIsEditing(true)}
+              className="h-8 border-0 text-xs md:text-sm"
             >
-              <Edit className="h-4 w-4 mr-1 md:mr-2" />
-              <span className="hidden md:inline">Edit</span>
-              <span className="md:hidden">Edit</span>
+              <Edit className="h-4 w-4 mr-1" />
+              Edit
             </Button>
           )}
         </CardHeader>
@@ -236,13 +236,13 @@ export const FamilyAndRelationships: React.FC<FamilyAndRelationshipsProps> = ({
                   setEditForm(prev => ({ ...prev, relationship_visibility: visibility }))
                 }
               />
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={handleCancelEdit}>
-                  <X className="h-4 w-4 mr-2" />
+              <div className="flex justify-end gap-1.5 md:gap-2">
+                <Button variant="outline" onClick={handleCancelEdit} className="h-8 border-0 text-xs md:text-sm">
+                  <X className="h-4 w-4 mr-1" />
                   Cancel
                 </Button>
-                <Button onClick={handleSaveRelationship} disabled={loading}>
-                  <Save className="h-4 w-4 mr-2" />
+                <Button onClick={handleSaveRelationship} disabled={loading} className="h-8 border-0 text-xs md:text-sm">
+                  <Save className="h-4 w-4 mr-1" />
                   Save
                 </Button>
               </div>

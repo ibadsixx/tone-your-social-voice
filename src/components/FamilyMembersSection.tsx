@@ -335,7 +335,7 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
             variant="outline"
             size="sm"
             onClick={() => setShowAddForm(true)}
-            className="gap-1 h-14 border-0 text-xs md:text-sm"
+            className="gap-1 h-8 border-0 text-xs md:text-sm"
           >
             <Plus className="h-4 w-4" />
             <span className="md:inline">Add Family Member</span>
@@ -423,14 +423,14 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
                     setSelectedRelationType('');
                     setSearchQuery('');
                   }}
-                  className="h-14 border-0 text-xs md:text-sm"
+                  className="h-8 border-0 text-xs md:text-sm"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleAddFamilyMember}
                   disabled={!selectedFriend || !selectedRelationType || loading}
-                  className="h-14 border-0 text-xs md:text-sm"
+                  className="h-8 border-0 text-xs md:text-sm"
                 >
                   Add Member
                 </Button>
@@ -485,7 +485,7 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
                       variant="ghost"
                       size="sm"
                       onClick={() => setEditingId(member.id)}
-                      className="h-14 w-14 p-0"
+                      className="h-8 w-8 p-0"
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -493,7 +493,7 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
                       variant="ghost"
                       size="sm"
                       onClick={() => handleRemoveFamilyMember(member.id)}
-                      className="h-14 w-14 p-0"
+                      className="h-8 w-8 p-0"
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -552,7 +552,7 @@ const EditFamilyMemberForm: React.FC<EditFamilyMemberFormProps> = ({
         size="sm"
         onClick={() => onSave(relationType, visibility)}
         disabled={loading}
-        className="h-14 w-14 p-0"
+        className="h-8 w-8 p-0"
       >
         <Check className="h-4 w-4" />
       </Button>
@@ -560,7 +560,7 @@ const EditFamilyMemberForm: React.FC<EditFamilyMemberFormProps> = ({
         variant="ghost"
         size="sm"
         onClick={onCancel}
-        className="h-14 w-14 p-0"
+        className="h-8 w-8 p-0"
       >
         <X className="h-4 w-4" />
       </Button>

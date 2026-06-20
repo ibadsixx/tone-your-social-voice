@@ -38,6 +38,9 @@ import Editor from "@/pages/Editor";
 import EditPreview from "@/pages/EditPreview";
 import EditorPublish from "@/pages/EditorPublish";
 import ReelViewer from "@/pages/ReelViewer";
+import CreatePost from "@/pages/CreatePost";
+import FeedbackPage from "@/pages/FeedbackPage";
+import FriendRequestsPage from "@/pages/FriendRequestsPage";
 
 const queryClient = new QueryClient();
 
@@ -103,6 +106,9 @@ const App = () => (
                 <Route path="editor/publish" element={<EditorPublish />} />
               </Route>
               <Route path="/404" element={<NotFound />} />
+              <Route path="/create/post" element={<CreatePost />} />
+              <Route path="/feedback" element={<FeedbackPage />} />
+              <Route path="/friends/requests" element={<FriendRequestsPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </TooltipProvider>
