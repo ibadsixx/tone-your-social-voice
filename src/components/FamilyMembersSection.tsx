@@ -283,40 +283,40 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
     // Display mode for viewing other profiles
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Family Members</CardTitle>
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="text-base md:text-lg">Family Members</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3 p-4 md:p-6 pt-0 md:pt-0">
           {loading ? (
-            <div className="text-center text-muted-foreground">Loading...</div>
+            <div className="text-center text-muted-foreground text-xs md:text-sm">Loading...</div>
           ) : familyMembers.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-2 md:space-y-3">
               {familyMembers
                 .filter(member => canViewFamilyMember(member.visibility))
                 .map((member) => (
-                  <div key={member.id} className="flex items-center gap-3 p-2 rounded-lg border">
-                    <Avatar className="h-10 w-10">
+                  <div key={member.id} className="flex items-center gap-2 md:gap-3 p-2 md:p-3 rounded-lg border">
+                    <Avatar className="h-8 w-8 md:h-10 md:w-10">
                       <AvatarImage src={member.member_profile.profile_pic || undefined} />
-                      <AvatarFallback>
+                      <AvatarFallback className="text-xs md:text-sm">
                         {member.member_profile.display_name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
-                      <div className="font-medium text-sm">
+                      <div className="font-medium text-xs md:text-sm">
                         {member.member_profile.display_name}
                       </div>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-[10px] md:text-xs text-muted-foreground">
                         @{member.member_profile.username}
                       </div>
                     </div>
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="secondary" className="text-[10px] md:text-xs">
                       {relationTypes.find(rt => rt.value === member.relation_type)?.label || member.relation_type}
                     </Badge>
                   </div>
                 ))}
             </div>
           ) : (
-            <div className="text-sm text-muted-foreground text-center py-6">
+            <div className="text-xs md:text-sm text-muted-foreground text-center py-4 md:py-6">
               No family members added yet
             </div>
           )}
@@ -328,30 +328,30 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
   // Edit mode for own profile
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 md:pb-6">
         <CardTitle>Family Members</CardTitle>
         {!showAddForm && (
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowAddForm(true)}
-            className="gap-2"
+            className="gap-1 h-14 border-0 text-xs md:text-sm"
           >
             <Plus className="h-4 w-4" />
-            Add Family Member
+            <span className="md:inline">Add Family Member</span>
           </Button>
         )}
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 md:space-y-4">
         {showAddForm && (
           <Card className="border-dashed">
-            <CardContent className="p-4 space-y-4">
+            <CardContent className="p-3 md:p-4 space-y-3 md:space-y-4">
               <div>
                 <Input
                   placeholder="Search friends..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="mb-2"
+                  className="mb-2 h-14 border-0"
                 />
                 {searchQuery && availableFriends.length > 0 && (
                   <div className="max-h-32 overflow-y-auto border rounded-md">
@@ -392,9 +392,9 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
                     <span className="font-medium text-sm">{selectedFriend.display_name}</span>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-col md:flex-row gap-1.5 md:gap-2">
                     <Select value={selectedRelationType} onValueChange={setSelectedRelationType}>
-                      <SelectTrigger className="flex-1">
+                      <SelectTrigger className="flex-1 h-14 border-0">
                         <SelectValue placeholder="Select relationship" />
                       </SelectTrigger>
                       <SelectContent>
@@ -408,13 +408,13 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
                     <VisibilitySelector
                       value={selectedVisibility}
                       onChange={setSelectedVisibility}
-                      className="w-[140px]"
+                      className="w-full md:w-[140px] h-14"
                     />
                   </div>
                 </div>
               )}
 
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-1.5 md:gap-2">
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -423,12 +423,14 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
                     setSelectedRelationType('');
                     setSearchQuery('');
                   }}
+                  className="h-14 border-0 text-xs md:text-sm"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleAddFamilyMember}
                   disabled={!selectedFriend || !selectedRelationType || loading}
+                  className="h-14 border-0 text-xs md:text-sm"
                 >
                   Add Member
                 </Button>
@@ -442,10 +444,10 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
         ) : familyMembers.length > 0 ? (
           <div className="space-y-3">
             {familyMembers.map((member) => (
-              <div key={member.id} className="flex items-center gap-3 p-3 rounded-lg border">
-                <Avatar className="h-10 w-10">
+              <div key={member.id} className="flex items-center gap-2 md:gap-3 p-2 md:p-3 rounded-lg border">
+                <Avatar className="h-8 w-8 md:h-10 md:w-10">
                   <AvatarImage src={member.member_profile.profile_pic || undefined} />
-                  <AvatarFallback>
+                  <AvatarFallback className="text-xs md:text-sm">
                     {member.member_profile.display_name.charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
@@ -468,8 +470,8 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
                     loading={loading}
                   />
                 ) : (
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="text-xs">
+                  <div className="flex items-center gap-1 md:gap-2 shrink-0">
+                    <Badge variant="secondary" className="text-[10px] md:text-xs whitespace-nowrap">
                       {relationTypes.find(rt => rt.value === member.relation_type)?.label || member.relation_type}
                     </Badge>
                     <VisibilitySelector
@@ -477,12 +479,13 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
                       onChange={(visibility) =>
                         handleUpdateFamilyMember(member.id, member.relation_type, visibility)
                       }
-                      className="w-[120px]"
+                      className="w-[80px] md:w-[120px] h-14"
                     />
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setEditingId(member.id)}
+                      className="h-14 w-14 p-0"
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -490,6 +493,7 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
                       variant="ghost"
                       size="sm"
                       onClick={() => handleRemoveFamilyMember(member.id)}
+                      className="h-14 w-14 p-0"
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -525,9 +529,9 @@ const EditFamilyMemberForm: React.FC<EditFamilyMemberFormProps> = ({
   const [visibility, setVisibility] = useState<Visibility>(member.visibility);
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1 md:gap-2">
       <Select value={relationType} onValueChange={setRelationType}>
-        <SelectTrigger className="w-[140px]">
+        <SelectTrigger className="w-[100px] md:w-[140px] h-14 border-0">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -541,13 +545,14 @@ const EditFamilyMemberForm: React.FC<EditFamilyMemberFormProps> = ({
       <VisibilitySelector
         value={visibility}
         onChange={setVisibility}
-        className="w-[120px]"
+        className="w-[80px] md:w-[120px] h-14"
       />
       <Button
         variant="ghost"
         size="sm"
         onClick={() => onSave(relationType, visibility)}
         disabled={loading}
+        className="h-14 w-14 p-0"
       >
         <Check className="h-4 w-4" />
       </Button>
@@ -555,6 +560,7 @@ const EditFamilyMemberForm: React.FC<EditFamilyMemberFormProps> = ({
         variant="ghost"
         size="sm"
         onClick={onCancel}
+        className="h-14 w-14 p-0"
       >
         <X className="h-4 w-4" />
       </Button>
