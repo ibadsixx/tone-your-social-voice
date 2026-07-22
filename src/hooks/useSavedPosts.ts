@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -19,7 +19,7 @@ export const useSavedPosts = (postId: string) => {
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('saved_posts')
         .select('id')
         .eq('user_id', user.id)
@@ -46,7 +46,7 @@ export const useSavedPosts = (postId: string) => {
     setIsLoading(true);
     try {
       if (isSaved) {
-        const { error } = await supabase
+        const { error } = await gateway
           .from('saved_posts')
           .delete()
           .eq('user_id', user.id)
@@ -60,7 +60,7 @@ export const useSavedPosts = (postId: string) => {
           description: "Post removed from your saved items"
         });
       } else {
-        const { error } = await supabase
+        const { error } = await gateway
           .from('saved_posts')
           .insert({
             user_id: user.id,

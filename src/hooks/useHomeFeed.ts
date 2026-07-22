@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { postsApi } from '@/api';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { createNotification } from '@/hooks/useNotifications';
@@ -94,47 +95,14 @@ export const useHomeFeed = () => {
       // Load groups the current user has explicitly unfollowed so we can hide their posts.
       let unfollowedGroupIds: string[] = [];
       if (user) {
-        const { data: unfollowRows } = await supabase
+        const { data: unfollowRows } = await gateway
           .from('group_follows' as any)
           .select('group_id')
           .eq('user_id', user.id);
         unfollowedGroupIds = (unfollowRows || []).map((r: any) => r.group_id);
       }
 
-      const { data, error } = await supabase
-        .from('posts')
-        .select(`
-          *,
-          profiles!posts_user_id_fkey (
-            username,
-            display_name,
-            profile_pic
-          ),
-          likes (id, user_id),
-          comments (id, content, profiles:user_id (display_name)),
-          shared_post:shared_post_id (
-            id,
-            content,
-            media_url,
-            media_type,
-            type,
-            created_at,
-            profiles!posts_user_id_fkey (
-              username,
-              display_name,
-              profile_pic
-            )
-          ),
-          group_posts (
-            group_id,
-            groups:group_id (
-              id,
-              name
-            )
-          )
-        `)
-        .order('created_at', { ascending: false })
-        .range(currentOffset, currentOffset + POSTS_PER_PAGE - 1);
+      const { data, error } = await postsApi.getFeedPosts(currentOffset, POSTS_PER_PAGE);
 
       if (error) throw error;
 
@@ -195,9 +163,9 @@ export const useHomeFeed = () => {
       const existingLike = post.likes?.find(l => l.user_id === user.id);
 
       if (existingLike) {
-        await supabase.from('likes').delete().eq('id', existingLike.id);
+        await gateway.from('likes').delete().eq('id', existingLike.id);
       } else {
-        await supabase.from('likes').insert({
+        await gateway.from('likes').insert({
           post_id: postId,
           user_id: user.id
         });
@@ -262,7 +230,7 @@ export const useHomeFeed = () => {
       if (location) {
         // First check if this location already exists
         if (location.provider_place_id && location.provider !== 'custom') {
-          const { data: existing } = await supabase
+          const { data: existing } = await gateway
             .from('locations')
             .select('id')
             .eq('provider', location.provider)
@@ -276,7 +244,7 @@ export const useHomeFeed = () => {
 
         // Create new location if it doesn't exist
         if (!locationId) {
-          const { data: newLocation, error: locationError } = await supabase
+          const { data: newLocation, error: locationError } = await gateway
             .from('locations')
             .insert({
               provider: location.provider,
@@ -341,7 +309,7 @@ export const useHomeFeed = () => {
           mediaType
         });
 
-        const { error: uploadError, data: uploadData } = await supabase.storage
+        const { error: uploadError, data: uploadData } = await gateway.storage
           .from(bucket)
           .upload(fileName, file, {
             contentType: file.type,
@@ -355,7 +323,7 @@ export const useHomeFeed = () => {
 
         console.log('[createPost] Upload successful:', uploadData);
 
-        const { data: urlData } = supabase.storage
+        const { data: urlData } = gateway.storage
           .from(bucket)
           .getPublicUrl(fileName);
 
@@ -403,11 +371,7 @@ export const useHomeFeed = () => {
 
       console.log('[createPost] Creating post in DB', postData);
 
-      const { data, error } = await supabase
-        .from('posts')
-        .insert(postData)
-        .select('id')
-        .single();
+      const { data, error } = await postsApi.createPost(postData);
 
       if (error) {
         console.error('[createPost] DB insert error:', error);
@@ -427,7 +391,7 @@ export const useHomeFeed = () => {
             tagged_by: user.id,
           }));
         if (tagRows.length > 0) {
-          const { error: tagErr } = await supabase.from('post_tags').insert(tagRows);
+          const { error: tagErr } = await gateway.from('post_tags').insert(tagRows);
           if (tagErr) console.error('[createPost] Failed to insert post_tags:', tagErr);
         }
       }

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { User } from 'lucide-react';
 
 interface ProfileData {
@@ -27,7 +27,7 @@ export const ProfileLinkPreview = ({ username }: ProfileLinkPreviewProps) => {
     let cancelled = false;
     const fetchProfile = async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('profiles')
           .select('id, username, display_name, profile_pic, bio')
           .eq('username', username)

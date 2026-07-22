@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -28,13 +28,13 @@ export const useProfileReports = (reportedUserId?: string) => {
       const fileExt = file.name.split('.').pop();
       const fileName = `${reporterUserId}/${Date.now()}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await gateway.storage
         .from('report-evidence')
         .upload(fileName, file);
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = gateway.storage
         .from('report-evidence')
         .getPublicUrl(fileName);
 
@@ -56,7 +56,7 @@ export const useProfileReports = (reportedUserId?: string) => {
     setLoading(true);
     try {
       // Check for existing pending report first
-      const { data: existingReport } = await supabase
+      const { data: existingReport } = await gateway
         .from('profile_reports')
         .select('id, status')
         .eq('reported_user_id', targetUserId)
@@ -78,7 +78,7 @@ export const useProfileReports = (reportedUserId?: string) => {
         imageUrl = await uploadReportEvidence(evidenceFile, user.id);
       }
 
-      const { error } = await supabase
+      const { error } = await gateway
         .from('profile_reports')
         .insert({
           reported_user_id: targetUserId,
@@ -126,7 +126,7 @@ export const useProfileReports = (reportedUserId?: string) => {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('profile_reports')
         .select('id, status')
         .eq('reported_user_id', reportedUserId)
@@ -180,7 +180,7 @@ export const useAdminReports = () => {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('profile_reports')
         .select(`
           *,
@@ -206,7 +206,7 @@ export const useAdminReports = () => {
 
   const updateReportStatus = async (reportId: string, status: 'reviewed' | 'resolved') => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('profile_reports')
         .update({ status })
         .eq('id', reportId);

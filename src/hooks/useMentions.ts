@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from './useAuth';
 import { createNotification } from './useNotifications';
 import { saveHashtags } from '@/utils/hashtags';
@@ -24,7 +24,7 @@ export const useMentions = () => {
   const getUserIdsFromUsernames = async (usernames: string[]): Promise<MentionedUser[]> => {
     if (usernames.length === 0) return [];
 
-    const { data, error } = await supabase
+    const { data, error } = await gateway
       .from('profiles')
       .select('id, username, display_name')
       .in('username', usernames);
@@ -58,7 +58,7 @@ export const useMentions = () => {
     }));
 
     if (mentionsToInsert.length > 0) {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('mentions')
         .insert(mentionsToInsert);
 
@@ -87,7 +87,7 @@ export const useMentions = () => {
 
   // Get mentions for a source
   const getMentions = async (sourceType: 'post' | 'comment', sourceId: string) => {
-    const { data, error } = await supabase
+    const { data, error } = await gateway
       .from('mentions')
       .select(`
         id,

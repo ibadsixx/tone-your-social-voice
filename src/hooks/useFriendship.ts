@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 interface FriendshipStatus {
@@ -26,7 +26,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
 
     try {
       // Check if users are blocked first
-      const { data: blockData } = await supabase
+      const { data: blockData } = await gateway
         .from('blocks')
         .select('*')
         .or(`and(blocker_id.eq.${currentUserId},blocked_id.eq.${profileId}),and(blocker_id.eq.${profileId},blocked_id.eq.${currentUserId})`)
@@ -43,7 +43,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('friends')
         .select('*')
         .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${profileId}),and(requester_id.eq.${profileId},receiver_id.eq.${currentUserId})`)
@@ -77,7 +77,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
 
     try {
       // Insert friendship request
-      const { data: friendshipData, error: friendshipError } = await supabase
+      const { data: friendshipData, error: friendshipError } = await gateway
         .from('friends')
         .insert({
           requester_id: currentUserId,
@@ -90,7 +90,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
       if (friendshipError) throw friendshipError;
 
       // Insert follow relationship
-      const { error: followError } = await supabase
+      const { error: followError } = await gateway
         .from('followers')
         .insert({
           follower_id: currentUserId,
@@ -125,7 +125,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
     if (!friendship.id) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('friends')
         .delete()
         .eq('id', friendship.id);
@@ -156,7 +156,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
     if (!friendship.id) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('friends')
         .update({ status: 'accepted' })
         .eq('id', friendship.id);
@@ -185,7 +185,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
     if (!friendship.id) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('friends')
         .update({ status: 'rejected' })
         .eq('id', friendship.id);
@@ -214,7 +214,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
     if (!friendship.id) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('friends')
         .delete()
         .eq('id', friendship.id);

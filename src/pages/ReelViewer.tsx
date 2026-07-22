@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useReelInteractions } from '@/hooks/useReelInteractions';
 import { Heart, MessageCircle, Send, MoreVertical, X, Bookmark, Volume2, VolumeX, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -66,7 +66,7 @@ const ReelViewer = () => {
   useEffect(() => {
     const fetchReelsList = async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('posts')
           .select('id')
           .eq('type', 'reel')
@@ -116,7 +116,7 @@ const ReelViewer = () => {
 
       try {
         setLoading(true);
-        const { data, error: fetchError } = await supabase
+        const { data, error: fetchError } = await gateway
           .from('posts')
           .select(`
             id,

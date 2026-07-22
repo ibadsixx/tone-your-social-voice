@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Search } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -47,14 +47,14 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
     setLoading(true);
     try {
       // Get accepted friends where user is requester
-      const { data: sent } = await supabase
+      const { data: sent } = await gateway
         .from('friends')
         .select('receiver_id')
         .eq('requester_id', user.id)
         .eq('status', 'accepted');
 
       // Get accepted friends where user is receiver
-      const { data: received } = await supabase
+      const { data: received } = await gateway
         .from('friends')
         .select('requester_id')
         .eq('receiver_id', user.id)
@@ -70,7 +70,7 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
         return;
       }
 
-      const { data: profiles } = await supabase
+      const { data: profiles } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .in('id', friendIds);
@@ -111,7 +111,7 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
         role: 'member' as const,
       }));
 
-      const { error } = await supabase
+      const { error } = await gateway
         .from('group_members')
         .insert(inserts);
 

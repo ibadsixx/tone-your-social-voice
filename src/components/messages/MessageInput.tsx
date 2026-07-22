@@ -15,7 +15,7 @@ import { StickerPicker } from './StickerPicker';
 import { GifPicker } from './GifPicker';
 import { GifItem } from '@/hooks/useGifSearch';
 import { AudioRecording } from '@/hooks/useAudioRecorder';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface ReplyToMessage {
@@ -219,7 +219,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       const filePath = `message_audios/${conversationId}/${fileName}`;
 
       // Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await gateway.storage
         .from('message_audios')
         .upload(filePath, recording.blob, {
           cacheControl: '3600',

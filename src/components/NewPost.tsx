@@ -18,7 +18,7 @@ import {
   X,
   Loader2
 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useStatusVisibility } from '@/hooks/useStatusVisibility';
@@ -147,7 +147,7 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
       const fileExt = item.file.name.split('.').pop()?.toLowerCase() || 'bin';
       const fileName = `${user?.id || 'unknown'}/${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
 
-      supabase.storage
+      gateway.storage
         .from(bucket)
         .upload(fileName, item.file, { contentType: item.file.type })
         .then(({ error }) => {
@@ -157,7 +157,7 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
             return;
           }
 
-          const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(fileName);
+          const { data: urlData } = gateway.storage.from(bucket).getPublicUrl(fileName);
           if (urlData?.publicUrl) {
             setMediaItems(prev => prev.map(m => m.localUrl === item.localUrl ? { ...m, url: urlData.publicUrl, status: 'done' } : m));
           }

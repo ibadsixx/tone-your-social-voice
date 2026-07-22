@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Users } from 'lucide-react';
 
 interface GroupData {
@@ -27,7 +27,7 @@ export const GroupLinkPreview = ({ groupId }: GroupLinkPreviewProps) => {
     let cancelled = false;
     const fetchGroup = async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('groups')
           .select('id, name, description, profile_pic, member_count')
           .eq('id', groupId)

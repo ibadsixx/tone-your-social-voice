@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { getPoll, vote, PollData } from '@/hooks/useChannelPolls';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Check, BarChart3 } from 'lucide-react';
 
 interface PollMessageProps {
@@ -19,12 +19,12 @@ export const PollMessage: React.FC<PollMessageProps> = ({ messageId, currentUser
   }, [messageId]);
 
   // Real-time subscription to poll vote changes
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const channelRef = useRef<ReturnType<typeof gateway.channel> | null>(null);
 
   useEffect(() => {
     if (!poll?.poll_id) return;
 
-    const channel = supabase
+    const channel = gateway
       .channel(`poll-votes-${poll.poll_id}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'message_poll_votes', filter: `poll_id=eq.${poll.poll_id}` },
@@ -35,7 +35,7 @@ export const PollMessage: React.FC<PollMessageProps> = ({ messageId, currentUser
     channelRef.current = channel;
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
       channelRef.current = null;
     };
   }, [poll?.poll_id, messageId]);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 export const useStoryArchive = () => {

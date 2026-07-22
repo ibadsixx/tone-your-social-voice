@@ -17,7 +17,8 @@ import { useProfile } from '@/hooks/useProfile';
 import { useSavedPosts } from '@/hooks/useSavedPosts';
 import { useMutedUsers } from '@/hooks/useMutedUsers';
 import { usePostNotifications } from '@/hooks/usePostNotifications';
-import { supabase } from '@/integrations/supabase/client';
+import { postsApi } from '@/api';
+import { gateway } from '@/lib/gateway';
 import { SendPostModal } from '@/components/modals/SendPostModal';
 import { SharePostModal } from '@/components/modals/SharePostModal';
 import { EditPostDialog } from '@/components/EditPostDialog';
@@ -256,10 +257,7 @@ const Post = ({
 
   const handleDeletePost = async () => {
     try {
-      const { error } = await supabase
-        .from('posts')
-        .delete()
-        .eq('id', id);
+      const { error } = await postsApi.deletePost(id);
 
       if (error) throw error;
 

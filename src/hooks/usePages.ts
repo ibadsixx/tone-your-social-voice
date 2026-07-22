@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -28,7 +28,7 @@ export const usePages = () => {
   const fetchPages = async (type: 'suggested' | 'interactive' | 'new' | 'following' | 'owned') => {
     try {
       setLoading(true);
-      let query = supabase
+      let query = gateway
         .from('pages')
         .select(`
           *,
@@ -107,7 +107,7 @@ export const usePages = () => {
     if (!user) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('page_followers')
         .insert({ page_id: pageId, user_id: user.id, role: 'follower' });
 
@@ -130,7 +130,7 @@ export const usePages = () => {
     if (!user) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('page_followers')
         .delete()
         .eq('page_id', pageId)
@@ -155,7 +155,7 @@ export const usePages = () => {
     if (!user) return;
 
     try {
-      const { data: newPage, error: createError } = await supabase
+      const { data: newPage, error: createError } = await gateway
         .from('pages')
         .insert({ 
           name, 
@@ -169,7 +169,7 @@ export const usePages = () => {
       if (createError) throw createError;
 
       // Auto-follow the created page as admin
-      const { error: followError } = await supabase
+      const { error: followError } = await gateway
         .from('page_followers')
         .insert({ page_id: newPage.id, user_id: user.id, role: 'admin' });
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 interface HashtagPost {
   id: string;
@@ -50,7 +50,7 @@ export const useHashtagFeed = (tag: string) => {
         setLoading(true);
 
         // First, get the hashtag ID
-        const { data: hashtagData, error: hashtagError } = await supabase
+        const { data: hashtagData, error: hashtagError } = await gateway
           .from('hashtags' as any)
           .select('id')
           .eq('tag', tag.toLowerCase())
@@ -63,7 +63,7 @@ export const useHashtagFeed = (tag: string) => {
         }
 
         // Get all post IDs linked to this hashtag
-        const { data: links, error: linksError } = await supabase
+        const { data: links, error: linksError } = await gateway
           .from('hashtag_links' as any)
           .select('source_id')
           .eq('hashtag_id', (hashtagData as any).id)
@@ -83,7 +83,7 @@ export const useHashtagFeed = (tag: string) => {
         const postIds = (links as any[]).map((link: any) => link.source_id);
 
         // Fetch the actual posts
-        const { data: postsData, error: postsError } = await supabase
+        const { data: postsData, error: postsError } = await gateway
           .from('posts')
           .select(`
             *,
@@ -122,11 +122,11 @@ export const useHashtagFeed = (tag: string) => {
         const postsWithData = await Promise.all(
           (postsData || []).map(async (post) => {
             const [likesResult, commentsResult] = await Promise.all([
-              supabase
+              gateway
                 .from('likes')
                 .select('id, user_id')
                 .eq('post_id', post.id),
-              supabase
+              gateway
                 .from('comments')
                 .select('id, content, profiles:user_id(display_name)')
                 .eq('post_id', post.id),

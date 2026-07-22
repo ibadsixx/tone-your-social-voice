@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -114,16 +114,16 @@ const PrivacyCheckup = () => {
 
     try {
       const [profileRes, settingsRes, blocksRes] = await Promise.all([
-        supabase
+        gateway
           .from('profiles')
           .select('email, birthday, relationship, email_visibility, birth_date_visibility, birth_year_visibility, relationship_visibility, friends_visibility, following_visibility')
           .eq('id', user.id)
           .maybeSingle(),
-        supabase
+        gateway
           .from('privacy_settings')
           .select('setting_name, setting_value')
           .eq('user_id', user.id),
-        supabase
+        gateway
           .from('blocks')
           .select('blocked_id')
           .eq('blocker_id', user.id),
@@ -156,7 +156,7 @@ const PrivacyCheckup = () => {
       if (blockedIds.length === 0) {
         setBlockedUsers([]);
       } else {
-        const { data: profiles, error: profilesError } = await supabase
+        const { data: profiles, error: profilesError } = await gateway
           .from('profiles')
           .select('id, display_name, username, profile_pic')
           .in('id', blockedIds);
@@ -186,7 +186,7 @@ const PrivacyCheckup = () => {
   const saveProfileField = async (field: string, value: string) => {
     if (!user?.id) return;
 
-    const { error } = await supabase
+    const { error } = await gateway
       .from('profiles')
       .update({ [field]: value })
       .eq('id', user.id);
@@ -205,7 +205,7 @@ const PrivacyCheckup = () => {
     const normalized = value.toLowerCase();
     setProfileData(prev => ({ ...prev, [field]: normalized }));
     
-    const { error } = await supabase
+    const { error } = await gateway
       .from('profiles')
       .update({ [field]: normalized })
       .eq('id', user.id);
@@ -225,7 +225,7 @@ const PrivacyCheckup = () => {
     const previousValue = privacySettings[name];
     setPrivacySettings(prev => ({ ...prev, [name]: value }));
 
-    const { error } = await supabase
+    const { error } = await gateway
       .from('privacy_settings')
       .upsert(
         { user_id: user.id, setting_name: name, setting_value: value },
@@ -249,7 +249,7 @@ const PrivacyCheckup = () => {
   const unblockUser = async (blockedUserId: string) => {
     if (!user?.id) return;
 
-    const { error } = await supabase
+    const { error } = await gateway
       .from('blocks')
       .delete()
       .eq('blocker_id', user.id)

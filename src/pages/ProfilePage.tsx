@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
@@ -46,7 +46,7 @@ const ProfilePage = () => {
     if (!username) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('profiles')
         .select('*')
         .eq('username', username)

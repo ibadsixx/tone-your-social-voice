@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -50,7 +50,7 @@ const PageArchive = () => {
     }
 
     (async () => {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('pages')
         .select('id, name, profile_pic, archived, created_at')
         .eq('id', id)
@@ -61,7 +61,7 @@ const PageArchive = () => {
         return;
       }
 
-      const { count } = await supabase
+      const { count } = await gateway
         .from('page_followers')
         .select('*', { count: 'exact', head: true })
         .eq('page_id', id);
@@ -74,7 +74,7 @@ const PageArchive = () => {
     if (!page || !user || !id) return;
     setToggling(true);
     const newArchived = !page.archived;
-    const { error } = await supabase
+    const { error } = await gateway
       .from('pages')
       .update({ archived: newArchived })
       .eq('id', id);

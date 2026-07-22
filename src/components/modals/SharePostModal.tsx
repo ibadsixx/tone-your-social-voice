@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { User, Users, Hash, Instagram, Link2, MessageCircle, Twitter, Facebook, Send } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useGroups } from '@/hooks/useGroups';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { SendPostModal } from './SendPostModal';
@@ -31,7 +31,7 @@ export const SharePostModal = ({ isOpen, onClose, postId, postContent }: SharePo
     
     setSharing(true);
     try {
-      await supabase.from('posts').insert({
+      await gateway.from('posts').insert({
         user_id: user.id,
         content: customContent || null,
         type: 'shared_post',
@@ -62,7 +62,7 @@ export const SharePostModal = ({ isOpen, onClose, postId, postContent }: SharePo
     try {
       // For now, we'll create a regular post mentioning the group
       // In a full implementation, you'd have group posts functionality
-      await supabase.from('posts').insert({
+      await gateway.from('posts').insert({
         user_id: user.id,
         content: `Shared a post in ${groupName}`,
         type: 'shared_post',
@@ -91,7 +91,7 @@ export const SharePostModal = ({ isOpen, onClose, postId, postContent }: SharePo
     
     setSharing(true);
     try {
-      await supabase.from('posts').insert({
+      await gateway.from('posts').insert({
         user_id: user.id,
         content: `Shared a post on ${pageName}`,
         type: 'shared_post',

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 export interface Company {
   id: string;
@@ -13,7 +13,7 @@ export const useCompanyOperations = () => {
   const getAllCompanies = async (): Promise<Company[]> => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('companies')
         .select('id, name, type')
         .order('name');
@@ -36,7 +36,7 @@ export const useCompanyOperations = () => {
     setLoading(true);
     try {
       const trimmedQuery = query.trim().toLowerCase();
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('companies')
         .select('id, name, type')
         .ilike('name', `%${trimmedQuery}%`)
@@ -54,7 +54,7 @@ export const useCompanyOperations = () => {
 
   const createCompany = async (name: string, type: string): Promise<Company | null> => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('companies')
         .insert({
           name: name.trim(),
@@ -75,7 +75,7 @@ export const useCompanyOperations = () => {
     if (!id) return null;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('companies')
         .select('id, name, type')
         .eq('id', id)

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { postsApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 
 interface Post {
@@ -44,31 +44,7 @@ export const usePosts = (userId?: string) => {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('posts')
-        .select(`
-          *,
-          profiles!posts_user_id_fkey (
-            username,
-            display_name,
-            profile_pic
-          ),
-          shared_post:shared_post_id (
-            id,
-            content,
-            media_url,
-            media_type,
-            type,
-            created_at,
-            profiles!posts_user_id_fkey (
-              username,
-              display_name,
-              profile_pic
-            )
-          )
-        `)
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+      const { data, error } = await postsApi.getUserPosts(userId);
 
       if (error) throw error;
 

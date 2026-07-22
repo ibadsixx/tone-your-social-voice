@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -44,7 +44,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
   const fetchFriends = async () => {
     try {
       // First get the friendship records
-      const { data: friendsData, error } = await supabase
+      const { data: friendsData, error } = await gateway
         .from('friends')
         .select('created_at, requester_id, receiver_id')
         .or(`requester_id.eq.${profileId},receiver_id.eq.${profileId}`)
@@ -64,7 +64,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
       });
 
       // Fetch the profiles for all friends
-      const { data: profilesData, error: profilesError } = await supabase
+      const { data: profilesData, error: profilesError } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .in('id', friendIds);
@@ -99,7 +99,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     try {
       console.log('Fetching following for profile:', profileId);
       // Get following records from followers table (standardized)
-      const { data: followingData, error } = await supabase
+      const { data: followingData, error } = await gateway
         .from('followers')
         .select('created_at, following_id')
         .eq('follower_id', profileId);
@@ -113,7 +113,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
 
       // Get profile data for followed users
       const followingIds = followingData.map(follow => follow.following_id);
-      const { data: profilesData, error: profilesError } = await supabase
+      const { data: profilesData, error: profilesError } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .in('id', followingIds);
@@ -142,7 +142,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     try {
       console.log('Fetching followers for profile:', profileId);
       // Get follower records from followers table (standardized)
-      const { data: followersData, error } = await supabase
+      const { data: followersData, error } = await gateway
         .from('followers')
         .select('created_at, follower_id')
         .eq('following_id', profileId);
@@ -156,7 +156,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
 
       // Get profile data for followers
       const followerIds = followersData.map(follow => follow.follower_id);
-      const { data: profilesData, error: profilesError } = await supabase
+      const { data: profilesData, error: profilesError } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .in('id', followerIds);
@@ -184,7 +184,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
   const checkPrivacySettings = async () => {
     try {
       // Get the profile's privacy settings
-      const { data: profileData, error } = await supabase
+      const { data: profileData, error } = await gateway
         .from('profiles')
         .select('friends_visibility, following_visibility')
         .eq('id', profileId)
@@ -204,7 +204,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
           canViewFriends = true;
         } else if (friendsVisibility === 'friends' && user) {
           // Check if viewer is friends with profile owner
-          const { data: friendshipData } = await supabase
+          const { data: friendshipData } = await gateway
             .from('friends')
             .select('id')
             .or(`and(requester_id.eq.${user.id},receiver_id.eq.${profileId}),and(requester_id.eq.${profileId},receiver_id.eq.${user.id})`)
@@ -289,7 +289,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     if (!user) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('followers')
         .delete()
         .eq('follower_id', user.id)
@@ -317,7 +317,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     if (!user) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('followers')
         .insert({
           follower_id: user.id,
@@ -346,7 +346,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     if (!user) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('friends')
         .delete()
         .or(`and(requester_id.eq.${user.id},receiver_id.eq.${userId}),and(requester_id.eq.${userId},receiver_id.eq.${user.id})`)
@@ -378,7 +378,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
       await unfriendUser(userId);
       
       // Then block via RPC (uses blocks table)
-      const { error } = await supabase.rpc('block_user', {
+      const { error } = await gateway.rpc('block_user', {
         p_blocker: user.id,
         p_blocked: userId,
         p_block_type: 'full'
@@ -406,7 +406,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     if (!user) return false;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('followers')
         .select('id')
         .eq('follower_id', user.id)
@@ -424,7 +424,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     fetchAllData();
 
     // Subscribe to changes in friends table
-    const friendsChannel = supabase
+    const friendsChannel = gateway
       .channel('friends-changes')
       .on(
         'postgres_changes',
@@ -441,7 +441,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
       .subscribe();
 
     // Subscribe to changes in followers table
-    const followersChannel = supabase
+    const followersChannel = gateway
       .channel('followers-changes')
       .on(
         'postgres_changes',
@@ -458,8 +458,8 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(friendsChannel);
-      supabase.removeChannel(followersChannel);
+      gateway.removeChannel(friendsChannel);
+      gateway.removeChannel(followersChannel);
     };
   }, [profileId]);
 

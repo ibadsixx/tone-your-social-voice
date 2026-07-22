@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 interface UploadResponse {
@@ -19,13 +19,13 @@ export const usePhotoUpload = () => {
     const fileExt = file.name.split('.').pop();
     const fileName = `${userId}/${Date.now()}.${fileExt}`;
     
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await gateway.storage
       .from(bucketName)
       .upload(fileName, file);
 
     if (uploadError) throw uploadError;
 
-    const { data: { publicUrl } } = supabase.storage
+    const { data: { publicUrl } } = gateway.storage
       .from(bucketName)
       .getPublicUrl(fileName);
 
@@ -37,7 +37,7 @@ export const usePhotoUpload = () => {
     field: 'profile_pic' | 'cover_pic',
     imageUrl: string
   ) => {
-    const { error } = await supabase
+    const { error } = await gateway
       .from('profiles')
       .update({ [field]: imageUrl })
       .eq('id', userId);
@@ -59,7 +59,7 @@ export const usePhotoUpload = () => {
       ? `${customText}\n\n${defaultText}` 
       : defaultText;
 
-    const { error } = await supabase
+    const { error } = await gateway
       .from('posts')
       .insert({
         user_id: userId,

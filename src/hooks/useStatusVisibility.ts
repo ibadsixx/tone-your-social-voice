@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTheme } from 'next-themes';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { setNotificationSoundEnabled, setDoNotDisturbUntil } from '@/lib/notificationSounds';
 
@@ -55,13 +55,13 @@ export function useStatusVisibility() {
     setLoading(true);
     try {
       const [profileRes, visibleRes, hiddenRes] = await Promise.all([
-        supabase.from('profiles').select('manual_status, notification_sounds, do_not_disturb_until, dark_mode, show_read_indicator, check_keys_in_conversations, remember_browser, disable_auto_uploads, vault_pin, vault_recovery_code, preview_mode, security_warnings').eq('id', user.id).single(),
-        supabase
+        gateway.from('profiles').select('manual_status, notification_sounds, do_not_disturb_until, dark_mode, show_read_indicator, check_keys_in_conversations, remember_browser, disable_auto_uploads, vault_pin, vault_recovery_code, preview_mode, security_warnings').eq('id', user.id).single(),
+        gateway
           .from('status_visibility')
           .select('target_user_id, profiles!status_visibility_target_user_id_fkey(id, display_name, username, profile_pic)')
           .eq('user_id', user.id)
           .eq('visibility', 'visible'),
-        supabase
+        gateway
           .from('status_visibility')
           .select('target_user_id, profiles!status_visibility_target_user_id_fkey(id, display_name, username, profile_pic)')
           .eq('user_id', user.id)
@@ -123,7 +123,7 @@ export function useStatusVisibility() {
   const setManualStatus = async (status: 'online' | 'offline' | null) => {
     setManualStatusState(status);
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('profiles')
       .update({ manual_status: status })
       .eq('id', user.id);
@@ -131,7 +131,7 @@ export function useStatusVisibility() {
 
   const addVisibilityOverride = async (targetUserId: string, visibility: 'visible' | 'hidden') => {
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('status_visibility')
       .upsert(
         { user_id: user.id, target_user_id: targetUserId, visibility },
@@ -142,7 +142,7 @@ export function useStatusVisibility() {
 
   const removeVisibilityOverride = async (targetUserId: string) => {
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('status_visibility')
       .delete()
       .eq('user_id', user.id)
@@ -154,7 +154,7 @@ export function useStatusVisibility() {
     setNotificationSoundsState(value);
     setNotificationSoundEnabled(value);
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('profiles')
       .update({ notification_sounds: value })
       .eq('id', user.id);
@@ -190,7 +190,7 @@ export function useStatusVisibility() {
     setDoNotDisturbUntilState(until);
     setDoNotDisturbUntil(until);
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('profiles')
       .update({ do_not_disturb_until: until })
       .eq('id', user.id);
@@ -200,7 +200,7 @@ export function useStatusVisibility() {
     setDarkModeState(value);
     setTheme(value ? 'dark' : 'light');
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('profiles')
       .update({ dark_mode: value })
       .eq('id', user.id);
@@ -209,7 +209,7 @@ export function useStatusVisibility() {
   const setShowReadIndicator = async (value: boolean) => {
     setShowReadIndicatorState(value);
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('profiles')
       .update({ show_read_indicator: value })
       .eq('id', user.id);
@@ -218,7 +218,7 @@ export function useStatusVisibility() {
   const setCheckKeysInConversations = async (value: boolean) => {
     setCheckKeysInConversationsState(value);
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('profiles')
       .update({ check_keys_in_conversations: value })
       .eq('id', user.id);
@@ -227,7 +227,7 @@ export function useStatusVisibility() {
   const setRememberBrowser = async (value: boolean) => {
     setRememberBrowserState(value);
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('profiles')
       .update({ remember_browser: value })
       .eq('id', user.id);
@@ -236,7 +236,7 @@ export function useStatusVisibility() {
   const setDisableAutoUploads = async (value: boolean) => {
     setDisableAutoUploadsState(value);
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('profiles')
       .update({ disable_auto_uploads: value })
       .eq('id', user.id);
@@ -245,7 +245,7 @@ export function useStatusVisibility() {
   const setPreviewMode = async (value: boolean) => {
     setPreviewModeState(value);
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('profiles')
       .update({ preview_mode: value })
       .eq('id', user.id);
@@ -254,7 +254,7 @@ export function useStatusVisibility() {
   const setSecurityWarnings = async (value: boolean) => {
     setSecurityWarningsState(value);
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('profiles')
       .update({ security_warnings: value })
       .eq('id', user.id);
@@ -263,7 +263,7 @@ export function useStatusVisibility() {
   const setVaultPin = async (pin: string | null) => {
     setVaultPinState(pin);
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('profiles')
       .update({ vault_pin: pin })
       .eq('id', user.id);
@@ -272,7 +272,7 @@ export function useStatusVisibility() {
   const setVaultRecoveryCode = async (code: string | null) => {
     setVaultRecoveryCodeState(code);
     if (!user?.id) return;
-    await supabase
+    await gateway
       .from('profiles')
       .update({ vault_recovery_code: code })
       .eq('id', user.id);

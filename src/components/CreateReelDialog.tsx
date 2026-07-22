@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Upload, Loader2, AlertCircle } from 'lucide-react';
 import { validateReelMedia } from '@/utils/reelValidation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { uploadVideo, getVideoMetadata } from '@/lib/storage';
 import { toast } from '@/hooks/use-toast';
@@ -99,7 +99,7 @@ const CreateReelDialog = ({ open, onOpenChange, onSuccess }: CreateReelDialogPro
         }
       };
       
-      const { data: projectData, error: projectError } = await supabase
+      const { data: projectData, error: projectError } = await gateway
         .from('editor_projects')
         .insert({
           owner_id: user.id,

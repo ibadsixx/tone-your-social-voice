@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -107,7 +107,7 @@ const YourInformationAndPermissions: React.FC = () => {
     if (!dataType) return;
     setRequesting(true);
     try {
-      const { data, error } = await supabase.rpc('create_export_request', {
+      const { data, error } = await gateway.rpc('create_export_request', {
         p_data_type: dataType,
         p_start_date: startDate ? format(startDate, 'yyyy-MM-dd') : null,
         p_end_date: endDate ? format(endDate, 'yyyy-MM-dd') : null,
@@ -136,7 +136,7 @@ const YourInformationAndPermissions: React.FC = () => {
   const fetchExportRequests = async () => {
     setFetchingRequests(true);
     try {
-      const { data, error } = await supabase.rpc('get_my_export_requests');
+      const { data, error } = await gateway.rpc('get_my_export_requests');
       if (error) throw error;
       setExportRequests(data || []);
     } catch (error) {
@@ -182,7 +182,7 @@ const YourInformationAndPermissions: React.FC = () => {
   const fetchSearchHistory = async () => {
     setFetchingSearch(true);
     try {
-      const { data, error } = await supabase.rpc('get_my_search_history');
+      const { data, error } = await gateway.rpc('get_my_search_history');
       if (error) throw error;
       setSearchEntries(data || []);
     } catch (error) {
@@ -194,7 +194,7 @@ const YourInformationAndPermissions: React.FC = () => {
 
   const handleRemoveSearchEntry = async (entryId: string) => {
     try {
-      const { error } = await supabase.rpc('remove_search_entry', { p_entry_id: entryId });
+      const { error } = await gateway.rpc('remove_search_entry', { p_entry_id: entryId });
       if (error) throw error;
       setSearchEntries((prev) => prev.filter((e) => e.id !== entryId));
     } catch (error) {
@@ -206,7 +206,7 @@ const YourInformationAndPermissions: React.FC = () => {
   const handleClearSearchHistory = async () => {
     setClearingSearch(true);
     try {
-      const { error } = await supabase.rpc('clear_my_search_history');
+      const { error } = await gateway.rpc('clear_my_search_history');
       if (error) throw error;
       setSearchEntries([]);
       toast({ title: 'Search history cleared' });
@@ -641,7 +641,7 @@ function AdPartnersSection() {
 
   async function loadAdvertisers() {
     setLoading(true);
-    const { data, error } = await supabase.rpc('get_my_advertisers');
+    const { data, error } = await gateway.rpc('get_my_advertisers');
     if (error) {
       toast({ variant: 'destructive', title: 'Failed to load advertisers', description: error.message });
     } else {
@@ -734,7 +734,7 @@ function ContactSection() {
 
   async function loadSettings() {
     setLoading(true);
-    const { data, error } = await supabase.rpc('get_my_contact_settings');
+    const { data, error } = await gateway.rpc('get_my_contact_settings');
     if (error) {
       toast({ variant: 'destructive', title: 'Failed to load settings', description: error.message });
     } else {
@@ -748,7 +748,7 @@ function ContactSection() {
   async function toggleSetting(name: string) {
     const newVal = settings[name] === 'true' ? 'false' : 'true';
     setSettings(prev => ({ ...prev, [name]: newVal }));
-    const { error } = await supabase.rpc('update_contact_setting', { p_setting_name: name, p_setting_value: newVal });
+    const { error } = await gateway.rpc('update_contact_setting', { p_setting_name: name, p_setting_value: newVal });
     if (error) {
       toast({ variant: 'destructive', title: 'Failed to update setting', description: error.message });
       loadSettings();

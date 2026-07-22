@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 
 interface HiddenContent {
@@ -28,7 +28,7 @@ export const useHiddenContent = () => {
     }
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('hidden_content')
         .select('id, content_id, content_type, profile_id, created_at')
         .eq('user_id', user.id);
@@ -88,7 +88,7 @@ export const useHiddenContent = () => {
     console.log('[HIDDEN_CONTENT] INSERT payload:', payload);
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('hidden_content')
         .insert(payload)
         .select()
@@ -130,7 +130,7 @@ export const useHiddenContent = () => {
     console.log('[HIDDEN_CONTENT] INSERT profile:', { user_id: user.id, profile_id: profileId });
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('hidden_content')
         .insert({
           user_id: user.id,
@@ -169,7 +169,7 @@ export const useHiddenContent = () => {
     if (!user?.id) return false;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('hidden_content')
         .delete()
         .eq('user_id', user.id)
@@ -196,7 +196,7 @@ export const useHiddenContent = () => {
     if (!user?.id) return false;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('hidden_content')
         .delete()
         .eq('user_id', user.id)

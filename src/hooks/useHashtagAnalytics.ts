@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 interface HashtagAnalytics {
   id: string;
@@ -41,7 +41,7 @@ export const useHashtagAnalytics = (tag: string) => {
       setLoading(true);
       try {
         // Fetch basic analytics from view
-        const { data: analyticsData } = await supabase
+        const { data: analyticsData } = await gateway
           .from('hashtag_analytics' as any)
           .select('*')
           .eq('tag', tag.toLowerCase())
@@ -51,7 +51,7 @@ export const useHashtagAnalytics = (tag: string) => {
           setAnalytics(analyticsData as any);
 
           // Fetch top contributors
-          const { data: links } = await supabase
+          const { data: links } = await gateway
             .from('hashtag_links' as any)
             .select(`
               source_id,
@@ -89,7 +89,7 @@ export const useHashtagAnalytics = (tag: string) => {
           }
 
           // Fetch time series data for the last 30 days
-          const { data: timeData } = await supabase
+          const { data: timeData } = await gateway
             .from('hashtag_links' as any)
             .select('created_at')
             .eq('hashtag_id', (analyticsData as any).id)
@@ -110,7 +110,7 @@ export const useHashtagAnalytics = (tag: string) => {
           }
 
           // Fetch related hashtags (co-occurring hashtags)
-          const { data: relatedData } = await supabase
+          const { data: relatedData } = await gateway
             .from('hashtag_links' as any)
             .select('source_id')
             .eq('hashtag_id', (analyticsData as any).id)
@@ -120,7 +120,7 @@ export const useHashtagAnalytics = (tag: string) => {
           if (relatedData && (relatedData as any[]).length > 0) {
             const postIds = (relatedData as any[]).map((r: any) => r.source_id);
             
-            const { data: coOccurring } = await supabase
+            const { data: coOccurring } = await gateway
               .from('hashtag_links' as any)
               .select(`
                 hashtag_id,

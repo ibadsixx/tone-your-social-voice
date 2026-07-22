@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 
 export interface CallHistoryItem {
@@ -28,7 +28,7 @@ export const useCallHistory = () => {
     setError(null);
 
     try {
-      const { data, error: fetchError } = await supabase.rpc('get_call_history', {
+      const { data, error: fetchError } = await gateway.rpc('get_call_history', {
         p_user_id: user.id,
         p_limit: 50
       });
@@ -56,7 +56,7 @@ export const useCallHistory = () => {
     if (!user?.id) return null;
 
     try {
-      const { data, error: logError } = await supabase.rpc('log_call', {
+      const { data, error: logError } = await gateway.rpc('log_call', {
         p_caller_id: user.id,
         p_receiver_id: receiverId,
         p_call_type: callType,

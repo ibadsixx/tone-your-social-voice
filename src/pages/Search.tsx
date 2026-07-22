@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Search as SearchIcon, User, Users, FileText, Loader2, Grid3X3, Plus } from 'lucide-react';
 import { useSearch, SearchResult } from '@/hooks/useSearch';
 import { useExplorePosts } from '@/hooks/useExplorePosts';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import ExplorePostGrid from '@/components/ExplorePostGrid';
 import PostModal from '@/components/PostModal';
 import { cn } from '@/lib/utils';
@@ -51,7 +51,7 @@ const Search = () => {
 
   const saveSearchQuery = async (q: string) => {
     try {
-      await supabase.rpc('add_search_entry', { p_query: q });
+      await gateway.rpc('add_search_entry', { p_query: q });
     } catch {
       // silently fail — search history is non-critical
     }

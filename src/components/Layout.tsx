@@ -13,7 +13,7 @@ import { HeaderAvatarMenuProvider, useHeaderAvatarMenu } from '@/contexts/Header
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import FriendRequestsDropdown from '@/components/FriendRequestsDropdown';
 import MobileNav from '@/components/MobileNav';
 import CreateStoryDialog from '@/components/CreateStoryDialog';
@@ -61,7 +61,7 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
   useEffect(() => {
     if (!user?.id) return;
     (async () => {
-      const { data } = await supabase
+      const { data } = await gateway
         .from('pages')
         .select('*')
         .eq('admin_id', user.id)

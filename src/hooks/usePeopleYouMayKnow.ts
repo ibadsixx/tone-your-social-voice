@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -37,7 +37,7 @@ export const usePeopleYouMayKnow = (limit: number = 10): UsePeopleYouMayKnowRetu
       setLoading(true);
       setError(null);
 
-      const { data, error: fetchError } = await supabase.rpc('get_people_you_may_know', {
+      const { data, error: fetchError } = await gateway.rpc('get_people_you_may_know', {
         p_user_id: user.id,
         p_limit: limit
       });
@@ -71,7 +71,7 @@ export const usePeopleYouMayKnow = (limit: number = 10): UsePeopleYouMayKnowRetu
 
     try {
       // Insert friendship request
-      const { error: friendshipError } = await supabase
+      const { error: friendshipError } = await gateway
         .from('friends')
         .insert({
           requester_id: user.id,
@@ -92,7 +92,7 @@ export const usePeopleYouMayKnow = (limit: number = 10): UsePeopleYouMayKnowRetu
       }
 
       // Also add to followers
-      const { error: followError } = await supabase
+      const { error: followError } = await gateway
         .from('followers')
         .insert({
           follower_id: user.id,

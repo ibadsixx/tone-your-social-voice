@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { buildSocialUrl } from '@/utils/socialLinks';
@@ -253,7 +253,7 @@ const PageDetail = () => {
       case 'message': {
         const convId = await getOrCreateDM(page.admin_id);
         if (convId && page?.id) {
-          await supabase.from('conversations').update({ page_id: page.id }).eq('id', convId).maybeSingle();
+          await gateway.from('conversations').update({ page_id: page.id }).eq('id', convId).maybeSingle();
           navigate(`/messages/${convId}`);
         }
         break;
@@ -290,7 +290,7 @@ const PageDetail = () => {
     if (!id) return;
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('pages')
         .select('*')
         .eq('id', id)
@@ -312,7 +312,7 @@ const PageDetail = () => {
       setEducationCurrent(((data as any).work_education?.education?.current === true || (data as any).work_education?.education?.current === 'true'));
       setFamilyMembers((data as any).family_members ?? []);
 
-      const { count } = await supabase
+      const { count } = await gateway
         .from('page_followers')
         .select('*', { count: 'exact', head: true })
         .eq('page_id', id);
@@ -324,7 +324,7 @@ const PageDetail = () => {
   const fetchPagePosts = async () => {
     if (!id) return;
     setPostsLoading(true);
-    const { data } = await supabase
+    const { data } = await gateway
       .from('page_posts')
       .select(`
         id, message, created_at, shared_by,
@@ -349,7 +349,7 @@ const PageDetail = () => {
   useEffect(() => {
     if (!id) return;
     (async () => {
-      const { data } = await supabase
+      const { data } = await gateway
         .from('page_followers')
         .select('user_id, role, followed_at, profiles:user_id (id, display_name, username, profile_pic)')
         .eq('page_id', id)
@@ -362,7 +362,7 @@ const PageDetail = () => {
   useEffect(() => {
     if (!page?.admin_id) return;
     (async () => {
-      const { data } = await supabase
+      const { data } = await gateway
         .from('profiles')
         .select('id, display_name, username, profile_pic, email')
         .eq('id', page.admin_id)
@@ -374,7 +374,7 @@ const PageDetail = () => {
   useEffect(() => {
     if (!id || !user) return;
     (async () => {
-      const { data } = await supabase
+      const { data } = await gateway
         .from('page_followers')
         .select('user_id')
         .eq('page_id', id)
@@ -388,21 +388,21 @@ const PageDetail = () => {
   useEffect(() => {
     if (!id || !user) return;
     (async () => {
-      const { data: convs } = await supabase
+      const { data: convs } = await gateway
         .from('conversations')
         .select('id, created_by')
         .eq('page_id', id)
         .order('updated_at', { ascending: false });
       if (!convs || convs.length === 0) return;
       const convIds = convs.map((c: any) => c.id);
-      const { data: participants } = await supabase
+      const { data: participants } = await gateway
         .from('conversation_participants')
         .select('user_id')
         .in('conversation_id', convIds);
       if (!participants || participants.length === 0) return;
       const userIds = [...new Set<string>(participants.map((p: any) => p.user_id).filter((uid: string) => uid !== user.id))];
       if (userIds.length === 0) return;
-      const { data: profiles } = await supabase
+      const { data: profiles } = await gateway
         .from('profiles')
         .select('id, display_name, username, profile_pic')
         .in('id', userIds);
@@ -421,8 +421,8 @@ const PageDetail = () => {
       try {
         const pattern = `%${q}%`;
         const [profilesRes, pagesRes] = await Promise.all([
-          supabase.from('profiles').select('id, display_name, username, profile_pic').or(`display_name.ilike.${pattern},username.ilike.${pattern}`).limit(10),
-          supabase.from('pages').select('id, name, profile_pic').ilike('name', pattern).limit(10),
+          gateway.from('profiles').select('id, display_name, username, profile_pic').or(`display_name.ilike.${pattern},username.ilike.${pattern}`).limit(10),
+          gateway.from('pages').select('id, name, profile_pic').ilike('name', pattern).limit(10),
         ]);
         const results: { id: string; name: string; type: 'person' | 'page'; profile_pic?: string | null }[] = [];
         for (const p of profilesRes.data || []) {
@@ -456,7 +456,7 @@ const PageDetail = () => {
     try {
       const postId = await createPost(content, media, taggedUsers, audience, feeling, scheduledAt, location);
       if (postId) {
-        const { error } = await supabase.from('page_posts').insert({
+        const { error } = await gateway.from('page_posts').insert({
           page_id: id,
           post_id: postId,
           shared_by: user.id,
@@ -475,11 +475,11 @@ const PageDetail = () => {
     if (!id || !user) return;
     setFollowBusy(true);
     if (isFollowing) {
-      await supabase.from('page_followers').delete().eq('page_id', id).eq('user_id', user.id);
+      await gateway.from('page_followers').delete().eq('page_id', id).eq('user_id', user.id);
       setIsFollowing(false);
       setFollowerCount((c) => Math.max(0, c - 1));
     } else {
-      await supabase.from('page_followers').insert({ page_id: id, user_id: user.id, role: 'follower' });
+      await gateway.from('page_followers').insert({ page_id: id, user_id: user.id, role: 'follower' });
       setIsFollowing(true);
       setFollowerCount((c) => c + 1);
     }
@@ -537,7 +537,7 @@ const PageDetail = () => {
       updates.family_members = familyMembers;
     }
 
-    const { error } = await supabase
+    const { error } = await gateway
       .from('pages')
       .update(updates)
       .eq('id', page.id);
@@ -563,7 +563,7 @@ const PageDetail = () => {
         if (familyMembers.length > 0 && !msg.includes('family_members')) {
           fallback.family_members = familyMembers;
         }
-        const { error: fallbackErr } = await supabase
+        const { error: fallbackErr } = await gateway
           .from('pages')
           .update(fallback)
           .eq('id', page.id);
@@ -616,7 +616,7 @@ const PageDetail = () => {
     setUploading(true);
     const ext = file.name.split('.').pop();
     const path = `${page.id}/${Date.now()}.${ext}`;
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await gateway.storage
       .from('covers')
       .upload(path, file, { upsert: true });
     if (uploadError) {
@@ -624,9 +624,9 @@ const PageDetail = () => {
       toast({ title: 'Upload failed', description: uploadError.message, variant: 'destructive' });
       return;
     }
-    const { data: urlData } = supabase.storage.from('covers').getPublicUrl(path);
+    const { data: urlData } = gateway.storage.from('covers').getPublicUrl(path);
     const cover_image = urlData.publicUrl;
-    const { error } = await supabase.from('pages').update({ cover_image }).eq('id', page.id);
+    const { error } = await gateway.from('pages').update({ cover_image }).eq('id', page.id);
     setUploading(false);
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -646,7 +646,7 @@ const PageDetail = () => {
     setUploading(true);
     const ext = file.name.split('.').pop();
     const path = `page_avatars/${page.id}/${Date.now()}.${ext}`;
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await gateway.storage
       .from('avatars')
       .upload(path, file, { upsert: true });
     if (uploadError) {
@@ -654,9 +654,9 @@ const PageDetail = () => {
       toast({ title: 'Upload failed', description: uploadError.message, variant: 'destructive' });
       return;
     }
-    const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+    const { data: urlData } = gateway.storage.from('avatars').getPublicUrl(path);
     const profile_pic = urlData.publicUrl;
-    const { error } = await supabase.from('pages').update({ profile_pic }).eq('id', page.id);
+    const { error } = await gateway.from('pages').update({ profile_pic }).eq('id', page.id);
     setUploading(false);
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -679,7 +679,7 @@ const PageDetail = () => {
     }
     setSavingButton(true);
     const url = needsLink ? buttonUrl.trim() : null;
-    const { error } = await supabase
+    const { error } = await gateway
       .from('pages')
       .update({ button_type: selectedButtonType, button_url: url })
       .eq('id', page.id);
@@ -696,7 +696,7 @@ const PageDetail = () => {
   const handleRemoveButton = async () => {
     if (!page || !isPageAdmin) return;
     setSavingButton(true);
-    const { error } = await supabase
+    const { error } = await gateway
       .from('pages')
       .update({ button_type: null, button_url: null })
       .eq('id', page.id);
@@ -1220,7 +1220,7 @@ const PageDetail = () => {
                                       onClick={async () => {
                                         const convId = await getOrCreateDM(c.id);
                                         if (convId && page?.id) {
-                                          await supabase.from('conversations').update({ page_id: page.id }).eq('id', convId).maybeSingle();
+                                          await gateway.from('conversations').update({ page_id: page.id }).eq('id', convId).maybeSingle();
                                           navigate(`/messages/${convId}`);
                                         }
                                       }}

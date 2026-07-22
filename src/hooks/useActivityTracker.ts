@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
 
@@ -50,7 +50,7 @@ export const useActivityTracker = () => {
     }
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('user_activity')
         .insert({
           user_id: user.id,

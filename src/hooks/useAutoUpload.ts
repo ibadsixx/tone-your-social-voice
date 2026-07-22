@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -17,7 +17,7 @@ export function useAutoUpload() {
       const ext = file.name.split('.').pop() || 'bin';
       const filePath = `${user.id}/${Date.now()}-${Math.random().toString(36).substring(2)}.${ext}`;
 
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await gateway.storage
         .from(BUCKET)
         .upload(filePath, file, { contentType: file.type });
 
@@ -26,13 +26,13 @@ export function useAutoUpload() {
         continue;
       }
 
-      const { data: urlData } = supabase.storage
+      const { data: urlData } = gateway.storage
         .from(BUCKET)
         .getPublicUrl(filePath);
 
       if (!urlData?.publicUrl) continue;
 
-      await supabase.from('media_library').insert({
+      await gateway.from('media_library').insert({
         user_id: user.id,
         file_url: urlData.publicUrl,
         file_type: file.type,

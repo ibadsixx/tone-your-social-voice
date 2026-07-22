@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 export interface PollData {
   poll_id: string;
@@ -12,7 +12,7 @@ export interface PollData {
 
 export async function getPoll(messageId: string): Promise<PollData | null> {
   try {
-    const { data, error } = await supabase.rpc('get_message_poll', {
+    const { data, error } = await gateway.rpc('get_message_poll', {
       p_message_id: messageId,
     });
     if (error || !data || data.length === 0) return null;
@@ -33,7 +33,7 @@ export async function getPoll(messageId: string): Promise<PollData | null> {
 
 export async function vote(pollId: string, optionIndex: number): Promise<boolean> {
   try {
-    const { error } = await supabase.rpc('vote_on_poll', {
+    const { error } = await gateway.rpc('vote_on_poll', {
       p_poll_id: pollId,
       p_option_index: optionIndex,
     });
@@ -58,7 +58,7 @@ export const useChannelPolls = (conversationId?: string) => {
     creatingRef.current = true;
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc('send_poll_message', {
+      const { data, error } = await gateway.rpc('send_poll_message', {
         p_conversation_id: conversationId,
         p_question: question,
         p_options: JSON.stringify(options),

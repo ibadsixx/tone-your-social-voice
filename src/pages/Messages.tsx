@@ -31,7 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 const Messages = () => {
   const [showNewConversation, setShowNewConversation] = useState(false);
@@ -121,7 +121,7 @@ const Messages = () => {
     if (!currentUserId) return;
     setArchivedLoading(true);
     try {
-      const { data, error } = await supabase.rpc('get_archived_conversations', {
+      const { data, error } = await gateway.rpc('get_archived_conversations', {
         p_user_id: currentUserId
       });
       if (!error) setArchivedConversations(data || []);
@@ -133,20 +133,20 @@ const Messages = () => {
   };
 
   const archiveConversation = async (convId: string) => {
-    await supabase.rpc('archive_conversation', { p_conversation_id: convId });
+    await gateway.rpc('archive_conversation', { p_conversation_id: convId });
     refetchConversations();
     fetchArchived();
   };
 
   const unarchiveConversation = async (convId: string) => {
-    await supabase.rpc('unarchive_conversation', { p_conversation_id: convId });
+    await gateway.rpc('unarchive_conversation', { p_conversation_id: convId });
     refetchConversations();
     fetchArchived();
   };
 
   const handleAddPerson = async (userId: string) => {
     if (viewMode === 'restricted') {
-      await supabase
+      await gateway
         .from('restricted_users')
         .insert({ user_id: currentUserId, restricted_user_id: userId });
       setShowAddPeople(false);
@@ -155,7 +155,7 @@ const Messages = () => {
     } else {
       const conversationId = await getOrCreateDM(userId);
       if (conversationId) {
-        await supabase.rpc('archive_conversation', { p_conversation_id: conversationId });
+        await gateway.rpc('archive_conversation', { p_conversation_id: conversationId });
         setShowAddPeople(false);
         fetchArchived();
       }
@@ -166,7 +166,7 @@ const Messages = () => {
     if (!currentUserId) return;
     setRestrictedLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('restricted_users')
         .select('id, restricted_user_id, created_at')
         .eq('user_id', currentUserId)
@@ -180,7 +180,7 @@ const Messages = () => {
       }
 
       const ids = data.map(r => r.restricted_user_id);
-      const { data: profiles } = await supabase
+      const { data: profiles } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .in('id', ids);
@@ -206,7 +206,7 @@ const Messages = () => {
   const addRestricted = async (targetId: string) => {
     setRestrictedAdding(true);
     try {
-      await supabase
+      await gateway
         .from('restricted_users')
         .insert({ user_id: currentUserId, restricted_user_id: targetId });
       setRestrictedSearch('');
@@ -221,7 +221,7 @@ const Messages = () => {
   };
 
   const removeRestriction = async (id: string) => {
-    await supabase.from('restricted_users').delete().eq('id', id);
+    await gateway.from('restricted_users').delete().eq('id', id);
     setRestrictedUsers(prev => prev.filter(r => r.id !== id));
     toast({ title: 'Restriction removed' });
   };
@@ -233,7 +233,7 @@ const Messages = () => {
       return;
     }
     const delay = setTimeout(async () => {
-      const { data } = await supabase
+      const { data } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .neq('id', currentUserId)
@@ -304,7 +304,7 @@ const Messages = () => {
           localStorage.setItem('tone_device_id', deviceId);
         }
 
-        await supabase.from('trusted_devices').upsert({
+        await gateway.from('trusted_devices').upsert({
           user_id: currentUserId,
           device_id: deviceId,
           user_agent: navigator.userAgent,
@@ -312,7 +312,7 @@ const Messages = () => {
           last_used_at: new Date().toISOString(),
         }, { onConflict: 'user_id,device_id' });
 
-        const { data: dbDevices } = await supabase
+        const { data: dbDevices } = await gateway
           .from('trusted_devices')
           .select('*')
           .eq('user_id', currentUserId)
@@ -353,7 +353,7 @@ const Messages = () => {
       deviceId = crypto.randomUUID();
       localStorage.setItem('tone_device_id', deviceId);
     }
-    supabase.from('trusted_devices').upsert({
+    gateway.from('trusted_devices').upsert({
       user_id: currentUserId,
       device_id: deviceId,
       user_agent: navigator.userAgent,
@@ -1490,7 +1490,7 @@ const PeopleSelectorContent: React.FC<PeopleSelectorContentProps> = ({ selectedP
     const delay = setTimeout(async () => {
       setLoading(true);
       try {
-        const { data } = await supabase
+        const { data } = await gateway
           .from('profiles')
           .select('id, display_name, username, profile_pic')
           .ilike('display_name', `%${searchQuery}%`)

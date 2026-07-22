@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -56,7 +56,7 @@ export const useStories = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('stories')
         .select(`
           *,
@@ -146,18 +146,18 @@ export const useStories = () => {
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
       const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
 
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await gateway.storage
         .from('stories')
         .upload(fileName, file);
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = gateway.storage
         .from('stories')
         .getPublicUrl(fileName);
 
       // Create story record
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('stories')
         .insert({
           user_id: user.id,
@@ -201,7 +201,7 @@ export const useStories = () => {
 
     try {
       // Insert into story_views table (will be unique per user per story)
-      const { error } = await supabase
+      const { error } = await gateway
         .from('story_views')
         .insert({
           story_id: storyId,
@@ -214,7 +214,7 @@ export const useStories = () => {
       }
 
       // Update story views count
-      const { error: updateError } = await supabase
+      const { error: updateError } = await gateway
         .from('stories')
         .update({
           views: await getViewCount(storyId)
@@ -228,7 +228,7 @@ export const useStories = () => {
   };
 
   const getViewCount = async (storyId: string): Promise<number> => {
-    const { count } = await supabase
+    const { count } = await gateway
       .from('story_views')
       .select('*', { count: 'exact', head: true })
       .eq('story_id', storyId);
@@ -238,7 +238,7 @@ export const useStories = () => {
 
   const deleteStory = async (storyId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('stories')
         .delete()
         .eq('id', storyId);
@@ -272,7 +272,7 @@ export const useStories = () => {
     fetchStories({ showLoading: true });
 
     // Real-time subscription (do NOT toggle global loading; it would unmount StoryViewer)
-    const channel = supabase
+    const channel = gateway
       .channel('stories-changes')
       .on(
         'postgres_changes',
@@ -288,7 +288,7 @@ export const useStories = () => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [user]);
 

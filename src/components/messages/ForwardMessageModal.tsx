@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Search, Forward, Check, Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { Message } from './MessageBubble';
@@ -51,7 +51,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
       setLoading(true);
       try {
         // Get accepted friends
-        const { data: friendships, error } = await supabase
+        const { data: friendships, error } = await gateway
           .from('friends')
           .select(`
             requester_id,
@@ -75,7 +75,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
         }
 
         // Fetch friend profiles
-        const { data: profiles, error: profilesError } = await supabase
+        const { data: profiles, error: profilesError } = await gateway
           .from('profiles')
           .select('id, username, display_name, profile_pic')
           .in('id', friendIds);
@@ -146,7 +146,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
       // Send message to each selected friend
       for (const friendId of selectedFriends) {
         // Get or create conversation
-        const { data: conversationId, error: convError } = await supabase.rpc(
+        const { data: conversationId, error: convError } = await gateway.rpc(
           'get_or_create_dm',
           {
             p_user_a: currentUserId,
@@ -160,7 +160,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
         }
 
         // Insert the forwarded message
-        const { error: msgError } = await supabase.from('messages').insert({
+        const { error: msgError } = await gateway.from('messages').insert({
           conversation_id: conversationId,
           sender_id: currentUserId,
           content: forwardedContent || null,

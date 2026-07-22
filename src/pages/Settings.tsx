@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import PageContainer from '@/components/PageContainer';
 import { usePhotoUpload } from '@/hooks/usePhotoUpload';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import PhotoUploadDialog from '@/components/PhotoUploadDialog';
 import QRCode from 'qrcode';
 import YourInformationAndPermissions from '@/components/YourInformationAndPermissions';
@@ -128,7 +128,7 @@ const Settings = () => {
     if (!user?.id) return;
 
     try {
-      const { data: profile, error } = await supabase
+      const { data: profile, error } = await gateway
         .from('profiles')
         .select('bio, display_name')
         .eq('id', user.id)
@@ -150,7 +150,7 @@ const Settings = () => {
 
     try {
       // Get profile data
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile, error: profileError } = await gateway
         .from('profiles')
         .select('*')
         .eq('id', user.id)
@@ -250,7 +250,7 @@ const Settings = () => {
       // Update profile in database
       const displayName = `${personalDetails.firstName} ${personalDetails.lastName}`.trim();
       
-      const { error: profileError } = await supabase
+      const { error: profileError } = await gateway
         .from('profiles')
         .update({
           display_name: displayName,
@@ -262,7 +262,7 @@ const Settings = () => {
 
       // Update email in auth if changed
       if (personalDetails.email !== user.email) {
-        const { error: emailError } = await supabase.auth.updateUser({
+        const { error: emailError } = await gateway.auth.updateUser({
           email: personalDetails.email
         });
 
@@ -322,7 +322,7 @@ const Settings = () => {
       }
 
       // First verify current password by attempting to sign in
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await gateway.auth.signInWithPassword({
         email: user?.email || '',
         password: passwordData.currentPassword
       });
@@ -332,7 +332,7 @@ const Settings = () => {
       }
 
       // Update password
-      const { error: updateError } = await supabase.auth.updateUser({
+      const { error: updateError } = await gateway.auth.updateUser({
         password: passwordData.newPassword
       });
 
@@ -374,7 +374,7 @@ const Settings = () => {
 
   const checkExistingMFA = async () => {
     try {
-      const { data, error } = await supabase.auth.mfa.listFactors();
+      const { data, error } = await gateway.auth.mfa.listFactors();
       if (error) throw error;
 
       const totpFactor = data.totp.find(factor => factor.status === 'verified');
@@ -394,7 +394,7 @@ const Settings = () => {
     setTotpSetupLoading(true);
     
     try {
-      const { data, error } = await supabase.auth.mfa.enroll({
+      const { data, error } = await gateway.auth.mfa.enroll({
         factorType: 'totp',
         friendlyName: 'Tone Authenticator'
       });
@@ -427,13 +427,13 @@ const Settings = () => {
     setTotpLoading(true);
 
     try {
-      const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+      const { data: challengeData, error: challengeError } = await gateway.auth.mfa.challenge({
         factorId: totpData.factor_id
       });
 
       if (challengeError) throw challengeError;
 
-      const { data: verifyData, error: verifyError } = await supabase.auth.mfa.verify({
+      const { data: verifyData, error: verifyError } = await gateway.auth.mfa.verify({
         factorId: totpData.factor_id,
         challengeId: challengeData.id,
         code: totpData.verification_code
@@ -470,7 +470,7 @@ const Settings = () => {
     setTotpLoading(true);
 
     try {
-      const { error } = await supabase.auth.mfa.unenroll({
+      const { error } = await gateway.auth.mfa.unenroll({
         factorId: totpData.factor_id
       });
 

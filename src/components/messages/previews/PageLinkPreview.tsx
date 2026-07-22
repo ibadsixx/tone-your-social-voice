@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Heart } from 'lucide-react';
 
 interface PageData {
@@ -27,7 +27,7 @@ export const PageLinkPreview = ({ pageId }: PageLinkPreviewProps) => {
     let cancelled = false;
     const fetchPage = async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('pages')
           .select('id, name, profile_pic, follower_count, category')
           .eq('id', pageId)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -45,7 +45,7 @@ const PageManage = () => {
     }
 
     (async () => {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('pages')
         .select('id, name, profile_pic, description, category, created_at')
         .eq('id', id)
@@ -56,13 +56,13 @@ const PageManage = () => {
         setPage({ id, name: 'Page', profile_pic: null });
       }
 
-      const { count: fCount } = await supabase
+      const { count: fCount } = await gateway
         .from('page_followers')
         .select('*', { count: 'exact', head: true })
         .eq('page_id', id);
       setFollowerCount(fCount ?? 0);
 
-      const { count: pCount } = await supabase
+      const { count: pCount } = await gateway
         .from('page_posts')
         .select('*', { count: 'exact', head: true })
         .eq('page_id', id);

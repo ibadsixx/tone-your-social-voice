@@ -9,7 +9,7 @@ import { Slider } from '@/components/ui/slider';
 import { Upload, Type, Music, X, Check, ChevronLeft, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Trash2, RotateCw, Volume2, VolumeX, AtSign, Pen, Undo2, Redo2, Eraser } from 'lucide-react';
 import { Stage, Layer, Text as KonvaText, Image as KonvaImage, Transformer, Group, Rect, Line } from 'react-konva';
 import Konva from 'konva';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/useAuth';
 import { useStories } from '@/hooks/useStories';
@@ -613,7 +613,7 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
       setMentionSearching(true);
       try {
         const pattern = `%${mentionSearch.trim()}%`;
-        const { data } = await supabase
+        const { data } = await gateway
           .from('profiles')
           .select('id, username, display_name, profile_pic')
           .or(`display_name.ilike.${pattern},username.ilike.${pattern}`)
@@ -735,7 +735,7 @@ export default function CreateStoryDialog({ open, onOpenChange }: { open: boolea
       );
       if (result) {
         if (mentionOverlays.length > 0) {
-          const { error: mentionError } = await supabase
+          const { error: mentionError } = await gateway
             .from('story_mentions')
             .insert(mentionOverlays.map(o => ({
               story_id: result.id,

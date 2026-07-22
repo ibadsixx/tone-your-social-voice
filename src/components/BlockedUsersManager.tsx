@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -109,7 +109,7 @@ const BlockedUsersManager = () => {
 
 function searchProfiles(userId: string | undefined, query: string): Promise<ProfileResult[]> {
   if (query.length < 2) return Promise.resolve([]);
-  return supabase
+  return gateway
     .from('profiles')
     .select('id, username, display_name, profile_pic')
     .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
@@ -145,7 +145,7 @@ const RestrictedSection = () => {
   const fetchRestricted = useCallback(async () => {
     if (!user) return;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('restricted_users')
         .select('id, restricted_user_id, created_at')
         .eq('user_id', user.id)
@@ -159,7 +159,7 @@ const RestrictedSection = () => {
       }
 
       const ids = data.map(r => r.restricted_user_id);
-      const { data: profiles } = await supabase
+      const { data: profiles } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .in('id', ids);
@@ -195,7 +195,7 @@ const RestrictedSection = () => {
   const addRestricted = async (targetId: string) => {
     setAdding(true);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('restricted_users')
         .insert({ user_id: user?.id, restricted_user_id: targetId });
       if (error) throw error;
@@ -211,7 +211,7 @@ const RestrictedSection = () => {
 
   const removeRestricted = async (id: string) => {
     try {
-      await supabase.from('restricted_users').delete().eq('id', id);
+      await gateway.from('restricted_users').delete().eq('id', id);
       setRows(prev => prev.filter(r => r.id !== id));
       toast({ title: 'Restriction removed' });
     } catch {
@@ -311,7 +311,7 @@ const BlockedProfilesSection = () => {
   const fetchBlockedUsers = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const { data: blocks, error: blocksError } = await supabase
+      const { data: blocks, error: blocksError } = await gateway
         .from('blocks')
         .select('id, blocked_id, created_at')
         .eq('blocker_id', user.id)
@@ -325,7 +325,7 @@ const BlockedProfilesSection = () => {
       }
 
       const blockedIds = blocks.map(block => block.blocked_id);
-      const { data: profiles } = await supabase
+      const { data: profiles } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .in('id', blockedIds);
@@ -348,7 +348,7 @@ const BlockedProfilesSection = () => {
 
   const unblockUser = async (blockId: string, username: string) => {
     try {
-      await supabase.from('blocks').delete().eq('id', blockId);
+      await gateway.from('blocks').delete().eq('id', blockId);
       setBlockedUsers(prev => prev.filter(block => block.id !== blockId));
       toast({ title: 'User unblocked', description: `@${username} has been unblocked.` });
     } catch {
@@ -414,7 +414,7 @@ const BlockedNicknamesSection = () => {
   const fetchNicknames = useCallback(async () => {
     if (!user) return;
     try {
-      const { data } = await supabase
+      const { data } = await gateway
         .from('blocked_nicknames')
         .select('id, nickname, created_at')
         .eq('user_id', user.id)
@@ -431,7 +431,7 @@ const BlockedNicknamesSection = () => {
     if (!newNickname.trim()) return;
     setAdding(true);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('blocked_nicknames')
         .insert({ user_id: user?.id, nickname: newNickname.trim() });
       if (error) throw error;
@@ -446,7 +446,7 @@ const BlockedNicknamesSection = () => {
 
   const removeNickname = async (id: string) => {
     try {
-      await supabase.from('blocked_nicknames').delete().eq('id', id);
+      await gateway.from('blocked_nicknames').delete().eq('id', id);
       setNicknames(prev => prev.filter(n => n.id !== id));
     } catch {
       toast({ title: 'Error', description: 'Failed to remove nickname', variant: 'destructive' });
@@ -524,7 +524,7 @@ const BlockedSendersSection = ({ table, title, description }: SendersSectionProp
   const fetchRows = useCallback(async () => {
     if (!user) return;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from(table)
         .select('id, blocked_user_id, created_at')
         .eq('user_id', user.id)
@@ -535,7 +535,7 @@ const BlockedSendersSection = ({ table, title, description }: SendersSectionProp
       if (!data || data.length === 0) { setRows([]); return; }
 
       const ids = data.map(r => r.blocked_user_id);
-      const { data: profiles } = await supabase
+      const { data: profiles } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .in('id', ids);
@@ -561,7 +561,7 @@ const BlockedSendersSection = ({ table, title, description }: SendersSectionProp
 
   const addSender = async (targetId: string) => {
     try {
-      const { error } = await supabase.from(table).insert({
+      const { error } = await gateway.from(table).insert({
         user_id: user?.id,
         blocked_user_id: targetId,
       } as never);
@@ -578,7 +578,7 @@ const BlockedSendersSection = ({ table, title, description }: SendersSectionProp
 
   const removeSender = async (id: string) => {
     try {
-      await supabase.from(table).delete().eq('id', id as never);
+      await gateway.from(table).delete().eq('id', id as never);
       setRows(prev => prev.filter(r => r.id !== id));
     } catch {
       toast({ title: 'Error', description: 'Failed to remove', variant: 'destructive' });

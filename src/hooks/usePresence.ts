@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 const POLL_INTERVAL_MS = 30000;
 const OFFLINE_THRESHOLD_MS = 60000;
@@ -35,11 +35,11 @@ export function usePresence(userId?: string) {
     if (!userId) return;
 
     const updateLastSeen = async () => {
-      await supabase.rpc('update_last_seen');
+      await gateway.rpc('update_last_seen');
     };
 
     const updateLastSeenSync = () => {
-      supabase.rpc('update_last_seen').then();
+      gateway.rpc('update_last_seen').then();
     };
 
     updateLastSeen();

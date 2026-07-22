@@ -13,7 +13,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { UserPlus, UserCheck, X, Loader2, User, Users } from 'lucide-react';
 import { usePeopleYouMayKnow, SuggestedPerson } from '@/hooks/usePeopleYouMayKnow';
 
@@ -55,7 +55,7 @@ const FriendRequestsDropdown: React.FC = () => {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('friends')
         .select(`
           id,
@@ -84,7 +84,7 @@ const FriendRequestsDropdown: React.FC = () => {
     if (!user?.id) return;
     setLoadingSent(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('friends')
         .select(`
           id,
@@ -119,7 +119,7 @@ const FriendRequestsDropdown: React.FC = () => {
   const handleAccept = async (requestId: string) => {
     setActionLoading(requestId);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('friends')
         .update({ status: 'accepted' })
         .eq('id', requestId);
@@ -145,7 +145,7 @@ const FriendRequestsDropdown: React.FC = () => {
   const handleReject = async (requestId: string) => {
     setActionLoading(requestId);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('friends')
         .update({ status: 'rejected' })
         .eq('id', requestId);

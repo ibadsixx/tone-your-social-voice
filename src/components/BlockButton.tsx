@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useBlocks } from '@/hooks/useBlocks';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -34,7 +34,7 @@ const BlockButton = ({ profileId, username, displayName }: BlockButtonProps) => 
   // Check restriction status on mount
   useState(() => {
     if (!user?.id || !profileId) return;
-    supabase
+    gateway
       .from('restricted_users')
       .select('id')
       .eq('user_id', user.id)
@@ -61,7 +61,7 @@ const BlockButton = ({ profileId, username, displayName }: BlockButtonProps) => 
     if (!user?.id) return;
     setRestrictLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('restricted_users')
         .insert({ user_id: user.id, restricted_user_id: profileId });
       if (error) throw error;
@@ -84,7 +84,7 @@ const BlockButton = ({ profileId, username, displayName }: BlockButtonProps) => 
     if (!user?.id) return;
     setRestrictLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('restricted_users')
         .delete()
         .eq('user_id', user.id)

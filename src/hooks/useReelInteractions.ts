@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -46,7 +46,7 @@ export const useReelInteractions = (reelId: string) => {
   const fetchCounts = useCallback(async () => {
     if (!reelId) return;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('posts')
         .select('likes_count, comments_count, share_count')
         .eq('id', reelId)
@@ -69,7 +69,7 @@ export const useReelInteractions = (reelId: string) => {
     if (!user || !reelId) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('reels_likes')
         .select('id')
         .eq('reel_id', reelId)
@@ -89,7 +89,7 @@ export const useReelInteractions = (reelId: string) => {
     if (!user || !reelId) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('saved_posts')
         .select('id')
         .eq('post_id', reelId)
@@ -112,7 +112,7 @@ export const useReelInteractions = (reelId: string) => {
       const from = page * COMMENTS_PER_PAGE;
       const to = from + COMMENTS_PER_PAGE - 1;
 
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('reels_comments')
         .select(`
           id,
@@ -177,7 +177,7 @@ export const useReelInteractions = (reelId: string) => {
     }
 
     try {
-      const { data, error } = await supabase.rpc('add_reel_comment', {
+      const { data, error } = await gateway.rpc('add_reel_comment', {
         p_reel_id: reelId,
         p_user_id: user.id,
         p_body: body.trim()
@@ -214,7 +214,7 @@ export const useReelInteractions = (reelId: string) => {
     if (!user) return false;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('reels_comments')
         .delete()
         .eq('id', commentId)
@@ -268,7 +268,7 @@ export const useReelInteractions = (reelId: string) => {
     // Debounce the actual request
     likeTimeoutRef.current = setTimeout(async () => {
       try {
-        const { data, error } = await supabase.rpc('toggle_reel_like', {
+        const { data, error } = await gateway.rpc('toggle_reel_like', {
           p_reel_id: reelId,
           p_user_id: user.id
         });
@@ -316,7 +316,7 @@ export const useReelInteractions = (reelId: string) => {
     try {
       if (wasSaved) {
         // Remove from saved
-        const { error } = await supabase
+        const { error } = await gateway
           .from('saved_posts')
           .delete()
           .eq('post_id', reelId)
@@ -328,7 +328,7 @@ export const useReelInteractions = (reelId: string) => {
         toast({ description: 'Removed from saved' });
       } else {
         // Add to saved
-        const { error } = await supabase
+        const { error } = await gateway
           .from('saved_posts')
           .insert({
             post_id: reelId,
@@ -365,7 +365,7 @@ export const useReelInteractions = (reelId: string) => {
 
     try {
       // Record the share in shares table
-      const { error: shareError } = await supabase
+      const { error: shareError } = await gateway
         .from('shares')
         .insert({
           post_id: reelId,
@@ -375,7 +375,7 @@ export const useReelInteractions = (reelId: string) => {
       if (shareError) throw shareError;
 
       // Increment share count on post
-      const { error: updateError } = await supabase
+      const { error: updateError } = await gateway
         .from('posts')
         .update({ share_count: sharesCount + 1 })
         .eq('id', reelId);
@@ -414,7 +414,7 @@ export const useReelInteractions = (reelId: string) => {
   useEffect(() => {
     if (!reelId) return;
     
-    const channel = supabase
+    const channel = gateway
       .channel(`reel_${reelId}`)
       .on(
         'postgres_changes',
@@ -426,7 +426,7 @@ export const useReelInteractions = (reelId: string) => {
         },
         async (payload) => {
           // Fetch the full comment with author
-          const { data } = await supabase
+          const { data } = await gateway
             .from('reels_comments')
             .select(`
               id,
@@ -500,7 +500,7 @@ export const useReelInteractions = (reelId: string) => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [reelId, user?.id]);
 

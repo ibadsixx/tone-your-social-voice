@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 export interface ConversationSettings {
@@ -27,7 +27,7 @@ export const useConversationSettings = (conversationId?: string) => {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc('get_or_create_conversation_settings', {
+      const { data, error } = await gateway.rpc('get_or_create_conversation_settings', {
         p_conversation_id: conversationId
       });
 
@@ -48,7 +48,7 @@ export const useConversationSettings = (conversationId?: string) => {
     if (!conversationId || !settings) return;
 
     try {
-      const { data, error } = await supabase.rpc('update_conversation_settings', {
+      const { data, error } = await gateway.rpc('update_conversation_settings', {
         p_conversation_id: conversationId,
         p_is_muted: !settings.is_muted
       });
@@ -75,7 +75,7 @@ export const useConversationSettings = (conversationId?: string) => {
     if (!conversationId || !settings) return;
 
     try {
-      const { data, error } = await supabase.rpc('update_conversation_settings', {
+      const { data, error } = await gateway.rpc('update_conversation_settings', {
         p_conversation_id: conversationId,
         p_vanishing_messages_enabled: !settings.vanishing_messages_enabled
       });
@@ -102,7 +102,7 @@ export const useConversationSettings = (conversationId?: string) => {
     if (!conversationId || !settings) return;
 
     try {
-      const { data, error } = await supabase.rpc('update_conversation_settings', {
+      const { data, error } = await gateway.rpc('update_conversation_settings', {
         p_conversation_id: conversationId,
         p_read_receipts_enabled: !settings.read_receipts_enabled
       });
@@ -132,7 +132,7 @@ export const useConversationSettings = (conversationId?: string) => {
     }
 
     try {
-      const { error } = await supabase.rpc('update_conversation_theme', {
+      const { error } = await gateway.rpc('update_conversation_theme', {
         p_conversation_id: conversationId,
         p_chat_theme: themeId,
       });
@@ -165,7 +165,7 @@ export const useConversationSettings = (conversationId?: string) => {
     }
 
     try {
-      const { data, error } = await supabase.rpc('update_conversation_settings', {
+      const { data, error } = await gateway.rpc('update_conversation_settings', {
         p_conversation_id: conversationId,
         p_quick_emoji: emoji
       });
@@ -210,17 +210,17 @@ export const useConversationReport = () => {
     details?: string
   ) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await gateway.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Delete any existing report first to allow re-reporting with new reason
-      await supabase
+      await gateway
         .from('conversation_reports')
         .delete()
         .eq('conversation_id', conversationId)
         .eq('reporter_id', user.id);
 
-      const { error } = await supabase
+      const { error } = await gateway
         .from('conversation_reports')
         .insert({
           conversation_id: conversationId,

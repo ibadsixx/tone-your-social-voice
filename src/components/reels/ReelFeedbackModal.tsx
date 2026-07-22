@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 interface ReelFeedbackModalProps {
@@ -82,7 +82,7 @@ const ReelFeedbackModal = ({
 
     setIsSubmitting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await gateway.auth.getUser();
       if (!user) {
         toast({
           title: 'Error',
@@ -99,14 +99,14 @@ const ReelFeedbackModal = ({
         const fileExt = attachment.name.split('.').pop();
         const fileName = `${user.id}/${Date.now()}.${fileExt}`;
         
-        const { error: uploadError } = await supabase.storage
+        const { error: uploadError } = await gateway.storage
           .from('report-evidence')
           .upload(fileName, attachment);
 
         if (uploadError) {
           console.error('Attachment upload error:', uploadError);
         } else {
-          const { data: urlData } = supabase.storage
+          const { data: urlData } = gateway.storage
             .from('report-evidence')
             .getPublicUrl(fileName);
           attachmentUrl = urlData.publicUrl;
@@ -122,7 +122,7 @@ const ReelFeedbackModal = ({
           : `${baseUrl}/post/${postId}`;
 
       // Insert into technical_feedback with auto-injected metadata
-      const { error } = await supabase.from('technical_feedback').insert({
+      const { error } = await gateway.from('technical_feedback').insert({
         reporter_id: user.id,
         post_id: postId,
         post_type: postType,

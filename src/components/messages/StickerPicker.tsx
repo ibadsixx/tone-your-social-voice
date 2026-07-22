@@ -7,7 +7,7 @@ import { Loader2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCloudinaryStickers, useCloudinaryGroupStickers, type CloudinarySticker } from '@/hooks/useCloudinaryStickers';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 interface StickerPickerProps {
   conversationId: string;
@@ -45,7 +45,7 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
     try {
       setSending(true);
 
-      const { error } = await supabase
+      const { error } = await gateway
         .from('messages')
         .insert({
           conversation_id: conversationId,
@@ -59,7 +59,7 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
       if (error) throw error;
 
       // Update conversation timestamp
-      await supabase
+      await gateway
         .from('conversations')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', conversationId);

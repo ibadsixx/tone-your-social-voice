@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { detectMusicUrl } from '@/utils/musicUrlDetector';
 import { useAuth } from '@/hooks/useAuth';
@@ -50,7 +50,7 @@ export const useMusicLibrary = () => {
     queryFn: async () => {
       console.log('[Music Library] Fetching library with stats...');
       
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .rpc('get_music_library_with_stats', { p_limit: 100, p_offset: 0 });
       
       if (error) {
@@ -89,7 +89,7 @@ export const useMusicLibrary = () => {
       }
 
       // Call the new RPC function that returns proper JSON
-      const { data, error } = await supabase.rpc('add_or_increment_music', {
+      const { data, error } = await gateway.rpc('add_or_increment_music', {
         p_url: params.url,
         p_title: params.title,
         p_artist: params.artist || null,
@@ -145,7 +145,7 @@ export const useMusicLibrary = () => {
     queryFn: async () => {
       console.log('[Music Library] Fetching trending music...');
       
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .rpc('get_trending_music', { p_limit: 10 });
       
       if (error) {
@@ -167,7 +167,7 @@ export const useMusicLibrary = () => {
   const { data: weeklyTopTracks = [] } = useQuery({
     queryKey: ['music-library-weekly'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .rpc('get_trending_music', { p_limit: 20 });
       
       if (error) {

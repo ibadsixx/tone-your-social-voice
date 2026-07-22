@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from './useAuth';
 
 export interface MentionItem {
@@ -47,7 +47,7 @@ export const useMentionsFeed = () => {
       setLoading(true);
 
       // Fetch mentions where the current user is mentioned
-      const { data: mentionsData, error: mentionsError } = await supabase
+      const { data: mentionsData, error: mentionsError } = await gateway
         .from('mentions')
         .select('*')
         .eq('mentioned_user_id', user.id)
@@ -56,7 +56,7 @@ export const useMentionsFeed = () => {
       if (mentionsError) throw mentionsError;
 
       // Fetch tags where current user was tagged in posts
-      const { data: tagsData, error: tagsError } = await supabase
+      const { data: tagsData, error: tagsError } = await gateway
         .from('post_tags')
         .select('id, post_id, tagged_by, created_at')
         .eq('tagged_user_id', user.id)
@@ -90,7 +90,7 @@ export const useMentionsFeed = () => {
       const postIds = postMentions.map(m => m.source_id);
       let postsWithAuthors: any[] = [];
       if (postIds.length > 0) {
-        const { data: postsData, error: postsError } = await supabase
+        const { data: postsData, error: postsError } = await gateway
           .from('posts')
           .select('id, content, user_id, created_at')
           .in('id', postIds);
@@ -99,7 +99,7 @@ export const useMentionsFeed = () => {
 
         if (postsData && postsData.length > 0) {
           const postUserIds = postsData.map(p => p.user_id);
-          const { data: postAuthors } = await supabase
+          const { data: postAuthors } = await gateway
             .from('profiles')
             .select('id, username, display_name, profile_pic')
             .in('id', postUserIds);
@@ -115,7 +115,7 @@ export const useMentionsFeed = () => {
       const commentIds = commentMentions.map(m => m.source_id);
       let commentsWithAuthors: any[] = [];
       if (commentIds.length > 0) {
-        const { data: commentsData, error: commentsError } = await supabase
+        const { data: commentsData, error: commentsError } = await gateway
           .from('comments')
           .select('id, content, user_id, post_id, created_at')
           .in('id', commentIds);
@@ -124,7 +124,7 @@ export const useMentionsFeed = () => {
 
         if (commentsData && commentsData.length > 0) {
           const commentUserIds = commentsData.map(c => c.user_id);
-          const { data: commentAuthors } = await supabase
+          const { data: commentAuthors } = await gateway
             .from('profiles')
             .select('id, username, display_name, profile_pic')
             .in('id', commentUserIds);
@@ -159,7 +159,7 @@ export const useMentionsFeed = () => {
     fetchMentions();
 
     // Set up realtime subscription for new mentions
-    const channel = supabase
+    const channel = gateway
       .channel('mentions-changes')
       .on(
         'postgres_changes',
@@ -188,7 +188,7 @@ export const useMentionsFeed = () => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [user?.id]);
 

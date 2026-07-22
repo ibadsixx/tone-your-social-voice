@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import type { Visibility } from '@/components/VisibilitySelector';
 
@@ -49,7 +49,7 @@ export const useLifeEvents = (userId?: string) => {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('life_events')
         .select('*')
         .eq('user_id', userId)
@@ -80,7 +80,7 @@ export const useLifeEvents = (userId?: string) => {
     if (!userId) return false;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('life_events')
         .insert({
           user_id: userId,
@@ -109,7 +109,7 @@ export const useLifeEvents = (userId?: string) => {
 
   const updateLifeEvent = async (id: string, eventData: Partial<LifeEventInput>): Promise<boolean> => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('life_events')
         .update({
           ...eventData,
@@ -139,7 +139,7 @@ export const useLifeEvents = (userId?: string) => {
 
   const deleteLifeEvent = async (id: string): Promise<boolean> => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('life_events')
         .delete()
         .eq('id', id);

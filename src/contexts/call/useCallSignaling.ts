@@ -1,5 +1,5 @@
 import { useCallback, useRef, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { CallSignal } from '@/services/webrtc';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -14,7 +14,7 @@ export const useCallSignaling = ({ userId, onSignal }: UseCallSignalingOptions) 
 
   // Send signal to target user with proper cleanup
   const sendSignal = useCallback(async (signal: CallSignal) => {
-    const targetChannel = supabase.channel(`calls:${signal.to}`, {
+    const targetChannel = gateway.channel(`calls:${signal.to}`, {
       config: { broadcast: { self: false } },
     });
     
@@ -35,7 +35,7 @@ export const useCallSignaling = ({ userId, onSignal }: UseCallSignalingOptions) 
       // Cleanup after sending with a small delay to ensure delivery
       setTimeout(() => {
         pendingChannelsRef.current.delete(targetChannel);
-        supabase.removeChannel(targetChannel);
+        gateway.removeChannel(targetChannel);
       }, 500);
     }
   }, []);
@@ -47,7 +47,7 @@ export const useCallSignaling = ({ userId, onSignal }: UseCallSignalingOptions) 
     const channelName = `calls:${userId}`;
     console.log('[Signaling] Setting up channel:', channelName);
     
-    channelRef.current = supabase.channel(channelName, {
+    channelRef.current = gateway.channel(channelName, {
       config: { broadcast: { self: false } },
     });
 
@@ -64,13 +64,13 @@ export const useCallSignaling = ({ userId, onSignal }: UseCallSignalingOptions) 
       
       // Clean up main channel
       if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+        gateway.removeChannel(channelRef.current);
         channelRef.current = null;
       }
       
       // Clean up any pending send channels
       pendingChannelsRef.current.forEach((channel) => {
-        supabase.removeChannel(channel);
+        gateway.removeChannel(channel);
       });
       pendingChannelsRef.current.clear();
     };

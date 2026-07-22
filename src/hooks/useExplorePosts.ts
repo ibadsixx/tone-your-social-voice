@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 interface ExplorePost {
@@ -32,7 +32,7 @@ export const useExplorePosts = () => {
       setLoading(true);
       const currentOffset = resetPosts ? 0 : offset;
       
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('posts')
         .select(`
           *,

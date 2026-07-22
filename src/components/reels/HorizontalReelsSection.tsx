@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Film, Play, ChevronRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -98,7 +98,7 @@ const HorizontalReelsSection = () => {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('posts')
         .select(`
           id,

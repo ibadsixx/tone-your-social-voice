@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 export type MessageSystemError = {
@@ -14,7 +14,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
   // Check if two users are friends
   const checkFriendship = async (userId1: string, userId2: string): Promise<boolean> => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('friends')
         .select('id')
         .or(`and(requester_id.eq.${userId1},receiver_id.eq.${userId2}),and(requester_id.eq.${userId2},receiver_id.eq.${userId1})`)
@@ -32,7 +32,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
   // Check if user is blocked
   const checkIfBlocked = async (userId1: string, userId2: string): Promise<boolean> => {
     try {
-      const { data, error } = await supabase.rpc('is_blocked', {
+      const { data, error } = await gateway.rpc('is_blocked', {
         user1_id: userId1,
         user2_id: userId2
       });
@@ -92,7 +92,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
           };
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('messages')
           .insert({
             conversation_id: conversationId,
@@ -119,7 +119,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
         return { success: true, conversationId };
       } else {
         // Send message request
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('message_requests')
           .insert({
             sender_id: currentUserId,
@@ -172,7 +172,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
   // Get or create conversation between two users
   const getOrCreateConversation = async (userA: string, userB: string): Promise<string | null> => {
     try {
-      const { data, error } = await supabase.rpc('get_or_create_dm', {
+      const { data, error } = await gateway.rpc('get_or_create_dm', {
         p_user_a: userA,
         p_user_b: userB
       });
@@ -199,7 +199,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
 
     try {
       // Update request status
-      const { error: updateError } = await supabase
+      const { error: updateError } = await gateway
         .from('message_requests')
         .update({ status: 'accepted' })
         .eq('id', requestId);
@@ -234,7 +234,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
     requestId: string
   ): Promise<{ success: boolean; error?: MessageSystemError }> => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('message_requests')
         .update({ status: 'declined' })
         .eq('id', requestId);
@@ -268,7 +268,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
 
     try {
       // Update request to blocked
-      const { error: requestError } = await supabase
+      const { error: requestError } = await gateway
         .from('message_requests')
         .update({ status: 'blocked' })
         .eq('id', requestId);
@@ -276,7 +276,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
       if (requestError) throw requestError;
 
       // Block via RPC (uses blocks table)
-      const { error: blockError } = await supabase.rpc('block_user', {
+      const { error: blockError } = await gateway.rpc('block_user', {
         p_blocker: currentUserId,
         p_blocked: senderId,
         p_block_type: 'full'
@@ -338,7 +338,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
           };
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('messages')
           .insert({
             conversation_id: conversationId,

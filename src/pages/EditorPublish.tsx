@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import PageContainer from '@/components/PageContainer';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { toast } from '@/hooks/use-toast';
 import { EditorProject } from '@/hooks/useEditorProject';
 import { PublishSettings, TaggedPerson, PublishLocation, ProductDetails, AudienceType, defaultPublishSettings } from '@/types/editor';
@@ -103,7 +103,7 @@ export default function EditorPublish() {
   const loadProject = async (id: string) => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('editor_projects')
         .select('*')
         .eq('id', id)
@@ -120,7 +120,7 @@ export default function EditorPublish() {
       
       if (existingDraftId) {
         // Load draft post data from database
-        const { data: draftPost, error: draftError } = await supabase
+        const { data: draftPost, error: draftError } = await gateway
           .from('posts')
           .select('*')
           .eq('id', existingDraftId)
@@ -184,7 +184,7 @@ export default function EditorPublish() {
       const projectJson = project.project_json as any;
       const updatedJson = { ...projectJson, publishSettings: newSettings };
       
-      const { error } = await supabase
+      const { error } = await gateway
         .from('editor_projects')
         .update({ 
           project_json: updatedJson,
@@ -304,7 +304,7 @@ export default function EditorPublish() {
       let result;
       if (existingDraftId) {
         // Update existing draft
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('posts')
           .update(draftData)
           .eq('id', existingDraftId)
@@ -316,7 +316,7 @@ export default function EditorPublish() {
         console.log('[EditorPublish] Draft updated:', result.id);
       } else {
         // Create new draft
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('posts')
           .insert([draftData])
           .select()
@@ -327,7 +327,7 @@ export default function EditorPublish() {
         
         // Store draft post ID in project
         const updatedJson = { ...projectJson, draftPostId: result.id };
-        await supabase
+        await gateway
           .from('editor_projects')
           .update({ project_json: updatedJson })
           .eq('id', project.id);
@@ -429,7 +429,7 @@ export default function EditorPublish() {
       let postResult;
       if (existingDraftId) {
         // Update existing draft to published
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('posts')
           .update(postData)
           .eq('id', existingDraftId)
@@ -441,7 +441,7 @@ export default function EditorPublish() {
         console.log('[EditorPublish] Draft promoted to published:', postResult.id);
       } else {
         // Create new post
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('posts')
           .insert([postData])
           .select()
@@ -460,7 +460,7 @@ export default function EditorPublish() {
         const videoDuration = videoClip.duration || project.project_json.settings?.duration || 5;
         const storyDuration = Math.min(Math.round(videoDuration), 15);
         
-        await supabase.from('stories').insert([
+        await gateway.from('stories').insert([
           {
             user_id: user.id,
             media_url: videoClip.src,
@@ -474,7 +474,7 @@ export default function EditorPublish() {
       }
 
       // Update project status to 'done'
-      await supabase
+      await gateway
         .from('editor_projects')
         .update({ status: 'done' })
         .eq('id', project.id);

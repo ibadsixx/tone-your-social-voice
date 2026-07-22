@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from './useAuth';
 
 interface HashtagPost {
@@ -58,7 +58,7 @@ export const useFollowedHashtagsFeed = () => {
         setLoading(true);
 
         // Get hashtags the user follows
-        const { data: follows, error: followsError } = await supabase
+        const { data: follows, error: followsError } = await gateway
           .from('hashtag_follows' as any)
           .select('hashtag_id')
           .eq('user_id', user.id);
@@ -79,7 +79,7 @@ export const useFollowedHashtagsFeed = () => {
         const hashtagIds = (follows as any[]).map((f: any) => f.hashtag_id);
 
         // Get hashtag details
-        const { data: hashtagsData } = await supabase
+        const { data: hashtagsData } = await gateway
           .from('hashtags' as any)
           .select('id, tag')
           .in('id', hashtagIds);
@@ -87,7 +87,7 @@ export const useFollowedHashtagsFeed = () => {
         setFollowedHashtags((hashtagsData as any[]) || []);
 
         // Get all post IDs from hashtag_links for followed hashtags
-        const { data: links, error: linksError } = await supabase
+        const { data: links, error: linksError } = await gateway
           .from('hashtag_links' as any)
           .select('source_id')
           .in('hashtag_id', hashtagIds)
@@ -110,7 +110,7 @@ export const useFollowedHashtagsFeed = () => {
         const postIds = [...new Set((links as any[]).map((link: any) => link.source_id))];
 
         // Fetch the actual posts
-        const { data: postsData, error: postsError } = await supabase
+        const { data: postsData, error: postsError } = await gateway
           .from('posts')
           .select(`
             *,
@@ -150,11 +150,11 @@ export const useFollowedHashtagsFeed = () => {
         const postsWithData = await Promise.all(
           (postsData || []).map(async (post) => {
             const [likesResult, commentsResult] = await Promise.all([
-              supabase
+              gateway
                 .from('likes')
                 .select('id, user_id')
                 .eq('post_id', post.id),
-              supabase
+              gateway
                 .from('comments')
                 .select('id, content, profiles:user_id(display_name)')
                 .eq('post_id', post.id),
@@ -180,7 +180,7 @@ export const useFollowedHashtagsFeed = () => {
     fetchFollowedHashtagsPosts();
 
     // Set up real-time subscription for new posts
-    const channel = supabase
+    const channel = gateway
       .channel('followed-hashtags-posts')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'hashtag_links' }, () => {
         fetchFollowedHashtagsPosts();
@@ -188,7 +188,7 @@ export const useFollowedHashtagsFeed = () => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [user]);
 

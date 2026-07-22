@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Bug, Lightbulb, MessageSquare, MessageSquareWarning, Loader2, Send } from 'lucide-react';
 
 interface GiveFeedbackDialogProps {
@@ -57,7 +57,7 @@ const GiveFeedbackDialog: React.FC<GiveFeedbackDialogProps> = ({ open, onOpenCha
 
     setSubmitting(true);
     try {
-      const { error } = await supabase.from('user_feedback').insert({
+      const { error } = await gateway.from('user_feedback').insert({
         user_id: user.id,
         feedback_type: feedbackType,
         subject: subject.trim(),

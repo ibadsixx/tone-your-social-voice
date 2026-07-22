@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/integrations/supabase/client';
+import { postsApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 
@@ -37,10 +37,7 @@ export const EditPostDialog = ({ open, onOpenChange, post, onPostUpdated }: Edit
 
     setIsSubmitting(true);
     try {
-      const { error } = await supabase
-        .from('posts')
-        .update({ content: content.trim() })
-        .eq('id', post.id);
+      const { error } = await postsApi.updatePost(post.id, { content: content.trim() });
 
       if (error) throw error;
 

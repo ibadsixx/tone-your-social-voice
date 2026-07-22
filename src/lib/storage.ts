@@ -1,7 +1,7 @@
 // Shared Storage Utility for Video Uploads
 // Use ONLY this utility for all video uploads - never upload inside Editor.tsx
 
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 interface UploadResult {
   path: string;
@@ -41,7 +41,7 @@ export async function uploadVideo(
   }
 
   // Validate user is authenticated
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  const { data: { user }, error: authError } = await gateway.auth.getUser();
   if (authError || !user) {
     console.error('[storage] ❌ Auth check failed:', authError);
     throw new Error('User not authenticated');
@@ -74,7 +74,7 @@ export async function uploadVideo(
   });
 
   // Perform upload
-  const { data: uploadData, error: uploadError } = await supabase.storage
+  const { data: uploadData, error: uploadError } = await gateway.storage
     .from(bucket)
     .upload(filePath, file, {
       contentType: file.type || 'video/mp4',
@@ -94,7 +94,7 @@ export async function uploadVideo(
   console.log('[storage] ✅ UPLOAD SUCCESS:', uploadData);
 
   // Get public URL
-  const { data: urlData } = supabase.storage
+  const { data: urlData } = gateway.storage
     .from(bucket)
     .getPublicUrl(filePath);
 

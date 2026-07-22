@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Search, UserPlus, Loader2, X, ShieldCheck, Shield } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -75,7 +75,7 @@ export const CreateGroupChatDialog: React.FC<CreateGroupChatDialogProps> = ({
   const searchUsers = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .neq('id', currentUserId)
@@ -127,7 +127,7 @@ export const CreateGroupChatDialog: React.FC<CreateGroupChatDialogProps> = ({
     setCreating(true);
     try {
       const adminList = [...adminIds];
-      const { data, error } = await supabase.rpc('create_group_conversation', {
+      const { data, error } = await gateway.rpc('create_group_conversation', {
         p_name: trimmedName,
         p_participant_ids: selectedUsers.map(u => u.id),
         p_admin_ids: adminList.length > 0 ? adminList : [],

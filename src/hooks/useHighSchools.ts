@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 export interface HighSchool {
   id: string;
@@ -18,7 +18,7 @@ export const useHighSchools = () => {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('high_schools')
         .select('id, name')
         .ilike('name', `%${searchTerm}%`)
@@ -36,7 +36,7 @@ export const useHighSchools = () => {
 
   const createHighSchool = async (name: string): Promise<HighSchool | null> => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('high_schools')
         .insert([{ name }])
         .select('id, name')

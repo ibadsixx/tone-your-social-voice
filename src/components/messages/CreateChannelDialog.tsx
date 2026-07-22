@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Loader2, Hash } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 interface CreateChannelDialogProps {
@@ -46,7 +46,7 @@ export const CreateChannelDialog: React.FC<CreateChannelDialogProps> = ({
 
     setCreating(true);
     try {
-      const { data, error } = await supabase.rpc('create_channel_conversation', {
+      const { data, error } = await gateway.rpc('create_channel_conversation', {
         p_name: trimmedName,
         p_description: description.trim() || null,
       });

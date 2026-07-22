@@ -4,7 +4,7 @@ import { X, Loader2, MessageCircle, Search } from 'lucide-react';
 import { MiniChatWindow } from './MiniChatWindow';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocation } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -96,12 +96,12 @@ export const ChatWindowManager: React.FC = () => {
     const fetchContacts = async () => {
       try {
         const [friendsRes, convsRes] = await Promise.all([
-          supabase
+          gateway
             .from('friends')
             .select('requester_id, receiver_id')
             .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
             .eq('status', 'accepted'),
-          supabase
+          gateway
             .from('conversation_participants')
             .select('conversation_id, user_id')
             .neq('user_id', currentUserId)
@@ -114,7 +114,7 @@ export const ChatWindowManager: React.FC = () => {
         });
 
         if (convsRes.data?.length) {
-          const { data: myConvs } = await supabase
+          const { data: myConvs } = await gateway
             .from('conversation_participants')
             .select('conversation_id')
             .eq('user_id', currentUserId);
@@ -134,7 +134,7 @@ export const ChatWindowManager: React.FC = () => {
           return;
         }
 
-        const { data: profiles } = await supabase
+        const { data: profiles } = await gateway
           .from('profiles')
           .select('id, username, display_name, profile_pic')
           .in('id', allIds);

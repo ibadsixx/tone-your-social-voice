@@ -5,7 +5,7 @@ import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAdPreferences } from '@/hooks/useAdPreferences';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 const AdPreferences = () => {
   const [activeTab, setActiveTab] = useState('customize');
@@ -31,7 +31,7 @@ const AdPreferences = () => {
 
   useEffect(() => {
     if (!categoriesOpen || !user) return;
-    supabase.from('profiles').select('birth_year, country').eq('id', user.id).single().then(({ data }) => {
+    gateway.from('profiles').select('birth_year, country').eq('id', user.id).single().then(({ data }) => {
       if (data) setProfileData(data as { birth_year: number; country: string });
     });
   }, [categoriesOpen, user]);

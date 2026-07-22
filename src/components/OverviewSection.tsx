@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useOtherNames } from '@/hooks/useOtherNames';
 import { useFriends } from '@/hooks/useFriends';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
@@ -94,7 +94,7 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
 
       try {
         // Fetch extended profile data with related information
-        const { data: profile, error } = await supabase
+        const { data: profile, error } = await gateway
           .from('profiles')
           .select(`
             *,
@@ -112,7 +112,7 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
         }
 
         // Fetch family relationships
-        const { data: family, error: familyError } = await supabase
+        const { data: family, error: familyError } = await gateway
           .from('family_relationships')
           .select(`
             id,

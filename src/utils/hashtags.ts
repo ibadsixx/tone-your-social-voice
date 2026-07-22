@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 /**
  * Extract unique hashtags from text
@@ -33,7 +33,7 @@ export const saveHashtags = async (
     // Insert or get existing hashtags
     for (const tag of hashtags) {
       // Try to insert the hashtag (will be ignored if it already exists due to UNIQUE constraint)
-      const { data: hashtagData, error: hashtagError } = await supabase
+      const { data: hashtagData, error: hashtagError } = await gateway
         .from('hashtags' as any)
         .upsert({ tag }, { onConflict: 'tag' })
         .select('id')
@@ -47,7 +47,7 @@ export const saveHashtags = async (
       // If upsert didn't return data, fetch the existing hashtag
       let hashtagId = (hashtagData as any)?.id;
       if (!hashtagId) {
-        const { data: existingHashtag } = await supabase
+        const { data: existingHashtag } = await gateway
           .from('hashtags' as any)
           .select('id')
           .eq('tag', tag)
@@ -62,7 +62,7 @@ export const saveHashtags = async (
       }
 
       // Create the link between hashtag and source
-      const { error: linkError } = await supabase
+      const { error: linkError } = await gateway
         .from('hashtag_links' as any)
         .insert({
           source_type: sourceType,

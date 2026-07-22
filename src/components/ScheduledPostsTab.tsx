@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import SchedulePostModal from './SchedulePostModal';
 import {
   AlertDialog,
@@ -50,7 +50,7 @@ const ScheduledPostsTab = () => {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('posts')
         .select(`
           *,
@@ -82,7 +82,7 @@ const ScheduledPostsTab = () => {
     if (!editingPost) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('posts')
         .update({
           scheduled_at: newScheduledAt.toISOString()
@@ -109,7 +109,7 @@ const ScheduledPostsTab = () => {
 
   const handlePublishNow = async (post: ScheduledPost) => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('posts')
         .update({
           status: 'published',
@@ -137,7 +137,7 @@ const ScheduledPostsTab = () => {
 
   const handleDelete = async (post: ScheduledPost) => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('posts')
         .delete()
         .eq('id', post.id);

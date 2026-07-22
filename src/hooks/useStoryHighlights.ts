@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -39,7 +39,7 @@ export const useStoryHighlights = (userId?: string) => {
       
       if (!targetUserId) return;
 
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('story_highlights')
         .select(`
           *,
@@ -75,7 +75,7 @@ export const useStoryHighlights = (userId?: string) => {
     if (!user) return null;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('story_highlights')
         .insert({
           user_id: user.id,
@@ -107,7 +107,7 @@ export const useStoryHighlights = (userId?: string) => {
 
   const addStoryToHighlight = async (highlightId: string, storyId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('story_highlight_items')
         .insert({
           highlight_id: highlightId,
@@ -134,7 +134,7 @@ export const useStoryHighlights = (userId?: string) => {
 
   const removeStoryFromHighlight = async (highlightItemId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('story_highlight_items')
         .delete()
         .eq('id', highlightItemId);
@@ -159,7 +159,7 @@ export const useStoryHighlights = (userId?: string) => {
 
   const deleteHighlight = async (highlightId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('story_highlights')
         .delete()
         .eq('id', highlightId);
@@ -184,7 +184,7 @@ export const useStoryHighlights = (userId?: string) => {
 
   const updateHighlight = async (highlightId: string, title: string, coverImage?: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('story_highlights')
         .update({
           title,
@@ -214,7 +214,7 @@ export const useStoryHighlights = (userId?: string) => {
     fetchHighlights();
 
     // Real-time subscription
-    const channel = supabase
+    const channel = gateway
       .channel('highlights-changes')
       .on(
         'postgres_changes',
@@ -230,7 +230,7 @@ export const useStoryHighlights = (userId?: string) => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [userId, user?.id]);
 

@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 interface Profile {
   id: string;
@@ -34,7 +34,7 @@ const StoryMentionTag = ({ onMention }: StoryMentionTagProps) => {
     setLoading(true);
     try {
       const searchPattern = `%${query.trim()}%`;
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .or(`display_name.ilike.${searchPattern},username.ilike.${searchPattern}`)

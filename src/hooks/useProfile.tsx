@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { validateProfileVisibility, sanitizeProfilePayload } from '@/utils/profileValidation';
 
@@ -38,7 +38,7 @@ export const useProfile = (profileId?: string) => {
     }
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -66,7 +66,7 @@ export const useProfile = (profileId?: string) => {
   useEffect(() => {
     if (!user?.id || profileId) return; // Only subscribe to own profile changes
 
-    const channel = supabase
+    const channel = gateway
       .channel('profile-changes')
       .on(
         'postgres_changes',
@@ -85,7 +85,7 @@ export const useProfile = (profileId?: string) => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [user?.id, profileId]);
 
@@ -99,7 +99,7 @@ export const useProfile = (profileId?: string) => {
       
       console.log('Updating profile with payload:', sanitizedPayload);
       
-      const { error } = await supabase
+      const { error } = await gateway
         .from('profiles')
         .update(sanitizedPayload)
         .eq('id', user.id);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -37,7 +37,7 @@ export const useNotifications = () => {
     fetchNotifications();
     
     // Set up realtime subscription
-    const channel = supabase
+    const channel = gateway
       .channel('notifications-changes')
       .on(
         'postgres_changes',
@@ -66,7 +66,7 @@ export const useNotifications = () => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [user]);
 
@@ -74,7 +74,7 @@ export const useNotifications = () => {
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('notifications')
         .select('*')
         .eq('user_id', user.id)
@@ -85,7 +85,7 @@ export const useNotifications = () => {
 
       // Fetch actor profiles separately
       const actorIds = data?.map(n => n.actor_id) || [];
-      const { data: profiles } = await supabase
+      const { data: profiles } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .in('id', actorIds);
@@ -110,7 +110,7 @@ export const useNotifications = () => {
     if (!user) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('notifications')
         .update({ is_read: true })
         .eq('id', notificationId)
@@ -131,7 +131,7 @@ export const useNotifications = () => {
     if (!user) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('notifications')
         .update({ is_read: true })
         .eq('user_id', user.id)
@@ -180,7 +180,7 @@ export const createNotification = async (params: {
   if (userId === actorId) return;
 
   try {
-    const { error } = await supabase
+    const { error } = await gateway
       .from('notifications')
       .insert({
         user_id: userId,

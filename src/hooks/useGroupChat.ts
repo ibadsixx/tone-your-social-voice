@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 interface GroupMember {
   user_id: string;
@@ -13,7 +13,7 @@ interface GroupMember {
 export const useGroupChat = (conversationId?: string) => {
   const addMember = useCallback(async (newMemberId: string) => {
     if (!conversationId) return { error: 'No conversation ID' };
-    const { error } = await supabase.rpc('add_group_member', {
+    const { error } = await gateway.rpc('add_group_member', {
       p_conversation_id: conversationId,
       p_new_member_id: newMemberId,
     });
@@ -22,7 +22,7 @@ export const useGroupChat = (conversationId?: string) => {
 
   const removeMember = useCallback(async (memberId: string) => {
     if (!conversationId) return { error: 'No conversation ID' };
-    const { error } = await supabase.rpc('remove_group_member', {
+    const { error } = await gateway.rpc('remove_group_member', {
       p_conversation_id: conversationId,
       p_member_id: memberId,
     });
@@ -31,7 +31,7 @@ export const useGroupChat = (conversationId?: string) => {
 
   const updateRole = useCallback(async (memberId: string, role: 'member' | 'admin') => {
     if (!conversationId) return { error: 'No conversation ID' };
-    const { error } = await supabase.rpc('update_group_member_role', {
+    const { error } = await gateway.rpc('update_group_member_role', {
       p_conversation_id: conversationId,
       p_member_id: memberId,
       p_role: role,
@@ -41,7 +41,7 @@ export const useGroupChat = (conversationId?: string) => {
 
   const getMembers = useCallback(async (): Promise<{ data: GroupMember[] | null; error: any }> => {
     if (!conversationId) return { data: null, error: 'No conversation ID' };
-    const { data, error } = await supabase.rpc('get_group_members', {
+    const { data, error } = await gateway.rpc('get_group_members', {
       p_conversation_id: conversationId,
     });
     return { data: data as GroupMember[] | null, error };

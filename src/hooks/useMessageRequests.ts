@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 type MessageRequest = {
@@ -28,7 +28,7 @@ export const useMessageRequests = (currentUserId?: string) => {
     if (!currentUserId) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('message_requests')
         .select(`
           *,
@@ -56,7 +56,7 @@ export const useMessageRequests = (currentUserId?: string) => {
   const fetchMutualFriendsCount = async (otherUserId: string) => {
     if (!currentUserId) return 0;
     try {
-      const { data } = await supabase.rpc('get_mutual_friends_count', {
+      const { data } = await gateway.rpc('get_mutual_friends_count', {
         user_a: currentUserId,
         user_b: otherUserId
       });
@@ -72,7 +72,7 @@ export const useMessageRequests = (currentUserId?: string) => {
 
     try {
       // Update request status to accepted
-      const { error: updateError } = await supabase
+      const { error: updateError } = await gateway
         .from('message_requests')
         .update({ status: 'accepted' })
         .eq('id', requestId);
@@ -80,7 +80,7 @@ export const useMessageRequests = (currentUserId?: string) => {
       if (updateError) throw updateError;
 
       // Create or get DM conversation
-      const conversationId = await supabase.rpc('get_or_create_dm', {
+      const conversationId = await gateway.rpc('get_or_create_dm', {
         p_user_a: currentUserId,
         p_user_b: senderId
       });
@@ -110,7 +110,7 @@ export const useMessageRequests = (currentUserId?: string) => {
   // Decline a message request
   const declineRequest = async (requestId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('message_requests')
         .update({ status: 'declined' })
         .eq('id', requestId);
@@ -149,7 +149,7 @@ export const useMessageRequests = (currentUserId?: string) => {
 
     try {
       // Update request status to blocked
-      const { error: requestError } = await supabase
+      const { error: requestError } = await gateway
         .from('message_requests')
         .update({ status: 'blocked' })
         .eq('id', requestId);
@@ -157,7 +157,7 @@ export const useMessageRequests = (currentUserId?: string) => {
       if (requestError) throw requestError;
 
       // Block via RPC (uses blocks table)
-      const { error: blockError } = await supabase.rpc('block_user', {
+      const { error: blockError } = await gateway.rpc('block_user', {
         p_blocker: currentUserId,
         p_blocked: senderId,
         p_block_type: 'full'
@@ -189,7 +189,7 @@ export const useMessageRequests = (currentUserId?: string) => {
     if (!currentUserId) return false;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('message_requests')
         .insert({
           sender_id: currentUserId,
@@ -239,7 +239,7 @@ export const useMessageRequests = (currentUserId?: string) => {
   useEffect(() => {
     if (!currentUserId) return;
 
-    const channel = supabase
+    const channel = gateway
       .channel('message-requests-changes')
       .on(
         'postgres_changes',
@@ -268,7 +268,7 @@ export const useMessageRequests = (currentUserId?: string) => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [currentUserId]);
 

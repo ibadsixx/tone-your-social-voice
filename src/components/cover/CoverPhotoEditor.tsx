@@ -4,7 +4,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Camera, Image as ImageIcon, Move, Trash2, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import PhotoLibraryModal from './PhotoLibraryModal';
 import CoverRepositionModal from './CoverRepositionModal';
 
@@ -66,18 +66,18 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
       const fileExt = 'jpg';
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
       
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await gateway.storage
         .from('covers')
         .upload(fileName, blob);
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = gateway.storage
         .from('covers')
         .getPublicUrl(fileName);
 
       // Update profile
-      const { error: updateError } = await supabase
+      const { error: updateError } = await gateway
         .from('profiles')
         .update({ 
           cover_pic: publicUrl,
@@ -108,7 +108,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
     if (!user?.id) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('profiles')
         .update({ 
           cover_pic: null,
@@ -230,7 +230,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
           if (!user?.id) return;
           
           try {
-            const { error } = await supabase
+            const { error } = await gateway
               .from('profiles')
               .update({ 
                 cover_pic: photoUrl,
@@ -266,7 +266,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
           if (!user?.id) return;
           
           try {
-            const { error } = await supabase
+            const { error } = await gateway
               .from('profiles')
               .update({ cover_position_y: position })
               .eq('id', user.id);

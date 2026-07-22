@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -83,7 +83,7 @@ const AboutTabContent = ({
 
   const handleSave = async () => {
     setSaving(true);
-    const { error } = await supabase
+    const { error } = await gateway
       .from('groups')
       .update({ name: name.trim(), description: description.trim(), privacy })
       .eq('id', group.id);
@@ -228,7 +228,7 @@ const GroupDetailPage = () => {
     if (!groupId) return;
     try {
       setPostsLoading(true);
-      const { data } = await supabase
+      const { data } = await gateway
         .from('group_posts')
         .select(`
           id, message, created_at, shared_by,
@@ -253,7 +253,7 @@ const GroupDetailPage = () => {
     try {
       const postId = await createPost(content, media, taggedUsers, audience, feeling, scheduledAt, location);
       if (postId && groupId) {
-        await supabase.from('group_posts').insert({
+        await gateway.from('group_posts').insert({
           group_id: groupId,
           post_id: postId,
           shared_by: user!.id,
@@ -277,7 +277,7 @@ const GroupDetailPage = () => {
   const fetchGroupDetail = async () => {
     try {
       setLoading(true);
-      const { data: groupData, error: groupError } = await supabase
+      const { data: groupData, error: groupError } = await gateway
         .from('groups')
         .select('*')
         .eq('id', groupId!)
@@ -286,7 +286,7 @@ const GroupDetailPage = () => {
       if (groupError) throw groupError;
       setGroup(groupData);
 
-      const { data: membersData, error: membersError } = await supabase
+      const { data: membersData, error: membersError } = await gateway
         .from('group_members')
         .select(`
           user_id,
@@ -310,7 +310,7 @@ const GroupDetailPage = () => {
 
         // A row in `group_follows` indicates the user has explicitly UNFOLLOWED.
         // Without a row, members are treated as following by default.
-        const { data: unfollowRow } = await supabase
+        const { data: unfollowRow } = await gateway
           .from('group_follows' as any)
           .select('id')
           .eq('group_id', groupId!)
@@ -319,7 +319,7 @@ const GroupDetailPage = () => {
         setIsFollowing(!unfollowRow);
 
         // Check if this group is pinned by the current user
-        const { data: pinRow } = await supabase
+        const { data: pinRow } = await gateway
           .from('group_pins' as any)
           .select('id')
           .eq('group_id', groupId!)
@@ -338,7 +338,7 @@ const GroupDetailPage = () => {
   const handleJoin = async () => {
     if (!user || !groupId) return;
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('group_members')
         .insert({ group_id: groupId, user_id: user.id, role: 'member' });
       if (error) throw error;
@@ -352,7 +352,7 @@ const GroupDetailPage = () => {
   const handleLeave = async () => {
     if (!user || !groupId) return;
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('group_members')
         .delete()
         .eq('group_id', groupId)
@@ -370,7 +370,7 @@ const GroupDetailPage = () => {
     try {
       if (isFollowing) {
         // Unfollow: insert a row marking explicit unfollow
-        const { error } = await supabase
+        const { error } = await gateway
           .from('group_follows' as any)
           .insert({ group_id: groupId, user_id: user.id });
         if (error && (error as any).code !== '23505') throw error;
@@ -381,7 +381,7 @@ const GroupDetailPage = () => {
         });
       } else {
         // Follow again: remove the unfollow marker
-        const { error } = await supabase
+        const { error } = await gateway
           .from('group_follows' as any)
           .delete()
           .eq('group_id', groupId)
@@ -403,7 +403,7 @@ const GroupDetailPage = () => {
     if (!user || !groupId) return;
     try {
       if (isPinned) {
-        const { error } = await supabase
+        const { error } = await gateway
           .from('group_pins' as any)
           .delete()
           .eq('group_id', groupId)
@@ -412,7 +412,7 @@ const GroupDetailPage = () => {
         setIsPinned(false);
         toast({ title: 'Group unpinned', description: 'This group has been removed from your shortcuts.' });
       } else {
-        const { error } = await supabase
+        const { error } = await gateway
           .from('group_pins' as any)
           .insert({ group_id: groupId, user_id: user.id });
         if (error && (error as any).code !== '23505') throw error;
@@ -444,19 +444,19 @@ const GroupDetailPage = () => {
       const ext = file.name.split('.').pop();
       const path = `${groupId}/cover.${ext}`;
 
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await gateway.storage
         .from('group_covers')
         .upload(path, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = gateway.storage
         .from('group_covers')
         .getPublicUrl(path);
 
       const coverUrl = `${publicUrl}?t=${Date.now()}`;
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await gateway
         .from('groups')
         .update({ cover_image: coverUrl } as any)
         .eq('id', groupId);

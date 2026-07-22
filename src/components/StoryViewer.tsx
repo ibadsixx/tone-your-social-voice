@@ -18,7 +18,7 @@ import { useStoryMentions } from '@/hooks/useStoryMentions';
 import { useStoryPolls } from '@/hooks/useStoryPolls';
 import { useStoryQuestions } from '@/hooks/useStoryQuestions';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 interface StoryViewerProps {
@@ -296,7 +296,7 @@ const StoryViewer = ({
 
     try {
       // Get or create DM conversation
-      const { data: conversationData, error: convError } = await supabase
+      const { data: conversationData, error: convError } = await gateway
         .rpc('get_or_create_dm', {
           p_user_a: user.id,
           p_user_b: currentStory.user_id
@@ -305,7 +305,7 @@ const StoryViewer = ({
       if (convError) throw convError;
 
       // Send message with story reference
-      const { error: messageError } = await supabase
+      const { error: messageError } = await gateway
         .from('messages')
         .insert({
           conversation_id: conversationData,

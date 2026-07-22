@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { createNotification } from '@/hooks/useNotifications';
@@ -42,7 +42,7 @@ export const useComments = (postId: string) => {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('comments')
         .select(`
           *,
@@ -82,7 +82,7 @@ export const useComments = (postId: string) => {
       setSubmitting(true);
       
       // Insert the comment
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('comments')
         .insert({
           post_id: postId,
@@ -144,7 +144,7 @@ export const useComments = (postId: string) => {
       setSubmitting(true);
       
       // Insert the reply
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('comments')
         .insert({
           post_id: postId,
@@ -204,7 +204,7 @@ export const useComments = (postId: string) => {
     if (!user || !newContent.trim()) return false;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('comments')
         .update({ content: newContent.trim() })
         .eq('id', commentId)
@@ -237,7 +237,7 @@ export const useComments = (postId: string) => {
 
   const deleteComment = async (commentId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('comments')
         .delete()
         .eq('id', commentId);
@@ -270,7 +270,7 @@ export const useComments = (postId: string) => {
 
       if (existingReaction) {
         // Remove reaction
-        const { error } = await supabase
+        const { error } = await gateway
           .from('comment_reactions')
           .delete()
           .eq('id', existingReaction.id);
@@ -288,7 +288,7 @@ export const useComments = (postId: string) => {
         ));
       } else {
         // Add reaction
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('comment_reactions')
           .insert({
             comment_id: commentId,
@@ -323,7 +323,7 @@ export const useComments = (postId: string) => {
     fetchComments();
 
     // Set up real-time subscription for comments and reactions
-    const channel = supabase
+    const channel = gateway
       .channel('comments_realtime')
       .on(
         'postgres_changes',
@@ -335,7 +335,7 @@ export const useComments = (postId: string) => {
         },
         async (payload) => {
           // Fetch the full comment with profile data
-          const { data } = await supabase
+          const { data } = await gateway
             .from('comments')
             .select(`
               *,
@@ -402,7 +402,7 @@ export const useComments = (postId: string) => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [postId, user?.id]);
 

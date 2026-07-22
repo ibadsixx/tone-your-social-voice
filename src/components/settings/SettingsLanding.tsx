@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import {
   Shield, User, Bell, AlertTriangle, CheckCircle, XCircle,
   MessageSquare, Lock, Eye, ChevronRight, Gift, Mail
@@ -33,7 +33,7 @@ const SettingsLanding: React.FC = () => {
 
   const checkMFA = async () => {
     try {
-      const { data, error } = await supabase.auth.mfa.listFactors();
+      const { data, error } = await gateway.auth.mfa.listFactors();
       if (!error) {
         const verified = data.totp.some(f => f.status === 'verified');
         setMfaEnabled(verified);
@@ -42,7 +42,7 @@ const SettingsLanding: React.FC = () => {
   };
 
   const fetchBlockCount = async () => {
-    const { count } = await supabase
+    const { count } = await gateway
       .from('blocks')
       .select('*', { count: 'exact', head: true })
       .eq('blocker_id', user?.id);
@@ -50,7 +50,7 @@ const SettingsLanding: React.FC = () => {
   };
 
   const fetchReportCount = async () => {
-    const { count } = await supabase
+    const { count } = await gateway
       .from('profile_reports')
       .select('*', { count: 'exact', head: true })
       .eq('reported_user_id', user?.id);

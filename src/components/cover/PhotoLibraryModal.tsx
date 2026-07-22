@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { ImageIcon } from 'lucide-react';
 
@@ -31,7 +31,7 @@ const PhotoLibraryModal = ({ open, onOpenChange, onPhotoSelect }: PhotoLibraryMo
     setLoading(true);
     try {
       // Get photos from user's posts
-      const { data: posts, error: postsError } = await supabase
+      const { data: posts, error: postsError } = await gateway
         .from('posts')
         .select('media_url')
         .eq('user_id', user.id)
@@ -41,7 +41,7 @@ const PhotoLibraryModal = ({ open, onOpenChange, onPhotoSelect }: PhotoLibraryMo
       if (postsError) throw postsError;
 
       // Get photos from user's avatar uploads
-      const { data: avatarFiles, error: avatarError } = await supabase.storage
+      const { data: avatarFiles, error: avatarError } = await gateway.storage
         .from('avatars')
         .list(user.id, {
           limit: 50,
@@ -51,7 +51,7 @@ const PhotoLibraryModal = ({ open, onOpenChange, onPhotoSelect }: PhotoLibraryMo
       if (avatarError) throw avatarError;
 
       // Get photos from user's cover uploads
-      const { data: coverFiles, error: coverError } = await supabase.storage
+      const { data: coverFiles, error: coverError } = await gateway.storage
         .from('covers')
         .list(user.id, {
           limit: 50,
@@ -72,7 +72,7 @@ const PhotoLibraryModal = ({ open, onOpenChange, onPhotoSelect }: PhotoLibraryMo
 
       // Add avatar files
       avatarFiles?.forEach(file => {
-        const { data } = supabase.storage
+        const { data } = gateway.storage
           .from('avatars')
           .getPublicUrl(`${user.id}/${file.name}`);
         allPhotos.add(data.publicUrl);
@@ -80,7 +80,7 @@ const PhotoLibraryModal = ({ open, onOpenChange, onPhotoSelect }: PhotoLibraryMo
 
       // Add cover files
       coverFiles?.forEach(file => {
-        const { data } = supabase.storage
+        const { data } = gateway.storage
           .from('covers')
           .getPublicUrl(`${user.id}/${file.name}`);
         allPhotos.add(data.publicUrl);

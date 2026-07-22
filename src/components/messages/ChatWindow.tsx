@@ -20,7 +20,7 @@ import { useMessageReactions } from '@/hooks/useMessageReactions';
 import { useMessageActions } from '@/hooks/useMessageActions';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import type { ReactionKey } from '@/lib/reactions';
 import { GifItem } from '@/hooks/useGifSearch';
 import { isOnline, formatLastSeen } from '@/hooks/usePresence';
@@ -115,11 +115,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     let ignore = false;
 
-    supabase.rpc('get_channel_user_role', { p_conversation_id: conversationId })
+    gateway.rpc('get_channel_user_role', { p_conversation_id: conversationId })
       .then(({ data }) => { if (!ignore) setChannelRole(data || null); })
       .catch(() => { if (!ignore) setChannelRole(null); })
       .finally(() => { if (!ignore) setChannelRoleLoading(false); });
-    supabase.rpc('get_channel_stats', { p_conversation_id: conversationId })
+    gateway.rpc('get_channel_stats', { p_conversation_id: conversationId })
       .then(({ data }) => {
         if (!ignore && data && data.length > 0) setChannelStats(data[0]);
       })
@@ -133,7 +133,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const handleReplyInChannel = async (content?: string, _mediaUrl?: string, replyToId?: string) => {
     if (!conversationId || !replyToId || !content?.trim()) return;
-    const { data, error } = await supabase.rpc('send_channel_reply', {
+    const { data, error } = await gateway.rpc('send_channel_reply', {
       p_conversation_id: conversationId,
       p_reply_to_id: replyToId,
       p_content: content.trim(),
@@ -148,7 +148,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const handleFollowChannel = async () => {
     if (!conversationId) return;
-    const { error } = await supabase.rpc('follow_channel', { p_conversation_id: conversationId });
+    const { error } = await gateway.rpc('follow_channel', { p_conversation_id: conversationId });
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     } else {
@@ -159,7 +159,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const handleUnfollowChannel = async () => {
     if (!conversationId) return;
-    const { error } = await supabase.rpc('unfollow_channel', { p_conversation_id: conversationId });
+    const { error } = await gateway.rpc('unfollow_channel', { p_conversation_id: conversationId });
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     } else {
@@ -188,7 +188,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Fetch the other user's read_receipts_enabled preference
   useEffect(() => {
     if (!conversationId || !otherUser?.id) return;
-    supabase.rpc('get_other_user_read_receipts_enabled', {
+    gateway.rpc('get_other_user_read_receipts_enabled', {
       p_conversation_id: conversationId,
       p_other_user_id: otherUser.id
     }).then(({ data, error }) => {
@@ -202,7 +202,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     if (!conversationId || !otherUser?.id) return;
 
-    const channel = supabase
+    const channel = gateway
       .channel(`other-read-receipts-${conversationId}`)
       .on(
         'postgres_changes',
@@ -225,7 +225,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [conversationId, otherUser?.id]);
 
@@ -252,7 +252,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     await toggleVanish();
     // When turning vanish mode OFF, clean up messages that were already seen
     if (wasEnabled) {
-      supabase.rpc('delete_read_vanish_messages', {
+      gateway.rpc('delete_read_vanish_messages', {
         p_conversation_id: conversationId
       }).then(({ error }) => {
         if (error) console.error('Error cleaning up vanish messages:', error);
@@ -432,13 +432,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             vanishJustActivated.current = true;
             swipeStartY.current = null;
             const newValue = !vanishingMessagesEnabled;
-            supabase.rpc('update_conversation_settings', {
+            gateway.rpc('update_conversation_settings', {
               p_conversation_id: conversationId,
               p_vanishing_messages_enabled: newValue
             }).then(() => {
               // When turning vanish mode OFF, clean up seen messages
               if (!newValue && conversationId) {
-                supabase.rpc('delete_read_vanish_messages', {
+                gateway.rpc('delete_read_vanish_messages', {
                   p_conversation_id: conversationId
                 }).catch(console.error);
               }

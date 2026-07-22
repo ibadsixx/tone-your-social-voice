@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -19,7 +19,7 @@ export const usePostNotifications = (postId: string) => {
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('post_notifications')
         .select('is_enabled')
         .eq('user_id', user.id)
@@ -45,7 +45,7 @@ export const usePostNotifications = (postId: string) => {
 
     setIsLoading(true);
     try {
-      const { data: existing } = await supabase
+      const { data: existing } = await gateway
         .from('post_notifications')
         .select('id')
         .eq('user_id', user.id)
@@ -53,7 +53,7 @@ export const usePostNotifications = (postId: string) => {
         .maybeSingle();
 
       if (existing) {
-        const { error } = await supabase
+        const { error } = await gateway
           .from('post_notifications')
           .update({ is_enabled: !isEnabled })
           .eq('user_id', user.id)
@@ -61,7 +61,7 @@ export const usePostNotifications = (postId: string) => {
 
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        const { error } = await gateway
           .from('post_notifications')
           .insert({
             user_id: user.id,

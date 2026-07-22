@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { importEcdhPrivateKey } from '@/lib/crypto';
 
 export type DeviceKey = {
@@ -117,7 +117,7 @@ export function useEncryptionKeys() {
     ecdhPublicKey?: string,
     ecdhFingerprint?: string
   ) => {
-    const { error: rpcError } = await supabase.rpc('upsert_encryption_key', {
+    const { error: rpcError } = await gateway.rpc('upsert_encryption_key', {
       p_public_key: publicKeySpki,
       p_key_fingerprint: fingerprint,
       p_device_info: deviceInfo,
@@ -180,7 +180,7 @@ export function useEncryptionKeys() {
 
   const fetchKeys = useCallback(async () => {
     try {
-      const { data, error: rpcError } = await supabase.rpc('get_my_encryption_keys');
+      const { data, error: rpcError } = await gateway.rpc('get_my_encryption_keys');
       if (rpcError) throw rpcError;
       setKeys((data as DeviceKey[]) || []);
     } catch (err) {

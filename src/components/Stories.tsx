@@ -8,7 +8,7 @@ import { useStories } from '@/hooks/useStories';
 import StoryViewer from './StoryViewer';
 import CreateStoryDialog from './CreateStoryDialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 const Stories = () => {
@@ -31,7 +31,7 @@ const Stories = () => {
   useEffect(() => {
     const fetchCurrentUserProfile = async () => {
       if (!user) return;
-      const { data } = await supabase
+      const { data } = await gateway
         .from('profiles')
         .select('profile_pic, display_name')
         .eq('id', user.id)

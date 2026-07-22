@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 export const useSeeLessPreference = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -12,7 +12,7 @@ export const useSeeLessPreference = () => {
   const hideReel = async (reelId: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await gateway.auth.getUser();
       if (!user) {
         console.log('[SEE_LESS] User not authenticated');
         return false;
@@ -21,7 +21,7 @@ export const useSeeLessPreference = () => {
       console.log('[SEE_LESS] Before insert - reel_id:', reelId, 'user_id:', user.id);
 
       // Check if already hidden
-      const { data: existing } = await supabase
+      const { data: existing } = await gateway
         .from('hidden_content')
         .select('id')
         .eq('user_id', user.id)
@@ -35,7 +35,7 @@ export const useSeeLessPreference = () => {
       }
 
       // Insert into hidden_content - profile_id is explicitly null
-      const { error } = await supabase
+      const { error } = await gateway
         .from('hidden_content')
         .insert({
           user_id: user.id,

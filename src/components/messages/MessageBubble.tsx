@@ -37,7 +37,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { MessageLinkPreview } from './MessageLinkPreview';
 
 
@@ -205,7 +205,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     setAudioError(null);
     
     try {
-      const { data, error } = await supabase.storage
+      const { data, error } = await gateway.storage
         .from('message_audios')
         .createSignedUrl(message.audio_path, 3600); // 1 hour expiry
       

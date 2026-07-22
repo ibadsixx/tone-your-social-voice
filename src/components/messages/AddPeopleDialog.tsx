@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Search, UserPlus, Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 interface User {
   id: string;
@@ -57,7 +57,7 @@ export const AddPeopleDialog: React.FC<AddPeopleDialogProps> = ({
 
   const fetchFriends = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('friends')
         .select(`
           requester_id,
@@ -90,7 +90,7 @@ export const AddPeopleDialog: React.FC<AddPeopleDialogProps> = ({
   const searchUsers = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .neq('id', currentUserId)

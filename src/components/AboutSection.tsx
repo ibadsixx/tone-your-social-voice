@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -126,7 +126,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
   const fetchProfileDetails = async () => {
     try {
       // Fetch profile_details
-      const { data: details, error: detailsError } = await supabase
+      const { data: details, error: detailsError } = await gateway
         .from('profile_details')
         .select('*')
         .eq('profile_id', profileId);
@@ -134,7 +134,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
       if (detailsError) throw detailsError;
 
       // Fetch complete profile data including new fields
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile, error: profileError } = await gateway
         .from('profiles')
         .select(`
           email,
@@ -310,7 +310,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
     
     // Load current visibility settings from profile for work_education
     if (section === 'work_education') {
-      const { data: profile } = await supabase
+      const { data: profile } = await gateway
         .from('profiles')
         .select('function_visibility, company_visibility, college_visibility, high_school_visibility')
         .eq('id', profileId)
@@ -363,7 +363,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
         // Apply sanitization for proper casing
         const sanitizedData = sanitizeProfilePayload(updateData);
 
-        const { error } = await supabase
+        const { error } = await gateway
           .from('profiles')
           .update(sanitizedData)
           .eq('id', profileId);
@@ -397,7 +397,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
         // Apply sanitization for proper casing
         const sanitizedData = sanitizeProfilePayload(updateData);
 
-        const { error } = await supabase
+        const { error } = await gateway
           .from('profiles')
           .update(sanitizedData)
           .eq('id', profileId);
@@ -406,7 +406,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
       } else {
         // Handle other sections with profile_details table
         // Delete existing details for this section
-        await supabase
+        await gateway
           .from('profile_details')
           .delete()
           .eq('profile_id', profileId)
@@ -423,7 +423,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
           }));
 
         if (detailsToInsert.length > 0) {
-          const { error } = await supabase
+          const { error } = await gateway
             .from('profile_details')
             .insert(detailsToInsert);
 

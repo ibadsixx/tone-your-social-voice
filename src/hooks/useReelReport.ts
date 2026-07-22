@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -49,7 +49,7 @@ export const useReelReport = () => {
         detailed_reason: data.detailedReason,
       });
 
-      const { error } = await supabase.from('reel_reports').insert({
+      const { error } = await gateway.from('reel_reports').insert({
         reel_id: data.reelId,
         reel_owner_id: data.reelOwnerId || null,
         reported_by: user.id,
@@ -90,7 +90,7 @@ export const useReelReport = () => {
     if (!user) return false;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('reel_reports')
         .select('id')
         .eq('reel_id', reelId)
@@ -150,7 +150,7 @@ export const usePostReport = () => {
         sub_reason: data.subReason,
       });
 
-      const { error } = await supabase.from('reported_posts').insert({
+      const { error } = await gateway.from('reported_posts').insert({
         post_id: data.postId,
         post_owner_id: data.postOwnerId || null,
         reported_by: user.id,

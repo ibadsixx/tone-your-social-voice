@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 interface TrendingHashtag {
   tag: string;
@@ -20,7 +20,7 @@ export const useTrendingHashtags = (limit: number = 5) => {
         yesterday.setHours(yesterday.getHours() - 24);
 
         // Query hashtag_links from the last 24 hours, grouped by hashtag_id
-        const { data: links, error: linksError } = await supabase
+        const { data: links, error: linksError } = await gateway
           .from('hashtag_links' as any)
           .select('hashtag_id')
           .gte('created_at', yesterday.toISOString());
@@ -54,7 +54,7 @@ export const useTrendingHashtags = (limit: number = 5) => {
         }
 
         // Fetch hashtag details
-        const { data: hashtagsData, error: hashtagsError } = await supabase
+        const { data: hashtagsData, error: hashtagsError } = await gateway
           .from('hashtags' as any)
           .select('id, tag')
           .in('id', topHashtagIds);

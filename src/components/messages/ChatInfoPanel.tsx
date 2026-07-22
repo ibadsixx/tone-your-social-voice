@@ -18,7 +18,7 @@ import { SharedMediaModal } from './SharedMediaModal';
 import { ReportMessageModal } from './ReportMessageModal';
 import { useToast } from '@/hooks/use-toast';
 import { EmojiAsset } from '@/components/EmojiAsset';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { deleteCachedConversationKey } from '@/lib/conversationEncryption';
 import {
   Dialog,
@@ -173,7 +173,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    gateway.auth.getUser().then(({ data }) => {
       if (data?.user) setCurrentUserId(data.user.id);
     });
   }, []);
@@ -185,7 +185,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
       setEncryptionStatus('loading');
       (async () => {
         try {
-          const { data, error } = await supabase.rpc('get_encryption_details', {
+          const { data, error } = await gateway.rpc('get_encryption_details', {
             p_conversation_id: conversationId
           });
           if (error) throw error;
@@ -205,7 +205,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   // Check restriction status on mount
   useEffect(() => {
     if (isOpen && otherUser?.id && currentUserId) {
-      supabase
+      gateway
         .from('restricted_users')
         .select('id')
         .eq('user_id', currentUserId)
@@ -256,7 +256,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     setShowEncryptionDialog(true);
     
     try {
-      const { data, error } = await supabase.rpc('get_encryption_details', {
+      const { data, error } = await gateway.rpc('get_encryption_details', {
         p_conversation_id: conversationId
       });
       
@@ -305,7 +305,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     setSavingControls(true);
     
     try {
-      const { error } = await supabase.rpc('update_messaging_controls', {
+      const { error } = await gateway.rpc('update_messaging_controls', {
         p_conversation_id: conversationId,
         p_message_requests_enabled: allowMessageSharing
       });
@@ -338,7 +338,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     if (!currentUserId || !otherUser?.id) return;
     setRestrictLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('restricted_users')
         .insert({ user_id: currentUserId, restricted_user_id: otherUser.id });
       if (error) throw error;
@@ -363,7 +363,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     if (!currentUserId || !otherUser?.id) return;
     setRestrictLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('restricted_users')
         .delete()
         .eq('user_id', currentUserId)
@@ -392,11 +392,11 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     setClearingHistory(true);
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await gateway.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Upsert a clear marker — messages are soft-hidden from this user's view
-      const { error } = await supabase
+      const { error } = await gateway
         .from('conversation_clears')
         .upsert({
           user_id: user.id,
@@ -861,7 +861,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
                           const cid = conversationId;
                           if (!cid) return;
                           try {
-                            await supabase.rpc('verify_conversation_encryption', {
+                            await gateway.rpc('verify_conversation_encryption', {
                               p_conversation_id: cid
                             });
                             const now = new Date();
@@ -987,7 +987,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
                               const cid = conversationId;
                               if (!cid) return;
                               try {
-                                await supabase.rpc('verify_conversation_encryption', {
+                                await gateway.rpc('verify_conversation_encryption', {
                                   p_conversation_id: cid,
                                   p_key_fingerprint: device.key_fingerprint,
                                   p_verified_user_id: selectedParticipantKeys.user_id as string

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -98,7 +98,7 @@ const YourActivity: React.FC = () => {
 
       const currentOffset = reset ? 0 : offset;
 
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('user_activity')
         .select('*')
         .eq('user_id', user?.id)

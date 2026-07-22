@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 interface ReelShareModalProps {
@@ -60,7 +60,7 @@ const ReelShareModal = ({ isOpen, onClose, reelId }: ReelShareModalProps) => {
     const fetchRecentContacts = async () => {
       setLoadingContacts(true);
       try {
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('friends')
           .select(`
             id,
@@ -116,7 +116,7 @@ const ReelShareModal = ({ isOpen, onClose, reelId }: ReelShareModalProps) => {
     const fetchGroups = async () => {
       setLoadingGroups(true);
       try {
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('group_members')
           .select(`
             group_id,
@@ -157,7 +157,7 @@ const ReelShareModal = ({ isOpen, onClose, reelId }: ReelShareModalProps) => {
     const fetchAllFriends = async () => {
       setLoadingFriends(true);
       try {
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('friends')
           .select(`
             id,
@@ -218,7 +218,7 @@ const ReelShareModal = ({ isOpen, onClose, reelId }: ReelShareModalProps) => {
 
     setIsSharing(true);
     try {
-      const { error: shareError } = await supabase
+      const { error: shareError } = await gateway
         .from('post_shares')
         .insert({
           post_id: reelId,
@@ -229,15 +229,15 @@ const ReelShareModal = ({ isOpen, onClose, reelId }: ReelShareModalProps) => {
 
       if (shareError) throw shareError;
 
-      const { error: rpcError } = await supabase.rpc('increment_post_share_counts', { p_post_id: reelId });
+      const { error: rpcError } = await gateway.rpc('increment_post_share_counts', { p_post_id: reelId });
       if (rpcError) {
         console.warn('[REEL_SHARE] RPC fallback:', rpcError.message);
-        const { data: postData } = await supabase
+        const { data: postData } = await gateway
           .from('posts')
           .select('share_count, shares_count')
           .eq('id', reelId)
           .single();
-        await supabase
+        await gateway
           .from('posts')
           .update({
             share_count: (postData?.share_count || 0) + 1,
@@ -247,7 +247,7 @@ const ReelShareModal = ({ isOpen, onClose, reelId }: ReelShareModalProps) => {
       }
 
       if (shareText.trim()) {
-        await supabase.from('posts').insert({
+        await gateway.from('posts').insert({
           user_id: user.id,
           content: shareText.trim(),
           type: 'shared_post',
@@ -285,7 +285,7 @@ const ReelShareModal = ({ isOpen, onClose, reelId }: ReelShareModalProps) => {
     setProcessingShare('story');
     try {
       // Get reel media info
-      const { data: reel } = await supabase
+      const { data: reel } = await gateway
         .from('posts')
         .select('media_url, media_type, thumbnail')
         .eq('id', reelId)
@@ -297,7 +297,7 @@ const ReelShareModal = ({ isOpen, onClose, reelId }: ReelShareModalProps) => {
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + 24);
 
-      const { error } = await supabase
+      const { error } = await gateway
         .from('stories')
         .insert({
           user_id: user.id,
@@ -335,7 +335,7 @@ const ReelShareModal = ({ isOpen, onClose, reelId }: ReelShareModalProps) => {
     
     setProcessingShare(groupId);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('group_posts')
         .insert({
           group_id: groupId,
@@ -383,7 +383,7 @@ const ReelShareModal = ({ isOpen, onClose, reelId }: ReelShareModalProps) => {
     
     setProcessingShare(profileId);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('profile_posts')
         .insert({
           profile_id: profileId,
@@ -432,7 +432,7 @@ const ReelShareModal = ({ isOpen, onClose, reelId }: ReelShareModalProps) => {
     setProcessingShare(contactId);
     try {
       // Get or create conversation
-      const { data: conversationId, error: convError } = await supabase
+      const { data: conversationId, error: convError } = await gateway
         .rpc('get_or_create_dm', { p_user_a: user.id, p_user_b: contactId });
 
       if (convError) throw convError;
@@ -443,7 +443,7 @@ const ReelShareModal = ({ isOpen, onClose, reelId }: ReelShareModalProps) => {
         ? `${shareText.trim()}\n\n${reelUrl}` 
         : reelUrl;
 
-      const { error: msgError } = await supabase
+      const { error: msgError } = await gateway
         .from('messages')
         .insert({
           conversation_id: conversationId,

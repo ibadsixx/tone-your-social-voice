@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import PageContainer from '@/components/PageContainer';
 
 // This component now redirects to the dynamic profile page
@@ -14,7 +14,7 @@ const Profile = () => {
     if (user) {
       const fetchUserProfile = async () => {
         try {
-          const { data, error } = await supabase
+          const { data, error } = await gateway
             .from('profiles')
             .select('username')
             .eq('id', user.id)

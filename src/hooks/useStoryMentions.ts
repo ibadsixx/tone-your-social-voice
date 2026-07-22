@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 export interface StoryMention {
@@ -30,7 +30,7 @@ export const useStoryMentions = (storyId?: string) => {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('story_mentions')
         .select(`
           *,
@@ -60,12 +60,12 @@ export const useStoryMentions = (storyId?: string) => {
     if (!storyId) return null;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('story_mentions')
         .insert({
           story_id: storyId,
           mentioned_user_id: userId,
-          created_by: (await supabase.auth.getUser()).data.user?.id,
+          created_by: (await gateway.auth.getUser()).data.user?.id,
           position_x: position?.x || null,
           position_y: position?.y || null
         })
@@ -94,7 +94,7 @@ export const useStoryMentions = (storyId?: string) => {
 
   const removeMention = async (mentionId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('story_mentions')
         .delete()
         .eq('id', mentionId);

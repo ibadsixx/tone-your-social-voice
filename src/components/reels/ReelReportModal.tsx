@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { useHiddenContent } from '@/hooks/useHiddenContent';
 
@@ -121,7 +121,7 @@ const ReelReportModal = ({
     (async () => {
       console.log('[REPORT] resolving post owner', { post_id: reelId, post_type: postType });
 
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('posts')
         .select('user_id')
         .eq('id', reelId)
@@ -221,10 +221,10 @@ const ReelReportModal = ({
       } else if (actionId === 'block-creator') {
         // Insert into blocks table
         console.log(`[BLOCK] Blocking user_id=${resolvedOwnerId}`);
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await gateway.auth.getUser();
         if (!user) throw new Error('Not logged in');
 
-        const { error } = await supabase.from('blocks').insert({
+        const { error } = await gateway.from('blocks').insert({
           blocker_id: user.id,
           blocked_id: resolvedOwnerId!,
         });
@@ -281,7 +281,7 @@ const ReelReportModal = ({
 
     setIsSubmitting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await gateway.auth.getUser();
       if (!user) {
         toast({
           title: 'Error',
@@ -335,7 +335,7 @@ const ReelReportModal = ({
         sub_reason: reportPayload.sub_reason,
       });
 
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('reported_posts')
         .insert(reportPayload)
         .select('id')

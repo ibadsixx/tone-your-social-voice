@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { VisibilitySelector, Visibility } from '@/components/VisibilitySelector';
 import { useToast } from '@/hooks/use-toast';
 import { useFriends } from '@/hooks/useFriends';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Plus, X, Edit, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -92,13 +92,13 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
 
   const checkFriendshipStatus = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await gateway.auth.getUser();
       if (!user?.id || isOwnProfile) {
         setViewerCanSeeFriend(false);
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('friends')
         .select('status')
         .or(`and(requester_id.eq.${user.id},receiver_id.eq.${profileId}),and(requester_id.eq.${profileId},receiver_id.eq.${user.id})`)
@@ -116,7 +116,7 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
   const loadFamilyMembers = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('family_relationships')
         .select(`
           *,
@@ -153,7 +153,7 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
 
     try {
       setLoading(true);
-      const { error } = await supabase
+      const { error } = await gateway
         .from('family_relationships')
         .insert({
           user_id: profileId,
@@ -203,7 +203,7 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
 
     try {
       setLoading(true);
-      const { error } = await supabase
+      const { error } = await gateway
         .from('family_relationships')
         .update({
           relation_type: relationType,
@@ -237,7 +237,7 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
 
     try {
       setLoading(true);
-      const { error } = await supabase
+      const { error } = await gateway
         .from('family_relationships')
         .delete()
         .eq('id', id);

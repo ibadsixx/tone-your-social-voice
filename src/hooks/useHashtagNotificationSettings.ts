@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 
@@ -16,7 +16,7 @@ export const useHashtagNotificationSettings = () => {
       }
 
       try {
-        const { data } = await supabase
+        const { data } = await gateway
           .from('privacy_settings')
           .select('setting_value')
           .eq('user_id', user.id)
@@ -40,7 +40,7 @@ export const useHashtagNotificationSettings = () => {
     try {
       const newValue = !enabled;
       
-      const { error } = await supabase
+      const { error } = await gateway
         .from('privacy_settings')
         .upsert({
           user_id: user.id,

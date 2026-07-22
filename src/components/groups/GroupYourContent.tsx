@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, MessageSquare, CheckCircle, XCircle, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import Post from '@/components/Post';
 
@@ -34,7 +34,7 @@ const GroupYourContent = ({ groupId, groupName, onBack }: GroupYourContentProps)
       }
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('group_posts')
           .select(`
             id, message, created_at,

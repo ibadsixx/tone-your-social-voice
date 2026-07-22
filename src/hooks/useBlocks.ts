@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 interface BlockStatus {
@@ -23,7 +23,7 @@ export const useBlocks = (profileId: string, currentUserId?: string) => {
     }
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('blocks')
         .select('*')
         .or(`and(blocker_id.eq.${currentUserId},blocked_id.eq.${profileId}),and(blocker_id.eq.${profileId},blocked_id.eq.${currentUserId})`);
@@ -48,7 +48,7 @@ export const useBlocks = (profileId: string, currentUserId?: string) => {
     if (!currentUserId || !profileId) return;
 
     try {
-      const { error } = await supabase.rpc('block_user', {
+      const { error } = await gateway.rpc('block_user', {
         p_blocker: currentUserId,
         p_blocked: profileId,
         p_block_type: blockType
@@ -78,7 +78,7 @@ export const useBlocks = (profileId: string, currentUserId?: string) => {
     if (!currentUserId || !profileId) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('blocks')
         .delete()
         .eq('blocker_id', currentUserId)

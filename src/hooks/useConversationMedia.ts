@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 export interface SharedMedia {
   id: string;
@@ -39,7 +39,7 @@ export function useConversationMedia(conversationId: string | undefined) {
 
     try {
       // Fetch images, videos, gifs, stickers, and attachments from both sender and receiver
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('messages')
         .select('id, image_url, media_url, gif_url, sticker_url, attachment_url, is_image, is_gif, is_sticker, created_at, sender_id')
         .eq('conversation_id', conversationId)
@@ -119,7 +119,7 @@ export function useConversationMedia(conversationId: string | undefined) {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('messages')
         .select('id, attachment_url, created_at, sender_id')
         .eq('conversation_id', conversationId)
@@ -150,7 +150,7 @@ export function useConversationMedia(conversationId: string | undefined) {
 
     try {
       // Fetch messages that contain URLs
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('messages')
         .select('id, content, created_at, sender_id')
         .eq('conversation_id', conversationId)

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Save, Edit3 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 interface EditBioDialogProps {
@@ -23,7 +23,7 @@ const EditBioDialog = ({ currentBio, userId, onBioUpdate }: EditBioDialogProps) 
     setIsLoading(true);
     
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('profiles')
         .update({ bio })
         .eq('id', userId);

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 interface AuthContextType {
@@ -32,7 +32,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      }, 4000);
 
     // Set up auth state listener first
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = gateway.auth.onAuthStateChange(
       (event, session) => {
         if (mounted) {
           window.clearTimeout(loadingTimeout);
@@ -44,7 +44,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     );
 
     // Get initial session with error handling
-    supabase.auth.getSession()
+    gateway.auth.getSession()
       .then(({ data: { session }, error }) => {
         if (mounted) {
           window.clearTimeout(loadingTimeout);
@@ -85,7 +85,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const redirectUrl = `${window.location.origin}/`;
       
-      const { error } = await supabase.auth.signUp({
+      const { error } = await gateway.auth.signUp({
         email,
         password,
         options: {
@@ -123,7 +123,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error } = await gateway.auth.signInWithPassword({
         email,
         password,
       });
@@ -149,7 +149,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await gateway.auth.signOut();
       
       if (error) {
         toast({

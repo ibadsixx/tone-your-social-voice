@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Mic, Square, Play, Pause, Check, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAudioRecorder, AudioRecording } from '@/hooks/useAudioRecorder';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { toast } from '@/hooks/use-toast';
 
 interface AudioRecorderProps {
@@ -68,7 +68,7 @@ export function AudioRecorder({ onRecordingComplete, onClose }: AudioRecorderPro
     try {
       // Upload to Supabase storage
       const fileName = `recording_${Date.now()}.webm`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await gateway.storage
         .from('audio-recordings')
         .upload(fileName, recording.blob, {
           contentType: recording.blob.type,
@@ -95,7 +95,7 @@ export function AudioRecorder({ onRecordingComplete, onClose }: AudioRecorderPro
       }
 
       // Get public URL
-      const { data: urlData } = supabase.storage
+      const { data: urlData } = gateway.storage
         .from('audio-recordings')
         .getPublicUrl(uploadData.path);
 

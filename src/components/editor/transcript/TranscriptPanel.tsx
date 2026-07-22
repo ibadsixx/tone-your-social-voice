@@ -7,7 +7,7 @@ import { FileText, Wand2, Plus, Loader2, Edit2, Check, X, Clock, PlayCircle } fr
 import { cn } from '@/lib/utils';
 import { TranscriptSegment, Transcript, TextLayer, defaultTextStyle } from '@/types/editor';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 interface TranscriptPanelProps {
   audioUrl?: string;
@@ -42,7 +42,7 @@ export function TranscriptPanel({
     setIsGenerating(true);
     try {
       // Call transcription edge function
-      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+      const { data, error } = await gateway.functions.invoke('transcribe-audio', {
         body: { audioUrl },
       });
 
@@ -103,7 +103,7 @@ export function TranscriptPanel({
       }
 
       try {
-        const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+        const { data, error } = await gateway.functions.invoke('transcribe-audio', {
           body: { jobId },
         });
 

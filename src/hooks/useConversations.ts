@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { initConversationEncryption, decryptContent, isEncryptionReady } from '@/lib/conversationEncryption';
@@ -17,7 +17,7 @@ async function tryDecryptMessage(msg: Message, convId: string): Promise<Message>
 }
 
 async function fetchConversationsDirectly(userId: string): Promise<Conversation[]> {
-  const { data: participants } = await supabase
+  const { data: participants } = await gateway
     .from('conversation_participants')
     .select('conversation_id')
     .eq('user_id', userId);
@@ -26,14 +26,14 @@ async function fetchConversationsDirectly(userId: string): Promise<Conversation[
 
   const convIds = participants.map(p => p.conversation_id);
 
-  const { data: convs } = await supabase
+  const { data: convs } = await gateway
     .from('conversations')
     .select('id, type, description, created_at, updated_at')
     .in('id', convIds);
 
   if (!convs) return [];
 
-  const { data: otherParts } = await supabase
+  const { data: otherParts } = await gateway
     .from('conversation_participants')
     .select('conversation_id, user_id')
     .in('conversation_id', convIds)
@@ -47,14 +47,14 @@ async function fetchConversationsDirectly(userId: string): Promise<Conversation[
   });
 
   const otherUserIds = [...new Set(firstOtherPerConv.values())];
-  const { data: profilesData } = await supabase
+  const { data: profilesData } = await gateway
     .from('profiles')
     .select('id, username, display_name, profile_pic, last_seen_at')
     .in('id', otherUserIds);
 
   const profileMap = new Map((profilesData || []).map(p => [p.id, p]));
 
-  const { data: allMessages } = await supabase
+  const { data: allMessages } = await gateway
     .from('messages')
     .select('conversation_id, content, created_at')
     .in('conversation_id', convIds)
@@ -97,7 +97,7 @@ async function fetchConversationsDirectly(userId: string): Promise<Conversation[
 }
 
 async function fetchPageConversationsDirectly(pageId: string, userId: string): Promise<Conversation[]> {
-  const { data: convs } = await supabase
+  const { data: convs } = await gateway
     .from('conversations')
     .select('id, type, description, created_at, updated_at')
     .eq('page_id', pageId)
@@ -107,7 +107,7 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
 
   const convIds = convs.map(c => c.id);
 
-  const { data: otherParts } = await supabase
+  const { data: otherParts } = await gateway
     .from('conversation_participants')
     .select('conversation_id, user_id')
     .in('conversation_id', convIds)
@@ -121,14 +121,14 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
   });
 
   const otherUserIds = [...new Set(firstOtherPerConv.values())];
-  const { data: profilesData } = await supabase
+  const { data: profilesData } = await gateway
     .from('profiles')
     .select('id, username, display_name, profile_pic, last_seen_at')
     .in('id', otherUserIds);
 
   const profileMap = new Map((profilesData || []).map(p => [p.id, p]));
 
-  const { data: allMessages } = await supabase
+  const { data: allMessages } = await gateway
     .from('messages')
     .select('conversation_id, content, created_at')
     .in('conversation_id', convIds)
@@ -325,7 +325,7 @@ export const useConversations = (currentUserId?: string) => {
     }
 
     try {
-      const { data, error } = await supabase.rpc('get_conversations_with_info', {
+      const { data, error } = await gateway.rpc('get_conversations_with_info', {
         p_user_id: currentUserId
       });
 
@@ -357,7 +357,7 @@ export const useConversations = (currentUserId?: string) => {
         .filter(c => c.other_user?.id)
         .map(c => c.other_user!.id);
       if (otherUserIds.length > 0) {
-        const { data: profiles } = await supabase
+        const { data: profiles } = await gateway
           .from('profiles')
           .select('id, last_seen_at')
           .in('id', otherUserIds);
@@ -416,7 +416,7 @@ export const useConversations = (currentUserId?: string) => {
 
     try {
       // Fetch messages with sender profile using explicit foreign key hint
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('messages')
         .select(`
           id,
@@ -458,7 +458,7 @@ export const useConversations = (currentUserId?: string) => {
       // Filter out messages cleared by this user (soft-delete)
       let clearedAt: string | null = null;
       if (data && data.length > 0) {
-        const { data: clearRecord } = await supabase
+        const { data: clearRecord } = await gateway
           .from('conversation_clears')
           .select('cleared_at')
           .eq('user_id', currentUserId)
@@ -494,7 +494,7 @@ export const useConversations = (currentUserId?: string) => {
         .map(m => m.reply_to_id);
 
       if (replyIds.length > 0) {
-        const { data: replyData, error: replyError } = await supabase
+        const { data: replyData, error: replyError } = await gateway
           .from('messages')
           .select('id, content, image_url, media_url, attachment_url, is_image, sender_profile:profiles!messages_sender_id_fkey(display_name)')
           .in('id', replyIds);
@@ -514,7 +514,7 @@ export const useConversations = (currentUserId?: string) => {
         setMessages(formattedMessages);
 
         // Determine which messages have been read by other participants
-        const { data: readData } = await supabase
+        const { data: readData } = await gateway
           .rpc('get_message_read_status', { p_conversation_id: conversationId });
         if (readData && readData.length > 0) {
           const seenIds = new Set(readData.map(r => r.message_id));
@@ -529,7 +529,7 @@ export const useConversations = (currentUserId?: string) => {
         // Compute the boundary between already-read and new messages
         const messageIds = formattedMessages.map(m => m.id);
         if (messageIds.length > 0) {
-          const { data: myReads } = await supabase
+          const { data: myReads } = await gateway
             .rpc('get_my_read_message_ids', { p_message_ids: messageIds });
           if (myReads && myReads.length > 0) {
             const readSet = new Set(myReads.map(r => r.message_id));
@@ -579,7 +579,7 @@ export const useConversations = (currentUserId?: string) => {
     }
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('messages')
         .insert({
           conversation_id: conversationId,
@@ -631,7 +631,7 @@ export const useConversations = (currentUserId?: string) => {
 
       // If reply_to_id exists, fetch the reply_to message data and add to messages state immediately
       if (data && replyToId) {
-        const { data: replyData } = await supabase
+        const { data: replyData } = await gateway
           .from('messages')
           .select('id, content, image_url, media_url, attachment_url, is_image, sender_profile:profiles!messages_sender_id_fkey(display_name)')
           .eq('id', replyToId)
@@ -673,7 +673,7 @@ export const useConversations = (currentUserId?: string) => {
     if (!currentUserId) return;
 
     try {
-      await supabase.rpc('mark_messages_read', {
+      await gateway.rpc('mark_messages_read', {
         p_conversation_id: conversationId
       });
     } catch (error) {
@@ -686,7 +686,7 @@ export const useConversations = (currentUserId?: string) => {
     if (!currentUserId) return null;
 
     try {
-      const { data, error } = await supabase.rpc('get_or_create_dm', {
+      const { data, error } = await gateway.rpc('get_or_create_dm', {
         p_user_a: currentUserId,
         p_user_b: otherUserId
       });
@@ -694,7 +694,7 @@ export const useConversations = (currentUserId?: string) => {
       if (error) throw error;
 
       if (actingPageId && data) {
-        await supabase
+        await gateway
           .from('conversations')
           .update({ page_id: actingPageId })
           .eq('id', data)
@@ -744,7 +744,7 @@ export const useConversations = (currentUserId?: string) => {
   useEffect(() => {
     if (!currentUserId) return;
 
-    const messagesChannel = supabase
+    const messagesChannel = gateway
       .channel('messages-changes')
       .on(
         'postgres_changes',
@@ -774,7 +774,7 @@ export const useConversations = (currentUserId?: string) => {
             }
             
             // For messages from other users, fetch with full profile data
-            const { data: msgData } = await supabase
+            const { data: msgData } = await gateway
               .from('messages')
               .select(`
                 id, conversation_id, sender_id, content, encrypted_content, encryption_iv,
@@ -789,12 +789,12 @@ export const useConversations = (currentUserId?: string) => {
             
             if (msgData) {
               // Acknowledge delivery to the sender
-              supabase.rpc('mark_message_delivered', { p_message_id: msgData.id })
+              gateway.rpc('mark_message_delivered', { p_message_id: msgData.id })
                 .catch(() => {});
               
               let replyData = null;
               if (msgData.reply_to_id) {
-                const { data: replyResult } = await supabase
+                const { data: replyResult } = await gateway
                   .from('messages')
                   .select('id, content, image_url, media_url, attachment_url, is_image, sender_profile:profiles!messages_sender_id_fkey(display_name)')
                   .eq('id', msgData.reply_to_id)
@@ -889,7 +889,7 @@ export const useConversations = (currentUserId?: string) => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(messagesChannel);
+      gateway.removeChannel(messagesChannel);
       if (debouncedFetchRef.current) clearTimeout(debouncedFetchRef.current);
     };
   }, [currentUserId, activeConversationId, debouncedFetchConversations]);
@@ -929,7 +929,7 @@ export const useConversations = (currentUserId?: string) => {
       if (allConvs.length === 0) return;
 
       const userIds = [...new Set(allConvs.map(c => c.other_user?.id).filter(Boolean))];
-      const { data: profiles } = await supabase
+      const { data: profiles } = await gateway
         .from('profiles')
         .select('id, last_seen_at')
         .in('id', userIds);

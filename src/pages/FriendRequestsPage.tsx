@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { usePeopleYouMayKnow } from '@/hooks/usePeopleYouMayKnow';
 import { ArrowLeft, UserCheck, UserPlus, X, Loader2, User, Users } from 'lucide-react';
 
@@ -46,7 +46,7 @@ const FriendRequestsPage = () => {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('friends')
         .select(`
           id,
@@ -75,7 +75,7 @@ const FriendRequestsPage = () => {
     if (!user?.id) return;
     setLoadingSent(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('friends')
         .select(`
           id,
@@ -108,7 +108,7 @@ const FriendRequestsPage = () => {
   const handleAccept = async (requestId: string) => {
     setActionLoading(requestId);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('friends')
         .update({ status: 'accepted' })
         .eq('id', requestId);
@@ -134,7 +134,7 @@ const FriendRequestsPage = () => {
   const handleReject = async (requestId: string) => {
     setActionLoading(requestId);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('friends')
         .update({ status: 'rejected' })
         .eq('id', requestId);

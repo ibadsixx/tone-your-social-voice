@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { createNotification } from '@/hooks/useNotifications';
 
@@ -24,7 +24,7 @@ export const useFollow = (profileId: string, currentUserId?: string) => {
     }
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('followers')
         .select('*')
         .eq('follower_id', currentUserId)
@@ -48,7 +48,7 @@ export const useFollow = (profileId: string, currentUserId?: string) => {
     if (!currentUserId || !profileId) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('followers')
         .insert({
           follower_id: currentUserId,
@@ -90,7 +90,7 @@ export const useFollow = (profileId: string, currentUserId?: string) => {
     if (!followStatus.id) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('followers')
         .delete()
         .eq('id', followStatus.id);

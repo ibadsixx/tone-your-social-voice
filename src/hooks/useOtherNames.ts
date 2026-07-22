@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 export interface OtherName {
@@ -22,7 +22,7 @@ export const useOtherNames = (userId?: string) => {
     if (!userId) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('other_names')
         .select('*')
         .eq('user_id', userId)
@@ -43,7 +43,7 @@ export const useOtherNames = (userId?: string) => {
 
   const createOtherName = async (otherName: Omit<OtherName, 'id' | 'created_at' | 'updated_at'>) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('other_names')
         .insert([otherName])
         .select()
@@ -69,7 +69,7 @@ export const useOtherNames = (userId?: string) => {
 
   const updateOtherName = async (id: string, updates: Partial<Omit<OtherName, 'id' | 'created_at' | 'updated_at'>>) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('other_names')
         .update(updates)
         .eq('id', id)
@@ -96,7 +96,7 @@ export const useOtherNames = (userId?: string) => {
 
   const deleteOtherName = async (id: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('other_names')
         .delete()
         .eq('id', id);
@@ -129,7 +129,7 @@ export const useOtherNames = (userId?: string) => {
   useEffect(() => {
     if (!userId) return;
 
-    const channel = supabase
+    const channel = gateway
       .channel('other-names-changes')
       .on(
         'postgres_changes',
@@ -146,7 +146,7 @@ export const useOtherNames = (userId?: string) => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [userId]);
 

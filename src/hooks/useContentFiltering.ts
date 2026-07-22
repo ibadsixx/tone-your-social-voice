@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 
 interface ContentFilteringState {
@@ -37,7 +37,7 @@ export const useContentFiltering = () => {
 
     try {
       // Fetch blocked users
-      const { data: blocksData } = await supabase
+      const { data: blocksData } = await gateway
         .from('blocks')
         .select('blocker_id, blocked_id')
         .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
@@ -49,7 +49,7 @@ export const useContentFiltering = () => {
       // Fetch hidden content - separate queries for content and profiles
       // content_id entries are "See less" (single reel)
       // profile_id entries are "Hide profile" (all content from creator)
-      const { data: hiddenData } = await supabase
+      const { data: hiddenData } = await gateway
         .from('hidden_content')
         .select('content_id, profile_id, content_type')
         .eq('user_id', user.id);
@@ -68,7 +68,7 @@ export const useContentFiltering = () => {
       console.log('[CONTENT_FILTER] Hidden profiles:', hiddenProfileIds);
 
       // Fetch restricted users
-      const { data: restrictedData } = await supabase
+      const { data: restrictedData } = await gateway
         .from('restricted_users')
         .select('restricted_user_id')
         .eq('user_id', user.id);
@@ -76,7 +76,7 @@ export const useContentFiltering = () => {
       const restrictedIds = restrictedData?.map(r => r.restricted_user_id) || [];
 
       // Fetch muted users
-      const { data: mutedData } = await supabase
+      const { data: mutedData } = await gateway
         .from('muted_users')
         .select('muted_user_id')
         .eq('user_id', user.id);
@@ -84,7 +84,7 @@ export const useContentFiltering = () => {
       const mutedIds = mutedData?.map(m => m.muted_user_id) || [];
 
       // Fetch see_less preferences for reels
-      const { data: seeLessData } = await supabase
+      const { data: seeLessData } = await gateway
         .from('content_preferences')
         .select('owner_id')
         .eq('user_id', user.id)

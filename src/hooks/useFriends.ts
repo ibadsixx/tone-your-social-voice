@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 interface Friend {
@@ -26,7 +26,7 @@ export const useFriends = (userId?: string) => {
       setLoading(true);
       console.debug('[useFriends] Fetching friends for user:', userId);
       
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('friends')
         .select(`
           *,

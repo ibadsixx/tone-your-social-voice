@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { Card, CardContent } from '@/components/ui/card';
 import { ImageIcon, FileText, Play, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -33,7 +33,7 @@ export default function GroupMediaFiles({ groupId }: Props) {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('group_posts')
         .select('post_id, post:posts(id, media_url, media_type, created_at)')
         .eq('group_id', groupId);

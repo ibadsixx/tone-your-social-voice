@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -21,7 +21,7 @@ export const useStoryReactions = (storyId: string) => {
     if (!storyId) return;
     fetchReactions();
 
-    const channel = supabase
+    const channel = gateway
       .channel(`story-reactions-${storyId}`)
       .on(
         'postgres_changes',
@@ -38,13 +38,13 @@ export const useStoryReactions = (storyId: string) => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [storyId]);
 
   const fetchReactions = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('story_reactions')
         .select('*')
         .eq('story_id', storyId);
@@ -68,7 +68,7 @@ export const useStoryReactions = (storyId: string) => {
 
     setLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('story_reactions')
         .insert({
           story_id: storyId,
@@ -98,7 +98,7 @@ export const useStoryReactions = (storyId: string) => {
 
     setLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('story_reactions')
         .delete()
         .eq('story_id', storyId)

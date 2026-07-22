@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 export const useMessageActions = (conversationId?: string, currentUserId?: string) => {
@@ -19,7 +19,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
 
     setLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('messages')
         .delete()
         .eq('id', messageId)
@@ -59,7 +59,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
     setLoading(true);
     try {
       // Check if already pinned
-      const { data: existing } = await supabase
+      const { data: existing } = await gateway
         .from('pinned_messages')
         .select('id')
         .eq('message_id', messageId)
@@ -68,7 +68,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
 
       if (existing) {
         // Unpin
-        const { error } = await supabase
+        const { error } = await gateway
           .from('pinned_messages')
           .delete()
           .eq('id', existing.id);
@@ -81,7 +81,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
         });
       } else {
         // Pin
-        const { error } = await supabase
+        const { error } = await gateway
           .from('pinned_messages')
           .insert({
             message_id: messageId,
@@ -123,7 +123,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
 
     setLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('message_reports')
         .insert({
           message_id: messageId,
@@ -158,7 +158,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
     if (!conversationId) return [];
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('pinned_messages')
         .select('message_id')
         .eq('conversation_id', conversationId);

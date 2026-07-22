@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { createNotification } from '@/hooks/useNotifications';
@@ -80,7 +80,7 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
     }
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('reactions')
         .select('*')
         .eq('post_id', postId);
@@ -98,7 +98,7 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
     fetchReactions();
 
     // Subscribe to realtime changes
-    const channel = supabase
+    const channel = gateway
       .channel(`reactions-${postId}`)
       .on(
         'postgres_changes',
@@ -115,7 +115,7 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [postId, fetchReactions]);
 
@@ -136,7 +136,7 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
       if (existingReaction) {
         if (normalizeReactionType(existingReaction.type) === reactionKey) {
           // Same reaction - remove it
-          await supabase
+          await gateway
             .from('reactions')
             .delete()
             .eq('id', existingReaction.id);
@@ -145,7 +145,7 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
           setReactions(prev => prev.filter(r => r.id !== existingReaction.id));
         } else {
           // Different reaction - update it
-          await supabase
+          await gateway
             .from('reactions')
             .update({ type: dbReactionType as any })
             .eq('id', existingReaction.id);
@@ -159,7 +159,7 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
         }
       } else {
         // No existing reaction - create one
-        const { data, error } = await supabase
+        const { data, error } = await gateway
           .from('reactions')
           .insert({
             post_id: postId,
@@ -206,7 +206,7 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
     if (!existingReaction) return;
 
     try {
-      await supabase
+      await gateway
         .from('reactions')
         .delete()
         .eq('id', existingReaction.id);

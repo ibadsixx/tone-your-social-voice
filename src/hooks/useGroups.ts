@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -26,7 +26,7 @@ export const useGroups = () => {
       setLoading(true);
       console.log('[useGroups] Fetching groups...', { userId: user?.id });
       
-      const { data, error } = await supabase
+      const { data, error } = await gateway
         .from('groups')
         .select(`
           *,
@@ -48,7 +48,7 @@ export const useGroups = () => {
       // Fetch the user's pinned group ids
       let pinnedIds = new Set<string>();
       if (user) {
-        const { data: pinRows } = await supabase
+        const { data: pinRows } = await gateway
           .from('group_pins' as any)
           .select('group_id')
           .eq('user_id', user.id);
@@ -90,7 +90,7 @@ export const useGroups = () => {
     if (!user) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('group_members')
         .insert({ group_id: groupId, user_id: user.id, role: 'member' });
 
@@ -115,7 +115,7 @@ export const useGroups = () => {
     if (!user) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await gateway
         .from('group_members')
         .delete()
         .eq('group_id', groupId)
@@ -142,7 +142,7 @@ export const useGroups = () => {
     if (!user) return;
 
     try {
-      const { data: newGroup, error: createError } = await supabase
+      const { data: newGroup, error: createError } = await gateway
         .from('groups')
         .insert({ name, description })
         .select()
@@ -151,7 +151,7 @@ export const useGroups = () => {
       if (createError) throw createError;
 
       // Auto-join the creator as admin
-      const { error: joinError } = await supabase
+      const { error: joinError } = await gateway
         .from('group_members')
         .insert({ group_id: newGroup.id, user_id: user.id, role: 'admin' });
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 export function useHasActiveStories(userId: string | undefined): boolean {
   const [hasStories, setHasStories] = useState(false);
@@ -11,7 +11,7 @@ export function useHasActiveStories(userId: string | undefined): boolean {
     }
 
     const check = async () => {
-      const { count } = await supabase
+      const { count } = await gateway
         .from('stories')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', userId)
@@ -22,7 +22,7 @@ export function useHasActiveStories(userId: string | undefined): boolean {
 
     check();
 
-    const channel = supabase
+    const channel = gateway
       .channel(`user-stories-${userId}`)
       .on(
         'postgres_changes',
@@ -37,7 +37,7 @@ export function useHasActiveStories(userId: string | undefined): boolean {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      gateway.removeChannel(channel);
     };
   }, [userId]);
 

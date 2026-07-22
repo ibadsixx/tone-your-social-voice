@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
 export interface StoryView {
@@ -22,7 +22,7 @@ export const useStoryAnalytics = (storyId: string) => {
   const fetchViews = async () => {
     try {
       setLoading(true);
-      const { data: viewsData, error } = await supabase
+      const { data: viewsData, error } = await gateway
         .from('story_views')
         .select('*')
         .eq('story_id', storyId)
@@ -32,7 +32,7 @@ export const useStoryAnalytics = (storyId: string) => {
 
       // Fetch viewer profiles separately
       const viewerIds = viewsData?.map(v => v.viewer_id) || [];
-      const { data: profiles } = await supabase
+      const { data: profiles } = await gateway
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .in('id', viewerIds);

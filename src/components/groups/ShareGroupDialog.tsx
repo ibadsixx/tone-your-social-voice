@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Link2, Users, User } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 interface ShareGroupDialogProps {
   isOpen: boolean;
@@ -62,7 +62,7 @@ const ShareGroupDialog = ({ isOpen, onClose, groupId, groupName }: ShareGroupDia
 
   const fetchProfile = async () => {
     if (!user) return;
-    const { data } = await supabase
+    const { data } = await gateway
       .from('profiles')
       .select('username, display_name, profile_pic')
       .eq('id', user.id)
@@ -72,7 +72,7 @@ const ShareGroupDialog = ({ isOpen, onClose, groupId, groupName }: ShareGroupDia
 
   const fetchFriends = async () => {
     if (!user) return;
-    const { data, error } = await supabase
+    const { data, error } = await gateway
       .from('friends')
       .select('requester_id, receiver_id, status')
       .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
@@ -95,7 +95,7 @@ const ShareGroupDialog = ({ isOpen, onClose, groupId, groupName }: ShareGroupDia
       return;
     }
 
-    const { data: profiles, error: pErr } = await supabase
+    const { data: profiles, error: pErr } = await gateway
       .from('profiles')
       .select('id, username, display_name, profile_pic')
       .in('id', friendIds);
@@ -108,7 +108,7 @@ const ShareGroupDialog = ({ isOpen, onClose, groupId, groupName }: ShareGroupDia
     if (!user) return;
     setSharing(true);
     try {
-      await supabase.from('posts').insert([{
+      await gateway.from('posts').insert([{
         user_id: user.id,
         content: message || `Check out this group: ${groupName}`,
         type: 'text',

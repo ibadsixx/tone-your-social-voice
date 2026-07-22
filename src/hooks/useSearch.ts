@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 export interface SearchResult {
   id: string;
@@ -32,7 +32,7 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
   const fetchExploreContent = useCallback(async () => {
     try {
       // Get suggested people (top 5 profiles) - RLS automatically excludes blocked users
-      const { data: profiles, error: profilesError } = await supabase
+      const { data: profiles, error: profilesError } = await gateway
         .from('profiles')
         .select('id, display_name, username, profile_pic')
         .limit(5);
@@ -40,7 +40,7 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
       if (profilesError) throw profilesError;
 
       // Get suggested pages (top 5)
-      const { data: pages, error: pagesError } = await supabase
+      const { data: pages, error: pagesError } = await gateway
         .from('pages')
         .select('id, name, description')
         .limit(5);
@@ -48,7 +48,7 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
       if (pagesError) throw pagesError;
 
       // Get suggested groups (top 5)
-      const { data: groups, error: groupsError } = await supabase
+      const { data: groups, error: groupsError } = await gateway
         .from('groups')
         .select('id, name, description')
         .limit(5);
@@ -97,7 +97,7 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
       const searchPattern = `%${searchQuery.trim()}%`;
 
       // Search profiles (people) - RLS automatically excludes blocked users
-      const { data: profiles, error: profilesError } = await supabase
+      const { data: profiles, error: profilesError } = await gateway
         .from('profiles')
         .select('id, display_name, username, profile_pic')
         .or(`display_name.ilike.${searchPattern},username.ilike.${searchPattern}`)
@@ -106,7 +106,7 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
       if (profilesError) throw profilesError;
 
       // Search pages
-      const { data: pages, error: pagesError } = await supabase
+      const { data: pages, error: pagesError } = await gateway
         .from('pages')
         .select('id, name, description')
         .ilike('name', searchPattern)
@@ -115,7 +115,7 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
       if (pagesError) throw pagesError;
 
       // Search groups
-      const { data: groups, error: groupsError } = await supabase
+      const { data: groups, error: groupsError } = await gateway
         .from('groups')
         .select('id, name, description')
         .ilike('name', searchPattern)

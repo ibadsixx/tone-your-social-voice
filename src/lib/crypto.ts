@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { gateway } from '@/lib/gateway';
 
 function b64Encode(bytes: Uint8Array): string {
   let binary = '';
@@ -198,7 +198,7 @@ export async function fetchOtherParticipantEcdhKey(
   conversationId: string,
   currentUserId: string
 ): Promise<string | null> {
-  const { data, error } = await supabase.rpc('get_encryption_details', {
+  const { data, error } = await gateway.rpc('get_encryption_details', {
     p_conversation_id: conversationId
   });
   if (error || !data) return null;
