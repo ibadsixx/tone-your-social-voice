@@ -56,8 +56,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               variant: "destructive"
             });
           }
-          setSession(session);
-          setUser(session?.user ?? null);
+          // Only update user if we actually got a session — avoids a slow
+          // network response resetting user to null after a concurrent login
+          if (session) {
+            setSession(session);
+            setUser(session.user);
+          }
           setLoading(false);
         }
       })
