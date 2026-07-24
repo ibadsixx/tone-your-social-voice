@@ -6,7 +6,7 @@ type TableName = keyof Database['public']['Tables'];
 
 function getToken(): string | null {
   try {
-    const sessionStr = localStorage.getItem('sb-ojdhztcetykgvrcwlwen-auth-token');
+    const sessionStr = localStorage.getItem('tone-auth-token');
     if (sessionStr) {
       const session = JSON.parse(sessionStr);
       return session?.access_token ?? null;
@@ -28,110 +28,99 @@ function buildFilterParams(filters: string[]): URLSearchParams {
 // --- Client-side filtering helpers (gateway does not process query params) ---
 
 function parseToken(s: string): string {
-  if (s.startsWith('(') && s.endsWith(')')) return s.slice(1, -1);
-  return s;
-}
-
-function matchValue(col: Record<string, unknown>, column: string): unknown {
-  return col[column];
-}
-
-function compare(a: unknown, b: unknown): number {
-  if (a == null && b == null) return 0;
-  if (a == null) return -1;
-  if (b == null) return 1;
-  if (typeof a === 'number' && typeof b === 'number') return a - b;
-  if (typeof a === 'string' && typeof b === 'string') return a.localeCompare(b);
-  return String(a).localeCompare(String(b));
-}
-
-function applyFilter(data: Record<string, unknown>[], filterStr: string): Record<string, unknown>[] {
-  const f = filterStr.trim();
-  if (f.startsWith('or=(')) {
-    const inner = f.slice(4, -1);
-    const tokens: string[] = [];
-    let depth = 0;
-    let buf = '';
-    for (const ch of inner) {
-      if (ch === '(') { depth++; buf += ch; }
-      else if (ch === ')') { depth--; buf += ch; }
-      else if (ch === ',' && depth === 0) { tokens.push(buf); buf = ''; }
-      else { buf += ch; }
-    }
-    if (buf) tokens.push(buf);
-    return data.filter(row => tokens.some(t => applyFilter([row], t).length > 0));
-  }
-
-  const notEq = f.split('=not.');
-  if (notEq.length === 2) {
-    const col = notEq[0];
-    const rest = notEq[1];
-    const dIdx = rest.indexOf('.');
-    const op = dIdx >= 0 ? rest.slice(0, dIdx) : rest;
-    const val = dIdx >= 0 ? rest.slice(dIdx + 1) : '';
-    return data.filter(row => !applySingleFilter(row, col, op, val));
-  }
-
-  const eqIdx = f.indexOf('=');
-  if (eqIdx < 0) return data;
-  const col = f.slice(0, eqIdx);
-  const rest = f.slice(eqIdx + 1);
-  const dotIdx = rest.indexOf('.');
-  if (dotIdx < 0) return data;
-  const op = rest.slice(0, dotIdx);
-  const val = rest.slice(dotIdx + 1);
-  return data.filter(row => applySingleFilter(row, col, op, val));
-}
-
-function applySingleFilter(row: Record<string, unknown>, col: string, op: string, val: string): boolean {
-  const field = matchValue(row, col);
-  switch (op) {
-    case 'eq': return String(field) === val;
-    case 'neq': return String(field) !== val;
-    case 'gt': return compare(field, isNaN(Number(val)) ? val : Number(val)) > 0;
-    case 'gte': return compare(field, isNaN(Number(val)) ? val : Number(val)) >= 0;
-    case 'lt': return compare(field, isNaN(Number(val)) ? val : Number(val)) < 0;
-    case 'lte': return compare(field, isNaN(Number(val)) ? val : Number(val)) <= 0;
-    case 'in': {
-      const vals = parseToken(val).split(',').map(v => v.trim());
-      return vals.includes(String(field));
-    }
-    case 'like': {
-      const pattern = new RegExp('^' + val.replace(/%/g, '.*').replace(/_/g, '.') + '$');
-      return pattern.test(String(field ?? ''));
-    }
-    case 'ilike': {
-      const pattern = new RegExp('^' + val.replace(/%/g, '.*').replace(/_/g, '.') + '$', 'i');
-      return pattern.test(String(field ?? ''));
-    }
-    case 'is': return val === 'null' ? field == null : field != null;
-    default: return true;
-  }
+  return s.replace(/^['"]|['"]$/g, '');
 }
 
 function applyFilters(data: Record<string, unknown>[], filters: string[]): Record<string, unknown>[] {
   let result = data;
-  for (const f of filters) {
-    const key = f.startsWith('filter=') ? f.slice(7) : f;
-    result = applyFilter(result, key);
+  for (const raw of filters) {
+    const filterStr = raw.replace(/^\(|\)$/g, '');
+
+    if (filterStr.startsWith('or=(')) {
+      const inner = filterStr.slice(4, -1);
+      const orConditions: string[] = [];
+      let depth = 0;
+      let current = '';
+      for (const ch of inner) {
+        if (ch === '(') depth++;
+        if (ch === ')') depth--;
+        if (ch === ',' && depth === 0) {
+          orConditions.push(current.trim());
+          current = '';
+        } else {
+          current += ch;
+        }
+      }
+      if (current.trim()) orConditions.push(current.trim());
+
+      result = result.filter(row => orConditions.some(cond => {
+        const [col, rest] = cond.split('.');
+        if (!rest) return true;
+        const dotIdx = rest.indexOf('.');
+        if (dotIdx === -1) return true;
+        const op = rest.slice(0, dotIdx);
+        const val = parseToken(rest.slice(dotIdx + 1));
+        return matchFilter(row[col], op, val);
+      }));
+      continue;
+    }
+
+    const negated = filterStr.startsWith('not.');
+    const f = negated ? filterStr.slice(4) : filterStr;
+
+    const dotIdx = f.indexOf('.');
+    if (dotIdx === -1) continue;
+    const col = f.slice(0, dotIdx);
+    const rest = f.slice(dotIdx + 1);
+    const opDot = rest.indexOf('.');
+    if (opDot === -1) continue;
+    const op = rest.slice(0, opDot);
+    const rawVal = parseToken(rest.slice(opDot + 1));
+
+    const matches = matchFilter(row[col], op, rawVal);
+    result = negated ? result.filter(row => !matches || !matchFilter(row[col], op, rawVal)) : result.filter(row => matchFilter(row[col], op, rawVal));
   }
   return result;
 }
 
-function applyOrder(data: Record<string, unknown>[], order: string): Record<string, unknown>[] {
-  if (!order) {
-    return data.slice().sort((a, b) => {
-      const ac = a.created_at as string | undefined;
-      const bc = b.created_at as string | undefined;
-      if (ac && bc) return bc.localeCompare(ac);
-      return 0;
-    });
+function matchFilter(value: unknown, op: string, val: string): boolean {
+  switch (op) {
+    case 'eq': return String(value) === val;
+    case 'neq': return String(value) !== val;
+    case 'gt': return Number(value) > Number(val);
+    case 'gte': return Number(value) >= Number(val);
+    case 'lt': return Number(value) < Number(val);
+    case 'lte': return Number(value) <= Number(val);
+    case 'in': {
+      const items = val.replace(/^\(|\)$/g, '').split(',').map(s => s.trim());
+      return items.includes(String(value));
+    }
+    case 'like': {
+      const pattern = val.replace(/%/g, '.*');
+      return new RegExp(`^${pattern}$`, 'i').test(String(value));
+    }
+    case 'ilike': {
+      const pattern = val.replace(/%/g, '.*');
+      return new RegExp(`^${pattern}$`).test(String(value));
+    }
+    case 'is': return value === null;
+    default: return true;
   }
+}
+
+function applyOrder(data: Record<string, unknown>[], order: string): Record<string, unknown>[] {
+  if (!order) return data;
   const [col, dir] = order.split('.');
-  const desc = dir === 'desc';
-  return data.slice().sort((a, b) => {
-    const r = compare(a[col], b[col]);
-    return desc ? -r : r;
+  const asc = dir !== 'desc';
+  return [...data].sort((a, b) => {
+    const av = a[col] as string | number;
+    const bv = b[col] as string | number;
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (av < bv) return asc ? -1 : 1;
+    if (av > bv) return asc ? 1 : -1;
+    return 0;
   });
 }
 
@@ -147,9 +136,6 @@ class PostgrestFilterBuilder<T> {
   private _maybeSingle: boolean = false;
   private _countOnly: boolean = false;
   private _headOnly: boolean = false;
-  private _resolved: boolean = false;
-  private _resolveFn: ((value: unknown) => void) | null = null;
-  private _rejectFn: ((reason: unknown) => void) | null = null;
 
   constructor(
     private _baseUrl: string,
@@ -158,95 +144,28 @@ class PostgrestFilterBuilder<T> {
     private _body?: unknown
   ) {}
 
-  eq(column: string, value: unknown): this {
-    this._filters.push(`${column}=eq.${value}`);
-    return this;
-  }
-
-  neq(column: string, value: unknown): this {
-    this._filters.push(`${column}=neq.${value}`);
-    return this;
-  }
-
-  gt(column: string, value: unknown): this {
-    this._filters.push(`${column}=gt.${value}`);
-    return this;
-  }
-
-  gte(column: string, value: unknown): this {
-    this._filters.push(`${column}=gte.${value}`);
-    return this;
-  }
-
-  lt(column: string, value: unknown): this {
-    this._filters.push(`${column}=lt.${value}`);
-    return this;
-  }
-
-  lte(column: string, value: unknown): this {
-    this._filters.push(`${column}=lte.${value}`);
-    return this;
-  }
-
-  in(column: string, values: unknown[]): this {
-    this._filters.push(`${column}=in.(${values.join(',')})`);
-    return this;
-  }
-
-  like(column: string, pattern: string): this {
-    this._filters.push(`${column}=like.${pattern}`);
-    return this;
-  }
-
-  ilike(column: string, pattern: string): this {
-    this._filters.push(`${column}=ilike.${pattern}`);
-    return this;
-  }
-
-  or(filterString: string): this {
-    this._filters.push(`or=(${filterString})`);
-    return this;
-  }
-
-  not(column: string, op: string, value: unknown): this {
-    this._filters.push(`${column}=not.${op}.${value}`);
-    return this;
-  }
-
-  is(column: string, value: null): this {
-    this._filters.push(`${column}=is.${value}`);
-    return this;
-  }
-
-  order(column: string, opts?: { ascending?: boolean }): this {
-    const dir = opts?.ascending === false ? 'desc' : 'asc';
-    this._order = `${column}.${dir}`;
-    return this;
-  }
-
-  limit(count: number): this {
-    this._limit = count;
-    return this;
-  }
-
-  offset(count: number): this {
-    this._offset = count;
-    return this;
-  }
-
-  range(start: number, end: number): this {
-    this._rangeStart = start;
-    this._rangeEnd = end;
-    return this;
-  }
-
+  eq(column: string, value: unknown): this { this._filters.push(`${column}=eq.${value}`); return this; }
+  neq(column: string, value: unknown): this { this._filters.push(`${column}=neq.${value}`); return this; }
+  gt(column: string, value: unknown): this { this._filters.push(`${column}=gt.${value}`); return this; }
+  gte(column: string, value: unknown): this { this._filters.push(`${column}=gte.${value}`); return this; }
+  lt(column: string, value: unknown): this { this._filters.push(`${column}=lt.${value}`); return this; }
+  lte(column: string, value: unknown): this { this._filters.push(`${column}=lte.${value}`); return this; }
+  in(column: string, values: unknown[]): this { this._filters.push(`${column}=in.(${values.join(',')})`); return this; }
+  like(column: string, pattern: string): this { this._filters.push(`${column}=like.${pattern}`); return this; }
+  ilike(column: string, pattern: string): this { this._filters.push(`${column}=ilike.${pattern}`); return this; }
+  or(filterString: string): this { this._filters.push(`or=(${filterString})`); return this; }
+  not(column: string, op: string, value: unknown): this { this._filters.push(`${column}=not.${op}.${value}`); return this; }
+  is(column: string, value: null): this { this._filters.push(`${column}=is.${value}`); return this; }
+  order(column: string, opts?: { ascending?: boolean }): this { this._order = `${column}.${opts?.ascending === false ? 'desc' : 'asc'}`; return this; }
+  limit(count: number): this { this._limit = count; return this; }
+  offset(count: number): this { this._offset = count; return this; }
+  range(start: number, end: number): this { this._rangeStart = start; this._rangeEnd = end; return this; }
   select(columns: string = '*', opts?: { count?: string; head?: boolean }): this {
     this._selectCols = columns;
     if (opts?.count) this._countOnly = true;
     if (opts?.head) this._headOnly = true;
     return this;
   }
-
   single(): this {
     this._single = true;
     this._limit = 1;
@@ -292,8 +211,6 @@ class PostgrestFilterBuilder<T> {
       let url: string;
 
       if (this._method === 'GET') {
-        // Gateway does not process filter/order/limit/offset params.
-        // Fetch all records, then apply filtering/sorting/pagination client-side.
         url = `${GATEWAY_URL}/api/${this._table}`;
       } else if (this._method === 'POST') {
         url = `${GATEWAY_URL}/api/${this._table}`;
@@ -307,13 +224,33 @@ class PostgrestFilterBuilder<T> {
         url = `${GATEWAY_URL}/api/${this._table}`;
       }
 
-      const res = await fetch(url, {
+      const fetchOptions = {
         method: this._method === 'DELETE' ? 'DELETE' : this._method === 'PUT' ? 'PUT' : this._method,
         headers,
         body: (this._method === 'POST' || this._method === 'PUT') && this._body
           ? JSON.stringify(this._body)
           : undefined,
-      });
+      };
+
+      let res = await fetch(url, fetchOptions);
+
+      // Handle 401 - try refresh token and retry
+      if (res.status === 401 && token) {
+        const auth = new GatewayAuth();
+        const { data: refreshData } = await auth.refreshSession();
+
+        if ((refreshData as any)?.session) {
+          const newToken = getToken();
+          if (newToken) {
+            headers['Authorization'] = `Bearer ${newToken}`;
+            res = await fetch(url, { ...fetchOptions, headers });
+          }
+        } else {
+          localStorage.removeItem('tone-auth-token');
+          window.location.href = '/auth';
+          return { data: null, error: { message: 'Session expired', code: '401' } };
+        }
+      }
 
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({ message: res.statusText }));
@@ -321,6 +258,11 @@ class PostgrestFilterBuilder<T> {
       }
 
       if (res.status === 204) return { data: null, error: null };
+
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        return { data: null, error: { message: `Gateway returned non-JSON response (${ct.split(';')[0] || 'unknown content-type'}) for /api/${this._table}`, code: String(res.status) } };
+      }
 
       const json = await res.json();
 
@@ -471,24 +413,19 @@ class GatewayStorageBucket {
   async upload(
     path: string,
     file: File | Blob,
-    options?: { contentType?: string; upsert?: boolean; cacheControl?: string }
+    options?: { contentType?: string; upsert?: boolean }
   ): Promise<{ data: { path: string } | null; error: { message: string } | null }> {
-    if (!this._baseUrl) {
-      return { data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } };
-    }
     try {
-      const token = getToken();
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('bucket', this._bucket);
-      formData.append('path', path);
       if (options?.contentType) formData.append('contentType', options.contentType);
       if (options?.upsert) formData.append('upsert', 'true');
 
+      const token = getToken();
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(`${this._baseUrl}/api/storage/upload`, {
+      const res = await fetch(`${this._baseUrl}/api/storage/${this._bucket}/${path}`, {
         method: 'POST',
         headers,
         body: formData,
@@ -505,10 +442,9 @@ class GatewayStorageBucket {
   }
 
   getPublicUrl(path: string): { data: { publicUrl: string } } {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ojdhztcetykgvrcwlwen.supabase.co';
     return {
       data: {
-        publicUrl: `${supabaseUrl}/storage/v1/object/public/${this._bucket}/${path}`,
+        publicUrl: `${this._baseUrl}/api/storage/${this._bucket}/${path}`,
       },
     };
   }
@@ -566,8 +502,37 @@ class GatewayChannel {
 class GatewayAuth {
   private _listeners: Array<(event: string, session: unknown) => void> = [];
 
+  private _persistSession(session: unknown): void {
+    if (session) {
+      localStorage.setItem('tone-auth-token', JSON.stringify(session));
+    } else {
+      localStorage.removeItem('tone-auth-token');
+    }
+  }
+
+  private async _gatewayFetch(path: string, options: RequestInit = {}): Promise<Response> {
+    const token = getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(options.headers as Record<string, string> || {}) };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return fetch(`${GATEWAY_URL}/api/auth/${path}`, { ...options, headers });
+  }
+
+  private async _parseJson(res: Response): Promise<any> {
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      throw new Error(`Gateway does not support ${res.url.replace(GATEWAY_URL!, '')} — server returned ${res.status} (${ct.split(';')[0] || 'non-JSON'})`);
+    }
+    return res.json();
+  }
+
   onAuthStateChange(callback: (event: string, session: unknown) => void): { data: { subscription: { unsubscribe: () => void } } } {
     this._listeners.push(callback);
+    this.getSession().then(({ data }) => {
+      if (data.session) {
+        this._persistSession(data.session);
+        callback('INITIAL_SESSION', data.session);
+      }
+    });
     return {
       data: {
         subscription: {
@@ -580,31 +545,98 @@ class GatewayAuth {
   }
 
   async getSession(): Promise<{ data: { session: unknown }; error: { message: string } | null }> {
-    return { data: { session: null }, error: { message: 'Auth not configured — gateway has no auth endpoints' } };
+    try {
+      const res = await this._gatewayFetch('session');
+      if (!res.ok) return { data: { session: null }, error: null };
+      const data = await this._parseJson(res);
+      return { data: data.data || data, error: null };
+    } catch (error) {
+      return { data: { session: null }, error: { message: String(error) } };
+    }
   }
 
-  async signUp(_credentials: unknown): Promise<{ data: { user: unknown }; error: { message: string } | null }> {
-    return { data: { user: null }, error: { message: 'Auth not configured — gateway has no auth endpoints' } };
+  async signUp({ email, password, options }: { email: string; password: string; options?: { data?: Record<string, unknown> } }): Promise<{ data: { user: unknown }; error: { message: string } | null }> {
+    try {
+      const res = await this._gatewayFetch('sign-up', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, options }),
+      });
+      const data = await this._parseJson(res);
+      if (!res.ok || data.error) return { data: { user: null }, error: { message: data.error || data.message || 'Sign up failed' } };
+      return { data: data.data || data, error: null };
+    } catch (error) {
+      return { data: { user: null }, error: { message: String(error) } };
+    }
   }
 
-  async signInWithPassword(_credentials: unknown): Promise<{ data: { session: unknown }; error: { message: string } | null }> {
-    return { data: { session: null }, error: { message: 'Auth not configured — gateway has no auth endpoints' } };
+  async signInWithPassword({ email, password }: { email: string; password: string }): Promise<{ data: { session: unknown }; error: { message: string } | null }> {
+    try {
+      const res = await this._gatewayFetch('sign-in', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await this._parseJson(res);
+      if (!res.ok || data.error) return { data: { session: null }, error: { message: data.error || data.message || 'Sign in failed' } };
+
+      if (data.data?.session) {
+        this._persistSession(data.data.session);
+        this._listeners.forEach(l => l('SIGNED_IN', data.data.session));
+      }
+
+      return { data: data.data || data, error: null };
+    } catch (error) {
+      return { data: { session: null }, error: { message: String(error) } };
+    }
   }
 
   async signOut(): Promise<{ error: { message: string } | null }> {
+    try {
+      await this._gatewayFetch('sign-out', { method: 'POST' });
+    } catch {
+      // Sign out always succeeds
+    }
+    localStorage.removeItem('tone-auth-token');
+    this._listeners.forEach(l => l('SIGNED_OUT', null));
     return { error: null };
   }
 
   async getUser(): Promise<{ data: { user: unknown }; error: { message: string } | null }> {
-    return { data: { user: null }, error: { message: 'Auth not configured — gateway has no auth endpoints' } };
+    try {
+      const res = await this._gatewayFetch('user');
+      if (!res.ok) return { data: { user: null }, error: null };
+      const data = await this._parseJson(res);
+      return { data: data.data || data, error: null };
+    } catch (error) {
+      return { data: { user: null }, error: { message: String(error) } };
+    }
   }
 
-  async updateUser(_attributes: unknown): Promise<{ data: { user: unknown }; error: { message: string } | null }> {
-    return { data: { user: null }, error: { message: 'Auth not configured — gateway has no auth endpoints' } };
+  async updateUser(attributes: Record<string, unknown>): Promise<{ data: { user: unknown }; error: { message: string } | null }> {
+    try {
+      const res = await this._gatewayFetch('user', {
+        method: 'PUT',
+        body: JSON.stringify(attributes),
+      });
+      const data = await this._parseJson(res);
+      if (!res.ok || data.error) return { data: { user: null }, error: { message: data.error || data.message || 'Update failed' } };
+      return { data: data.data || data, error: null };
+    } catch (error) {
+      return { data: { user: null }, error: { message: String(error) } };
+    }
   }
 
   async refreshSession(): Promise<{ data: { session: unknown }; error: { message: string } | null }> {
-    return { data: { session: null }, error: { message: 'Auth not configured — gateway has no auth endpoints' } };
+    try {
+      const res = await this._gatewayFetch('refresh', { method: 'POST' });
+      if (!res.ok) return { data: { session: null }, error: null };
+      const data = await this._parseJson(res);
+      if (data.data?.session) {
+        this._persistSession(data.data.session);
+      }
+      return { data: data.data || data, error: null };
+    } catch (error) {
+      return { data: { session: null }, error: { message: String(error) } };
+    }
   }
 
   get mfa() {
@@ -620,9 +652,11 @@ class GatewayAuth {
 
 class GatewayClient {
   private _baseUrl: string;
+  private _authInstance: GatewayAuth;
 
   constructor() {
     this._baseUrl = GATEWAY_URL || '';
+    this._authInstance = new GatewayAuth();
   }
 
   from<T extends TableName>(table: T): GatewayQueryBuilder<Database['public']['Tables'][T]['Row']>;
@@ -660,7 +694,7 @@ class GatewayClient {
   }
 
   get auth(): GatewayAuth {
-    return new GatewayAuth();
+    return this._authInstance;
   }
 
   channel(name: string, config?: Record<string, unknown>): GatewayChannel {

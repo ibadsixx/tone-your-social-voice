@@ -28,44 +28,21 @@ export const usePages = () => {
   const fetchPages = async (type: 'suggested' | 'interactive' | 'new' | 'following' | 'owned') => {
     try {
       setLoading(true);
-      let query = gateway
-        .from('pages')
-        .select(`
-          *,
-          page_followers (
-            user_id,
-            role,
-            followed_at
-          )
-        `);
 
-      switch (type) {
-        case 'suggested':
-          query = query.order('created_at', { ascending: false });
-          break;
-        case 'interactive':
-          query = query.order('created_at', { ascending: false });
-          break;
-        case 'new':
-          query = query.order('created_at', { ascending: false });
-          break;
-        case 'following':
-          if (!user) return [];
-          break;
-        case 'owned':
-          if (!user) return [];
-          query = query.eq('admin_id', user.id);
-          break;
-      }
+      const [pagesRes, followersRes] = await Promise.all([
+        gateway.from('pages').select('*'),
+        gateway.from('page_followers').select('*'),
+      ]);
 
-      const { data, error } = await query;
+      if (pagesRes.error) throw pagesRes.error;
 
-      if (error) throw error;
+      const allFollowers = (followersRes.data as any[]) || [];
 
-      const pagesWithFollowerInfo = data?.map(page => {
-        const followerCount = page.page_followers?.length || 0;
-        const userFollowing = user ? page.page_followers?.find(f => f.user_id === user.id) : null;
-        
+      const pagesWithFollowerInfo = (pagesRes.data as any[])?.map(page => {
+        const pageFollowers = allFollowers.filter(f => f.page_id === page.id);
+        const followerCount = pageFollowers.length;
+        const userFollowing = user ? pageFollowers.find(f => f.user_id === user.id) : null;
+
         return {
           id: page.id,
           name: page.name,
@@ -82,11 +59,18 @@ export const usePages = () => {
         };
       }) || [];
 
+      // Sort by created_at descending (client-side, gateway ignores order params)
+      pagesWithFollowerInfo.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
       // Filter for specific types
       if (type === 'suggested') {
         return pagesWithFollowerInfo.filter(p => !p.is_following);
       } else if (type === 'following') {
+        if (!user) return [];
         return pagesWithFollowerInfo.filter(p => p.is_following);
+      } else if (type === 'owned') {
+        if (!user) return [];
+        return pagesWithFollowerInfo.filter(p => p.admin_id === user.id);
       }
 
       return pagesWithFollowerInfo;
