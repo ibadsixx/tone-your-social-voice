@@ -312,11 +312,11 @@ const PageDetail = () => {
       setEducationCurrent(((data as any).work_education?.education?.current === true || (data as any).work_education?.education?.current === 'true'));
       setFamilyMembers((data as any).family_members ?? []);
 
-      const { count } = await gateway
+      const { data: followerData } = await gateway
         .from('page_followers')
-        .select('*', { count: 'exact', head: true })
+        .select('*')
         .eq('page_id', id);
-      setFollowerCount(count ?? 0);
+      setFollowerCount((followerData as any[])?.length ?? 0);
       setLoading(false);
     })();
   }, [id, navigate, toast]);
@@ -324,20 +324,43 @@ const PageDetail = () => {
   const fetchPagePosts = async () => {
     if (!id) return;
     setPostsLoading(true);
-    const { data } = await gateway
+    const { data: postsData } = await gateway
       .from('page_posts')
-      .select(`
-        id, message, created_at, shared_by,
-        post:post_id (
-          *,
-          profiles!posts_user_id_fkey (username, display_name, profile_pic),
-          likes (id, user_id),
-          comments (id, content, profiles:user_id (display_name))
-        )
-      `)
+      .select('*')
       .eq('page_id', id)
       .order('created_at', { ascending: false });
-    setPagePosts(data || []);
+
+    if (!postsData || postsData.length === 0) {
+      setPagePosts([]);
+      setPostsLoading(false);
+      return;
+    }
+
+    const postIds = [...new Set((postsData as any[]).map((pp: any) => pp.post_id).filter(Boolean))];
+    let postsMap: Record<string, any> = {};
+    if (postIds.length > 0) {
+      const { data: basePosts } = await gateway.from('posts').select('*').in('id', postIds);
+      for (const p of (basePosts as any[]) || []) {
+        postsMap[p.id] = { ...p, profiles: null, likes: [], comments: [] };
+      }
+    }
+
+    const userIds = [...new Set(Object.values(postsMap).map((p: any) => p.user_id).filter(Boolean))];
+    if (userIds.length > 0) {
+      const { data: profiles } = await gateway.from('profiles').select('id, username, display_name, profile_pic').in('id', userIds);
+      for (const prof of (profiles as any[]) || []) {
+        for (const p of Object.values(postsMap)) {
+          if ((p as any).user_id === prof.id) (p as any).profiles = prof;
+        }
+      }
+    }
+
+    const enriched = (postsData as any[]).map(pp => ({
+      ...pp,
+      post: postsMap[pp.post_id] || null,
+    }));
+
+    setPagePosts(enriched);
     setPostsLoading(false);
   };
 
@@ -351,11 +374,28 @@ const PageDetail = () => {
     (async () => {
       const { data } = await gateway
         .from('page_followers')
-        .select('user_id, role, followed_at, profiles:user_id (id, display_name, username, profile_pic)')
+        .select('*')
         .eq('page_id', id)
         .order('followed_at', { ascending: false })
         .limit(50);
-      setFollowers(data || []);
+
+      const followersList = (data as any[]) || [];
+      const userIds = [...new Set(followersList.map((f: any) => f.user_id).filter(Boolean))];
+      let profilesMap: Record<string, any> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await gateway
+          .from('profiles')
+          .select('id, display_name, username, profile_pic')
+          .in('id', userIds);
+        for (const p of (profiles as any[]) || []) {
+          profilesMap[p.id] = p;
+        }
+      }
+
+      setFollowers(followersList.map((f: any) => ({
+        ...f,
+        profiles: profilesMap[f.user_id] || null,
+      })));
     })();
   }, [id, followerCount]);
 

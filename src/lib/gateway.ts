@@ -211,15 +211,30 @@ class PostgrestFilterBuilder<T> {
       let url: string;
 
       if (this._method === 'GET') {
-        url = `${GATEWAY_URL}/api/${this._table}`;
+        const filterParams = new URLSearchParams();
+        for (const f of this._filters) {
+          filterParams.append('filter', f);
+        }
+        const qs = filterParams.toString();
+        url = `${GATEWAY_URL}/api/${this._table}${qs ? '?' + qs : ''}`;
       } else if (this._method === 'POST') {
         url = `${GATEWAY_URL}/api/${this._table}`;
       } else if (this._method === 'PUT') {
         const id = this._filters.find(f => f.startsWith('id=eq.'))?.split('eq.')[1];
         url = `${GATEWAY_URL}/api/v1/${this._table}/${id}`;
       } else if (this._method === 'DELETE') {
-        const id = this._filters.find(f => f.startsWith('id=eq.'))?.split('eq.')[1];
-        url = `${GATEWAY_URL}/api/v1/${this._table}/${id}?permanent=true`;
+        const idFilter = this._filters.find(f => f.startsWith('id=eq.'));
+        if (idFilter) {
+          const id = idFilter.split('eq.')[1];
+          url = `${GATEWAY_URL}/api/v1/${this._table}/${id}?permanent=true`;
+        } else {
+          const filterParams = new URLSearchParams();
+          for (const f of this._filters) {
+            filterParams.append('filter', f);
+          }
+          filterParams.set('permanent', 'true');
+          url = `${GATEWAY_URL}/api/v1/${this._table}?${filterParams.toString()}`;
+        }
       } else {
         url = `${GATEWAY_URL}/api/${this._table}`;
       }
@@ -236,14 +251,22 @@ class PostgrestFilterBuilder<T> {
 
       // Handle 401 - try refresh token and retry
       if (res.status === 401 && token) {
-        const auth = new GatewayAuth();
-        const { data: refreshData } = await auth.refreshSession();
+        const sessionStr = localStorage.getItem('tone-auth-token');
+        const session = sessionStr ? JSON.parse(sessionStr) : null;
 
-        if ((refreshData as any)?.session) {
-          const newToken = getToken();
-          if (newToken) {
-            headers['Authorization'] = `Bearer ${newToken}`;
-            res = await fetch(url, { ...fetchOptions, headers });
+        if (session?.refresh_token) {
+          const { data: refreshData } = await gateway.auth.refreshSession();
+
+          if ((refreshData as any)?.session) {
+            const newToken = getToken();
+            if (newToken && newToken !== token) {
+              headers['Authorization'] = `Bearer ${newToken}`;
+              res = await fetch(url, { ...fetchOptions, headers });
+            }
+          } else {
+            localStorage.removeItem('tone-auth-token');
+            window.location.href = '/auth';
+            return { data: null, error: { message: 'Session expired', code: '401' } };
           }
         } else {
           localStorage.removeItem('tone-auth-token');
@@ -529,7 +552,6 @@ class GatewayAuth {
     this._listeners.push(callback);
     this.getSession().then(({ data }) => {
       if (data.session) {
-        this._persistSession(data.session);
         callback('INITIAL_SESSION', data.session);
       }
     });
@@ -546,10 +568,24 @@ class GatewayAuth {
 
   async getSession(): Promise<{ data: { session: unknown }; error: { message: string } | null }> {
     try {
-      const res = await this._gatewayFetch('session');
-      if (!res.ok) return { data: { session: null }, error: null };
-      const data = await this._parseJson(res);
-      return { data: data.data || data, error: null };
+      const sessionStr = localStorage.getItem('tone-auth-token');
+      if (!sessionStr) return { data: { session: null }, error: null };
+
+      const session = JSON.parse(sessionStr);
+      if (!session?.access_token) return { data: { session: null }, error: null };
+
+      if (session.expires_at && Math.floor(Date.now() / 1000) < session.expires_at) {
+        return { data: { session }, error: null };
+      }
+
+      if (session.refresh_token) {
+        const refreshed = await this.refreshSession();
+        if (refreshed.data?.session) {
+          return refreshed;
+        }
+      }
+
+      return { data: { session: null }, error: null };
     } catch (error) {
       return { data: { session: null }, error: { message: String(error) } };
     }
@@ -627,7 +663,20 @@ class GatewayAuth {
 
   async refreshSession(): Promise<{ data: { session: unknown }; error: { message: string } | null }> {
     try {
-      const res = await this._gatewayFetch('refresh', { method: 'POST' });
+      const sessionStr = localStorage.getItem('tone-auth-token');
+      const session = sessionStr ? JSON.parse(sessionStr) : null;
+      const refreshToken = session?.refresh_token;
+
+      if (!refreshToken) {
+        return { data: { session: null }, error: { message: 'No refresh token available' } };
+      }
+
+      const res = await fetch(`${GATEWAY_URL}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+
       if (!res.ok) return { data: { session: null }, error: null };
       const data = await this._parseJson(res);
       if (data.data?.session) {

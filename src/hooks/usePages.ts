@@ -29,19 +29,17 @@ export const usePages = () => {
     try {
       setLoading(true);
 
-      const [pagesRes, followersRes] = await Promise.all([
-        gateway.from('pages').select('*'),
-        gateway.from('page_followers').select('*'),
-      ]);
-
+      const pagesRes = await gateway.from('pages').select('*');
       if (pagesRes.error) throw pagesRes.error;
 
-      const allFollowers = (followersRes.data as any[]) || [];
+      let allFollowers: any[] = [];
+      if (user) {
+        const followersRes = await gateway.from('page_followers').select('*').eq('user_id', user.id);
+        allFollowers = (followersRes.data as any[]) || [];
+      }
 
       const pagesWithFollowerInfo = (pagesRes.data as any[])?.map(page => {
-        const pageFollowers = allFollowers.filter(f => f.page_id === page.id);
-        const followerCount = pageFollowers.length;
-        const userFollowing = user ? pageFollowers.find(f => f.user_id === user.id) : null;
+        const userFollowing = user ? allFollowers.find(f => f.page_id === page.id) : null;
 
         return {
           id: page.id,
@@ -52,17 +50,15 @@ export const usePages = () => {
           profile_pic: page.profile_pic,
           created_at: page.created_at,
           admin_id: page.admin_id,
-          follower_count: followerCount,
+          follower_count: page.follower_count ?? 0,
           is_following: !!userFollowing,
           user_role: userFollowing?.role,
           followed_at: userFollowing?.followed_at
         };
       }) || [];
 
-      // Sort by created_at descending (client-side, gateway ignores order params)
       pagesWithFollowerInfo.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-      // Filter for specific types
       if (type === 'suggested') {
         return pagesWithFollowerInfo.filter(p => !p.is_following);
       } else if (type === 'following') {
