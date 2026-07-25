@@ -22,10 +22,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     let mounted = true;
+    let sessionResolved = false;
 
      // Safety: never block the UI indefinitely if auth init hangs (e.g., storage/network quirks)
      const loadingTimeout = window.setTimeout(() => {
-       if (mounted) {
+       if (mounted && !sessionResolved) {
          console.warn('[Auth] Session check timed out; continuing without session');
          setLoading(false);
        }
@@ -35,6 +36,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const { data: { subscription } } = gateway.auth.onAuthStateChange(
       (event, session) => {
         if (mounted) {
+          sessionResolved = true;
           window.clearTimeout(loadingTimeout);
           setSession(session);
           setUser(session?.user ?? null);
@@ -47,6 +49,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     gateway.auth.getSession()
       .then(({ data: { session }, error }) => {
         if (mounted) {
+          sessionResolved = true;
           window.clearTimeout(loadingTimeout);
           if (error) {
             console.error('Failed to get session:', error);
@@ -68,6 +71,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       .catch((error) => {
         console.error('getSession exception:', error);
         if (mounted) {
+          sessionResolved = true;
           window.clearTimeout(loadingTimeout);
           toast({
             title: "Failed to fetch",

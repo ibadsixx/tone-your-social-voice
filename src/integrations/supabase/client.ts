@@ -10,8 +10,8 @@ export const supabase = SUPABASE_URL
   ? createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
         storage: localStorage,
-        persistSession: true,
-        autoRefreshToken: true,
+        persistSession: false,
+        autoRefreshToken: false,
       }
     })
   : null as unknown as ReturnType<typeof createClient<Database>>;
