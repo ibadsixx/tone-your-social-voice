@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Search, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { profilesApi } from '@/api';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 
 interface GroupSearchDialogProps {
@@ -22,11 +22,7 @@ const GroupSearchDialog = ({ open, onOpenChange, groupName }: GroupSearchDialogP
   // Fetch current user profile on open
   useState(() => {
     if (user) {
-      gateway
-        .from('profiles')
-        .select('display_name, profile_pic')
-        .eq('id', user.id)
-        .single()
+      profilesApi.getProfileById(user.id)
         .then(({ data }) => {
           if (data) {
             setDisplayName(data.display_name);

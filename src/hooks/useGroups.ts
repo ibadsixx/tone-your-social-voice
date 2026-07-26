@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { groupsApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import type { GroupMember } from '@/api/types';
 
 export interface Group {
   id: string;
@@ -24,41 +25,22 @@ export const useGroups = () => {
   const fetchGroups = async () => {
     try {
       setLoading(true);
-      console.log('[useGroups] Fetching groups...', { userId: user?.id });
-      
-      const { data, error } = await gateway
-        .from('groups')
-        .select(`
-          *,
-          group_members!group_members_group_id_fkey (
-            user_id,
-            role,
-            created_at
-          )
-        `)
-        .order('created_at', { ascending: false });
 
-      console.log('[useGroups] Query result:', { data, error, rowCount: data?.length });
+      const { data, error } = await groupsApi.getGroupsWithMembers();
 
-      if (error) {
-        console.error('[useGroups] Supabase error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      // Fetch the user's pinned group ids
       let pinnedIds = new Set<string>();
       if (user) {
-        const { data: pinRows } = await gateway
-          .from('group_pins' as any)
-          .select('group_id')
-          .eq('user_id', user.id);
-        pinnedIds = new Set((pinRows || []).map((r: any) => r.group_id));
+        const { data: pinRows } = await groupsApi.getUserPinnedGroups(user.id);
+        pinnedIds = new Set((pinRows || []).map(r => r.group_id));
       }
 
       const groupsWithMemberInfo = data?.map(group => {
-        const memberCount = group.group_members?.length || 0;
-        const userMembership = user ? group.group_members?.find(m => m.user_id === user.id) : null;
-        
+        const members = group.group_members || [];
+        const memberCount = members.length;
+        const userMembership = user ? members.find((m: GroupMember) => m.user_id === user.id) : null;
+
         return {
           id: group.id,
           name: group.name,
@@ -66,13 +48,12 @@ export const useGroups = () => {
           created_at: group.created_at,
           member_count: memberCount,
           is_member: !!userMembership,
-          role: userMembership?.role,
+          role: userMembership?.role as 'admin' | 'moderator' | 'member' | undefined,
           joined_at: userMembership?.created_at,
           is_pinned: pinnedIds.has(group.id),
         };
       }) || [];
 
-      console.log('[useGroups] Processed groups:', groupsWithMemberInfo.length);
       setGroups(groupsWithMemberInfo);
     } catch (error: any) {
       console.error('[useGroups] Failed to load groups:', error);
@@ -90,24 +71,13 @@ export const useGroups = () => {
     if (!user) return;
 
     try {
-      const { error } = await gateway
-        .from('group_members')
-        .insert({ group_id: groupId, user_id: user.id, role: 'member' });
-
+      const { error } = await groupsApi.joinGroup(groupId, user.id);
       if (error) throw error;
 
-      toast({
-        title: 'Success',
-        description: 'Joined group successfully!'
-      });
-
-      fetchGroups(); // Refresh data
+      toast({ title: 'Success', description: 'Joined group successfully!' });
+      fetchGroups();
     } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: 'Failed to join group',
-        variant: 'destructive'
-      });
+      toast({ title: 'Error', description: 'Failed to join group', variant: 'destructive' });
     }
   };
 
@@ -115,26 +85,13 @@ export const useGroups = () => {
     if (!user) return;
 
     try {
-      const { error } = await gateway
-        .from('group_members')
-        .delete()
-        .eq('group_id', groupId)
-        .eq('user_id', user.id);
-
+      const { error } = await groupsApi.leaveGroup(groupId, user.id);
       if (error) throw error;
 
-      toast({
-        title: 'Success',
-        description: 'Left group successfully!'
-      });
-
-      fetchGroups(); // Refresh data
+      toast({ title: 'Success', description: 'Left group successfully!' });
+      fetchGroups();
     } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: 'Failed to leave group',
-        variant: 'destructive'
-      });
+      toast({ title: 'Error', description: 'Failed to leave group', variant: 'destructive' });
     }
   };
 
@@ -142,40 +99,22 @@ export const useGroups = () => {
     if (!user) return;
 
     try {
-      const { data: newGroup, error: createError } = await gateway
-        .from('groups')
-        .insert({ name, description })
-        .select()
-        .single();
-
+      const { data: newGroup, error: createError } = await groupsApi.createGroup({ name, description });
       if (createError) throw createError;
 
-      // Auto-join the creator as admin
-      const { error: joinError } = await gateway
-        .from('group_members')
-        .insert({ group_id: newGroup.id, user_id: user.id, role: 'admin' });
-
+      const { error: joinError } = await groupsApi.joinGroup(newGroup.id, user.id, 'admin');
       if (joinError) throw joinError;
 
-      toast({
-        title: 'Success',
-        description: 'Group created successfully!'
-      });
-
-      fetchGroups(); // Refresh data
+      toast({ title: 'Success', description: 'Group created successfully!' });
+      fetchGroups();
       return newGroup;
     } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: 'Failed to create group',
-        variant: 'destructive'
-      });
+      toast({ title: 'Error', description: 'Failed to create group', variant: 'destructive' });
     }
   };
 
-  // Get different categories of groups
   const getSuggestedGroups = () => groups.filter(g => !g.is_member).slice(0, 6);
-  const getNewGroups = () => groups.filter(g => !g.is_member).sort((a, b) => 
+  const getNewGroups = () => groups.filter(g => !g.is_member).sort((a, b) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   ).slice(0, 6);
   const getMostActiveGroups = () => groups.filter(g => !g.is_member)

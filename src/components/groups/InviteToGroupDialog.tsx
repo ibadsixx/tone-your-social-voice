@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Search } from 'lucide-react';
-import { gateway } from '@/lib/gateway';
+import { groupsApi, profilesApi, usersApi } from '@/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -46,36 +46,30 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
     if (!user) return;
     setLoading(true);
     try {
-      // Get accepted friends where user is requester
-      const { data: sent } = await gateway
-        .from('friends')
-        .select('receiver_id')
-        .eq('requester_id', user.id)
-        .eq('status', 'accepted');
+      const { data: friendsData, error: friendsError } = await usersApi.getFriendsByUser(user.id);
+      if (friendsError || !friendsData) {
+        setFriends([]);
+        return;
+      }
 
-      // Get accepted friends where user is receiver
-      const { data: received } = await gateway
-        .from('friends')
-        .select('requester_id')
-        .eq('receiver_id', user.id)
-        .eq('status', 'accepted');
-
-      const friendIds = [
-        ...(sent?.map(f => f.receiver_id) || []),
-        ...(received?.map(f => f.requester_id) || []),
-      ].filter(id => !existingMemberIds.includes(id));
+      const friendIds = friendsData
+        .map((f: any) => (f.requester_id === user.id ? f.receiver_id : f.requester_id))
+        .filter((id: string) => id && !existingMemberIds.includes(id));
 
       if (friendIds.length === 0) {
         setFriends([]);
         return;
       }
 
-      const { data: profiles } = await gateway
-        .from('profiles')
-        .select('id, username, display_name, profile_pic')
-        .in('id', friendIds);
+      // Fetch profiles for each friend ID
+      const profiles = await Promise.all(
+        friendIds.map(async (id: string) => {
+          const { data } = await profilesApi.getProfileById(id);
+          return data;
+        })
+      );
 
-      setFriends(profiles || []);
+      setFriends(profiles.filter(Boolean) as Friend[]);
     } catch (err) {
       console.error('Failed to fetch friends:', err);
     } finally {
@@ -105,15 +99,11 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
     if (selected.size === 0) return;
     setSending(true);
     try {
-      const inserts = Array.from(selected).map(userId => ({
-        group_id: groupId,
-        user_id: userId,
-        role: 'member' as const,
-      }));
-
-      const { error } = await gateway
-        .from('group_members')
-        .insert(inserts);
+      const { error } = await groupsApi.addGroupMembers(
+        groupId,
+        Array.from(selected),
+        'member'
+      );
 
       if (error) throw error;
 

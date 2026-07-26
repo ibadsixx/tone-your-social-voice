@@ -2,7 +2,7 @@ export { gateway, API_URL } from './client';
 export type { ApiResult } from './client';
 export type {
   Post, Comment, Story, Notification, Conversation, Message,
-  Group, Page, Hashtag,
+  Group, GroupMember, GroupPost, GroupFollow, GroupPin, Page, Hashtag,
 } from './types';
 export type { Profile } from './profiles';
 export type {

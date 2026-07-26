@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, MessageSquare, CheckCircle, XCircle, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { gateway } from '@/lib/gateway';
+import { groupsApi } from '@/api';
 import { useAuth } from '@/hooks/useAuth';
 import Post from '@/components/Post';
 
@@ -34,20 +34,7 @@ const GroupYourContent = ({ groupId, groupName, onBack }: GroupYourContentProps)
       }
       setLoading(true);
       try {
-        const { data, error } = await gateway
-          .from('group_posts')
-          .select(`
-            id, message, created_at,
-            post:post_id (
-              *,
-              profiles!posts_user_id_fkey (username, display_name, profile_pic),
-              likes (id, user_id),
-              comments (id, content, profiles:user_id (display_name))
-            )
-          `)
-          .eq('group_id', groupId)
-          .eq('shared_by', user.id)
-          .order('created_at', { ascending: false });
+        const { data, error } = await groupsApi.getUserGroupPosts(groupId, user.id);
         if (error) throw error;
         console.debug('[GroupYourContent] published posts:', data);
         setPosts((data || []).filter((r: any) => r.post));

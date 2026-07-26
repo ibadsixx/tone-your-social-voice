@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { gateway } from '@/lib/gateway';
+import { groupsApi } from '@/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { ImageIcon, FileText, Play, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -33,10 +33,7 @@ export default function GroupMediaFiles({ groupId }: Props) {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
-      const { data, error } = await gateway
-        .from('group_posts')
-        .select('post_id, post:posts(id, media_url, media_type, created_at)')
-        .eq('group_id', groupId);
+      const { data, error } = await groupsApi.getGroupMediaPosts(groupId);
 
       if (cancelled) return;
       if (error) {

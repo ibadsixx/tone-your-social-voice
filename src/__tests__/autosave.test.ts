@@ -154,7 +154,7 @@ describe('Project URL Validation', () => {
 describe('Upload to Editor Flow', () => {
   it('should simulate correct upload -> save -> load flow', () => {
     // Step 1: Upload returns publicUrl
-    const publicUrl = 'https://ojdhztcetykgvrcwlwen.supabase.co/storage/v1/object/public/editor_videos/user123/1234567890.mp4';
+    const publicUrl = 'https://gateway-iota-two.vercel.app/storage/v1/object/public/editor_videos/user123/1234567890.mp4';
     console.log('[UPLOAD] uploaded -> publicUrl:', publicUrl);
     
     // Step 2: Save project with publicUrl

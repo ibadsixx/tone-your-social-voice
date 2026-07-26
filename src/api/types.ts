@@ -134,7 +134,48 @@ export interface Group {
   id: string;
   name: string;
   description: string | null;
-  admin_id: string;
+  admin_id: string | null;
+  created_by: string | null;
+  privacy: string;
+  invite_followers: boolean;
+  cover_image: string | null;
+  member_count?: number;
+  created_at: string;
+  [key: string]: unknown;
+}
+
+export interface GroupMember {
+  group_id: string;
+  user_id: string;
+  role: string;
+  created_at: string;
+  profiles?: { username: string; display_name: string; profile_pic: string | null };
+  [key: string]: unknown;
+}
+
+export interface GroupPost {
+  id: string;
+  group_id: string;
+  post_id: string;
+  shared_by: string;
+  message: string | null;
+  created_at: string;
+  post?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface GroupFollow {
+  id: string;
+  group_id: string;
+  user_id: string;
+  created_at: string;
+  [key: string]: unknown;
+}
+
+export interface GroupPin {
+  id: string;
+  group_id: string;
+  user_id: string;
   created_at: string;
   [key: string]: unknown;
 }

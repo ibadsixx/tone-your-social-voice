@@ -77,8 +77,8 @@ function applyFilters(data: Record<string, unknown>[], filters: string[]): Recor
     const op = rest.slice(0, opDot);
     const rawVal = parseToken(rest.slice(opDot + 1));
 
-    const matches = matchFilter(row[col], op, rawVal);
-    result = negated ? result.filter(row => !matches || !matchFilter(row[col], op, rawVal)) : result.filter(row => matchFilter(row[col], op, rawVal));
+    const matches = (val: Record<string, unknown>) => matchFilter(val[col], op, rawVal);
+    result = negated ? result.filter(row => !matches(row)) : result.filter(row => matches(row));
   }
   return result;
 }

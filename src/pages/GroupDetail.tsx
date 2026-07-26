@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { groupsApi, postsApi } from '@/api';
 import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -83,10 +84,7 @@ const AboutTabContent = ({
 
   const handleSave = async () => {
     setSaving(true);
-    const { error } = await gateway
-      .from('groups')
-      .update({ name: name.trim(), description: description.trim(), privacy })
-      .eq('id', group.id);
+    const { error } = await groupsApi.updateGroup(group.id, { name: name.trim(), description: description.trim(), privacy } as any);
 
     if (error) {
       toast({ title: 'Error', description: 'Failed to update group info.', variant: 'destructive' });
@@ -228,19 +226,7 @@ const GroupDetailPage = () => {
     if (!groupId) return;
     try {
       setPostsLoading(true);
-      const { data } = await gateway
-        .from('group_posts')
-        .select(`
-          id, message, created_at, shared_by,
-          post:post_id (
-            *,
-            profiles!posts_user_id_fkey (username, display_name, profile_pic),
-            likes (id, user_id),
-            comments (id, content, profiles:user_id (display_name))
-          )
-        `)
-        .eq('group_id', groupId)
-        .order('created_at', { ascending: false });
+      const { data } = await groupsApi.getGroupPosts(groupId);
       setGroupPosts(data || []);
     } catch (err) {
       console.error('Error fetching group posts:', err);
@@ -253,11 +239,7 @@ const GroupDetailPage = () => {
     try {
       const postId = await createPost(content, media, taggedUsers, audience, feeling, scheduledAt, location);
       if (postId && groupId) {
-        await gateway.from('group_posts').insert({
-          group_id: groupId,
-          post_id: postId,
-          shared_by: user!.id,
-        });
+        await groupsApi.createGroupPost(groupId, postId, user!.id);
         fetchGroupPosts();
       }
       return postId;
@@ -277,28 +259,12 @@ const GroupDetailPage = () => {
   const fetchGroupDetail = async () => {
     try {
       setLoading(true);
-      const { data: groupData, error: groupError } = await gateway
-        .from('groups')
-        .select('*')
-        .eq('id', groupId!)
-        .single();
+      const { data: groupData, error: groupError } = await groupsApi.getGroupById(groupId!);
 
       if (groupError) throw groupError;
       setGroup(groupData);
 
-      const { data: membersData, error: membersError } = await gateway
-        .from('group_members')
-        .select(`
-          user_id,
-          role,
-          created_at,
-          profiles:user_id (
-            username,
-            display_name,
-            profile_pic
-          )
-        `)
-        .eq('group_id', groupId!);
+      const { data: membersData, error: membersError } = await groupsApi.getGroupMembers(groupId!);
 
       if (membersError) throw membersError;
       setMembers(membersData || []);
@@ -310,21 +276,11 @@ const GroupDetailPage = () => {
 
         // A row in `group_follows` indicates the user has explicitly UNFOLLOWED.
         // Without a row, members are treated as following by default.
-        const { data: unfollowRow } = await gateway
-          .from('group_follows' as any)
-          .select('id')
-          .eq('group_id', groupId!)
-          .eq('user_id', user.id)
-          .maybeSingle();
+        const { data: unfollowRow } = await groupsApi.getGroupFollowStatus(groupId!, user.id);
         setIsFollowing(!unfollowRow);
 
         // Check if this group is pinned by the current user
-        const { data: pinRow } = await gateway
-          .from('group_pins' as any)
-          .select('id')
-          .eq('group_id', groupId!)
-          .eq('user_id', user.id)
-          .maybeSingle();
+        const { data: pinRow } = await groupsApi.getGroupPinStatus(groupId!, user.id);
         setIsPinned(!!pinRow);
       }
     } catch (error: any) {
@@ -338,9 +294,7 @@ const GroupDetailPage = () => {
   const handleJoin = async () => {
     if (!user || !groupId) return;
     try {
-      const { error } = await gateway
-        .from('group_members')
-        .insert({ group_id: groupId, user_id: user.id, role: 'member' });
+      const { error } = await groupsApi.joinGroup(groupId, user.id);
       if (error) throw error;
       toast({ title: 'Joined!', description: 'You are now a member of this group.' });
       fetchGroupDetail();
@@ -352,11 +306,7 @@ const GroupDetailPage = () => {
   const handleLeave = async () => {
     if (!user || !groupId) return;
     try {
-      const { error } = await gateway
-        .from('group_members')
-        .delete()
-        .eq('group_id', groupId)
-        .eq('user_id', user.id);
+      const { error } = await groupsApi.leaveGroup(groupId, user.id);
       if (error) throw error;
       toast({ title: 'Left group', description: 'You have left this group.' });
       fetchGroupDetail();
@@ -369,10 +319,7 @@ const GroupDetailPage = () => {
     if (!user || !groupId) return;
     try {
       if (isFollowing) {
-        // Unfollow: insert a row marking explicit unfollow
-        const { error } = await gateway
-          .from('group_follows' as any)
-          .insert({ group_id: groupId, user_id: user.id });
+        const { error } = await groupsApi.unfollowGroup(groupId, user.id);
         if (error && (error as any).code !== '23505') throw error;
         setIsFollowing(false);
         toast({
@@ -380,12 +327,7 @@ const GroupDetailPage = () => {
           description: "You won't see this group's posts in your feed. You're still a member.",
         });
       } else {
-        // Follow again: remove the unfollow marker
-        const { error } = await gateway
-          .from('group_follows' as any)
-          .delete()
-          .eq('group_id', groupId)
-          .eq('user_id', user.id);
+        const { error } = await groupsApi.followGroup(groupId, user.id);
         if (error) throw error;
         setIsFollowing(true);
         toast({
@@ -403,18 +345,12 @@ const GroupDetailPage = () => {
     if (!user || !groupId) return;
     try {
       if (isPinned) {
-        const { error } = await gateway
-          .from('group_pins' as any)
-          .delete()
-          .eq('group_id', groupId)
-          .eq('user_id', user.id);
+        const { error } = await groupsApi.unpinGroup(groupId, user.id);
         if (error) throw error;
         setIsPinned(false);
         toast({ title: 'Group unpinned', description: 'This group has been removed from your shortcuts.' });
       } else {
-        const { error } = await gateway
-          .from('group_pins' as any)
-          .insert({ group_id: groupId, user_id: user.id });
+        const { error } = await groupsApi.pinGroup(groupId, user.id);
         if (error && (error as any).code !== '23505') throw error;
         setIsPinned(true);
         toast({ title: 'Group pinned', description: 'This group has been pinned to your shortcuts.' });
@@ -456,10 +392,7 @@ const GroupDetailPage = () => {
 
       const coverUrl = `${publicUrl}?t=${Date.now()}`;
 
-      const { error: updateError } = await gateway
-        .from('groups')
-        .update({ cover_image: coverUrl } as any)
-        .eq('id', groupId);
+      const { error: updateError } = await groupsApi.updateGroup(groupId, { cover_image: coverUrl } as any);
 
       if (updateError) throw updateError;
 

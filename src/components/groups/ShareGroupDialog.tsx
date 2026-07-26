@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Link2, Users, User } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { gateway } from '@/lib/gateway';
+import { profilesApi, usersApi, postsApi } from '@/api';
 
 interface ShareGroupDialogProps {
   isOpen: boolean;
@@ -62,22 +62,13 @@ const ShareGroupDialog = ({ isOpen, onClose, groupId, groupName }: ShareGroupDia
 
   const fetchProfile = async () => {
     if (!user) return;
-    const { data } = await gateway
-      .from('profiles')
-      .select('username, display_name, profile_pic')
-      .eq('id', user.id)
-      .maybeSingle();
+    const { data } = await profilesApi.getProfileById(user.id);
     if (data) setProfile(data as MyProfile);
   };
 
   const fetchFriends = async () => {
     if (!user) return;
-    const { data, error } = await gateway
-      .from('friends')
-      .select('requester_id, receiver_id, status')
-      .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
-      .eq('status', 'accepted')
-      .limit(20);
+    const { data, error } = await usersApi.getFriendsByUser(user.id);
 
     console.debug('[ShareGroupDialog] friends rows:', data, 'error:', error);
 
@@ -87,7 +78,7 @@ const ShareGroupDialog = ({ isOpen, onClose, groupId, groupName }: ShareGroupDia
     }
 
     const friendIds = data
-      .map(f => (f.requester_id === user.id ? f.receiver_id : f.requester_id))
+      .map((f: any) => (f.requester_id === user.id ? f.receiver_id : f.requester_id))
       .filter(Boolean);
 
     if (friendIds.length === 0) {
@@ -95,24 +86,27 @@ const ShareGroupDialog = ({ isOpen, onClose, groupId, groupName }: ShareGroupDia
       return;
     }
 
-    const { data: profiles, error: pErr } = await gateway
-      .from('profiles')
-      .select('id, username, display_name, profile_pic')
-      .in('id', friendIds);
+    // Fetch profiles for each friend ID
+    const profiles = await Promise.all(
+      friendIds.map(async (id: string) => {
+        const { data } = await profilesApi.getProfileById(id);
+        return data;
+      })
+    );
 
-    console.debug('[ShareGroupDialog] friend profiles:', profiles, 'error:', pErr);
-    setFriends(profiles || []);
+    console.debug('[ShareGroupDialog] friend profiles:', profiles);
+    setFriends(profiles.filter(Boolean) as Friend[]);
   };
 
   const shareToFeed = async () => {
     if (!user) return;
     setSharing(true);
     try {
-      await gateway.from('posts').insert([{
+      await postsApi.createPost({
         user_id: user.id,
         content: message || `Check out this group: ${groupName}`,
         type: 'text',
-      }] as any);
+      });
       toast({ title: 'Shared!', description: 'Group shared to your feed' });
       onClose();
       setMessage('');
