@@ -4,16 +4,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Plus } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Plus, Globe, Lock, EyeOff } from 'lucide-react';
 
 interface CreateGroupDialogProps {
-  onCreateGroup: (name: string, description: string) => Promise<any>;
+  onCreateGroup: (name: string, description: string, privacy: string) => Promise<any>;
 }
 
 export const CreateGroupDialog = ({ onCreateGroup }: CreateGroupDialogProps) => {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [privacy, setPrivacy] = useState('public');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -22,9 +24,10 @@ export const CreateGroupDialog = ({ onCreateGroup }: CreateGroupDialogProps) => 
 
     setLoading(true);
     try {
-      await onCreateGroup(name.trim(), description.trim());
+      await onCreateGroup(name.trim(), description.trim(), privacy);
       setName('');
       setDescription('');
+      setPrivacy('public');
       setOpen(false);
     } catch (error) {
       // Error handled by hook
@@ -65,6 +68,34 @@ export const CreateGroupDialog = ({ onCreateGroup }: CreateGroupDialogProps) => 
               placeholder="Describe your group..."
               rows={3}
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Privacy</Label>
+            <Select value={privacy} onValueChange={setPrivacy}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="public">
+                  <span className="flex items-center gap-2">
+                    <Globe className="h-4 w-4" />
+                    Public — Anyone can see the group and its posts
+                  </span>
+                </SelectItem>
+                <SelectItem value="private">
+                  <span className="flex items-center gap-2">
+                    <Lock className="h-4 w-4" />
+                    Private — Only members can see the group
+                  </span>
+                </SelectItem>
+                <SelectItem value="closed">
+                  <span className="flex items-center gap-2">
+                    <EyeOff className="h-4 w-4" />
+                    Closed — Anyone can see, but must be approved to join
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex gap-2 pt-2">
             <Button

@@ -8,6 +8,7 @@ export interface Group {
   id: string;
   name: string;
   description: string | null;
+  privacy: string;
   created_at: string;
   member_count?: number;
   is_member?: boolean;
@@ -45,6 +46,7 @@ export const useGroups = () => {
           id: group.id,
           name: group.name,
           description: group.description,
+          privacy: group.privacy || 'public',
           created_at: group.created_at,
           member_count: memberCount,
           is_member: !!userMembership,
@@ -95,11 +97,11 @@ export const useGroups = () => {
     }
   };
 
-  const createGroup = async (name: string, description: string) => {
+  const createGroup = async (name: string, description: string, privacy: string = 'public') => {
     if (!user) return;
 
     try {
-      const { data: newGroup, error: createError } = await groupsApi.createGroup({ name, description });
+      const { data: newGroup, error: createError } = await groupsApi.createGroup({ name, description, privacy });
       if (createError) throw createError;
 
       const { error: joinError } = await groupsApi.joinGroup(newGroup.id, user.id, 'admin');

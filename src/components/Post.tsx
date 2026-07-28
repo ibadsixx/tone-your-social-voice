@@ -353,16 +353,16 @@ const Post = ({
         <CardHeader className="p-3 sm:p-6 pb-2 sm:pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-1.5 sm:space-x-3 min-w-0">
-              <Link to={page ? `/pages/${page.id}` : `/profile/${profiles.username}`} className="flex items-center space-x-1.5 sm:space-x-3 hover:opacity-80 transition-opacity min-w-0">
+              <Link to={page ? `/pages/${page.id}` : `/profile/${profiles?.username || ''}`} className="flex items-center space-x-1.5 sm:space-x-3 hover:opacity-80 transition-opacity min-w-0">
                 <Avatar className="h-7 w-7 sm:h-10 sm:w-10 border sm:border-2 border-primary/20 shrink-0">
-                  <AvatarImage src={page ? (page.profile_pic || page.cover_image || undefined) : (profiles.profile_pic || '/default-avatar.png')} className="object-cover" />
+                  <AvatarImage src={page ? (page.profile_pic || page.cover_image || undefined) : (profiles?.profile_pic || '/default-avatar.png')} className="object-cover" />
                   <AvatarFallback className="bg-primary/10 text-primary text-xs sm:text-sm">
-                    {page ? page.name.charAt(0) : (profiles.display_name?.charAt(0) || profiles.username?.charAt(0) || '?')}
+                    {page ? page.name.charAt(0) : (profiles?.display_name?.charAt(0) || profiles?.username?.charAt(0) || '?')}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0">
                   <div className="flex items-center flex-wrap gap-x-1">
-                    <p className="font-semibold text-[13px] sm:text-sm text-foreground hover:underline truncate max-w-[100px] sm:max-w-none">{page ? page.name : profiles.display_name}</p>
+                    <p className="font-semibold text-[13px] sm:text-sm text-foreground hover:underline truncate max-w-[100px] sm:max-w-none">{page ? page.name : profiles?.display_name || 'Unknown'}</p>
                     {group_name && group_id && (
                       <>
                         <span className="text-sm text-muted-foreground">›</span>
@@ -397,7 +397,7 @@ const Post = ({
                     )}
                   </div>
                   <div className="flex items-center space-x-2">
-                    <p className="text-muted-foreground text-xs">{page ? page.name : `@${profiles.username}`} • {timeAgo}</p>
+                    <p className="text-muted-foreground text-xs">{page ? page.name : `@${profiles?.username || 'unknown'}`} • {timeAgo}</p>
                     {audienceDisplay && (
                       <>
                         <span className="text-muted-foreground text-xs">•</span>
@@ -476,7 +476,7 @@ const Post = ({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={toggleMute} disabled={isMuteLoading}>
                       <VolumeX className="mr-2 h-4 w-4" />
-                      <span>{isMuted ? 'Unmute' : 'Mute'} {profiles.display_name}</span>
+                      <span>{isMuted ? 'Unmute' : 'Mute'} {profiles?.display_name || 'Unknown'}</span>
                     </DropdownMenuItem>
                     
                     <DropdownMenuItem 

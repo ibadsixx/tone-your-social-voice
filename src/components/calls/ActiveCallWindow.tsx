@@ -252,7 +252,7 @@ export const ActiveCallWindow: React.FC = () => {
                 <h3 className="text-white text-xl font-semibold mt-4">
                   {remoteUser.displayName}
                 </h3>
-                <p className="text-gray-400 text-sm">@{remoteUser.username}</p>
+                <p className="text-gray-400 text-sm">@{remoteUser?.username || ''}</p>
                 
                 {/* Status text */}
                 <div className="mt-4 flex items-center gap-2">

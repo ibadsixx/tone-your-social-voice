@@ -567,7 +567,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
                       </span>
                     </div>
                   </button>
-                  <p className="text-sm text-muted-foreground">@{otherUser.username}</p>
+                  <p className="text-sm text-muted-foreground">@{otherUser?.username || ''}</p>
                 </div>
               )}
 

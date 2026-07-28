@@ -1,7 +1,7 @@
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Users, UserMinus, Settings, FileText } from 'lucide-react';
+import { Users, UserMinus, Settings, FileText, Lock, Globe, EyeOff } from 'lucide-react';
 import { Group } from '@/hooks/useGroups';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -42,6 +42,23 @@ export const GroupCard = ({ group, onJoin, onLeave, showManageButtons }: GroupCa
               <div className="flex items-center gap-2 text-muted-foreground text-sm">
                 <Users className="h-4 w-4" />
                 <span>{group.member_count || 0} members</span>
+                <span className="text-muted-foreground">·</span>
+                {group.privacy === 'private' ? (
+                  <span className="flex items-center gap-1">
+                    <Lock className="h-3 w-3" />
+                    <span>Private</span>
+                  </span>
+                ) : group.privacy === 'closed' ? (
+                  <span className="flex items-center gap-1">
+                    <EyeOff className="h-3 w-3" />
+                    <span>Closed</span>
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    <Globe className="h-3 w-3" />
+                    <span>Public</span>
+                  </span>
+                )}
                 {group.is_member && group.role && (
                   <Badge variant="secondary" className="text-xs">
                     {group.role}

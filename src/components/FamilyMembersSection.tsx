@@ -298,15 +298,15 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
                     <Avatar className="h-8 w-8 md:h-10 md:w-10">
                       <AvatarImage src={member.member_profile.profile_pic || undefined} />
                       <AvatarFallback className="text-xs md:text-sm">
-                        {member.member_profile.display_name.charAt(0).toUpperCase()}
+                        {member.member_profile?.display_name?.charAt(0)?.toUpperCase() || '?'}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
                       <div className="font-medium text-xs md:text-sm">
-                        {member.member_profile.display_name}
+                        {member.member_profile?.display_name || 'Unknown'}
                       </div>
                       <div className="text-[10px] md:text-xs text-muted-foreground">
-                        @{member.member_profile.username}
+                        @{member.member_profile?.username || 'unknown'}
                       </div>
                     </div>
                     <Badge variant="secondary" className="text-[10px] md:text-xs">
@@ -448,15 +448,15 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
                 <Avatar className="h-8 w-8 md:h-10 md:w-10">
                   <AvatarImage src={member.member_profile.profile_pic || undefined} />
                   <AvatarFallback className="text-xs md:text-sm">
-                    {member.member_profile.display_name.charAt(0).toUpperCase()}
+                    {member.member_profile?.display_name?.charAt(0)?.toUpperCase() || '?'}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
                   <div className="font-medium text-sm">
-                    {member.member_profile.display_name}
+                    {member.member_profile?.display_name || 'Unknown'}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    @{member.member_profile.username}
+                    @{member.member_profile?.username || 'unknown'}
                   </div>
                 </div>
 

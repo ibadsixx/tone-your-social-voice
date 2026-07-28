@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { gateway } from '@/lib/gateway';
+import { profilesApi } from '@/api';
 import { useAuth } from '@/hooks/useAuth';
 import { validateProfileVisibility, sanitizeProfilePayload } from '@/utils/profileValidation';
 
@@ -38,18 +39,13 @@ export const useProfile = (profileId?: string) => {
     }
 
     try {
-      const { data, error } = await gateway
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
+      const { data, error } = await profilesApi.getProfileById(userId);
 
       if (error) {
         console.error('Error fetching profile:', error);
         return;
       }
 
-      // If data is null, it could mean the profile doesn't exist or is blocked by RLS
       setProfile(data);
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -97,19 +93,13 @@ export const useProfile = (profileId?: string) => {
       const sanitizedPayload = sanitizeProfilePayload(updates);
       validateProfileVisibility(sanitizedPayload);
       
-      console.log('Updating profile with payload:', sanitizedPayload);
-      
-      const { error } = await gateway
-        .from('profiles')
-        .update(sanitizedPayload)
-        .eq('id', user.id);
+      const { error } = await profilesApi.updateProfile(user.id, sanitizedPayload as any);
 
       if (error) {
-        console.error('Supabase update error:', error);
+        console.error('Profile update error:', error);
         throw error;
       }
       
-      console.log('Profile updated successfully');
       await fetchProfile(); // Refresh profile data
     } catch (error) {
       console.error('Error updating profile:', error);

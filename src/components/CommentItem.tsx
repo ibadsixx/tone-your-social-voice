@@ -136,14 +136,14 @@ export const CommentItem = ({
       transition={{ duration: 0.2, delay: index * 0.05 }}
       className="flex space-x-3 group"
     >
-      <Link to={`/profile/${comment.profiles.username}`} className="hover:opacity-80 transition-opacity">
+      <Link to={`/profile/${comment.profiles?.username || ''}`} className="hover:opacity-80 transition-opacity">
         <Avatar className="h-8 w-8 border border-border/50">
           <AvatarImage 
-            src={comment.profiles.profile_pic || '/default-avatar.png'} 
+            src={comment.profiles?.profile_pic || '/default-avatar.png'} 
             className="object-cover" 
           />
           <AvatarFallback className="bg-primary/10 text-primary text-xs">
-            {comment.profiles.display_name?.charAt(0) || comment.profiles.username?.charAt(0) || '?'}
+            {comment.profiles?.display_name?.charAt(0) || comment.profiles?.username?.charAt(0) || '?'}
           </AvatarFallback>
         </Avatar>
       </Link>
@@ -152,10 +152,10 @@ export const CommentItem = ({
         <div className="bg-muted/50 rounded-lg px-3 py-2">
           <div className="flex items-center justify-between mb-1">
             <Link 
-              to={`/profile/${comment.profiles.username}`}
+              to={`/profile/${comment.profiles?.username || ''}`}
               className="font-medium text-sm text-foreground hover:underline hover:opacity-80 transition"
             >
-              {comment.profiles.display_name}
+              {comment.profiles?.display_name || 'Unknown'}
             </Link>
             {isOwner && !isEditing && (
               <DropdownMenu>
@@ -301,7 +301,7 @@ export const CommentItem = ({
             <Textarea
               value={replyContent}
               onChange={(e) => setReplyContent(e.target.value)}
-              placeholder={`Reply to ${comment.profiles.display_name}...`}
+              placeholder={`Reply to ${comment.profiles?.display_name || 'Unknown'}...`}
               className="min-h-[60px] text-sm"
               disabled={isSaving}
               autoFocus

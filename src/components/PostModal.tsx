@@ -92,14 +92,14 @@ const PostModal = ({ post, isOpen, onClose }: PostModalProps) => {
             <div className="flex items-center justify-between p-4 border-b">
               <div className="flex items-center gap-3">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={post.profiles.profile_pic || ''} />
+                  <AvatarImage src={post.profiles?.profile_pic || ''} />
                   <AvatarFallback>
-                    {post.profiles.display_name.charAt(0).toUpperCase()}
+                    {post.profiles?.display_name?.charAt(0)?.toUpperCase() || '?'}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="font-semibold text-sm">{post.profiles.display_name}</p>
-                  <p className="text-xs text-muted-foreground">@{post.profiles.username}</p>
+                  <p className="font-semibold text-sm">{post.profiles?.display_name || 'Unknown'}</p>
+                  <p className="text-xs text-muted-foreground">@{post.profiles?.username || 'unknown'}</p>
                 </div>
               </div>
               <Button variant="ghost" size="sm">
@@ -113,14 +113,14 @@ const PostModal = ({ post, isOpen, onClose }: PostModalProps) => {
                 <div className="mb-4">
                   <div className="flex items-start gap-3">
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src={post.profiles.profile_pic || ''} />
+                      <AvatarImage src={post.profiles?.profile_pic || ''} />
                       <AvatarFallback>
-                        {post.profiles.display_name.charAt(0).toUpperCase()}
+                        {post.profiles?.display_name?.charAt(0)?.toUpperCase() || '?'}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
                       <p className="text-sm">
-                        <span className="font-semibold mr-2">{post.profiles.username}</span>
+                        <span className="font-semibold mr-2">{post.profiles?.username || 'unknown'}</span>
                         {post.content}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">

@@ -210,16 +210,16 @@ const ScheduledPostsTab = () => {
               <CardContent className="p-6">
                 <div className="flex items-start gap-4">
                   <Avatar className="w-10 h-10">
-                    <AvatarImage src={post.profiles.profile_pic || undefined} />
+                    <AvatarImage src={post.profiles?.profile_pic || undefined} />
                     <AvatarFallback className="bg-primary/10 text-primary">
-                      {post.profiles.display_name.charAt(0).toUpperCase()}
+                      {post.profiles?.display_name?.charAt(0)?.toUpperCase() || '?'}
                     </AvatarFallback>
                   </Avatar>
 
                   <div className="flex-1 space-y-3">
                     <div className="flex items-start justify-between">
                       <div>
-                        <h4 className="font-medium">{post.profiles.display_name}</h4>
+                        <h4 className="font-medium">{post.profiles?.display_name || 'Unknown'}</h4>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Calendar className="w-3 h-3" />
                           <span>

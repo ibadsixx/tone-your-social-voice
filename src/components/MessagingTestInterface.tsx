@@ -177,10 +177,10 @@ const MessagingTestInterface = () => {
                 <div key={request.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div>
                     <p className="font-medium">
-                      {request.sender_profile.display_name}
+                      {request.sender_profile?.display_name || 'Unknown'}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      @{request.sender_profile.username}
+                      @{request.sender_profile?.username || 'unknown'}
                     </p>
                     <Badge variant="secondary" className="mt-1">
                       {request.category}

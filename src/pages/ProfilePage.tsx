@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { profilesApi } from '@/api';
+import type { Profile } from '@/api/profiles';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
@@ -9,22 +10,6 @@ import { useToast } from '@/hooks/use-toast';
 import ProfileHeader from '@/components/ProfileHeader';
 import ProfileTabs from '@/components/ProfileTabs';
 import PageContainer from '@/components/PageContainer';
-
-
-interface Profile {
-  id: string;
-  username: string;
-  display_name: string;
-  bio: string | null;
-  profile_pic: string | null;
-  cover_pic: string | null;
-  cover_position_y?: number;
-  created_at: string;
-  about_you?: string;
-  about_you_visibility?: string;
-  name_pronunciation?: string;
-  name_pronunciation_visibility?: string;
-}
 
 const ProfilePage = () => {
   const { username } = useParams<{ username: string }>();
@@ -46,21 +31,15 @@ const ProfilePage = () => {
     if (!username) return;
     
     try {
-      const { data, error } = await gateway
-        .from('profiles')
-        .select('*')
-        .eq('username', username)
-        .maybeSingle();
+      const { data, error } = await profilesApi.getProfileByUsername(username);
 
       if (error) {
         console.error('Profile fetch error:', error);
-        // Navigate to 404 for any error
         navigate('/404');
         return;
       }
 
       if (!data) {
-        // Profile not found or blocked (RLS filtered out)
         navigate('/404');
         return;
       }

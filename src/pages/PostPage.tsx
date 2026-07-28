@@ -16,7 +16,7 @@ const PostPage = () => {
 
   useEffect(() => {
     if (post) {
-      const title = `${post.profiles.display_name}: ${
+      const title = `${post.profiles?.display_name || 'Unknown'}: ${
         post.content?.slice(0, 100) || 'Post'
       }`;
       document.title = title;

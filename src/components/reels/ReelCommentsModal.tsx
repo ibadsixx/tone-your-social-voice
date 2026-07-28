@@ -95,16 +95,16 @@ const ReelCommentsModal = ({ reelId, isOpen, onClose }: ReelCommentsModalProps) 
               {comments.map((comment) => (
                 <div key={comment.id} className="flex gap-3 group">
                   <Avatar className="w-8 h-8 flex-shrink-0">
-                    <AvatarImage src={comment.author.profile_pic || undefined} />
+                    <AvatarImage src={comment.author?.profile_pic || undefined} />
                     <AvatarFallback>
-                      {comment.author.display_name[0]}
+                      {comment.author?.display_name?.[0] || '?'}
                     </AvatarFallback>
                   </Avatar>
                   
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-semibold text-sm">
-                        {comment.author.username}
+                        {comment.author?.username || 'unknown'}
                       </span>
                       <span className="text-xs text-muted-foreground">
                         {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
@@ -113,7 +113,7 @@ const ReelCommentsModal = ({ reelId, isOpen, onClose }: ReelCommentsModalProps) 
                     <p className="text-sm break-words">{comment.body}</p>
                   </div>
 
-                  {user?.id === comment.author.id && (
+                    {user?.id === comment.author?.id && (
                     <Button
                       variant="ghost"
                       size="icon"

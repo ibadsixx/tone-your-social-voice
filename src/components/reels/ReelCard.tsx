@@ -116,8 +116,8 @@ const ReelCard = ({ reel, isActive, onDoubleTap, onHideReel }: ReelCardProps) =>
         {/* Profile avatar */}
         <div className="flex flex-col items-center">
           <Avatar className="w-12 h-12 border-2 border-white">
-            <AvatarImage src={reel.profiles.profile_pic || undefined} />
-            <AvatarFallback>{reel.profiles.display_name[0]}</AvatarFallback>
+            <AvatarImage src={reel.profiles?.profile_pic || undefined} />
+            <AvatarFallback>{reel.profiles?.display_name?.[0] || '?'}</AvatarFallback>
           </Avatar>
         </div>
 
@@ -194,7 +194,7 @@ const ReelCard = ({ reel, isActive, onDoubleTap, onHideReel }: ReelCardProps) =>
         <div className="max-w-[85%]">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-white font-semibold drop-shadow-lg">
-              @{reel.profiles.username}
+              @{reel.profiles?.username || 'user'}
             </span>
           </div>
           {reel.content && (

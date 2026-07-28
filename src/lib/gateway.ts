@@ -108,6 +108,28 @@ function matchFilter(value: unknown, op: string, val: string): boolean {
   }
 }
 
+function parseSelectColumns(selectStr: string): string[] {
+  const cols: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of selectStr) {
+    if (ch === '(') { depth++; current += ch; }
+    else if (ch === ')') { depth--; current += ch; }
+    else if (ch === ',' && depth === 0) {
+      cols.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) cols.push(current.trim());
+  return cols;
+}
+
+function hasNestedJoins(selectStr: string): boolean {
+  return /\w+!\w+\s*\(/.test(selectStr) || /\w+:\w+\s*\(/.test(selectStr);
+}
+
 function applyOrder(data: Record<string, unknown>[], order: string): Record<string, unknown>[] {
   if (!order) return data;
   const [col, dir] = order.split('.');
@@ -323,14 +345,18 @@ class PostgrestFilterBuilder<T> {
         return { data: results.length as unknown as T, error: null };
       }
 
-      // Column selection
+      // Column selection (gateway returns all fields; pick only requested)
       if (this._selectCols && this._selectCols !== '*') {
-        const cols = this._selectCols.split(',').map(c => c.trim());
-        results = results.map(row => {
-          const picked: Record<string, unknown> = {};
-          for (const c of cols) { picked[c] = row[c]; }
-          return picked;
-        });
+        if (hasNestedJoins(this._selectCols)) {
+          // Complex select with joins — return full row (gateway returns nested data as-is)
+        } else {
+          const cols = parseSelectColumns(this._selectCols);
+          results = results.map(row => {
+            const picked: Record<string, unknown> = {};
+            for (const c of cols) { picked[c] = row[c]; }
+            return picked;
+          });
+        }
       }
 
       if (this._single) {
