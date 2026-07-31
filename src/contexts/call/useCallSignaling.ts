@@ -1,7 +1,6 @@
 import { useCallback, useRef, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { gateway, GatewayChannel } from '@/lib/gateway';
 import { CallSignal } from '@/services/webrtc';
-import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface UseCallSignalingOptions {
   userId: string | undefined;
@@ -9,8 +8,8 @@ interface UseCallSignalingOptions {
 }
 
 export const useCallSignaling = ({ userId, onSignal }: UseCallSignalingOptions) => {
-  const channelRef = useRef<RealtimeChannel | null>(null);
-  const pendingChannelsRef = useRef<Set<RealtimeChannel>>(new Set());
+  const channelRef = useRef<GatewayChannel | null>(null);
+  const pendingChannelsRef = useRef<Set<GatewayChannel>>(new Set());
 
   // Send signal to target user with proper cleanup
   const sendSignal = useCallback(async (signal: CallSignal) => {

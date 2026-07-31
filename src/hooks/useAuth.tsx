@@ -1,11 +1,26 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { User, Session } from '@supabase/supabase-js';
 import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 
+interface GatewayUser {
+  id: string;
+  email?: string;
+  user_metadata?: Record<string, unknown>;
+  role?: string;
+}
+
+interface GatewaySession {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  expires_at: number;
+  token_type: string;
+  user: GatewayUser;
+}
+
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
+  user: GatewayUser | null;
+  session: GatewaySession | null;
   loading: boolean;
   signUp: (email: string, password: string, username: string, displayName: string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
@@ -15,8 +30,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<GatewayUser | null>(null);
+  const [session, setSession] = useState<GatewaySession | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 

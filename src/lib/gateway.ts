@@ -130,6 +130,103 @@ function hasNestedJoins(selectStr: string): boolean {
   return /\w+!\w+\s*\(/.test(selectStr) || /\w+:\w+\s*\(/.test(selectStr);
 }
 
+// --- Client-side join resolution (gateway does not process joins) ---
+
+const FK_TARGETS: Record<string, string> = {
+  user_id: 'profiles',
+  post_id: 'posts',
+  shared_post_id: 'posts',
+  group_id: 'groups',
+  page_id: 'pages',
+  tagged_user_id: 'profiles',
+  tagged_by: 'profiles',
+  requester_id: 'profiles',
+  addressee_id: 'profiles',
+  actor_id: 'profiles',
+  sender_id: 'profiles',
+  receiver_id: 'profiles',
+  admin_id: 'profiles',
+  creator_id: 'profiles',
+  pinned_by: 'profiles',
+};
+
+function singularTable(table: string): string {
+  if (table === 'posts') return 'post';
+  if (table === 'group_posts') return 'group_post';
+  if (table === 'post_tags') return 'post_tag';
+  if (table === 'post_likes') return 'post_like';
+  if (table === 'conversation_participants') return 'conversation_participant';
+  if (table.endsWith('ies')) return table.slice(0, -3) + 'y';
+  if (table.endsWith('ses') || table.endsWith('xes') || table.endsWith('ches') || table.endsWith('shes')) return table.slice(0, -2);
+  if (table.endsWith('s')) return table.slice(0, -1);
+  return table;
+}
+
+function parseTopLevelEntries(selectStr: string): string[] {
+  const entries: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of selectStr) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    else if (ch === ',' && depth === 0) {
+      entries.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) entries.push(current.trim());
+  return entries;
+}
+
+interface JoinSpec {
+  resultKey: string;
+  relatedTable: string;
+  localCol: string;
+  relatedCol: string;
+  columns: string;
+  kind: 'one' | 'many';
+}
+
+function parseJoinSpec(entry: string, currentTable: string): JoinSpec | null {
+  entry = entry.trim();
+  if (entry === '*') return null;
+  const parenIdx = entry.indexOf('(');
+  if (parenIdx === -1) return null;
+
+  const header = entry.slice(0, parenIdx).trim();
+  const columns = entry.slice(parenIdx + 1, -1).trim();
+
+  if (header.includes('!')) {
+    const idx = header.indexOf('!');
+    const table = header.slice(0, idx).trim();
+    const fkName = header.slice(idx + 1).trim();
+    const prefix = `${currentTable}_`;
+    const suffix = '_fkey';
+    let localCol = fkName;
+    if (localCol.startsWith(prefix)) localCol = localCol.slice(prefix.length);
+    if (localCol.endsWith(suffix)) localCol = localCol.slice(0, -suffix.length);
+    return { resultKey: table, relatedTable: table, localCol, relatedCol: 'id', columns, kind: 'one' };
+  }
+
+  if (header.includes(':')) {
+    const colonIdx = header.indexOf(':');
+    const alias = header.slice(0, colonIdx).trim();
+    const colPart = header.slice(colonIdx + 1).trim();
+    const spaceIdx = colPart.indexOf(' ');
+    const localCol = spaceIdx !== -1 ? colPart.slice(0, spaceIdx).trim() : colPart;
+    const relatedTable = FK_TARGETS[localCol] || alias;
+    const isToOne = localCol.endsWith('_id') || FK_TARGETS[localCol] !== undefined;
+    return { resultKey: alias, relatedTable, localCol, relatedCol: 'id', columns, kind: isToOne ? 'one' : 'many' };
+  }
+
+  const table = header.trim();
+  const singular = singularTable(currentTable);
+  const fkCol = `${singular}_id`;
+  return { resultKey: table, relatedTable: table, localCol: 'id', relatedCol: fkCol, columns, kind: 'many' };
+}
+
 function applyOrder(data: Record<string, unknown>[], order: string): Record<string, unknown>[] {
   if (!order) return data;
   const [col, dir] = order.split('.');
@@ -348,7 +445,7 @@ class PostgrestFilterBuilder<T> {
       // Column selection (gateway returns all fields; pick only requested)
       if (this._selectCols && this._selectCols !== '*') {
         if (hasNestedJoins(this._selectCols)) {
-          // Complex select with joins — return full row (gateway returns nested data as-is)
+          results = await this._resolveJoins(results, headers);
         } else {
           const cols = parseSelectColumns(this._selectCols);
           results = results.map(row => {
@@ -373,6 +470,86 @@ class PostgrestFilterBuilder<T> {
     } catch (err) {
       return { data: null, error: { message: String(err) } };
     }
+  }
+
+  private async _resolveJoins(results: Record<string, unknown>[], headers: Record<string, string>): Promise<Record<string, unknown>[]> {
+    if (!GATEWAY_URL || results.length === 0) return results;
+
+    const entries = parseTopLevelEntries(this._selectCols);
+    for (const entry of entries) {
+      const spec = parseJoinSpec(entry, this._table);
+      if (!spec) continue;
+
+      const keyValues = new Set<string>();
+      for (const row of results) {
+        const val = row[spec.localCol];
+        if (val != null) keyValues.add(String(val));
+      }
+      if (keyValues.size === 0) continue;
+
+      try {
+        const res = await fetch(`${GATEWAY_URL}/api/${spec.relatedTable}`, { headers });
+        if (!res.ok) {
+          console.warn(`[gateway] Join fetch failed for /api/${spec.relatedTable} (${res.status} ${res.statusText}) — rows will be missing the '${spec.resultKey}' field`);
+          continue;
+        }
+        const json = await res.json();
+        let relatedData: Record<string, unknown>[] = Array.isArray(json)
+          ? json as Record<string, unknown>[]
+          : json != null
+            ? [json as Record<string, unknown>]
+            : [];
+
+        if (relatedData.length === 0) {
+          console.warn(`[gateway] Join /api/${spec.relatedTable} returned no rows for ${keyValues.size} key(s) — rows will be missing the '${spec.resultKey}' field`);
+          continue;
+        }
+
+        const effectiveIsArray = spec.kind === 'many';
+
+        if (hasNestedJoins(spec.columns)) {
+          const nestedFetcher = new PostgrestFilterBuilder(GATEWAY_URL, spec.relatedTable, 'GET');
+          (nestedFetcher as any)._selectCols = spec.columns;
+          relatedData = await nestedFetcher._resolveJoins(relatedData, headers);
+        } else if (spec.columns && spec.columns !== '*') {
+          const cols = parseSelectColumns(spec.columns);
+          if (!cols.includes(spec.relatedCol)) cols.push(spec.relatedCol);
+          relatedData = relatedData.map(row => {
+            const picked: Record<string, unknown> = {};
+            for (const c of cols) { picked[c] = row[c]; }
+            return picked;
+          });
+        }
+
+        const valToRel = new Map<string, Record<string, unknown>[]>();
+        for (const row of relatedData) {
+          const val = row[spec.relatedCol];
+          if (val == null) continue;
+          const key = String(val);
+          if (!valToRel.has(key)) valToRel.set(key, []);
+          valToRel.get(key)!.push(row);
+        }
+
+        let unmatched = 0;
+        for (const row of results) {
+          const val = row[spec.localCol];
+          if (val == null) continue;
+          const matches = valToRel.get(String(val));
+          if (matches) {
+            row[spec.resultKey] = effectiveIsArray ? matches : matches[0];
+          } else {
+            unmatched++;
+          }
+        }
+        if (unmatched > 0) {
+          console.warn(`[gateway] Join /api/${spec.relatedTable} matched ${keyValues.size - unmatched}/${keyValues.size} key(s) — ${unmatched} row(s) have no '${spec.resultKey}' (${spec.localCol} has no matching ${spec.relatedCol} on ${spec.relatedTable})`);
+        }
+      } catch (err) {
+        console.warn(`[gateway] Join fetch threw for /api/${spec.relatedTable}:`, err);
+        continue;
+      }
+    }
+    return results;
   }
 }
 
@@ -507,7 +684,7 @@ class GatewayStorage {
   }
 }
 
-class GatewayChannel {
+export class GatewayChannel {
   private _channelName: string;
   private _listeners: Array<{ event: string; filter: Record<string, unknown>; callback: (payload: unknown) => void }> = [];
   private _subscribed = false;
