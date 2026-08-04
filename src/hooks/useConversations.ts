@@ -2,6 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
+import {
+  getOrCreateDM as apiGetOrCreateDM,
+  markConversationMessagesRead,
+  getConversationReadStatus,
+  getMyReadMessageIds,
+  markMessageDelivered,
+} from '@/api/conversations';
 import { initConversationEncryption, decryptContent, isEncryptionReady } from '@/lib/conversationEncryption';
 import { loadEcdhPrivateKey } from '@/hooks/useEncryptionKeys';
 import { playMessageNotification } from '@/lib/notificationSounds';
@@ -237,22 +244,6 @@ type Message = {
   delivered?: boolean;
 };
 
-type ConversationInfoRow = {
-  conversation_id: string;
-  type: string;
-  conversation_name?: string;
-  conversation_description?: string | null;
-  created_at: string;
-  updated_at: string;
-  other_user_id: string | null;
-  other_user_username: string;
-  other_user_display_name: string;
-  other_user_profile_pic?: string;
-  last_message_content?: string;
-  last_message_created_at?: string;
-  unread_count: number;
-};
-
 type NewMessagePayload = {
   id: string;
   conversation_id: string;
@@ -325,66 +316,15 @@ export const useConversations = (currentUserId?: string) => {
     }
 
     try {
-      const { data, error } = await gateway.rpc('get_conversations_with_info', {
-        p_user_id: currentUserId
-      });
-
-      if (error) throw error;
-
-      const formattedConversations: Conversation[] = data?.map((conv: ConversationInfoRow) => ({
-        conversation_id: conv.conversation_id,
-        type: conv.type,
-        name: conv.conversation_name || undefined,
-        description: conv.conversation_description,
-        created_at: conv.created_at,
-        updated_at: conv.updated_at,
-        other_user: conv.type === 'channel' ? undefined : {
-          id: conv.other_user_id,
-          username: conv.other_user_username,
-          display_name: conv.other_user_display_name,
-          profile_pic: conv.other_user_profile_pic,
-          last_seen_at: undefined,
-        },
-        last_message: conv.last_message_content ? {
-          content: conv.last_message_content,
-          created_at: conv.last_message_created_at,
-        } : undefined,
-        unread_count: Number(conv.unread_count || 0),
-      })) || [];
-
-      // Batch-fetch last_seen_at for all conversation partners
-      const otherUserIds = formattedConversations
-        .filter(c => c.other_user?.id)
-        .map(c => c.other_user!.id);
-      if (otherUserIds.length > 0) {
-        const { data: profiles } = await gateway
-          .from('profiles')
-          .select('id, last_seen_at')
-          .in('id', otherUserIds);
-        if (profiles) {
-          const lastSeenMap = new Map(profiles.map(p => [p.id, p.last_seen_at]));
-          formattedConversations.forEach(conv => {
-            if (conv.other_user) {
-              conv.other_user.last_seen_at = lastSeenMap.get(conv.other_user.id) || undefined;
-            }
-          });
-        }
-      }
-
-      setConversations(formattedConversations);
+      const directConversations = await fetchConversationsDirectly(currentUserId);
+      setConversations(directConversations);
     } catch (error) {
-      console.error('Error fetching conversations via RPC, trying direct fallback:', error);
-      try {
-        const directConversations = await fetchConversationsDirectly(currentUserId);
-        setConversations(directConversations);
-      } catch (fallbackError) {
-        console.error('Fallback fetch also failed:', fallbackError);
-        toast({
-          title: "Error",
-          description: "Failed to fetch conversations",
-          variant: "destructive"
-        });
-      }
+      console.error('Error fetching conversations:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch conversations",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }
@@ -514,8 +454,7 @@ export const useConversations = (currentUserId?: string) => {
         setMessages(formattedMessages);
 
         // Determine which messages have been read by other participants
-        const { data: readData } = await gateway
-          .rpc('get_message_read_status', { p_conversation_id: conversationId });
+        const { data: readData } = await getConversationReadStatus(conversationId, currentUserId);
         if (readData && readData.length > 0) {
           const seenIds = new Set(readData.map(r => r.message_id));
           setMessages(prev => prev.map(msg => {
@@ -529,10 +468,9 @@ export const useConversations = (currentUserId?: string) => {
         // Compute the boundary between already-read and new messages
         const messageIds = formattedMessages.map(m => m.id);
         if (messageIds.length > 0) {
-          const { data: myReads } = await gateway
-            .rpc('get_my_read_message_ids', { p_message_ids: messageIds });
+          const { data: myReads } = await getMyReadMessageIds(messageIds, currentUserId);
           if (myReads && myReads.length > 0) {
-            const readSet = new Set(myReads.map(r => r.message_id));
+            const readSet = new Set(myReads);
             const idx = formattedMessages.findIndex(m => !readSet.has(m.id));
             setFirstUnreadIndex(idx);
           } else {
@@ -668,14 +606,12 @@ export const useConversations = (currentUserId?: string) => {
     }
   };
 
-  // Mark messages as read using RPC
+  // Mark messages as read
   const markMessagesAsRead = async (conversationId: string) => {
     if (!currentUserId) return;
 
     try {
-      await gateway.rpc('mark_messages_read', {
-        p_conversation_id: conversationId
-      });
+      await markConversationMessagesRead(conversationId, currentUserId);
     } catch (error) {
       console.error('Error marking messages as read:', error);
     }
@@ -686,10 +622,7 @@ export const useConversations = (currentUserId?: string) => {
     if (!currentUserId) return null;
 
     try {
-      const { data, error } = await gateway.rpc('get_or_create_dm', {
-        p_user_a: currentUserId,
-        p_user_b: otherUserId
-      });
+      const { data, error } = await apiGetOrCreateDM(currentUserId, otherUserId);
 
       if (error) throw error;
 
@@ -706,7 +639,7 @@ export const useConversations = (currentUserId?: string) => {
       console.error('Error creating/getting conversation:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to create conversation",
+        description: error?.message || "Failed to create conversation",
         variant: "destructive"
       });
       return null;
@@ -789,7 +722,7 @@ export const useConversations = (currentUserId?: string) => {
             
             if (msgData) {
               // Acknowledge delivery to the sender
-              gateway.rpc('mark_message_delivered', { p_message_id: msgData.id })
+              markMessageDelivered(msgData.id)
                 .catch(() => {});
               
               let replyData = null;

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
+import { getOrCreateDM } from '@/api/conversations';
 
 export type MessageSystemError = {
   code: string;
@@ -172,10 +173,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
   // Get or create conversation between two users
   const getOrCreateConversation = async (userA: string, userB: string): Promise<string | null> => {
     try {
-      const { data, error } = await gateway.rpc('get_or_create_dm', {
-        p_user_a: userA,
-        p_user_b: userB
-      });
+      const { data, error } = await getOrCreateDM(userA, userB);
 
       if (error) throw error;
       return data;

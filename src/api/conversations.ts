@@ -71,3 +71,164 @@ export async function getReplyPreview(id: string): Promise<ApiResult<Message>> {
 export async function getReplyPreviews(ids: string[]): Promise<ApiResult<Message[]>> {
   return gateway.from('messages').select('id, content, image_url, media_url, attachment_url, is_image, sender_profile:profiles!messages_sender_id_fkey(display_name)').in('id', ids) as Promise<ApiResult<Message[]>>;
 }
+
+export async function getOrCreateDM(currentUserId: string, otherUserId: string): Promise<ApiResult<string | null>> {
+  if (!currentUserId || !otherUserId) {
+    return { data: null, error: { message: 'Missing user id' } };
+  }
+
+  try {
+    const { data: myParts } = await gateway
+      .from('conversation_participants')
+      .select('conversation_id')
+      .eq('user_id', currentUserId);
+
+    let conversationId: string | null = null;
+
+    if (myParts && myParts.length > 0) {
+      const myIds = myParts.map(p => p.conversation_id);
+      const { data: both } = await gateway
+        .from('conversation_participants')
+        .select('conversation_id')
+        .in('conversation_id', myIds)
+        .eq('user_id', otherUserId);
+
+      const sharedIds = [...new Set((both || []).map(p => p.conversation_id))];
+      if (sharedIds.length > 0) {
+        const { data: convs } = await gateway
+          .from('conversations')
+          .select('id, type')
+          .in('id', sharedIds);
+        const dm = (convs || []).find(c => c.type === 'dm');
+        if (dm) conversationId = dm.id;
+      }
+    }
+
+    if (!conversationId) {
+      const { data: created, error: createError } = await gateway
+        .from('conversations')
+        .insert({ type: 'dm', created_by: currentUserId })
+        .select('id')
+        .single();
+      if (createError || !created) {
+        return { data: null, error: createError || { message: 'Failed to create conversation' } };
+      }
+      conversationId = created.id;
+
+      for (const userId of [currentUserId, otherUserId]) {
+        const { error: participantError } = await gateway
+          .from('conversation_participants')
+          .insert({ conversation_id: conversationId, user_id: userId });
+        if (participantError) {
+          return { data: null, error: participantError };
+        }
+      }
+    }
+
+    return { data: conversationId, error: null };
+  } catch (err) {
+    return { data: null, error: { message: String(err) } };
+  }
+}
+
+export async function markConversationMessagesRead(conversationId: string, userId: string): Promise<ApiResult<null>> {
+  if (!conversationId || !userId) {
+    return { data: null, error: { message: 'Missing conversation or user id' } };
+  }
+
+  try {
+    const { data: settings } = await gateway
+      .from('conversation_settings')
+      .select('read_receipts_enabled')
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (settings && settings.read_receipts_enabled === false) {
+      return { data: null, error: null };
+    }
+
+    const { data: msgs } = await gateway
+      .from('messages')
+      .select('id')
+      .eq('conversation_id', conversationId)
+      .neq('sender_id', userId);
+    const ids = (msgs || []).map(m => m.id);
+    if (ids.length === 0) return { data: null, error: null };
+
+    const { data: existing } = await gateway
+      .from('message_reads')
+      .select('message_id')
+      .in('message_id', ids)
+      .eq('user_id', userId);
+    const existingSet = new Set((existing || []).map(r => r.message_id));
+
+    for (const messageId of ids) {
+      if (existingSet.has(messageId)) continue;
+      const { error } = await gateway
+        .from('message_reads')
+        .insert({ message_id: messageId, user_id: userId });
+      if (error) return { data: null, error };
+    }
+
+    return { data: null, error: null };
+  } catch (err) {
+    return { data: null, error: { message: String(err) } };
+  }
+}
+
+export async function getConversationReadStatus(conversationId: string, userId: string): Promise<ApiResult<{ message_id: string; user_id: string }[]>> {
+  if (!conversationId || !userId) {
+    return { data: null, error: { message: 'Missing conversation or user id' } };
+  }
+
+  try {
+    const { data: msgs } = await gateway
+      .from('messages')
+      .select('id')
+      .eq('conversation_id', conversationId);
+    const ids = (msgs || []).map(m => m.id);
+    if (ids.length === 0) return { data: [], error: null };
+
+    const { data: reads } = await gateway
+      .from('message_reads')
+      .select('message_id, user_id')
+      .in('message_id', ids);
+
+    return { data: (reads || []).filter(r => r.user_id !== userId), error: null };
+  } catch (err) {
+    return { data: null, error: { message: String(err) } };
+  }
+}
+
+export async function getMyReadMessageIds(messageIds: string[], userId: string): Promise<ApiResult<string[]>> {
+  if (!messageIds || messageIds.length === 0 || !userId) {
+    return { data: [], error: null };
+  }
+
+  try {
+    const { data: reads } = await gateway
+      .from('message_reads')
+      .select('message_id')
+      .in('message_id', messageIds)
+      .eq('user_id', userId);
+    return { data: (reads || []).map(r => r.message_id), error: null };
+  } catch (err) {
+    return { data: null, error: { message: String(err) } };
+  }
+}
+
+export async function markMessageDelivered(messageId: string): Promise<ApiResult<null>> {
+  if (!messageId) {
+    return { data: null, error: { message: 'Missing message id' } };
+  }
+
+  try {
+    const { error } = await gateway
+      .from('messages')
+      .update({ delivered_at: new Date().toISOString() } as Record<string, unknown>)
+      .eq('id', messageId);
+    return { data: null, error };
+  } catch (err) {
+    return { data: null, error: { message: String(err) } };
+  }
+}
