@@ -1,8 +1,10 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
 import { User } from 'lucide-react';
+import { mediaAppUrl } from '@/lib/mediaUrl';
 
 interface SharedPostData {
   id: string;
@@ -87,11 +89,18 @@ export const SharedPost = ({ sharedPost, onClick }: SharedPostProps) => {
           {sharedPost.media_url && (
             <div className="mb-3">
               {fileType === 'image' ? (
-                <img
-                  src={sharedPost.media_url}
-                  alt="Shared post media"
-                  className="w-full h-auto rounded-lg border border-border/30"
-                />
+                <Link
+                  to={mediaAppUrl(sharedPost.media_url)}
+                  className="block cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label="Open media"
+                >
+                  <img
+                    src={sharedPost.media_url}
+                    alt="Shared post media"
+                    className="w-full h-auto rounded-lg border border-border/30"
+                  />
+                </Link>
               ) : (
                 <video
                   src={sharedPost.media_url}

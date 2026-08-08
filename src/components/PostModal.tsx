@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Heart, MessageCircle, Share, Bookmark, MoreHorizontal, Play, Pause } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -7,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { mediaAppUrl } from '@/lib/mediaUrl';
 
 interface PostModalProps {
   post: {
@@ -78,11 +80,13 @@ const PostModal = ({ post, isOpen, onClose }: PostModalProps) => {
                 )}
               </div>
             ) : (
-              <img
-                src={post.media_url || ''}
-                alt={post.content || 'Post media'}
-                className="max-w-full max-h-full object-contain"
-              />
+              <Link to={mediaAppUrl(post.media_url || '')} aria-label="Open media">
+                <img
+                  src={post.media_url || ''}
+                  alt={post.content || 'Post media'}
+                  className="max-w-full max-h-full object-contain"
+                />
+              </Link>
             )}
           </div>
 

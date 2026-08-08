@@ -38,6 +38,7 @@ import Editor from "@/pages/Editor";
 import EditPreview from "@/pages/EditPreview";
 import EditorPublish from "@/pages/EditorPublish";
 import ReelViewer from "@/pages/ReelViewer";
+import MediaViewer from "@/pages/MediaViewer";
 import CreatePost from "@/pages/CreatePost";
 import FeedbackPage from "@/pages/FeedbackPage";
 import FriendRequestsPage from "@/pages/FriendRequestsPage";
@@ -62,6 +63,8 @@ const App = () => (
               <Route path="/auth" element={<ErrorBoundary><Auth /></ErrorBoundary>} />
               {/* Fullscreen reel viewer - outside Layout for true fullscreen */}
               <Route path="/reels/:id" element={<ReelViewer />} />
+              {/* Fullscreen media viewer - media links point at /media/<id> */}
+              <Route path="/media/:id" element={<MediaViewer />} />
               <Route path="/" element={<ErrorBoundary><Layout /></ErrorBoundary>}>
                 <Route index element={<Home />} />
                 <Route path="profile" element={<Profile />} />

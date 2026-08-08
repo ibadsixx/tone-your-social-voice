@@ -38,6 +38,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { gateway } from '@/lib/gateway';
+import { mediaAppUrl } from '@/lib/mediaUrl';
 import { MessageLinkPreview } from './MessageLinkPreview';
 
 
@@ -347,7 +348,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             src={message.image_url}
             alt="Shared image"
             className="rounded-xl max-w-[250px] max-h-[250px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
-            onClick={() => window.open(message.image_url, '_blank')}
+            onClick={() => window.open(mediaAppUrl(message.image_url), '_blank')}
             onError={(e) => {
               e.currentTarget.style.display = 'none';
               e.currentTarget.parentElement!.innerHTML = `
@@ -376,7 +377,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               src={message.media_url}
               alt="Shared image"
               className="rounded-xl max-w-[250px] max-h-[250px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
-              onClick={() => window.open(message.media_url, '_blank')}
+              onClick={() => window.open(mediaAppUrl(message.media_url), '_blank')}
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
                 e.currentTarget.parentElement!.innerHTML = `
@@ -418,7 +419,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               src={message.attachment_url}
               alt="Shared image"
               className="rounded-xl max-w-[250px] max-h-[250px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
-              onClick={() => window.open(message.attachment_url, '_blank')}
+              onClick={() => window.open(mediaAppUrl(message.attachment_url), '_blank')}
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
                 e.currentTarget.parentElement!.innerHTML = `
@@ -450,7 +451,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => window.open(message.attachment_url, '_blank')}
+              onClick={() => window.open(mediaAppUrl(message.attachment_url), '_blank')}
                 className="flex items-center space-x-2"
               >
                 <Download className="h-4 w-4" />
@@ -465,7 +466,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     return (
       <div className="mt-2">
         <a
-          href={message.media_url}
+          href={mediaAppUrl(message.media_url)}
           target="_blank"
           rel="noopener noreferrer"
           className="text-primary hover:underline"

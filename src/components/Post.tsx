@@ -19,6 +19,7 @@ import { useMutedUsers } from '@/hooks/useMutedUsers';
 import { usePostNotifications } from '@/hooks/usePostNotifications';
 import { postsApi } from '@/api';
 import { gateway } from '@/lib/gateway';
+import { mediaAppUrl } from '@/lib/mediaUrl';
 import { SendPostModal } from '@/components/modals/SendPostModal';
 import { SharePostModal } from '@/components/modals/SharePostModal';
 import { EditPostDialog } from '@/components/EditPostDialog';
@@ -529,12 +530,18 @@ const Post = ({
                       className="rounded-lg overflow-hidden bg-muted/20"
                     >
                       {media.file_type === 'image' ? (
-                        <img 
-                          src={media.file_url} 
-                          alt="Post media" 
-                          className="w-full h-auto object-cover max-h-[50vh] sm:max-h-none"
-                          loading="lazy"
-                        />
+                        <Link
+                          to={mediaAppUrl(media.file_url)}
+                          className="block w-full cursor-pointer"
+                          aria-label="Open media"
+                        >
+                          <img 
+                            src={media.file_url} 
+                            alt="Post media" 
+                            className="w-full h-auto object-cover max-h-[50vh] sm:max-h-none"
+                            loading="lazy"
+                          />
+                        </Link>
                       ) : type === 'reel' || (duration && aspect_ratio === '9:16') ? (
                         /* Static Reel Preview - NO playback in feed, click navigates to reel page */
                         <button
