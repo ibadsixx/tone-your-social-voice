@@ -2,34 +2,6 @@ import type { Database } from '@/integrations/supabase/types';
 
 const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
 
-const CLOUDINARY_PREFIX = 'https://res.cloudinary.com/';
-
-const mediaUrlCache = new Map<string, string>();
-
-// Rewrite a Cloudinary URL into a URL on this site (served by /api/media/*),
-// so opening media in a new tab shows the web app's URL instead of Cloudinary.
-function toSiteMediaUrl(url: string): string {
-  if (!url || !url.startsWith(CLOUDINARY_PREFIX)) return url;
-  const rest = url.slice(CLOUDINARY_PREFIX.length);
-  if (!rest) return url;
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  if (!origin) return url;
-  return `${origin}/api/media/${rest}`;
-}
-
-function rewriteMediaUrls(value: unknown): unknown {
-  if (typeof value === 'string') return toSiteMediaUrl(value);
-  if (Array.isArray(value)) return value.map(rewriteMediaUrls);
-  if (value && typeof value === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const key of Object.keys(value as Record<string, unknown>)) {
-      out[key] = rewriteMediaUrls((value as Record<string, unknown>)[key]);
-    }
-    return out;
-  }
-  return value;
-}
-
 type TableName = keyof Database['public']['Tables'];
 
 function getToken(): string | null {
@@ -462,18 +434,15 @@ class PostgrestFilterBuilder<T> {
 
       const json = await res.json();
 
-      // Serve media through the site's own URL instead of Cloudinary
-      const rewritten = rewriteMediaUrls(json);
-
       if (this._headOnly) {
         return { data: null as unknown as T, error: null };
       }
 
       // Normalize to array for client-side filtering
-      let results: Record<string, unknown>[] = Array.isArray(rewritten)
-        ? rewritten as Record<string, unknown>[]
-        : rewritten != null
-          ? [rewritten as Record<string, unknown>]
+      let results: Record<string, unknown>[] = Array.isArray(json)
+        ? json as Record<string, unknown>[]
+        : json != null
+          ? [json as Record<string, unknown>]
           : [];
 
       // Client-side filtering (gateway ignores query params)
@@ -557,7 +526,7 @@ class PostgrestFilterBuilder<T> {
         return { data: null, error: { message: `Gateway returned non-JSON response for /api/${this._table}`, code: String(res.status) } };
       }
 
-      const json = rewriteMediaUrls(await res.json());
+      const json = await res.json();
       const rows: Record<string, unknown>[] = Array.isArray(json)
         ? json as Record<string, unknown>[]
         : json != null
@@ -609,7 +578,7 @@ class PostgrestFilterBuilder<T> {
           console.warn(`[gateway] Join fetch failed for /api/${spec.relatedTable} (${res.status} ${res.statusText}) — rows will be missing the '${spec.resultKey}' field`);
           continue;
         }
-        const json = rewriteMediaUrls(await res.json());
+        const json = await res.json();
         let relatedData: Record<string, unknown>[] = Array.isArray(json)
           ? json as Record<string, unknown>[]
           : json != null
@@ -780,19 +749,16 @@ class GatewayStorageBucket {
         return { data: null, error: { message: errBody.message || res.statusText } };
       }
       const json = await res.json();
-      const url = toSiteMediaUrl(json.url);
-      if (url) mediaUrlCache.set(`${this._bucket}/${path}`, url);
-      return { data: { path: json.path || path, url }, error: null };
+      return { data: { path: json.path || path, url: json.url }, error: null };
     } catch (err) {
       return { data: null, error: { message: String(err) } };
     }
   }
 
   getPublicUrl(path: string): { data: { publicUrl: string } } {
-    const cached = mediaUrlCache.get(`${this._bucket}/${path}`);
     return {
       data: {
-        publicUrl: cached || `${this._baseUrl}/api/storage/${this._bucket}/${path}`,
+        publicUrl: `${this._baseUrl}/api/storage/${this._bucket}/${path}`,
       },
     };
   }
@@ -871,7 +837,7 @@ class GatewayAuth {
     if (!ct.includes('application/json')) {
       throw new Error(`Gateway does not support ${res.url.replace(GATEWAY_URL!, '')} — server returned ${res.status} (${ct.split(';')[0] || 'non-JSON'})`);
     }
-    return rewriteMediaUrls(await res.json());
+    return res.json();
   }
 
   onAuthStateChange(callback: (event: string, session: unknown) => void): { data: { subscription: { unsubscribe: () => void } } } {
@@ -1125,7 +1091,7 @@ class GatewayClient {
           return { data: null, error: { message: errBody.message || errBody.error || res.statusText, code: String(res.status) } };
         }
         const json = await res.json();
-        return { data: rewriteMediaUrls(json), error: null };
+        return { data: json, error: null };
       })
       .catch((err) => ({ data: null, error: { message: String(err) } }));
   }
