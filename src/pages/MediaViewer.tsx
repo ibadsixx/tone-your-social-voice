@@ -49,20 +49,22 @@ const MediaViewer = () => {
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <div className="flex-1 flex items-center justify-center overflow-hidden p-4">
+      <div className="flex-1 overflow-auto flex p-4">
         {isVideo ? (
           <video
             src={src}
             controls
             autoPlay
             playsInline
-            className="max-h-full max-w-full object-contain"
+            onContextMenu={(e) => e.preventDefault()}
+            className="m-auto max-h-full max-w-full object-contain"
           />
         ) : (
           <img
             src={src}
             alt="Media"
-            className="max-h-full max-w-full object-contain"
+            onContextMenu={(e) => e.preventDefault()}
+            className="m-auto"
           />
         )}
       </div>
