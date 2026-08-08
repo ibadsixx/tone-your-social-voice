@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
-import { ArrowLeft, AlertCircle } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { mediaAppUrlToSrc } from '@/lib/mediaUrl';
 
@@ -49,22 +49,7 @@ const MediaViewer = () => {
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <div className="flex items-center justify-between p-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-white hover:bg-white/10 hover:text-white"
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <Link to="/" className="text-white/90 hover:text-white font-semibold text-sm">
-          Tone
-        </Link>
-      </div>
-
-      <div className="flex-1 flex items-center justify-center overflow-hidden p-4 pb-8">
+      <div className="flex-1 flex items-center justify-center overflow-hidden p-4">
         {isVideo ? (
           <video
             src={src}
