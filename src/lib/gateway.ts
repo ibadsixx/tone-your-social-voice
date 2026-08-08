@@ -31,6 +31,31 @@ function parseToken(s: string): string {
   return s.replace(/^['"]|['"]$/g, '');
 }
 
+interface ParsedFilter {
+  col: string;
+  op: string;
+  rawVal: string;
+  negated: boolean;
+}
+
+function parseFilter(filterStr: string): ParsedFilter | null {
+  let f = filterStr.replace(/^\(|\)$/g, '');
+  let negated = false;
+  if (f.startsWith('not.')) {
+    negated = true;
+    f = f.slice(4);
+  }
+  const eqIdx = f.indexOf('=');
+  if (eqIdx === -1) return null;
+  const col = f.slice(0, eqIdx);
+  const rest = f.slice(eqIdx + 1);
+  const dotIdx = rest.indexOf('.');
+  if (dotIdx === -1) return null;
+  const op = rest.slice(0, dotIdx);
+  const rawVal = parseToken(rest.slice(dotIdx + 1));
+  return { col, op, rawVal, negated };
+}
+
 function applyFilters(data: Record<string, unknown>[], filters: string[]): Record<string, unknown>[] {
   let result = data;
   for (const raw of filters) {
@@ -54,31 +79,21 @@ function applyFilters(data: Record<string, unknown>[], filters: string[]): Recor
       if (current.trim()) orConditions.push(current.trim());
 
       result = result.filter(row => orConditions.some(cond => {
-        const [col, rest] = cond.split('.');
-        if (!rest) return true;
-        const dotIdx = rest.indexOf('.');
-        if (dotIdx === -1) return true;
-        const op = rest.slice(0, dotIdx);
-        const val = parseToken(rest.slice(dotIdx + 1));
-        return matchFilter(row[col], op, val);
+        const pf = parseFilter(cond);
+        if (!pf) return true;
+        const m = matchFilter(row[pf.col], pf.op, pf.rawVal);
+        return pf.negated ? !m : m;
       }));
       continue;
     }
 
-    const negated = filterStr.startsWith('not.');
-    const f = negated ? filterStr.slice(4) : filterStr;
-
-    const dotIdx = f.indexOf('.');
-    if (dotIdx === -1) continue;
-    const col = f.slice(0, dotIdx);
-    const rest = f.slice(dotIdx + 1);
-    const opDot = rest.indexOf('.');
-    if (opDot === -1) continue;
-    const op = rest.slice(0, opDot);
-    const rawVal = parseToken(rest.slice(opDot + 1));
-
-    const matches = (val: Record<string, unknown>) => matchFilter(val[col], op, rawVal);
-    result = negated ? result.filter(row => !matches(row)) : result.filter(row => matches(row));
+    const pf = parseFilter(filterStr);
+    if (!pf) continue;
+    const matches = (val: Record<string, unknown>) => {
+      const m = matchFilter(val[pf.col], pf.op, pf.rawVal);
+      return pf.negated ? !m : m;
+    };
+    result = result.filter(row => matches(row));
   }
   return result;
 }
@@ -103,7 +118,12 @@ function matchFilter(value: unknown, op: string, val: string): boolean {
       const pattern = val.replace(/%/g, '.*');
       return new RegExp(`^${pattern}$`).test(String(value));
     }
-    case 'is': return value === null;
+    case 'is': {
+      if (val === 'null') return value === null || value === undefined;
+      if (val === 'true') return value === true;
+      if (val === 'false') return value === false;
+      return String(value) === val;
+    }
     default: return true;
   }
 }
@@ -273,7 +293,7 @@ class PostgrestFilterBuilder<T> {
   like(column: string, pattern: string): this { this._filters.push(`${column}=like.${pattern}`); return this; }
   ilike(column: string, pattern: string): this { this._filters.push(`${column}=ilike.${pattern}`); return this; }
   or(filterString: string): this { this._filters.push(`or=(${filterString})`); return this; }
-  not(column: string, op: string, value: unknown): this { this._filters.push(`${column}=not.${op}.${value}`); return this; }
+  not(column: string, op: string, value: unknown): this { this._filters.push(`not.${column}=${op}.${value}`); return this; }
   is(column: string, value: null): this { this._filters.push(`${column}=is.${value}`); return this; }
   order(column: string, opts?: { ascending?: boolean }): this { this._order = `${column}.${opts?.ascending === false ? 'desc' : 'asc'}`; return this; }
   limit(count: number): this { this._limit = count; return this; }
@@ -326,6 +346,12 @@ class PostgrestFilterBuilder<T> {
       const token = getToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      // Gateway only supports single-row updates (PUT /api/v1/:domain/:id).
+      // Fall back to update-by-id for bulk updates (no id=eq. filter).
+      if (this._method === 'PUT' && !this._filters.some(f => f.startsWith('id=eq.'))) {
+        return await this._bulkUpdate(headers);
+      }
 
       let url: string;
 
@@ -472,6 +498,65 @@ class PostgrestFilterBuilder<T> {
     }
   }
 
+  private async _bulkUpdate(headers: Record<string, string>): Promise<{ data: T | null; error: { message: string; code?: string } | null }> {
+    try {
+      const fetchOptions = { method: 'GET', headers };
+      let res = await fetch(`${GATEWAY_URL}/api/${this._table}`, fetchOptions);
+
+      if (res.status === 401) {
+        const { data: refreshData } = await gateway.auth.refreshSession();
+        const newToken = getToken();
+        if ((refreshData as any)?.session && newToken) {
+          headers['Authorization'] = `Bearer ${newToken}`;
+          res = await fetch(`${GATEWAY_URL}/api/${this._table}`, { ...fetchOptions, headers });
+        } else {
+          localStorage.removeItem('tone-auth-token');
+          window.location.href = '/auth';
+          return { data: null, error: { message: 'Session expired', code: '401' } };
+        }
+      }
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({ message: res.statusText }));
+        return { data: null, error: { message: errBody.message || errBody.error || res.statusText, code: String(res.status) } };
+      }
+
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        return { data: null, error: { message: `Gateway returned non-JSON response for /api/${this._table}`, code: String(res.status) } };
+      }
+
+      const json = await res.json();
+      const rows: Record<string, unknown>[] = Array.isArray(json)
+        ? json as Record<string, unknown>[]
+        : json != null
+          ? [json as Record<string, unknown>]
+          : [];
+
+      const matched = applyFilters(rows, this._filters);
+
+      const ids = matched
+        .map((r) => r.id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+
+      for (const id of ids) {
+        const putRes = await fetch(`${GATEWAY_URL}/api/v1/${this._table}/${id}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(this._body ?? {}),
+        });
+        if (!putRes.ok) {
+          const errBody = await putRes.json().catch(() => ({ message: putRes.statusText }));
+          return { data: null, error: { message: errBody.message || errBody.error || putRes.statusText, code: String(putRes.status) } };
+        }
+      }
+
+      return { data: null, error: null };
+    } catch (err) {
+      return { data: null, error: { message: String(err) } };
+    }
+  }
+
   private async _resolveJoins(results: Record<string, unknown>[], headers: Record<string, string>): Promise<Record<string, unknown>[]> {
     if (!GATEWAY_URL || results.length === 0) return results;
 
@@ -530,12 +615,15 @@ class PostgrestFilterBuilder<T> {
           valToRel.get(key)!.push(row);
         }
 
+        const isCount = spec.columns.trim() === 'count';
         let unmatched = 0;
         for (const row of results) {
           const val = row[spec.localCol];
           if (val == null) continue;
           const matches = valToRel.get(String(val));
-          if (matches) {
+          if (isCount) {
+            row[spec.resultKey] = [{ count: matches ? matches.length : 0 }];
+          } else if (matches) {
             row[spec.resultKey] = effectiveIsArray ? matches : matches[0];
           } else {
             unmatched++;
@@ -578,7 +666,7 @@ class GatewayQueryBuilder<T> {
   like(column: string, pattern: string): this { this._filters.push(`${column}=like.${pattern}`); return this; }
   ilike(column: string, pattern: string): this { this._filters.push(`${column}=ilike.${pattern}`); return this; }
   or(filterString: string): this { this._filters.push(`or=(${filterString})`); return this; }
-  not(column: string, op: string, value: unknown): this { this._filters.push(`${column}=not.${op}.${value}`); return this; }
+  not(column: string, op: string, value: unknown): this { this._filters.push(`not.${column}=${op}.${value}`); return this; }
   is(column: string, value: null): this { this._filters.push(`${column}=is.${value}`); return this; }
   order(column: string, opts?: { ascending?: boolean }): this { this._order = `${column}.${opts?.ascending === false ? 'desc' : 'asc'}`; return this; }
   limit(count: number): this { this._limit = count; return this; }
@@ -640,7 +728,7 @@ class GatewayStorageBucket {
     path: string,
     file: File | Blob,
     options?: { contentType?: string; upsert?: boolean }
-  ): Promise<{ data: { path: string } | null; error: { message: string } | null }> {
+  ): Promise<{ data: { path: string; url?: string } | null; error: { message: string } | null }> {
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -661,7 +749,7 @@ class GatewayStorageBucket {
         return { data: null, error: { message: errBody.message || res.statusText } };
       }
       const json = await res.json();
-      return { data: { path: json.path || path }, error: null };
+      return { data: { path: json.path || path, url: json.url }, error: null };
     } catch (err) {
       return { data: null, error: { message: String(err) } };
     }
@@ -727,6 +815,7 @@ export class GatewayChannel {
 
 class GatewayAuth {
   private _listeners: Array<(event: string, session: unknown) => void> = [];
+  private _pendingMfa: { factorId: string; mfaSessionId: string } | null = null;
 
   private _persistSession(session: unknown): void {
     if (session) {
@@ -808,18 +897,25 @@ class GatewayAuth {
     }
   }
 
-  async signInWithPassword({ email, password }: { email: string; password: string }): Promise<{ data: { session: unknown }; error: { message: string } | null }> {
+  async signInWithPassword({ email, password }: { email: string; password: string }): Promise<{ data: { session: unknown; mfaRequired?: boolean; factorId?: string }; error: { message: string } | null }> {
     try {
       const res = await this._gatewayFetch('sign-in', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
       const data = await this._parseJson(res);
-      if (!res.ok || data.error) return { data: { session: null }, error: { message: data.error || data.message || 'Sign in failed' } };
+      if (!res.ok || data.error) return { data: { session: null }, error: { message: data.error?.message || data.error || data.message || 'Sign in failed' } };
 
       if (data.data?.session) {
+        this._pendingMfa = null;
         this._persistSession(data.data.session);
         this._listeners.forEach(l => l('SIGNED_IN', data.data.session));
+        return { data: data.data || data, error: null };
+      }
+
+      if (data.data?.mfa_required) {
+        this._pendingMfa = { factorId: data.data.factor_id, mfaSessionId: data.data.mfa_session_id };
+        return { data: { session: null, mfaRequired: true, factorId: data.data.factor_id }, error: null };
       }
 
       return { data: data.data || data, error: null };
@@ -892,12 +988,71 @@ class GatewayAuth {
   }
 
   get mfa() {
+    const authInstance = this;
     return {
-      listFactors: async () => ({ data: { totp: [] }, error: null }),
-      enroll: async () => ({ data: null, error: { message: 'MFA not configured' } }),
-      challenge: async () => ({ data: null, error: { message: 'MFA not configured' } }),
-      verify: async () => ({ data: null, error: { message: 'MFA not configured' } }),
-      unenroll: async () => ({ data: null, error: { message: 'MFA not configured' } }),
+      listFactors: async () => {
+        const res = await authInstance._gatewayFetch('mfa/factors');
+        const data = await authInstance._parseJson(res);
+        if (!res.ok || data.error) {
+          return { data: { all: [], totp: [] }, error: { message: data.error?.message || data.error || data.message || 'Failed to list factors' } };
+        }
+        return { data: data.data || data, error: null };
+      },
+      enroll: async ({ factorType, friendlyName, issuer }: { factorType: string; friendlyName?: string; issuer?: string }) => {
+        const res = await authInstance._gatewayFetch('mfa/factors', {
+          method: 'POST',
+          body: JSON.stringify({ factorType, friendlyName, issuer }),
+        });
+        const data = await authInstance._parseJson(res);
+        if (!res.ok || data.error) {
+          return { data: null, error: { message: data.error?.message || data.error || data.message || 'Failed to enroll' } };
+        }
+        return { data: data.data || data, error: null };
+      },
+      challenge: async ({ factorId }: { factorId: string }) => {
+        const pending = authInstance._pendingMfa;
+        const body = pending ? { mfaSessionId: pending.mfaSessionId } : {};
+        const res = await authInstance._gatewayFetch(`mfa/factors/${factorId}/challenge`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        const data = await authInstance._parseJson(res);
+        if (!res.ok || data.error) {
+          return { data: null, error: { message: data.error?.message || data.error || data.message || 'Failed to create challenge' } };
+        }
+        return { data: data.data || data, error: null };
+      },
+      verify: async ({ factorId, challengeId, code }: { factorId: string; challengeId: string; code: string }) => {
+        const pending = authInstance._pendingMfa;
+        const body: Record<string, unknown> = { challengeId, code };
+        if (pending) body.mfaSessionId = pending.mfaSessionId;
+        const res = await authInstance._gatewayFetch(`mfa/factors/${factorId}/challenge/verify`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        const data = await authInstance._parseJson(res);
+        if (!res.ok || data.error) {
+          return { data: null, error: { message: data.error?.message || data.error || data.message || 'Verification failed' } };
+        }
+
+        // Sign-in flow: GoTrue's verify returns the upgraded AAL2 session.
+        if (data.data?.session) {
+          authInstance._pendingMfa = null;
+          authInstance._persistSession(data.data.session);
+          authInstance._listeners.forEach(l => l('SIGNED_IN', data.data.session));
+          return { data: { id: factorId }, error: null };
+        }
+
+        return { data: data.data || data, error: null };
+      },
+      unenroll: async ({ factorId }: { factorId: string }) => {
+        const res = await authInstance._gatewayFetch(`mfa/factors/${factorId}`, { method: 'DELETE' });
+        const data = await authInstance._parseJson(res);
+        if (!res.ok || data.error) {
+          return { data: null, error: { message: data.error?.message || data.error || data.message || 'Failed to unenroll' } };
+        }
+        return { data: data.data || data, error: null };
+      },
     };
   }
 }

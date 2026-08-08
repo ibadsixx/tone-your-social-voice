@@ -93,12 +93,12 @@ export async function uploadVideo(
 
   console.log('[storage] ✅ UPLOAD SUCCESS:', uploadData);
 
-  // Get public URL
+  // Get public URL (Cloudinary delivery URL when the gateway returns one)
   const { data: urlData } = gateway.storage
     .from(bucket)
     .getPublicUrl(filePath);
 
-  const publicUrl = urlData.publicUrl;
+  const publicUrl = uploadData?.url || urlData.publicUrl;
 
   console.log('[UPLOAD] ========================================');
   console.log('[UPLOAD] uploaded -> publicUrl:', publicUrl);

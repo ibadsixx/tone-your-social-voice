@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { gateway } from '@/lib/gateway';
+import { blockingApi, profilesApi } from '@/api';
 
 const Messages = () => {
   const [showNewConversation, setShowNewConversation] = useState(false);
@@ -146,9 +147,8 @@ const Messages = () => {
 
   const handleAddPerson = async (userId: string) => {
     if (viewMode === 'restricted') {
-      await gateway
-        .from('restricted_users')
-        .insert({ user_id: currentUserId, restricted_user_id: userId });
+      if (!currentUserId) return;
+      await blockingApi.restrictUser(currentUserId, userId);
       setShowAddPeople(false);
       toast({ title: 'User restricted', description: 'They won\'t be notified.' });
       fetchRestricted();
@@ -166,11 +166,7 @@ const Messages = () => {
     if (!currentUserId) return;
     setRestrictedLoading(true);
     try {
-      const { data, error } = await gateway
-        .from('restricted_users')
-        .select('id, restricted_user_id, created_at')
-        .eq('user_id', currentUserId)
-        .order('created_at', { ascending: false });
+      const { data, error } = await blockingApi.getRestrictedUsers(currentUserId);
 
       if (error) throw error;
 
@@ -180,10 +176,7 @@ const Messages = () => {
       }
 
       const ids = data.map(r => r.restricted_user_id);
-      const { data: profiles } = await gateway
-        .from('profiles')
-        .select('id, username, display_name, profile_pic')
-        .in('id', ids);
+      const { data: profiles } = await profilesApi.getProfilesByIds(ids);
 
       setRestrictedUsers(data.map(r => {
         const p = profiles?.find(pr => pr.id === r.restricted_user_id);
@@ -204,11 +197,10 @@ const Messages = () => {
   };
 
   const addRestricted = async (targetId: string) => {
+    if (!currentUserId) return;
     setRestrictedAdding(true);
     try {
-      await gateway
-        .from('restricted_users')
-        .insert({ user_id: currentUserId, restricted_user_id: targetId });
+      await blockingApi.restrictUser(currentUserId, targetId);
       setRestrictedSearch('');
       setRestrictedSearchResults([]);
       toast({ title: 'User restricted', description: 'They won\'t be notified.' });
@@ -221,7 +213,9 @@ const Messages = () => {
   };
 
   const removeRestriction = async (id: string) => {
-    await gateway.from('restricted_users').delete().eq('id', id);
+    const target = restrictedUsers.find(r => r.id === id);
+    if (!currentUserId || !target) return;
+    await blockingApi.unrestrictUser(currentUserId, target.target_id);
     setRestrictedUsers(prev => prev.filter(r => r.id !== id));
     toast({ title: 'Restriction removed' });
   };

@@ -23,8 +23,29 @@ export interface Profile {
   vault_pin: string | null;
   vault_recovery_code: string | null;
   security_warnings: boolean;
+  font_scale: string | null;
+  reduce_motion: boolean;
+  reduce_transparency: boolean;
+  high_contrast: boolean;
   created_at: string;
   [key: string]: unknown;
+}
+
+export interface DisplayPreferences {
+  font_scale: 'small' | 'normal' | 'large';
+  reduce_motion: boolean;
+  reduce_transparency: boolean;
+  high_contrast: boolean;
+}
+
+const DISPLAY_COLUMNS = 'font_scale, reduce_motion, reduce_transparency, high_contrast';
+
+export async function getDisplayPreferences(userId: string): Promise<ApiResult<DisplayPreferences>> {
+  return gateway.from('profiles').select(DISPLAY_COLUMNS).eq('id', userId).maybeSingle() as Promise<ApiResult<DisplayPreferences>>;
+}
+
+export async function updateDisplayPreferences(userId: string, data: Partial<DisplayPreferences>): Promise<ApiResult<null>> {
+  return gateway.from('profiles').update(data).eq('id', userId) as Promise<ApiResult<null>>;
 }
 
 export async function getProfileById(id: string): Promise<ApiResult<Profile>> {
@@ -39,6 +60,16 @@ export async function updateProfile(id: string, data: Partial<Profile>): Promise
   return gateway.from('profiles').update(data).eq('id', id) as Promise<ApiResult<null>>;
 }
 
-export async function searchProfiles(query: string): Promise<ApiResult<Profile[]>> {
-  return gateway.from('profiles').select('id, username, display_name, profile_pic').ilike('username', `%${query}%`).limit(20) as Promise<ApiResult<Profile[]>>;
+export async function searchProfiles(query: string, excludeUserId?: string): Promise<ApiResult<Profile[]>> {
+  let q = gateway
+    .from('profiles')
+    .select('id, username, display_name, profile_pic')
+    .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`);
+  if (excludeUserId) q = q.neq('id', excludeUserId);
+  return q.limit(20) as Promise<ApiResult<Profile[]>>;
+}
+
+export async function getProfilesByIds(ids: string[]): Promise<ApiResult<Profile[]>> {
+  if (ids.length === 0) return { data: [], error: null };
+  return gateway.from('profiles').select('id, username, display_name, profile_pic').in('id', ids) as Promise<ApiResult<Profile[]>>;
 }

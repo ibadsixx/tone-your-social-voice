@@ -22,6 +22,7 @@ export const useExplorePosts = () => {
   const [posts, setPosts] = useState<ExplorePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const { toast } = useToast();
 
@@ -52,6 +53,7 @@ export const useExplorePosts = () => {
 
       const newPosts = data || [];
       
+      setError(null);
       if (resetPosts) {
         setPosts(newPosts);
         setOffset(POSTS_PER_PAGE);
@@ -62,6 +64,7 @@ export const useExplorePosts = () => {
       
       setHasMore(newPosts.length === POSTS_PER_PAGE);
     } catch (error: any) {
+      setError(error?.message || 'Failed to load posts');
       toast({
         title: 'Error',
         description: 'Failed to load posts',
@@ -91,6 +94,7 @@ export const useExplorePosts = () => {
     posts,
     loading,
     hasMore,
+    error,
     loadMore,
     refresh
   };

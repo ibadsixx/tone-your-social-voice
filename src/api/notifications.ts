@@ -2,8 +2,8 @@ import { gateway } from './client';
 import type { ApiResult } from './client';
 import type { Notification } from './types';
 
-export async function getNotifications(userId: string): Promise<ApiResult<Notification[]>> {
-  return gateway.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50) as Promise<ApiResult<Notification[]>>;
+export async function getNotifications(userId: string, limit = 50): Promise<ApiResult<Notification[]>> {
+  return gateway.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(limit) as Promise<ApiResult<Notification[]>>;
 }
 
 export async function createNotification(data: Partial<Notification>): Promise<ApiResult<Notification>> {
@@ -15,7 +15,7 @@ export async function markAsRead(id: string): Promise<ApiResult<null>> {
 }
 
 export async function markAllAsRead(userId: string): Promise<ApiResult<null>> {
-  return gateway.from('notifications').update({ is_read: true }).eq('user_id', userId) as Promise<ApiResult<null>>;
+  return gateway.from('notifications').update({ is_read: true }).eq('user_id', userId).eq('is_read', false) as Promise<ApiResult<null>>;
 }
 
 export async function deleteNotification(id: string): Promise<ApiResult<null>> {

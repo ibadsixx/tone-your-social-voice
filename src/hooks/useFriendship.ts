@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { gateway } from '@/lib/gateway';
+import { blockingApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 
 interface FriendshipStatus {
@@ -26,13 +27,9 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
 
     try {
       // Check if users are blocked first
-      const { data: blockData } = await gateway
-        .from('blocks')
-        .select('*')
-        .or(`and(blocker_id.eq.${currentUserId},blocked_id.eq.${profileId}),and(blocker_id.eq.${profileId},blocked_id.eq.${currentUserId})`)
-        .maybeSingle();
+      const { isBlocked, isBlockedBy } = await blockingApi.getBlockStatus(currentUserId, profileId);
 
-      if (blockData) {
+      if (isBlocked || isBlockedBy) {
         // Users are blocked, don't show friendship options
         setFriendship({
           id: null,

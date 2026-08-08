@@ -6,6 +6,9 @@ export type {
 } from './types';
 export type { Profile } from './profiles';
 export type {
+  AdActivity, SavedAdItem, AdAdvertiser, AdTopic, AdSettings,
+} from './ads';
+export type {
   AudienceList, BugReport, CallHistory, College, Company,
   ContentPreference, EditorProject, EncryptionVerification,
   ExportRequest, FamilyRelationship, Follower, Follow,
@@ -20,6 +23,7 @@ export type {
   UserEncryptionKey, UserFeedback, UserPreference,
 } from './users-types';
 
+import * as adsApi from './ads';
 import * as postsApi from './posts';
 import * as commentsApi from './comments';
 import * as storiesApi from './stories';
@@ -35,6 +39,7 @@ import * as advertisersApi from './advertisers';
 import * as usersApi from './users';
 
 export {
+  adsApi,
   postsApi,
   commentsApi,
   storiesApi,

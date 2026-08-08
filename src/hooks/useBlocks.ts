@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { blockingApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 
 interface BlockStatus {
@@ -23,15 +23,7 @@ export const useBlocks = (profileId: string, currentUserId?: string) => {
     }
 
     try {
-      const { data, error } = await gateway
-        .from('blocks')
-        .select('*')
-        .or(`and(blocker_id.eq.${currentUserId},blocked_id.eq.${profileId}),and(blocker_id.eq.${profileId},blocked_id.eq.${currentUserId})`);
-
-      if (error) throw error;
-
-      const isBlocked = data?.some(block => block.blocker_id === currentUserId) || false;
-      const isBlockedBy = data?.some(block => block.blocker_id === profileId) || false;
+      const { isBlocked, isBlockedBy } = await blockingApi.getBlockStatus(currentUserId, profileId);
 
       setBlockStatus({
         isBlocked,
@@ -48,11 +40,7 @@ export const useBlocks = (profileId: string, currentUserId?: string) => {
     if (!currentUserId || !profileId) return;
 
     try {
-      const { error } = await gateway.rpc('block_user', {
-        p_blocker: currentUserId,
-        p_blocked: profileId,
-        p_block_type: blockType
-      });
+      const { error } = await blockingApi.blockUser(currentUserId, profileId, blockType);
 
       if (error) throw error;
 
@@ -78,11 +66,7 @@ export const useBlocks = (profileId: string, currentUserId?: string) => {
     if (!currentUserId || !profileId) return;
 
     try {
-      const { error } = await gateway
-        .from('blocks')
-        .delete()
-        .eq('blocker_id', currentUserId)
-        .eq('blocked_id', profileId);
+      const { error } = await blockingApi.unblockUser(currentUserId, profileId);
 
       if (error) throw error;
 

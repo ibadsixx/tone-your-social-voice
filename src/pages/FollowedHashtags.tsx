@@ -1,7 +1,7 @@
 import { useFollowedHashtagsFeed } from '@/hooks/useFollowedHashtagsFeed';
 import { useAuth } from '@/hooks/useAuth';
 import Post from '@/components/Post';
-import { Loader2, Hash, Heart } from 'lucide-react';
+import { Loader2, Hash, Heart, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
@@ -9,7 +9,7 @@ import PageContainer from '@/components/PageContainer';
 
 const FollowedHashtags = () => {
   const { user } = useAuth();
-  const { posts, loading, followedHashtags } = useFollowedHashtagsFeed();
+  const { posts, loading, followedHashtags, error, refresh } = useFollowedHashtagsFeed();
 
   if (!user) {
     return (
@@ -70,7 +70,21 @@ const FollowedHashtags = () => {
         </Card>
       )}
 
-      {followedHashtags.length === 0 ? (
+      {error ? (
+        <Card className="p-8 text-center">
+          <Hash className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+          <h2 className="text-xl font-semibold text-foreground mb-2">
+            Couldn't load followed hashtags
+          </h2>
+          <p className="text-muted-foreground mb-4">
+            {error}
+          </p>
+          <Button variant="outline" onClick={refresh}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
+        </Card>
+      ) : followedHashtags.length === 0 ? (
         <Card className="p-8 text-center">
           <Hash className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
           <h2 className="text-xl font-semibold text-foreground mb-2">

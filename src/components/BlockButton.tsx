@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useBlocks } from '@/hooks/useBlocks';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { blockingApi } from '@/api';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -34,15 +34,9 @@ const BlockButton = ({ profileId, username, displayName }: BlockButtonProps) => 
   // Check restriction status on mount
   useState(() => {
     if (!user?.id || !profileId) return;
-    gateway
-      .from('restricted_users')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('restricted_user_id', profileId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) setIsRestricted(true);
-      });
+    blockingApi.isRestricted(user.id, profileId).then(isRestricted => {
+      if (isRestricted) setIsRestricted(true);
+    });
   });
 
   if (!user || user.id === profileId) return null;
@@ -61,9 +55,7 @@ const BlockButton = ({ profileId, username, displayName }: BlockButtonProps) => 
     if (!user?.id) return;
     setRestrictLoading(true);
     try {
-      const { error } = await gateway
-        .from('restricted_users')
-        .insert({ user_id: user.id, restricted_user_id: profileId });
+      const { error } = await blockingApi.restrictUser(user.id, profileId);
       if (error) throw error;
       setIsRestricted(true);
       toast({ title: 'User restricted', description: `${displayName} has been restricted.` });
@@ -84,11 +76,7 @@ const BlockButton = ({ profileId, username, displayName }: BlockButtonProps) => 
     if (!user?.id) return;
     setRestrictLoading(true);
     try {
-      const { error } = await gateway
-        .from('restricted_users')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('restricted_user_id', profileId);
+      const { error } = await blockingApi.unrestrictUser(user.id, profileId);
       if (error) throw error;
       setIsRestricted(false);
       toast({ title: 'Restriction removed', description: `${displayName} is no longer restricted.` });

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { gateway } from '@/lib/gateway';
+import { blockingApi, profilesApi } from '@/api';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,7 +35,6 @@ interface ProfileResult {
 }
 
 interface BlockedUser {
-  id: string;
   blocked_id: string;
   created_at: string;
   blocked_user: {
@@ -59,6 +58,12 @@ interface NicknameRow {
   id: string;
   nickname: string;
   created_at: string;
+}
+
+function isBackendUnavailable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: string }).code;
+  return code === '401' || code === '403' || code === '404';
 }
 
 const BlockedUsersManager = () => {
@@ -109,13 +114,7 @@ const BlockedUsersManager = () => {
 
 function searchProfiles(userId: string | undefined, query: string): Promise<ProfileResult[]> {
   if (query.length < 2) return Promise.resolve([]);
-  return gateway
-    .from('profiles')
-    .select('id, username, display_name, profile_pic')
-    .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
-    .neq('id', userId)
-    .limit(10)
-    .then(({ data }) => (data || []) as ProfileResult[]);
+  return profilesApi.searchProfiles(query, userId).then(({ data }) => (data || []) as ProfileResult[]);
 }
 
 function enrichRows<T extends { target_id: string }>(
@@ -145,11 +144,7 @@ const RestrictedSection = () => {
   const fetchRestricted = useCallback(async () => {
     if (!user) return;
     try {
-      const { data, error } = await gateway
-        .from('restricted_users')
-        .select('id, restricted_user_id, created_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      const { data, error } = await blockingApi.getRestrictedUsers(user.id);
 
       if (error) throw error;
 
@@ -159,10 +154,7 @@ const RestrictedSection = () => {
       }
 
       const ids = data.map(r => r.restricted_user_id);
-      const { data: profiles } = await gateway
-        .from('profiles')
-        .select('id, username, display_name, profile_pic')
-        .in('id', ids);
+      const { data: profiles } = await profilesApi.getProfilesByIds(ids);
 
       setRows(data.map(r => {
         const p = profiles?.find(pr => pr.id === r.restricted_user_id);
@@ -176,8 +168,13 @@ const RestrictedSection = () => {
         };
       }));
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to load restricted users';
-      toast({ title: 'Error', description: message, variant: 'destructive' });
+      if (isBackendUnavailable(err)) {
+        console.warn('[RestrictedSection] Restricted users unavailable:', err);
+        setRows([]);
+      } else {
+        const message = err instanceof Error ? err.message : 'Failed to load restricted users';
+        toast({ title: 'Error', description: message, variant: 'destructive' });
+      }
     } finally {
       setLoading(false);
     }
@@ -193,11 +190,10 @@ const RestrictedSection = () => {
   }, [user?.id]);
 
   const addRestricted = async (targetId: string) => {
+    if (!user?.id) return;
     setAdding(true);
     try {
-      const { error } = await gateway
-        .from('restricted_users')
-        .insert({ user_id: user?.id, restricted_user_id: targetId });
+      const { error } = await blockingApi.restrictUser(user.id, targetId);
       if (error) throw error;
       setSearchQuery('');
       setSearchResults([]);
@@ -209,10 +205,11 @@ const RestrictedSection = () => {
     } finally { setAdding(false); }
   };
 
-  const removeRestricted = async (id: string) => {
+  const removeRestricted = async (targetId: string) => {
+    if (!user?.id) return;
     try {
-      await gateway.from('restricted_users').delete().eq('id', id);
-      setRows(prev => prev.filter(r => r.id !== id));
+      await blockingApi.unrestrictUser(user.id, targetId);
+      setRows(prev => prev.filter(r => r.target_id !== targetId));
       toast({ title: 'Restriction removed' });
     } catch {
       toast({ title: 'Error', description: 'Failed to remove restriction', variant: 'destructive' });
@@ -290,7 +287,7 @@ const RestrictedSection = () => {
                     <p className="text-xs text-muted-foreground">@{row.username}</p>
                   </div>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => removeRestricted(row.id)} className="hover:bg-destructive/10 hover:text-destructive">
+                <Button size="sm" variant="outline" onClick={() => removeRestricted(row.target_id)} className="hover:bg-destructive/10 hover:text-destructive">
                   <X className="h-4 w-4 mr-1" /> Remove
                 </Button>
               </motion.div>
@@ -311,11 +308,7 @@ const BlockedProfilesSection = () => {
   const fetchBlockedUsers = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const { data: blocks, error: blocksError } = await gateway
-        .from('blocks')
-        .select('id, blocked_id, created_at')
-        .eq('blocker_id', user.id)
-        .order('created_at', { ascending: false });
+      const { data: blocks, error: blocksError } = await blockingApi.getBlockedUsers(user.id);
 
       if (blocksError) throw blocksError;
 
@@ -325,20 +318,23 @@ const BlockedProfilesSection = () => {
       }
 
       const blockedIds = blocks.map(block => block.blocked_id);
-      const { data: profiles } = await gateway
-        .from('profiles')
-        .select('id, username, display_name, profile_pic')
-        .in('id', blockedIds);
+      const { data: profiles } = await profilesApi.getProfilesByIds(blockedIds);
 
       setBlockedUsers(blocks.map(block => ({
-        ...block,
+        blocked_id: block.blocked_id,
+        created_at: block.created_at,
         blocked_user: profiles?.find(p => p.id === block.blocked_id) || {
           id: block.blocked_id, username: 'unknown', display_name: 'Unknown User', profile_pic: null
         }
       })));
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to load blocked users';
-      toast({ title: 'Error', description: message, variant: 'destructive' });
+      if (isBackendUnavailable(err)) {
+        console.warn('[BlockedProfilesSection] Blocked users unavailable:', err);
+        setBlockedUsers([]);
+      } else {
+        const message = err instanceof Error ? err.message : 'Failed to load blocked users';
+        toast({ title: 'Error', description: message, variant: 'destructive' });
+      }
     } finally {
       setLoading(false);
     }
@@ -346,10 +342,11 @@ const BlockedProfilesSection = () => {
 
   useEffect(() => { fetchBlockedUsers(); }, [fetchBlockedUsers]);
 
-  const unblockUser = async (blockId: string, username: string) => {
+  const unblockUser = async (blockedId: string, username: string) => {
+    if (!user?.id) return;
     try {
-      await gateway.from('blocks').delete().eq('id', blockId);
-      setBlockedUsers(prev => prev.filter(block => block.id !== blockId));
+      await blockingApi.unblockUser(user.id, blockedId);
+      setBlockedUsers(prev => prev.filter(block => block.blocked_id !== blockedId));
       toast({ title: 'User unblocked', description: `@${username} has been unblocked.` });
     } catch {
       toast({ title: 'Error', description: 'Failed to unblock user.', variant: 'destructive' });
@@ -373,7 +370,7 @@ const BlockedProfilesSection = () => {
       <AnimatePresence>
         {blockedUsers.map((block) => (
           <motion.div
-            key={block.id}
+            key={block.blocked_id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
@@ -391,7 +388,7 @@ const BlockedProfilesSection = () => {
             </div>
             <div className="flex items-center gap-3">
               <p className="text-xs text-muted-foreground">Blocked {new Date(block.created_at).toLocaleDateString()}</p>
-              <Button size="sm" variant="outline" onClick={() => unblockUser(block.id, block.blocked_user.username)}
+              <Button size="sm" variant="outline" onClick={() => unblockUser(block.blocked_id, block.blocked_user.username)}
                 className="hover:bg-destructive/10 hover:text-destructive">
                 Unblock
               </Button>
@@ -414,11 +411,7 @@ const BlockedNicknamesSection = () => {
   const fetchNicknames = useCallback(async () => {
     if (!user) return;
     try {
-      const { data } = await gateway
-        .from('blocked_nicknames')
-        .select('id, nickname, created_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      const { data } = await blockingApi.getBlockedNicknames(user.id);
       setNicknames((data || []) as NicknameRow[]);
     } catch {
       console.warn('Failed to fetch nicknames');
@@ -428,12 +421,10 @@ const BlockedNicknamesSection = () => {
   useEffect(() => { fetchNicknames(); }, [fetchNicknames]);
 
   const addNickname = async () => {
-    if (!newNickname.trim()) return;
+    if (!newNickname.trim() || !user?.id) return;
     setAdding(true);
     try {
-      const { error } = await gateway
-        .from('blocked_nicknames')
-        .insert({ user_id: user?.id, nickname: newNickname.trim() });
+      const { error } = await blockingApi.addBlockedNickname(user.id, newNickname.trim());
       if (error) throw error;
       setNewNickname('');
       toast({ title: 'Nickname blocked' });
@@ -446,7 +437,7 @@ const BlockedNicknamesSection = () => {
 
   const removeNickname = async (id: string) => {
     try {
-      await gateway.from('blocked_nicknames').delete().eq('id', id);
+      await blockingApi.removeBlockedNickname(id);
       setNicknames(prev => prev.filter(n => n.id !== id));
     } catch {
       toast({ title: 'Error', description: 'Failed to remove nickname', variant: 'destructive' });
@@ -524,29 +515,27 @@ const BlockedSendersSection = ({ table, title, description }: SendersSectionProp
   const fetchRows = useCallback(async () => {
     if (!user) return;
     try {
-      const { data, error } = await gateway
-        .from(table)
-        .select('id, blocked_user_id, created_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      const { data, error } = await blockingApi.getBlockedSenders(table, user.id);
 
       if (error) throw error;
 
       if (!data || data.length === 0) { setRows([]); return; }
 
       const ids = data.map(r => r.blocked_user_id);
-      const { data: profiles } = await gateway
-        .from('profiles')
-        .select('id, username, display_name, profile_pic')
-        .in('id', ids);
+      const { data: profiles } = await profilesApi.getProfilesByIds(ids);
 
       setRows(enrichRows(
         data.map(d => ({ id: d.id, target_id: d.blocked_user_id, created_at: d.created_at })),
         profiles
       ));
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to load data';
-      toast({ title: 'Error', description: message, variant: 'destructive' });
+      if (isBackendUnavailable(err)) {
+        console.warn('[BlockedSendersSection] Blocked senders unavailable:', err);
+        setRows([]);
+      } else {
+        const message = err instanceof Error ? err.message : 'Failed to load data';
+        toast({ title: 'Error', description: message, variant: 'destructive' });
+      }
     } finally { setLoading(false); }
   }, [user, table, toast]);
 
@@ -560,11 +549,9 @@ const BlockedSendersSection = ({ table, title, description }: SendersSectionProp
   }, [user?.id]);
 
   const addSender = async (targetId: string) => {
+    if (!user?.id) return;
     try {
-      const { error } = await gateway.from(table).insert({
-        user_id: user?.id,
-        blocked_user_id: targetId,
-      } as never);
+      const { error } = await blockingApi.addBlockedSender(table, user.id, targetId);
       if (error) throw error;
       setSearchQuery('');
       setSearchResults([]);
@@ -578,7 +565,7 @@ const BlockedSendersSection = ({ table, title, description }: SendersSectionProp
 
   const removeSender = async (id: string) => {
     try {
-      await gateway.from(table).delete().eq('id', id as never);
+      await blockingApi.removeBlockedSender(table, id);
       setRows(prev => prev.filter(r => r.id !== id));
     } catch {
       toast({ title: 'Error', description: 'Failed to remove', variant: 'destructive' });

@@ -30,7 +30,7 @@ const getNotificationIcon = (type: string) => {
 };
 
 const NotificationsPage = () => {
-  const { notifications, unreadCount, loading, markAsRead, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, loading, error, markAsRead, markAllAsRead, refresh } = useNotifications();
   const navigate = useNavigate();
 
   const handleNotificationClick = (notification: any) => {
@@ -86,7 +86,17 @@ const NotificationsPage = () => {
       </header>
 
       <main className="flex-1">
-        {loading ? (
+        {error ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+            <Bell className="h-12 w-12 text-destructive mb-2" />
+            <p className="text-sm text-destructive mb-3">Failed to load notifications</p>
+            <p className="text-xs text-muted-foreground mb-4 max-w-xs break-words">{error}</p>
+            <Button variant="outline" size="sm" onClick={refresh}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>

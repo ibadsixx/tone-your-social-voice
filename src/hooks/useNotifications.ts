@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { gateway } from '@/lib/gateway';
+import { notificationsApi, profilesApi } from '@/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -28,11 +29,16 @@ export const useNotifications = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
   const { user } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
     fetchNotifications();
     
@@ -68,27 +74,22 @@ export const useNotifications = () => {
     return () => {
       gateway.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, retry]);
 
   const fetchNotifications = async () => {
     if (!user) return;
 
     try {
-      const { data, error } = await gateway
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(20);
+      setLoading(true);
+      setError(null);
+
+      const { data, error } = await notificationsApi.getNotifications(user.id, 20);
 
       if (error) throw error;
 
       // Fetch actor profiles separately
       const actorIds = data?.map(n => n.actor_id) || [];
-      const { data: profiles } = await gateway
-        .from('profiles')
-        .select('id, username, display_name, profile_pic')
-        .in('id', actorIds);
+      const { data: profiles } = await profilesApi.getProfilesByIds(actorIds);
 
       const profilesMap = new Map(profiles?.map(p => [p.id, p]) || []);
       
@@ -101,6 +102,7 @@ export const useNotifications = () => {
       setUnreadCount(notificationsWithActors?.filter(n => !n.is_read).length || 0);
     } catch (error: any) {
       console.error('Error fetching notifications:', error);
+      setError(error?.message || 'Failed to load notifications');
     } finally {
       setLoading(false);
     }
@@ -110,11 +112,7 @@ export const useNotifications = () => {
     if (!user) return;
 
     try {
-      const { error } = await gateway
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('id', notificationId)
-        .eq('user_id', user.id);
+      const { error } = await notificationsApi.markAsRead(notificationId);
 
       if (error) throw error;
 
@@ -131,11 +129,7 @@ export const useNotifications = () => {
     if (!user) return;
 
     try {
-      const { error } = await gateway
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('user_id', user.id)
-        .eq('is_read', false);
+      const { error } = await notificationsApi.markAllAsRead(user.id);
 
       if (error) throw error;
 
@@ -160,9 +154,11 @@ export const useNotifications = () => {
     notifications,
     unreadCount,
     loading,
+    error,
     markAsRead,
     markAllAsRead,
-    refetch: fetchNotifications
+    refetch: fetchNotifications,
+    refresh: () => setRetry((n) => n + 1),
   };
 };
 
@@ -180,16 +176,14 @@ export const createNotification = async (params: {
   if (userId === actorId) return;
 
   try {
-    const { error } = await gateway
-      .from('notifications')
-      .insert({
-        user_id: userId,
-        actor_id: actorId,
-        type,
-        message,
-        post_id: postId,
-        comment_id: commentId
-      });
+    const { error } = await notificationsApi.createNotification({
+      user_id: userId,
+      actor_id: actorId,
+      type,
+      message,
+      post_id: postId,
+      comment_id: commentId
+    });
 
     if (error) throw error;
   } catch (error) {

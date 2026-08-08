@@ -7,9 +7,10 @@ import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { gateway } from '@/lib/gateway';
+import { blockingApi } from '@/api';
 import {
   Shield, User, Bell, AlertTriangle, CheckCircle, XCircle,
-  MessageSquare, Lock, Eye, ChevronRight, Gift, Mail
+  Lock, ChevronRight, Gift, Mail
 } from 'lucide-react';
 
 const SettingsLanding: React.FC = () => {
@@ -17,48 +18,42 @@ const SettingsLanding: React.FC = () => {
   const { profile } = useProfile();
   const navigate = useNavigate();
 
-  const [mfaEnabled, setMfaEnabled] = useState(false);
-  const [blockCount, setBlockCount] = useState(0);
-  const [reportCount, setReportCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [blockCount, setBlockCount] = useState<number | null>(null);
+  const [reportCount, setReportCount] = useState<number | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    Promise.all([
-      checkMFA(),
-      fetchBlockCount(),
-      fetchReportCount(),
-    ]).finally(() => setLoading(false));
+    let cancelled = false;
+    Promise.allSettled([fetchBlockCount(), fetchReportCount()]).then((results) => {
+      if (cancelled) return;
+      const reasons = results
+        .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+        .map((r) => String((r.reason as Error)?.message || 'unknown error'));
+      setStatusError(reasons.length ? reasons.join('; ') : null);
+    });
+    return () => { cancelled = true; };
   }, [user]);
 
-  const checkMFA = async () => {
-    try {
-      const { data, error } = await gateway.auth.mfa.listFactors();
-      if (!error) {
-        const verified = data.totp.some(f => f.status === 'verified');
-        setMfaEnabled(verified);
-      }
-    } catch (e) { console.warn('MFA check failed', e); }
-  };
-
   const fetchBlockCount = async () => {
-    const { count } = await gateway
-      .from('blocks')
-      .select('*', { count: 'exact', head: true })
-      .eq('blocker_id', user?.id);
-    setBlockCount(count || 0);
+    if (!user) return;
+    const { data, error } = await blockingApi.getBlockedUsers(user.id);
+    if (error) throw new Error(error.message);
+    setBlockCount(Array.isArray(data) ? data.length : 0);
   };
 
   const fetchReportCount = async () => {
-    const { count } = await gateway
+    const { data, error } = await gateway
       .from('profile_reports')
-      .select('*', { count: 'exact', head: true })
+      .select('*', { count: 'exact' })
       .eq('reported_user_id', user?.id);
-    setReportCount(count || 0);
+    if (error) throw new Error(error.message);
+    setReportCount(Number(data) || 0);
   };
 
   const birthdaySet = !!profile?.birthday;
-  const emailVerified = user?.email_confirmed_at || false;
+  const emailVerified = !!user?.email_confirmed_at;
+  const mfaEnabled = (user?.factors || []).some((f) => f?.status === 'verified');
 
   const pendingItems: { label: string; icon: React.ElementType; done: boolean; action: string; section: string }[] = [
     { label: 'Birthday set', icon: Gift, done: birthdaySet, action: 'Set your birthday', section: 'personal' },
@@ -110,6 +105,11 @@ const SettingsLanding: React.FC = () => {
             <h3 className="font-semibold text-sm text-foreground">Account status</h3>
           </div>
           <Separator />
+          {statusError && (
+            <p className="text-xs text-amber-600">
+              Couldn't load some account status from the gateway: {statusError}
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
               {mfaEnabled ? <CheckCircle className="w-4 h-4 text-green-500" /> : <XCircle className="w-4 h-4 text-muted-foreground" />}
@@ -117,26 +117,18 @@ const SettingsLanding: React.FC = () => {
             </div>
             <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
               <Lock className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">{blockCount} user{blockCount !== 1 ? 's' : ''} blocked</span>
+              <span className="text-xs text-muted-foreground">
+                {blockCount === null ? 'Loading…' : `${blockCount} user${blockCount !== 1 ? 's' : ''} blocked`}
+              </span>
             </div>
             <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
-              <MessageSquare className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Messaging: active</span>
-            </div>
-            <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
-              <Eye className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Posting: active</span>
-            </div>
-            <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
-              <User className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Commenting: active</span>
-            </div>
-            <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30">
-              {reportCount > 0 ? <AlertTriangle className="w-4 h-4 text-amber-500" /> : <CheckCircle className="w-4 h-4 text-green-500" />}
-              <span className="text-xs text-muted-foreground">{reportCount > 0 ? `${reportCount} report${reportCount !== 1 ? 's' : ''}` : 'No violations'}</span>
+              {reportCount === null ? <XCircle className="w-4 h-4 text-muted-foreground" /> : reportCount > 0 ? <AlertTriangle className="w-4 h-4 text-amber-500" /> : <CheckCircle className="w-4 h-4 text-green-500" />}
+              <span className="text-xs text-muted-foreground">
+                {reportCount === null ? 'Loading…' : reportCount > 0 ? `${reportCount} report${reportCount !== 1 ? 's' : ''}` : 'No violations'}
+              </span>
             </div>
           </div>
-          {reportCount > 0 && (
+          {reportCount !== null && reportCount > 0 && (
             <p className="text-xs text-amber-600 mt-1">
               You have {reportCount} report{reportCount !== 1 ? 's' : ''} filed against your account.
             </p>

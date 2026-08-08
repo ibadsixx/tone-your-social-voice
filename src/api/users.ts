@@ -670,6 +670,13 @@ export async function updatePrivacySetting(id: string, data: Partial<PrivacySett
   return gateway.from('privacy_settings').update(data).eq('id', id) as Promise<ApiResult<null>>;
 }
 
+export async function upsertPrivacySetting(userId: string, settingName: string, settingValue: string): Promise<ApiResult<null>> {
+  return gateway.from('privacy_settings').upsert(
+    { user_id: userId, setting_name: settingName, setting_value: settingValue },
+    { onConflict: 'user_id,setting_name' }
+  ) as Promise<ApiResult<null>>;
+}
+
 export async function deletePrivacySetting(id: string): Promise<ApiResult<null>> {
   return gateway.from('privacy_settings').delete().eq('id', id) as Promise<ApiResult<null>>;
 }

@@ -150,16 +150,16 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
       gateway.storage
         .from(bucket)
         .upload(fileName, item.file, { contentType: item.file.type })
-        .then(({ error }) => {
+        .then(({ error, data }) => {
           if (error) {
             console.error('Upload failed:', error);
             setMediaItems(prev => prev.map(m => m.localUrl === item.localUrl ? { ...m, status: 'error' } : m));
             return;
           }
 
-          const { data: urlData } = gateway.storage.from(bucket).getPublicUrl(fileName);
-          if (urlData?.publicUrl) {
-            setMediaItems(prev => prev.map(m => m.localUrl === item.localUrl ? { ...m, url: urlData.publicUrl, status: 'done' } : m));
+          const publicUrl = data?.url || gateway.storage.from(bucket).getPublicUrl(fileName).data.publicUrl;
+          if (publicUrl) {
+            setMediaItems(prev => prev.map(m => m.localUrl === item.localUrl ? { ...m, url: publicUrl, status: 'done' } : m));
           }
         });
     }

@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
-import { Search as SearchIcon, User, Users, FileText, Loader2, Grid3X3, Plus } from 'lucide-react';
+import { Search as SearchIcon, User, Users, FileText, Loader2, Grid3X3, Plus, RefreshCw } from 'lucide-react';
 import { useSearch, SearchResult } from '@/hooks/useSearch';
 import { useExplorePosts } from '@/hooks/useExplorePosts';
 import { gateway } from '@/lib/gateway';
@@ -31,6 +31,7 @@ const Search = () => {
     posts: explorePosts, 
     loading: postsLoading, 
     hasMore, 
+    error: exploreError,
     loadMore, 
     refresh 
   } = useExplorePosts();
@@ -236,6 +237,16 @@ const Search = () => {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           <span className="ml-2 text-muted-foreground">Loading posts...</span>
+        </div>
+      ) : exploreError ? (
+        <div className="text-center text-muted-foreground py-12">
+          <Grid3X3 className="h-16 w-16 mx-auto mb-4 opacity-30" />
+          <h3 className="text-lg font-medium mb-2">Couldn't load posts</h3>
+          <p className="mb-4">{exploreError}</p>
+          <Button variant="outline" onClick={refresh}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
         </div>
       ) : explorePosts.length === 0 ? (
         <div className="text-center text-muted-foreground py-12">

@@ -7,6 +7,8 @@ interface GatewayUser {
   email?: string;
   user_metadata?: Record<string, unknown>;
   role?: string;
+  email_confirmed_at?: boolean | string;
+  factors?: { id?: string; status?: string; factor_type?: string }[];
 }
 
 interface GatewaySession {
@@ -22,6 +24,8 @@ interface AuthContextType {
   user: GatewayUser | null;
   session: GatewaySession | null;
   loading: boolean;
+  mfaRequired: boolean;
+  completeMfa: (code: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, username: string, displayName: string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<{ error: any }>;
@@ -33,6 +37,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<GatewayUser | null>(null);
   const [session, setSession] = useState<GatewaySession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaFactorId, setMfaFactorId] = useState<string | undefined>(undefined);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -146,23 +152,80 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await gateway.auth.signInWithPassword({
+      const result = await gateway.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) {
+      if (result.error) {
+        setMfaRequired(false);
+        setMfaFactorId(undefined);
         toast({
           title: "Sign in failed",
-          description: error.message,
+          description: result.error.message,
           variant: "destructive"
         });
+        return { error: result.error };
       }
 
-      return { error };
+      if (result.data?.mfaRequired) {
+        setMfaRequired(true);
+        setMfaFactorId(result.data.factorId);
+        return { error: null };
+      }
+
+      setMfaRequired(false);
+      setMfaFactorId(undefined);
+      return { error: null };
     } catch (error: any) {
+      setMfaRequired(false);
+      setMfaFactorId(undefined);
       toast({
         title: "Sign in failed",
+        description: error.message,
+        variant: "destructive"
+      });
+      return { error };
+    }
+  };
+
+  const completeMfa = async (code: string) => {
+    try {
+      if (!mfaFactorId) {
+        return { error: { message: 'No pending two-factor login found' } };
+      }
+
+      const challenge = await gateway.auth.mfa.challenge({ factorId: mfaFactorId });
+      if (challenge.error) {
+        toast({
+          title: "Verification failed",
+          description: challenge.error.message,
+          variant: "destructive"
+        });
+        return { error: challenge.error };
+      }
+
+      const verify = await gateway.auth.mfa.verify({
+        factorId: mfaFactorId,
+        challengeId: challenge.data.id,
+        code,
+      });
+
+      if (verify.error) {
+        toast({
+          title: "Verification failed",
+          description: verify.error.message,
+          variant: "destructive"
+        });
+        return { error: verify.error };
+      }
+
+      setMfaRequired(false);
+      setMfaFactorId(undefined);
+      return { error: null };
+    } catch (error: any) {
+      toast({
+        title: "Verification failed",
         description: error.message,
         variant: "destructive"
       });
@@ -199,6 +262,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         user,
         session,
         loading,
+        mfaRequired,
+        completeMfa,
         signUp,
         signIn,
         signOut,

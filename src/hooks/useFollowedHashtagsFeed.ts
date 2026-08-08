@@ -46,16 +46,20 @@ export const useFollowedHashtagsFeed = () => {
   const [posts, setPosts] = useState<HashtagPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [followedHashtags, setFollowedHashtags] = useState<Array<{ id: string; tag: string }>>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     const fetchFollowedHashtagsPosts = async () => {
       if (!user) {
         setLoading(false);
+        setError(null);
         return;
       }
 
       try {
         setLoading(true);
+        setError(null);
 
         // Get hashtags the user follows
         const { data: follows, error: followsError } = await gateway
@@ -66,12 +70,14 @@ export const useFollowedHashtagsFeed = () => {
         if (followsError) {
           console.error('Error fetching followed hashtags:', followsError);
           setPosts([]);
+          setError(followsError.message || 'Failed to load followed hashtags');
           setLoading(false);
           return;
         }
 
         if (!follows || follows.length === 0) {
           setPosts([]);
+          setFollowedHashtags([]);
           setLoading(false);
           return;
         }
@@ -79,10 +85,18 @@ export const useFollowedHashtagsFeed = () => {
         const hashtagIds = (follows as any[]).map((f: any) => f.hashtag_id);
 
         // Get hashtag details
-        const { data: hashtagsData } = await gateway
+        const { data: hashtagsData, error: hashtagsError } = await gateway
           .from('hashtags' as any)
           .select('id, tag')
           .in('id', hashtagIds);
+
+        if (hashtagsError) {
+          console.error('Error fetching hashtags:', hashtagsError);
+          setPosts([]);
+          setError(hashtagsError.message || 'Failed to load followed hashtags');
+          setLoading(false);
+          return;
+        }
 
         setFollowedHashtags((hashtagsData as any[]) || []);
 
@@ -96,6 +110,7 @@ export const useFollowedHashtagsFeed = () => {
         if (linksError) {
           console.error('Error fetching hashtag links:', linksError);
           setPosts([]);
+          setError(linksError.message || 'Failed to load hashtag posts');
           setLoading(false);
           return;
         }
@@ -142,6 +157,7 @@ export const useFollowedHashtagsFeed = () => {
         if (postsError) {
           console.error('Error fetching posts:', postsError);
           setPosts([]);
+          setError(postsError.message || 'Failed to load posts');
           setLoading(false);
           return;
         }
@@ -169,9 +185,10 @@ export const useFollowedHashtagsFeed = () => {
         );
 
         setPosts(postsWithData as HashtagPost[]);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error in fetchFollowedHashtagsPosts:', error);
         setPosts([]);
+        setError(error?.message || 'Failed to load followed hashtags');
       } finally {
         setLoading(false);
       }
@@ -190,7 +207,9 @@ export const useFollowedHashtagsFeed = () => {
     return () => {
       gateway.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, retry]);
 
-  return { posts, loading, followedHashtags };
+  const refresh = () => setRetry((n) => n + 1);
+
+  return { posts, loading, followedHashtags, error, refresh };
 };

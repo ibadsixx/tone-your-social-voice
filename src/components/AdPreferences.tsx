@@ -5,7 +5,7 @@ import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAdPreferences } from '@/hooks/useAdPreferences';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { profilesApi } from '@/api';
 
 const AdPreferences = () => {
   const [activeTab, setActiveTab] = useState('customize');
@@ -31,8 +31,8 @@ const AdPreferences = () => {
 
   useEffect(() => {
     if (!categoriesOpen || !user) return;
-    gateway.from('profiles').select('birth_year, country').eq('id', user.id).single().then(({ data }) => {
-      if (data) setProfileData(data as { birth_year: number; country: string });
+    profilesApi.getProfileById(user.id).then(({ data }) => {
+      if (data) setProfileData({ birth_year: (data.birth_year as number) || 0, country: (data.country as string) || '' });
     });
   }, [categoriesOpen, user]);
 

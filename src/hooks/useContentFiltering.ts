@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { gateway } from '@/lib/gateway';
+import { blockingApi } from '@/api';
 import { useAuth } from '@/hooks/useAuth';
 
 interface ContentFilteringState {
@@ -37,14 +38,10 @@ export const useContentFiltering = () => {
 
     try {
       // Fetch blocked users
-      const { data: blocksData } = await gateway
-        .from('blocks')
-        .select('blocker_id, blocked_id')
-        .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
-
-      const blockedIds = blocksData?.map(block => 
-        block.blocker_id === user.id ? block.blocked_id : block.blocker_id
-      ) || [];
+      const { data: blockedIds, error: blocksError } = await blockingApi.getBlockedUserIds(user.id);
+      if (blocksError) {
+        console.warn('[CONTENT_FILTER] Blocks fetch failed:', blocksError.message);
+      }
 
       // Fetch hidden content - separate queries for content and profiles
       // content_id entries are "See less" (single reel)
@@ -68,11 +65,7 @@ export const useContentFiltering = () => {
       console.log('[CONTENT_FILTER] Hidden profiles:', hiddenProfileIds);
 
       // Fetch restricted users
-      const { data: restrictedData } = await gateway
-        .from('restricted_users')
-        .select('restricted_user_id')
-        .eq('user_id', user.id);
-
+      const { data: restrictedData } = await blockingApi.getRestrictedUsers(user.id);
       const restrictedIds = restrictedData?.map(r => r.restricted_user_id) || [];
 
       // Fetch muted users

@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { gateway } from '@/lib/gateway';
+import { blockingApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 import { useHiddenContent } from '@/hooks/useHiddenContent';
 
@@ -224,10 +225,7 @@ const ReelReportModal = ({
         const { data: { user } } = await gateway.auth.getUser();
         if (!user) throw new Error('Not logged in');
 
-        const { error } = await gateway.from('blocks').insert({
-          blocker_id: user.id,
-          blocked_id: resolvedOwnerId!,
-        });
+        const { error } = await blockingApi.blockUser(user.id, resolvedOwnerId!, 'full');
 
         if (error && error.code !== '23505') throw error;
 

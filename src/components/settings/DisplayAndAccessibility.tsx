@@ -6,6 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useTheme } from 'next-themes';
+import { useAuth } from '@/hooks/useAuth';
+import { profilesApi } from '@/api';
 import { Moon, Sun, Monitor, Type, Eye, EyeOff, Contrast, Sparkles } from 'lucide-react';
 
 const STORAGE_KEYS = {
@@ -45,6 +47,7 @@ const applyClasses = () => {
 
 const DisplayAndAccessibility: React.FC = () => {
   const { theme, setTheme, resolvedTheme } = useTheme();
+  const { user } = useAuth();
 
   const [fontScale, setFontScaleState] = useState<FontScale>(() => getStored<FontScale>(STORAGE_KEYS.fontScale, 'normal'));
   const [reduceMotion, setReduceMotionState] = useState<boolean>(() => getStored<boolean>(STORAGE_KEYS.reduceMotion, false));
@@ -55,29 +58,54 @@ const DisplayAndAccessibility: React.FC = () => {
     applyClasses();
   }, []);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    profilesApi.getDisplayPreferences(user.id).then(({ data, error }) => {
+      if (cancelled || error || !data) return;
+      setFontScaleState((prev) => (data.font_scale as FontScale) || prev);
+      setReduceMotionState(data.reduce_motion);
+      setReduceTransparencyState(data.reduce_transparency);
+      setHighContrastState(data.high_contrast);
+      applyClasses();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
   const store = (key: string, value: unknown) => {
     localStorage.setItem(key, JSON.stringify(value));
     applyClasses();
   };
 
+  const persist = (data: Partial<{ font_scale: FontScale; reduce_motion: boolean; reduce_transparency: boolean; high_contrast: boolean }>) => {
+    if (!user?.id) return;
+    profilesApi.updateDisplayPreferences(user.id, data).catch(() => {});
+  };
+
   const handleFontScaleChange = (value: FontScale) => {
     setFontScaleState(value);
     store(STORAGE_KEYS.fontScale, value);
+    persist({ font_scale: value });
   };
 
   const handleReduceMotionChange = (checked: boolean) => {
     setReduceMotionState(checked);
     store(STORAGE_KEYS.reduceMotion, checked);
+    persist({ reduce_motion: checked });
   };
 
   const handleReduceTransparencyChange = (checked: boolean) => {
     setReduceTransparencyState(checked);
     store(STORAGE_KEYS.reduceTransparency, checked);
+    persist({ reduce_transparency: checked });
   };
 
   const handleHighContrastChange = (checked: boolean) => {
     setHighContrastState(checked);
     store(STORAGE_KEYS.highContrast, checked);
+    persist({ high_contrast: checked });
   };
 
   return (

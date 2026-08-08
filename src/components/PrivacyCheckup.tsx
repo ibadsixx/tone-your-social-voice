@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { profilesApi, blockingApi, usersApi } from '@/api';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -113,35 +113,23 @@ const PrivacyCheckup = () => {
     setLoading(true);
 
     try {
-      const [profileRes, settingsRes, blocksRes] = await Promise.all([
-        gateway
-          .from('profiles')
-          .select('email, birthday, relationship, email_visibility, birth_date_visibility, birth_year_visibility, relationship_visibility, friends_visibility, following_visibility')
-          .eq('id', user.id)
-          .maybeSingle(),
-        gateway
-          .from('privacy_settings')
-          .select('setting_name, setting_value')
-          .eq('user_id', user.id),
-        gateway
-          .from('blocks')
-          .select('blocked_id')
-          .eq('blocker_id', user.id),
+      const [profileRes, settingsRes] = await Promise.all([
+        profilesApi.getProfileById(user.id),
+        usersApi.getPrivacySettingsByUser(user.id),
       ]);
 
       if (profileRes.error) throw profileRes.error;
       if (settingsRes.error) throw settingsRes.error;
-      if (blocksRes.error) throw blocksRes.error;
 
       setProfileData({
-        email: profileRes.data?.email || '',
-        birthday: profileRes.data?.birthday || '',
-        relationship: profileRes.data?.relationship || '',
-        email_visibility: (profileRes.data?.email_visibility || 'only_me').toLowerCase(),
-        birth_date_visibility: (profileRes.data?.birth_date_visibility || 'public').toLowerCase(),
-        birth_year_visibility: (profileRes.data?.birth_year_visibility || 'public').toLowerCase(),
-        relationship_visibility: profileRes.data?.relationship_visibility || 'friends',
-        friends_visibility: profileRes.data?.friends_visibility || 'only_me',
+        email: (profileRes.data?.email as string) || '',
+        birthday: (profileRes.data?.birthday as string) || '',
+        relationship: (profileRes.data?.relationship as string) || '',
+        email_visibility: ((profileRes.data?.email_visibility as string) || 'only_me').toLowerCase(),
+        birth_date_visibility: ((profileRes.data?.birth_date_visibility as string) || 'public').toLowerCase(),
+        birth_year_visibility: ((profileRes.data?.birth_year_visibility as string) || 'public').toLowerCase(),
+        relationship_visibility: (profileRes.data?.relationship_visibility as string) || 'friends',
+        friends_visibility: (profileRes.data?.friends_visibility as string) || 'only_me',
         following_visibility: String(profileRes.data?.following_visibility ?? 'only_me'),
       });
 
@@ -151,26 +139,32 @@ const PrivacyCheckup = () => {
       }, {});
       setPrivacySettings(settingsObject);
 
-      const blockedIds = (blocksRes.data ?? []).map(block => block.blocked_id);
+      try {
+        const blocksRes = await blockingApi.getBlockedUsers(user.id);
 
-      if (blockedIds.length === 0) {
+        if (blocksRes.error) throw blocksRes.error;
+
+        const blockedIds = (blocksRes.data ?? []).map(block => block.blocked_id);
+
+        if (blockedIds.length === 0) {
+          setBlockedUsers([]);
+        } else {
+          const { data: profiles, error: profilesError } = await profilesApi.getProfilesByIds(blockedIds);
+
+          if (profilesError) throw profilesError;
+
+          const profileMap = new Map((profiles ?? []).map(profile => [profile.id, profile]));
+
+          setBlockedUsers(
+            blockedIds.map((blockedId) => ({
+              blocked_user_id: blockedId,
+              profiles: profileMap.get(blockedId) || fallbackBlockedProfile,
+            }))
+          );
+        }
+      } catch (error) {
+        console.warn('Could not load blocked users', error);
         setBlockedUsers([]);
-      } else {
-        const { data: profiles, error: profilesError } = await gateway
-          .from('profiles')
-          .select('id, display_name, username, profile_pic')
-          .in('id', blockedIds);
-
-        if (profilesError) throw profilesError;
-
-        const profileMap = new Map((profiles ?? []).map(profile => [profile.id, profile]));
-
-        setBlockedUsers(
-          blockedIds.map((blockedId) => ({
-            blocked_user_id: blockedId,
-            profiles: profileMap.get(blockedId) || fallbackBlockedProfile,
-          }))
-        );
       }
     } catch {
       toast({ title: 'Error', description: 'Unable to retrieve privacy preferences', variant: 'destructive' });
@@ -186,10 +180,7 @@ const PrivacyCheckup = () => {
   const saveProfileField = async (field: string, value: string) => {
     if (!user?.id) return;
 
-    const { error } = await gateway
-      .from('profiles')
-      .update({ [field]: value })
-      .eq('id', user.id);
+    const { error } = await profilesApi.updateProfile(user.id, { [field]: value });
 
     if (error) {
       toast({ title: 'Error', description: 'Could not save changes', variant: 'destructive' });
@@ -204,11 +195,8 @@ const PrivacyCheckup = () => {
     if (!user?.id) return;
     const normalized = value.toLowerCase();
     setProfileData(prev => ({ ...prev, [field]: normalized }));
-    
-    const { error } = await gateway
-      .from('profiles')
-      .update({ [field]: normalized })
-      .eq('id', user.id);
+
+    const { error } = await profilesApi.updateProfile(user.id, { [field]: normalized });
 
     if (error) {
       toast({ title: 'Error', description: 'Could not save visibility', variant: 'destructive' });
@@ -225,12 +213,7 @@ const PrivacyCheckup = () => {
     const previousValue = privacySettings[name];
     setPrivacySettings(prev => ({ ...prev, [name]: value }));
 
-    const { error } = await gateway
-      .from('privacy_settings')
-      .upsert(
-        { user_id: user.id, setting_name: name, setting_value: value },
-        { onConflict: 'user_id,setting_name' }
-      );
+    const { error } = await usersApi.upsertPrivacySetting(user.id, name, value);
 
     if (error) {
       setPrivacySettings(prev => {
@@ -249,11 +232,7 @@ const PrivacyCheckup = () => {
   const unblockUser = async (blockedUserId: string) => {
     if (!user?.id) return;
 
-    const { error } = await gateway
-      .from('blocks')
-      .delete()
-      .eq('blocker_id', user.id)
-      .eq('blocked_id', blockedUserId);
+    const { error } = await blockingApi.unblockUser(user.id, blockedUserId);
 
     if (error) {
       toast({ title: 'Error', description: 'Could not lift restriction', variant: 'destructive' });

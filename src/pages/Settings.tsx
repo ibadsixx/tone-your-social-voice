@@ -204,11 +204,11 @@ const Settings = () => {
     qr_code: '',
     verification_code: '',
     factor_id: undefined as string | undefined,
-    challenge_id: undefined as string | undefined,
     enabled: false
   });
   const [totpLoading, setTotpLoading] = useState(false);
   const [totpSetupLoading, setTotpSetupLoading] = useState(false);
+  const mfaEnabled = (user?.factors || []).some((f) => f?.status === 'verified');
   
   // State for privacy settings
   const [privacySettings, setPrivacySettings] = useState({
@@ -321,7 +321,7 @@ const Settings = () => {
         throw new Error('Password must contain uppercase, lowercase, numbers, and special characters');
       }
 
-      // First verify current password by attempting to sign in
+      // Verify the current password against the gateway (real sign-in).
       const { error: signInError } = await gateway.auth.signInWithPassword({
         email: user?.email || '',
         password: passwordData.currentPassword
@@ -331,16 +331,13 @@ const Settings = () => {
         throw new Error('Current password is incorrect');
       }
 
-      // Update password
-      const { error: updateError } = await gateway.auth.updateUser({
-        password: passwordData.newPassword
-      });
-
-      if (updateError) throw updateError;
-
+      // The gateway's PUT /api/auth/user only accepts profile metadata
+      // (display_name, avatar_url, bio, location, website) — it cannot change
+      // passwords, so report that honestly instead of a fake success.
       toast({
-        title: 'Success',
-        description: 'Password updated successfully!'
+        title: 'Password Change Unavailable',
+        description: 'Your current password was verified, but the gateway does not support changing passwords yet.',
+        variant: 'destructive'
       });
 
       // Reset form
@@ -367,32 +364,22 @@ const Settings = () => {
 
   // Check for existing MFA factors on component mount
   useEffect(() => {
-    if (user) {
-      checkExistingMFA();
-    }
-  }, [user]);
-
-  const checkExistingMFA = async () => {
-    try {
-      const { data, error } = await gateway.auth.mfa.listFactors();
-      if (error) throw error;
-
-      const totpFactor = data.totp.find(factor => factor.status === 'verified');
-      if (totpFactor) {
-        setTotpData(prev => ({
-          ...prev,
-          enabled: true,
-          factor_id: totpFactor.id
-        }));
-      }
-    } catch (error: any) {
-      console.error('Error checking MFA status:', error);
-    }
-  };
+    let mounted = true;
+    gateway.auth.mfa.listFactors().then(({ data }) => {
+      if (!mounted) return;
+      const totpFactor = (data.totp || []).find((f: any) => f.status === 'verified');
+      setTotpData(prev => ({
+        ...prev,
+        enabled: !!totpFactor,
+        factor_id: totpFactor?.id,
+      }));
+    }).catch(() => {});
+    return () => { mounted = false; };
+  }, []);
 
   const setupTOTP = async () => {
     setTotpSetupLoading(true);
-    
+
     try {
       const { data, error } = await gateway.auth.mfa.enroll({
         factorType: 'totp',
@@ -409,7 +396,6 @@ const Settings = () => {
         qr_code: qrCodeDataUrl,
         factor_id: data.id
       }));
-
     } catch (error: any) {
       toast({
         title: 'TOTP Setup Failed',
@@ -423,7 +409,7 @@ const Settings = () => {
 
   const verifyTOTP = async () => {
     if (!totpData.verification_code || !totpData.factor_id) return;
-    
+
     setTotpLoading(true);
 
     try {
@@ -445,14 +431,16 @@ const Settings = () => {
         ...prev,
         enabled: true,
         verification_code: '',
-        challenge_id: challengeData.id
+        qr_code: '',
+        secret: ''
       }));
+
+      gateway.auth.refreshSession().catch(() => {});
 
       toast({
         title: 'Success',
         description: 'Two-factor authentication enabled successfully!'
       });
-
     } catch (error: any) {
       toast({
         title: 'Verification Failed',
@@ -465,31 +453,36 @@ const Settings = () => {
   };
 
   const disableTOTP = async () => {
-    if (!totpData.factor_id) return;
-
     setTotpLoading(true);
 
     try {
+      let factorId = totpData.factor_id;
+
+      if (!factorId) {
+        const { data } = await gateway.auth.mfa.listFactors();
+        factorId = (data.totp || []).find((f: any) => f.status === 'verified')?.id;
+      }
+
+      if (!factorId) throw new Error('No verified two-factor factor found');
+
       const { error } = await gateway.auth.mfa.unenroll({
-        factorId: totpData.factor_id
+        factorId
       });
 
       if (error) throw error;
 
-      setTotpData({
-        secret: '',
-        qr_code: '',
-        verification_code: '',
-        factor_id: undefined,
-        challenge_id: undefined,
-        enabled: false
-      });
+      setTotpData(prev => ({
+        ...prev,
+        enabled: false,
+        factor_id: undefined
+      }));
+
+      gateway.auth.refreshSession().catch(() => {});
 
       toast({
         title: 'Success',
         description: 'Two-factor authentication disabled'
       });
-
     } catch (error: any) {
       toast({
         title: 'Disable Failed',
@@ -667,7 +660,7 @@ const Settings = () => {
                         <p className="font-medium">Authenticator App (TOTP)</p>
                         <p className="text-sm text-muted-foreground">Use Google Authenticator, Authy, or similar apps</p>
                       </div>
-                      <Button 
+                      <Button
                         onClick={setupTOTP}
                         disabled={totpSetupLoading}
                         variant="outline"
@@ -689,7 +682,7 @@ const Settings = () => {
                   <div className="space-y-4">
                     <div className="p-4 border rounded-lg bg-muted/50">
                       <h4 className="font-medium mb-3">Setup Instructions</h4>
-                      
+
                       <div className="space-y-4">
                         <div>
                           <p className="text-sm text-muted-foreground mb-3">
@@ -731,9 +724,9 @@ const Settings = () => {
                               maxLength={6}
                               placeholder="000000"
                               value={totpData.verification_code}
-                              onChange={(e) => setTotpData(prev => ({ 
-                                ...prev, 
-                                verification_code: e.target.value.replace(/\D/g, '') 
+                              onChange={(e) => setTotpData(prev => ({
+                                ...prev,
+                                verification_code: e.target.value.replace(/\D/g, '')
                               }))}
                               className="font-mono text-center text-lg w-32"
                             />
@@ -761,7 +754,7 @@ const Settings = () => {
                   </div>
                 )}
 
-                {totpData.enabled && (
+                {(totpData.enabled || (mfaEnabled && !totpData.qr_code)) && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between p-4 border rounded-lg bg-green-50 border-green-200">
                       <div className="flex items-center gap-3">
@@ -773,7 +766,7 @@ const Settings = () => {
                           <p className="text-sm text-green-700">Your account is protected with TOTP authentication</p>
                         </div>
                       </div>
-                      <Button 
+                      <Button
                         onClick={disableTOTP}
                         disabled={totpLoading}
                         variant="outline"

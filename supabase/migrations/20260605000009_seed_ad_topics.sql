@@ -2,6 +2,7 @@ CREATE OR REPLACE FUNCTION seed_default_ad_topics(p_user_id UUID)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
   INSERT INTO public.ad_topics (user_id, name, icon, preference)
@@ -18,3 +19,5 @@ BEGIN
   );
 END;
 $$;
+
+GRANT EXECUTE ON FUNCTION public.seed_default_ad_topics(UUID) TO anon, authenticated;

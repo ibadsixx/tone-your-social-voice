@@ -19,6 +19,7 @@ import { ReportMessageModal } from './ReportMessageModal';
 import { useToast } from '@/hooks/use-toast';
 import { EmojiAsset } from '@/components/EmojiAsset';
 import { gateway } from '@/lib/gateway';
+import { blockingApi } from '@/api';
 import { deleteCachedConversationKey } from '@/lib/conversationEncryption';
 import {
   Dialog,
@@ -205,15 +206,9 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   // Check restriction status on mount
   useEffect(() => {
     if (isOpen && otherUser?.id && currentUserId) {
-      gateway
-        .from('restricted_users')
-        .select('id')
-        .eq('user_id', currentUserId)
-        .eq('restricted_user_id', otherUser.id)
-        .maybeSingle()
-        .then(({ data }) => {
-          setIsRestricted(!!data);
-        });
+      blockingApi.isRestricted(currentUserId, otherUser.id).then((isRestrictedFlag) => {
+        setIsRestricted(isRestrictedFlag);
+      });
     }
   }, [isOpen, otherUser?.id, currentUserId]);
 
@@ -338,9 +333,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     if (!currentUserId || !otherUser?.id) return;
     setRestrictLoading(true);
     try {
-      const { error } = await gateway
-        .from('restricted_users')
-        .insert({ user_id: currentUserId, restricted_user_id: otherUser.id });
+      const { error } = await blockingApi.restrictUser(currentUserId, otherUser.id);
       if (error) throw error;
       setIsRestricted(true);
       setShowLimitDialog(false);
@@ -363,11 +356,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     if (!currentUserId || !otherUser?.id) return;
     setRestrictLoading(true);
     try {
-      const { error } = await gateway
-        .from('restricted_users')
-        .delete()
-        .eq('user_id', currentUserId)
-        .eq('restricted_user_id', otherUser.id);
+      const { error } = await blockingApi.unrestrictUser(currentUserId, otherUser.id);
       if (error) throw error;
       setIsRestricted(false);
       setShowLimitDialog(false);

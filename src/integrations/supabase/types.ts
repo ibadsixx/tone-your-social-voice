@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.4"
+    PostgrestVersion: "13.0.4",
   }
   public: {
     Tables: {
@@ -4721,27 +4721,6 @@ export type Database = {
       update_contact_setting: {
         Args: { p_setting_name: string; p_setting_value: string }
         Returns: undefined
-      }
-        Returns: {
-          chat_theme: string
-          conversation_id: string
-          created_at: string
-          id: string
-          is_muted: boolean
-          messaging_controls: Json | null
-          quick_emoji: string | null
-          read_receipts_enabled: boolean
-          updated_at: string
-          user_id: string
-          vanishing_messages_duration: number | null
-          vanishing_messages_enabled: boolean
-        }
-        SetofOptions: {
-          from: "*"
-          to: "conversation_settings"
-          isOneToOne: true
-          isSetofReturn: false
-        }
       }
       update_conversation_theme: {
         Args: { p_chat_theme: string; p_conversation_id: string }
