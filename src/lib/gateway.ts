@@ -2,6 +2,11 @@ import type { Database } from '@/integrations/supabase/types';
 
 const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
 
+// The gateway stores files in Cloudinary and returns their CDN URL on upload.
+// The gateway does not serve GET /api/storage/:bucket/*, so we remember the
+// Cloudinary URL and return it from getPublicUrl() instead of a dead URL.
+const storageUrlCache = new Map<string, string>();
+
 type TableName = keyof Database['public']['Tables'];
 
 function getToken(): string | null {
@@ -749,16 +754,19 @@ class GatewayStorageBucket {
         return { data: null, error: { message: errBody.message || res.statusText } };
       }
       const json = await res.json();
-      return { data: { path: json.path || path, url: json.url }, error: null };
+      const url = typeof json?.url === 'string' ? json.url : '';
+      if (url) storageUrlCache.set(`${this._bucket}/${path}`, url);
+      return { data: { path: json.path || path, url }, error: null };
     } catch (err) {
       return { data: null, error: { message: String(err) } };
     }
   }
 
   getPublicUrl(path: string): { data: { publicUrl: string } } {
+    const cached = storageUrlCache.get(`${this._bucket}/${path}`);
     return {
       data: {
-        publicUrl: `${this._baseUrl}/api/storage/${this._bucket}/${path}`,
+        publicUrl: cached || `${this._baseUrl}/api/storage/${this._bucket}/${path}`,
       },
     };
   }
