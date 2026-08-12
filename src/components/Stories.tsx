@@ -193,21 +193,6 @@ const Stories = () => {
           onDelete={user?.id === selectedUserStories.user_id ? deleteStory : undefined}
         />
       )}
-
-      <CreateStoryDialog open={createOpen} onOpenChange={setCreateOpen} />
-
-      {selectedUserStories && (
-        <StoryViewer
-          stories={selectedUserStories.stories}
-          username={selectedUserStories.username}
-          displayName={selectedUserStories.display_name}
-          profilePic={selectedUserStories.profile_pic}
-          open={viewerOpen}
-          onOpenChange={setViewerOpen}
-          onView={markAsViewed}
-          onDelete={user?.id === selectedUserStories.user_id ? deleteStory : undefined}
-        />
-      )}
     </div>
   );
 };

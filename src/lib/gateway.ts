@@ -103,14 +103,28 @@ function applyFilters(data: Record<string, unknown>[], filters: string[]): Recor
   return result;
 }
 
+function compareValues(a: unknown, b: string): number {
+  if (a === null || a === undefined) return -1;
+  const na = Number(a);
+  const nb = Number(b);
+  if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+  const ta = Date.parse(String(a));
+  const tb = Date.parse(b);
+  if (!Number.isNaN(ta) && !Number.isNaN(tb)) return ta - tb;
+  const sa = String(a);
+  if (sa < b) return -1;
+  if (sa > b) return 1;
+  return 0;
+}
+
 function matchFilter(value: unknown, op: string, val: string): boolean {
   switch (op) {
     case 'eq': return String(value) === val;
     case 'neq': return String(value) !== val;
-    case 'gt': return Number(value) > Number(val);
-    case 'gte': return Number(value) >= Number(val);
-    case 'lt': return Number(value) < Number(val);
-    case 'lte': return Number(value) <= Number(val);
+    case 'gt': return compareValues(value, val) > 0;
+    case 'gte': return compareValues(value, val) >= 0;
+    case 'lt': return compareValues(value, val) < 0;
+    case 'lte': return compareValues(value, val) <= 0;
     case 'in': {
       const items = val.replace(/^\(|\)$/g, '').split(',').map(s => s.trim());
       return items.includes(String(value));
@@ -945,10 +959,11 @@ class GatewayAuth {
 
   async getUser(): Promise<{ data: { user: unknown }; error: { message: string } | null }> {
     try {
-      const res = await this._gatewayFetch('user');
+      const res = await this._gatewayFetch('session');
       if (!res.ok) return { data: { user: null }, error: null };
       const data = await this._parseJson(res);
-      return { data: data.data || data, error: null };
+      const user = data?.data?.session?.user ?? data?.data?.user ?? null;
+      return { data: { user }, error: null };
     } catch (error) {
       return { data: { user: null }, error: { message: String(error) } };
     }
