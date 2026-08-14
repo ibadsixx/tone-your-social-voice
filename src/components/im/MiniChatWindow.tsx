@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { X, Minus, Send, Phone, Video, Smile } from 'lucide-react';
+import { X, Minus, Phone, Video } from 'lucide-react';
 import { useConversations } from '@/hooks/useConversations';
-import { formatDistanceToNow } from 'date-fns';
+import { MessageInput } from '@/components/messages/MessageInput';
+import type { GifItem } from '@/hooks/useGifSearch';
+import { gateway } from '@/lib/gateway';
+import { useCall } from '@/contexts/CallContext';
 
 interface MiniChatUser {
   id: string;
@@ -30,9 +32,19 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
   isMinimized,
   style,
 }) => {
-  const [inputValue, setInputValue] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { initiateCall, status } = useCall();
+  const isInCall = status !== 'idle';
+
+  const handleStartCall = (type: 'voice' | 'video') => {
+    initiateCall(user.id, {
+      id: user.id,
+      username: user.username,
+      displayName: user.display_name,
+      profilePic: user.profile_pic ?? undefined,
+    }, type);
+  };
 
   const {
     messages,
@@ -64,17 +76,22 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!inputValue.trim() || !conversationId) return;
-    await sendMessage(conversationId, inputValue.trim());
-    setInputValue('');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+  const handleSendGif = async (gif: GifItem) => {
+    if (!conversationId) return;
+    const { error } = await gateway
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
+        sender_id: currentUserId,
+        gif_id: gif.id,
+        gif_url: gif.url,
+        is_gif: true,
+      });
+    if (error) {
+      console.error('Error sending GIF:', error);
+      return;
     }
+    await fetchMessages(conversationId, 0);
   };
 
   if (isMinimized) {
@@ -124,10 +141,10 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-0.5">
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-primary hover:bg-primary/10">
+          <Button variant="ghost" size="icon" onClick={() => handleStartCall('voice')} disabled={isInCall} className="h-7 w-7 text-primary hover:bg-primary/10">
             <Phone className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-primary hover:bg-primary/10">
+          <Button variant="ghost" size="icon" onClick={() => handleStartCall('video')} disabled={isInCall} className="h-7 w-7 text-primary hover:bg-primary/10">
             <Video className="h-3.5 w-3.5" />
           </Button>
           <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:bg-accent" onClick={onMinimize}>
@@ -164,15 +181,21 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
                   </Avatar>
                 )}
                 <div
-                  className={`max-w-[70%] px-3 py-1.5 rounded-2xl text-sm ${
+                  className={`max-w-[70%] w-fit px-3 py-1.5 rounded-2xl text-sm ${
                     isMine
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted text-foreground'
                   }`}
                 >
                   {msg.content && <p className="break-words">{msg.content}</p>}
+                  {msg.gif_url && (
+                    <img src={msg.gif_url} alt="" className="max-w-full rounded-lg mt-1" />
+                  )}
                   {msg.image_url && (
                     <img src={msg.image_url} alt="" className="max-w-full rounded-lg mt-1" />
+                  )}
+                  {msg.media_url && (
+                    <video src={msg.media_url} className="max-w-full rounded-lg mt-1" controls />
                   )}
                 </div>
               </div>
@@ -183,26 +206,15 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
       </div>
 
       {/* Input */}
-      <div className="px-2 py-2 border-t border-border flex items-center gap-1">
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-primary shrink-0">
-          <Smile className="h-4 w-4" />
-        </Button>
-        <Input
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={handleKeyDown}
+      <div className="px-2 py-2 border-t border-border">
+        <MessageInput
+          onSendMessage={(content, mediaUrl, replyToId) => {
+            if (conversationId) sendMessage(conversationId, content, mediaUrl, replyToId);
+          }}
+          onSendGif={handleSendGif}
+          conversationId={conversationId || undefined}
           placeholder="Aa"
-          className="h-8 text-sm rounded-full bg-muted border-0 focus-visible:ring-1 focus-visible:ring-primary"
         />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-primary shrink-0"
-          onClick={handleSend}
-          disabled={!inputValue.trim()}
-        >
-          <Send className="h-4 w-4" />
-        </Button>
       </div>
     </div>
   );

@@ -98,17 +98,26 @@ export const ActiveCallWindow: React.FC = () => {
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   // Handle audio for outgoing calls (ringback tone)
   useCallAudio({ status, isOutgoing });
 
-  // Attach local stream to video element
+  // Attach remote stream to video element
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
     }
   }, [localStream]);
+
+  // Attach remote stream to audio element for voice calls (the remote video
+  // element only renders for video calls, so voice calls need their own output).
+  useEffect(() => {
+    if (remoteStream && callType === 'voice' && remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream, callType]);
 
   // Attach remote stream to video element
   useEffect(() => {
@@ -198,6 +207,8 @@ export const ActiveCallWindow: React.FC = () => {
         exit={{ opacity: 0, scale: 0.9 }}
         className="fixed inset-4 md:inset-auto md:bottom-6 md:right-6 md:w-[400px] md:h-[600px] z-50 flex flex-col"
       >
+        {/* Remote audio output (voice calls) */}
+        <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
         <div className="relative flex-1 bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-border/50">
           {/* Remote video / Avatar */}
           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-gray-800 to-gray-900">

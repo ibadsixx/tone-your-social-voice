@@ -1,5 +1,5 @@
 import { useCallback, useRef, useEffect } from 'react';
-import { gateway, GatewayChannel } from '@/lib/gateway';
+import { openCallChannel, CallRealtimeChannel } from '@/lib/callRealtime';
 import { CallSignal } from '@/services/webrtc';
 
 interface UseCallSignalingOptions {
@@ -8,51 +8,32 @@ interface UseCallSignalingOptions {
 }
 
 export const useCallSignaling = ({ userId, onSignal }: UseCallSignalingOptions) => {
-  const channelRef = useRef<GatewayChannel | null>(null);
-  const pendingChannelsRef = useRef<Set<GatewayChannel>>(new Set());
+  const channelRef = useRef<CallRealtimeChannel | null>(null);
+  const onSignalRef = useRef(onSignal);
+  onSignalRef.current = onSignal;
 
-  // Send signal to target user with proper cleanup
+  // Send signal to target user through the gateway SSE bridge.
   const sendSignal = useCallback(async (signal: CallSignal) => {
-    const targetChannel = gateway.channel(`calls:${signal.to}`, {
-      config: { broadcast: { self: false } },
+    const targetChannel = openCallChannel(`calls:${signal.to}`);
+    await targetChannel.send({
+      type: 'broadcast',
+      event: 'call-signal',
+      payload: signal,
     });
-    
-    // Track pending channel for cleanup
-    pendingChannelsRef.current.add(targetChannel);
-    
-    try {
-      await targetChannel.subscribe();
-      await targetChannel.send({
-        type: 'broadcast',
-        event: 'call-signal',
-        payload: signal,
-      });
-      console.log('[Signaling] Signal sent:', signal.type, 'to:', signal.to);
-    } catch (error) {
-      console.error('[Signaling] Error sending signal:', error);
-    } finally {
-      // Cleanup after sending with a small delay to ensure delivery
-      setTimeout(() => {
-        pendingChannelsRef.current.delete(targetChannel);
-        gateway.removeChannel(targetChannel);
-      }, 500);
-    }
   }, []);
 
-  // Setup Supabase Realtime channel for signaling
+  // Subscribe to the gateway's realtime channel for incoming call signals.
   useEffect(() => {
     if (!userId) return;
 
     const channelName = `calls:${userId}`;
     console.log('[Signaling] Setting up channel:', channelName);
-    
-    channelRef.current = gateway.channel(channelName, {
-      config: { broadcast: { self: false } },
-    });
+
+    channelRef.current = openCallChannel(channelName, { self: false });
 
     channelRef.current
       .on('broadcast', { event: 'call-signal' }, ({ payload }) => {
-        onSignal(payload as CallSignal);
+        onSignalRef.current(payload as CallSignal);
       })
       .subscribe((status) => {
         console.log('[Signaling] Channel subscription status:', status);
@@ -60,20 +41,13 @@ export const useCallSignaling = ({ userId, onSignal }: UseCallSignalingOptions) 
 
     return () => {
       console.log('[Signaling] Cleaning up channels');
-      
-      // Clean up main channel
+
       if (channelRef.current) {
-        gateway.removeChannel(channelRef.current);
+        channelRef.current.unsubscribe();
         channelRef.current = null;
       }
-      
-      // Clean up any pending send channels
-      pendingChannelsRef.current.forEach((channel) => {
-        gateway.removeChannel(channel);
-      });
-      pendingChannelsRef.current.clear();
     };
-  }, [userId, onSignal]);
+  }, [userId]);
 
   return { sendSignal };
 };

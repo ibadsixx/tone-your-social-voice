@@ -127,18 +127,35 @@ export const CreateGroupChatDialog: React.FC<CreateGroupChatDialogProps> = ({
     setCreating(true);
     try {
       const adminList = [...adminIds];
-      const { data, error } = await gateway.rpc('create_group_conversation', {
-        p_name: trimmedName,
-        p_participant_ids: selectedUsers.map(u => u.id),
-        p_admin_ids: adminList.length > 0 ? adminList : [],
-        p_can_add_members: canAddMembers,
-      });
-      if (error) throw error;
-      if (!data) throw new Error('Failed to create group');
+      const { data: created, error: convError } = await gateway
+        .from('conversations')
+        .insert({
+          type: 'group',
+          name: trimmedName,
+          created_by: currentUserId,
+          can_add_members: canAddMembers,
+        })
+        .select('id')
+        .single();
+      if (convError || !created) throw convError || new Error('Failed to create group');
+
+      const participantRows = [
+        { conversation_id: created.id, user_id: currentUserId, role: 'admin' },
+        ...selectedUsers.map(u => ({
+          conversation_id: created.id,
+          user_id: u.id,
+          role: adminList.includes(u.id) ? 'admin' : 'member',
+        })),
+      ];
+
+      const { error: partError } = await gateway
+        .from('conversation_participants')
+        .insert(participantRows);
+      if (partError) throw partError;
 
       toast({ title: 'Group created', description: `"${trimmedName}" is ready` });
       onOpenChange(false);
-      onGroupCreated(data);
+      onGroupCreated(created.id);
     } catch (error) {
       console.error('Error creating group:', error);
       toast({

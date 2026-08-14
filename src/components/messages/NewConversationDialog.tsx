@@ -243,6 +243,7 @@ export const NewConversationDialog: React.FC<NewConversationDialogProps> = ({
         open={showChannelDialog}
         onOpenChange={setShowChannelDialog}
         onChannelCreated={onChannelCreated || ((id) => console.log('Channel created:', id))}
+        currentUserId={currentUserId}
       />
     </>
   );

@@ -500,7 +500,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       )}
 
       {/* Message Content */}
-      <div className={`max-w-xs lg:max-w-md ${isOwn ? 'ml-auto' : ''}`}>
+      <div className={`max-w-xs lg:max-w-md w-fit ${isOwn ? 'ml-auto' : ''}`}>
         {/* Pinned badge - Facebook Messenger style */}
         {isPinned && (
           <div className={`flex items-center gap-1 mb-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>

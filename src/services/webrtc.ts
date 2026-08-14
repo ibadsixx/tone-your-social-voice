@@ -1,16 +1,53 @@
 // WebRTC Service for handling peer connections
-// Uses public Google STUN servers with ICE restart capability
+// Uses public Google STUN servers plus a TURN relay (served by the gateway's
+// /api/realtime/ice-servers endpoint) with ICE restart capability.
 
-export const ICE_SERVERS: RTCConfiguration = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-  ],
-  iceCandidatePoolSize: 10,
-};
+const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
+
+export const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+];
+
+function getToken(): string | null {
+  try {
+    const sessionStr = localStorage.getItem('tone-auth-token');
+    if (sessionStr) {
+      const session = JSON.parse(sessionStr);
+      return session?.access_token ?? null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+let iceServersCache: Promise<RTCIceServer[]> | null = null;
+
+function loadIceServers(): Promise<RTCIceServer[]> {
+  if (iceServersCache) return iceServersCache;
+  iceServersCache = (async () => {
+    if (!GATEWAY_URL) return DEFAULT_ICE_SERVERS;
+    try {
+      const token = getToken();
+      const res = await fetch(`${GATEWAY_URL}/api/realtime/ice-servers`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`ICE config failed (${res.status})`);
+      const json = await res.json();
+      if (Array.isArray(json?.iceServers) && json.iceServers.length > 0) {
+        return json.iceServers as RTCIceServer[];
+      }
+      return DEFAULT_ICE_SERVERS;
+    } catch {
+      return DEFAULT_ICE_SERVERS;
+    }
+  })();
+  return iceServersCache;
+}
 
 export type CallType = 'voice' | 'video';
 
@@ -41,12 +78,23 @@ export class WebRTCService {
   private readonly maxReconnectAttempts = 3;
 
   constructor() {
-    this.createPeerConnection();
+    // Peer connection is created lazily (on first media/negotiation call) so
+    // it can use the ICE/TURN config fetched from the gateway.
   }
 
-  private createPeerConnection() {
+  private async ensurePeerConnection(): Promise<RTCPeerConnection> {
+    if (this.peerConnection) return this.peerConnection;
+    const iceServers = await loadIceServers();
+    this.createPeerConnection(iceServers);
+    return this.peerConnection!;
+  }
+
+  private createPeerConnection(iceServers: RTCIceServer[] = DEFAULT_ICE_SERVERS) {
     console.log('[WebRTC] Creating peer connection');
-    this.peerConnection = new RTCPeerConnection(ICE_SERVERS);
+    this.peerConnection = new RTCPeerConnection({
+      iceServers,
+      iceCandidatePoolSize: 10,
+    });
     
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate && this.onIceCandidate) {
@@ -128,7 +176,10 @@ export class WebRTCService {
       console.log('[WebRTC] Requesting media with constraints:', constraints);
       this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
       console.log('[WebRTC] Got local stream with tracks:', this.localStream.getTracks().map(t => t.kind));
-      
+
+      await this.ensurePeerConnection();
+      if (!this.peerConnection) throw new Error('Peer connection not initialized');
+
       // Add tracks to peer connection
       this.localStream.getTracks().forEach((track) => {
         if (this.peerConnection && this.localStream) {
@@ -145,6 +196,7 @@ export class WebRTCService {
   }
 
   async createOffer(): Promise<RTCSessionDescriptionInit> {
+    await this.ensurePeerConnection();
     if (!this.peerConnection) {
       throw new Error('Peer connection not initialized');
     }
@@ -161,6 +213,7 @@ export class WebRTCService {
   }
 
   async createAnswer(): Promise<RTCSessionDescriptionInit> {
+    await this.ensurePeerConnection();
     if (!this.peerConnection) {
       throw new Error('Peer connection not initialized');
     }
@@ -173,6 +226,7 @@ export class WebRTCService {
   }
 
   async setRemoteDescription(description: RTCSessionDescriptionInit) {
+    await this.ensurePeerConnection();
     if (!this.peerConnection) {
       throw new Error('Peer connection not initialized');
     }
@@ -182,6 +236,7 @@ export class WebRTCService {
   }
 
   async addIceCandidate(candidate: RTCIceCandidateInit) {
+    await this.ensurePeerConnection();
     if (!this.peerConnection) {
       throw new Error('Peer connection not initialized');
     }
@@ -202,6 +257,7 @@ export class WebRTCService {
   }
 
   async restartIce(): Promise<void> {
+    await this.ensurePeerConnection();
     if (!this.peerConnection) {
       throw new Error('Peer connection not initialized');
     }
@@ -295,9 +351,8 @@ export class WebRTCService {
     this.onRemoteStream = null;
     this.onIceCandidate = null;
     this.onConnectionStateChange = null;
-    
-    // Recreate peer connection for next call
-    this.createPeerConnection();
+
+    // Peer connection is recreated lazily on the next call via ensurePeerConnection.
   }
 }
 

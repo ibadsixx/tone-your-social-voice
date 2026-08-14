@@ -73,7 +73,7 @@ export const ChatWindowManager: React.FC = () => {
   const contactsRef = useRef<HTMLDivElement>(null);
 
   const isMessagesPage = location.pathname.startsWith('/messages');
-  const minimizedSide = 'left-4';
+  const minimizedSide = 'right-20';
 
   const currentUserId = user?.id;
 

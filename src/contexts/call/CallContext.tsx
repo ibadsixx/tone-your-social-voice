@@ -362,7 +362,14 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Initiate a call
   const initiateCall = useCallback(async (userId: string, userInfo: CallParticipant, callType: CallType) => {
     if (!user?.id || !profile || !webrtcRef.current) {
-      console.error('[Call] Cannot initiate call: missing user, profile, or WebRTC');
+      console.error('[Call] Cannot initiate call: missing user, profile, or WebRTC', { user: user?.id, profile: !!profile, webrtc: !!webrtcRef.current });
+      toast({
+        title: 'Call Failed',
+        description: !profile
+          ? 'Your profile could not be loaded. Please refresh and try again.'
+          : 'Calling is not available right now.',
+        variant: 'destructive',
+      });
       return;
     }
 

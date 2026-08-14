@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
-import { Send, Image, X, Paperclip, Mic, SmilePlus, Reply, Flame } from 'lucide-react';
+import { Send, Image, X, Paperclip, Mic, Reply, Flame } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { useAutoUpload } from '@/hooks/useAutoUpload';
@@ -53,6 +54,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   vanishing = false
 }) => {
   const [message, setMessage] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
@@ -64,6 +66,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const stickerPickerRef = useRef<HTMLDivElement>(null);
+  const emojiAnchorRef = useRef<HTMLDivElement>(null);
+  const stickerAnchorRef = useRef<HTMLDivElement>(null);
   const { uploadFile, uploading } = useFileUpload();
   const { upload: autoUpload } = useAutoUpload();
   const { disableAutoUploads } = useStatusVisibility();
@@ -93,7 +97,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     const textarea = inputRef.current;
     if (textarea) {
       textarea.style.height = 'auto';
-      textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+      textarea.style.height = Math.min(textarea.scrollHeight, 100) + 'px';
     }
   }, [message]);
 
@@ -121,18 +125,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     setShowEmojiPicker(!showEmojiPicker);
     setShowStickerPicker(false);
     setShowGifPicker(false);
-  };
-
-  const toggleStickerPicker = () => {
-    setShowStickerPicker(!showStickerPicker);
-    setShowEmojiPicker(false);
-    setShowGifPicker(false);
-  };
-
-  const toggleGifPicker = () => {
-    setShowGifPicker(!showGifPicker);
-    setShowEmojiPicker(false);
-    setShowStickerPicker(false);
   };
 
   const handleStickerSent = () => {
@@ -258,6 +250,32 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const isImage = selectedFile?.type.startsWith('image/');
   const isVideo = selectedFile?.type.startsWith('video/');
 
+  // Position a portal-rendered picker relative to its anchor, clamped to the viewport
+  const getPortalStyle = (
+    anchor: HTMLElement | null,
+    width: number,
+    height: number
+  ): React.CSSProperties | undefined => {
+    if (!anchor) return undefined;
+    const rect = anchor.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const style: React.CSSProperties = { position: 'fixed', zIndex: 50 };
+    // Horizontal: align the right edge to the anchor, but keep it fully on-screen
+    if (rect.right - width < 8) {
+      style.left = 8;
+    } else {
+      style.right = vw - rect.right;
+    }
+    // Vertical: open above the anchor when there's room, otherwise below
+    if (rect.top > height + 60) {
+      style.bottom = vh - rect.top + 8;
+    } else {
+      style.top = rect.bottom + 8;
+    }
+    return style;
+  };
+
   // Show voice recorder if active
   if (showVoiceRecorder) {
     return (
@@ -347,9 +365,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       )}
 
       {/* Message Input */}
-      <div className="flex items-end space-x-2">
+      <div className="flex flex-wrap items-end gap-2">
         {/* Action Buttons Group - Messenger Style */}
-        <div className="flex items-center gap-1">
+        {!isFocused && (
+        <div ref={stickerAnchorRef} className="relative flex items-center gap-1 shrink-0">
           <input
             ref={fileInputRef}
             type="file"
@@ -363,14 +382,14 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             onClick={() => setShowVoiceRecorder(true)}
             disabled={disabled || uploading}
             className={cn(
-              "h-9 w-9 p-0 rounded-full transition-colors",
+              "h-7 w-7 p-0 rounded-full transition-colors",
               vanishing
                 ? "text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-100"
                 : "text-primary hover:bg-primary/10"
             )}
             title="Record voice message"
           >
-            <Mic className="h-5 w-5" />
+            <Mic className="h-3.5 w-3.5" />
           </Button>
           <Button
             variant="ghost"
@@ -378,58 +397,35 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled || uploading}
             className={cn(
-              "h-9 w-9 p-0 rounded-full transition-colors",
+              "h-7 w-7 p-0 rounded-full transition-colors",
               vanishing
                 ? "text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-100"
                 : "text-primary hover:bg-primary/10"
             )}
             title="Send photo"
           >
-            <Image className="h-5 w-5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleStickerPicker}
-            disabled={disabled || uploading}
-            className={cn(
-              "h-9 w-9 p-0 rounded-full transition-colors",
-              vanishing
-                ? "text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-100"
-                : "text-primary hover:bg-primary/10"
-            )}
-            title="Send sticker"
-          >
-            <SmilePlus className="h-5 w-5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleGifPicker}
-            disabled={disabled || uploading}
-            className={cn(
-              "h-9 w-9 p-0 rounded-full font-bold text-xs transition-colors",
-              vanishing
-                ? "text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-100"
-                : "text-primary hover:bg-primary/10"
-            )}
-            title="Send GIF"
-          >
-            GIF
+            <Image className="h-3.5 w-3.5" />
           </Button>
         </div>
+        )}
 
-        {/* Text Input with Emoji Picker inside */}
-        <div className="flex-1 relative flex items-center">
+        {/* Text Input + Send (kept together so the send button never wraps) */}
+        <div className={cn(
+          "flex flex-1 items-end gap-2",
+          isFocused ? "min-w-[200px] md:min-w-[260px]" : "min-w-[160px]"
+        )}>
+        <div ref={emojiAnchorRef} className="flex-1 min-w-0 relative flex items-center">
           <Textarea
             ref={inputRef as React.RefObject<HTMLTextAreaElement>}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
             placeholder={placeholder}
             disabled={disabled || uploading}
             className={cn(
-              "min-h-[40px] max-h-[120px] resize-none py-2.5 pr-10 overflow-y-auto scrollbar-none transition-colors",
+              "min-h-[32px] max-h-[100px] resize-none py-1.5 pr-10 overflow-y-auto scrollbar-none transition-colors",
               vanishing
                 ? "bg-zinc-800 border-zinc-600 text-zinc-100 placeholder:text-zinc-500"
                 : ""
@@ -453,10 +449,25 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           </Button>
 
           {/* Emoji Picker Panel (no internal trigger button) */}
-          {showEmojiPicker && (
-            <div ref={emojiPickerRef} className="absolute bottom-full right-0 mb-2 z-50">
-              <EmojiPickerPanel onEmojiSelect={handleEmojiSelect} />
-            </div>
+          {showEmojiPicker && createPortal(
+            <div
+              ref={emojiPickerRef}
+              className="fixed"
+              style={getPortalStyle(emojiAnchorRef.current, 320, 380)}
+            >
+              <EmojiPickerPanel
+                onEmojiSelect={handleEmojiSelect}
+                onOpenStickers={() => {
+                  setShowEmojiPicker(false);
+                  setShowStickerPicker(true);
+                }}
+                onOpenGifs={() => {
+                  setShowEmojiPicker(false);
+                  setShowGifPicker(true);
+                }}
+              />
+            </div>,
+            document.body
           )}
         </div>
 
@@ -469,30 +480,36 @@ export const MessageInput: React.FC<MessageInputProps> = ({
               disabled={disabled || uploading || (hasContent && !message.trim() && !selectedFile)}
               size="sm"
               className={cn(
-                "h-10 w-10 p-0 transition-colors",
+                "h-8 w-8 p-0 shrink-0 transition-colors",
                 vanishing && "bg-orange-600 hover:bg-orange-500"
               )}
               title={hasContent ? 'Send' : 'Send quick emoji'}
             >
               {hasContent ? (
-                <Send className={cn("h-4 w-4", vanishing && "text-white")} />
+                <Send className={cn("h-3.5 w-3.5", vanishing && "text-white")} />
               ) : (
-                <EmojiAsset emoji={quickEmoji || '👌'} alt="Quick emoji" size={18} />
+                <EmojiAsset emoji={quickEmoji || '👌'} alt="Quick emoji" size={16} />
               )}
             </Button>
           );
         })()}
+        </div>
       </div>
 
       {/* Sticker Picker */}
-      {showStickerPicker && conversationId && (
-        <div ref={stickerPickerRef} className="absolute bottom-full right-16 mb-2 z-50">
-          <StickerPicker 
+      {showStickerPicker && conversationId && createPortal(
+        <div
+          ref={stickerPickerRef}
+          className="fixed"
+          style={getPortalStyle(stickerAnchorRef.current, 320, 384)}
+        >
+          <StickerPicker
             conversationId={conversationId}
             onClose={() => setShowStickerPicker(false)}
             onStickerSent={handleStickerSent}
           />
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* GIF Picker */}

@@ -217,7 +217,8 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     loading,
     toggleMute, 
     toggleVanishingMessages: hookToggleVanishing, 
-    toggleReadReceipts
+    toggleReadReceipts,
+    updateMessagingControls
   } = useConversationSettings(conversationId);
 
   // Use props if provided (shared state from ChatWindow), otherwise use own hook
@@ -300,12 +301,8 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     setSavingControls(true);
     
     try {
-      const { error } = await gateway.rpc('update_messaging_controls', {
-        p_conversation_id: conversationId,
-        p_message_requests_enabled: allowMessageSharing
-      });
-      
-      if (error) throw error;
+      const next = await updateMessagingControls({ allow_message_sharing: allowMessageSharing });
+      if (!next) throw new Error('Failed to update message permissions');
       
       toast({
         title: 'Permissions updated',

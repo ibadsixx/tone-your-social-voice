@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Smile, Search } from 'lucide-react';
+import { Smile, Search, SmilePlus } from 'lucide-react';
 
 interface EmojiItem {
   emoji: string;
@@ -17,6 +17,8 @@ interface EmojiItem {
 interface EmojiPickerProps {
   onEmojiSelect: (emoji: { url: string; name: string; emoji: string }) => void;
   className?: string;
+  onOpenStickers?: () => void;
+  onOpenGifs?: () => void;
 }
 
 // Category configuration matching emoji.json categories
@@ -77,7 +79,7 @@ const hexToEmoji = (hex: string): string => {
 };
 
 // Standalone panel component (no popover wrapper)
-export const EmojiPickerPanel = ({ onEmojiSelect }: EmojiPickerProps) => {
+export const EmojiPickerPanel = ({ onEmojiSelect, onOpenStickers, onOpenGifs }: EmojiPickerProps) => {
   const { emojis, loading, error } = useEmojiData();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>(() => {
@@ -103,6 +105,7 @@ export const EmojiPickerPanel = ({ onEmojiSelect }: EmojiPickerProps) => {
 
   // Handle category change
   const handleCategoryChange = useCallback((categoryId: string) => {
+    if (categoryId === '__stickers__' || categoryId === '__gif__') return;
     setSelectedCategory(categoryId);
     localStorage.setItem(STORAGE_KEY, categoryId);
     setSearchQuery('');
@@ -153,6 +156,26 @@ export const EmojiPickerPanel = ({ onEmojiSelect }: EmojiPickerProps) => {
                 <img src={category.icon} alt={category.label} className="h-4 w-4 object-contain" />
               </TabsTrigger>
             ))}
+            {onOpenStickers && (
+              <TabsTrigger
+                value="__stickers__"
+                className="h-7 px-1.5 text-xs data-[state=active]:bg-background"
+                title="Stickers"
+                onClick={() => onOpenStickers()}
+              >
+                <SmilePlus className="h-4 w-4" />
+              </TabsTrigger>
+            )}
+            {onOpenGifs && (
+              <TabsTrigger
+                value="__gif__"
+                className="h-7 px-1.5 text-xs font-bold data-[state=active]:bg-background"
+                title="GIF"
+                onClick={() => onOpenGifs()}
+              >
+                GIF
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Emoji Grid */}

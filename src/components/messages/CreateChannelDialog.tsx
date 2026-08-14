@@ -18,12 +18,14 @@ interface CreateChannelDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onChannelCreated: (conversationId: string) => void;
+  currentUserId: string;
 }
 
 export const CreateChannelDialog: React.FC<CreateChannelDialogProps> = ({
   open,
   onOpenChange,
   onChannelCreated,
+  currentUserId,
 }) => {
   const { toast } = useToast();
   const [channelName, setChannelName] = useState('');
@@ -46,16 +48,26 @@ export const CreateChannelDialog: React.FC<CreateChannelDialogProps> = ({
 
     setCreating(true);
     try {
-      const { data, error } = await gateway.rpc('create_channel_conversation', {
-        p_name: trimmedName,
-        p_description: description.trim() || null,
-      });
-      if (error) throw error;
-      if (!data) throw new Error('Failed to create channel');
+      const { data: created, error: convError } = await gateway
+        .from('conversations')
+        .insert({
+          type: 'channel',
+          name: trimmedName,
+          description: description.trim() || null,
+          created_by: currentUserId,
+        })
+        .select('id')
+        .single();
+      if (convError || !created) throw convError || new Error('Failed to create channel');
+
+      const { error: partError } = await gateway
+        .from('conversation_participants')
+        .insert({ conversation_id: created.id, user_id: currentUserId, role: 'owner' });
+      if (partError) throw partError;
 
       toast({ title: 'Channel created', description: `"${trimmedName}" is ready` });
       onOpenChange(false);
-      onChannelCreated(data);
+      onChannelCreated(created.id);
     } catch (error) {
       console.error('Error creating channel:', error);
       toast({
