@@ -4,6 +4,11 @@ const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
 
 type BroadcastCallback = (payload: unknown) => void;
 
+export interface CallDelivery {
+  ok: boolean;
+  delivered: number;
+}
+
 function getToken(): string | null {
   try {
     const sessionStr = localStorage.getItem('tone-auth-token');
@@ -52,8 +57,8 @@ export class CallRealtimeChannel {
     return this;
   }
 
-  async send(options: { type: string; event: string; payload: unknown }): Promise<void> {
-    if (!GATEWAY_URL) return;
+  async send(options: { type: string; event: string; payload: unknown }): Promise<CallDelivery> {
+    if (!GATEWAY_URL) return { ok: false, delivered: 0 };
     const token = getToken();
     try {
       const res = await fetch(`${GATEWAY_URL}/api/realtime/publish`, {
@@ -71,9 +76,20 @@ export class CallRealtimeChannel {
       });
       if (!res.ok) {
         console.error('[Realtime] Publish failed:', res.status);
+        return { ok: false, delivered: 0 };
+      }
+      try {
+        const json = await res.json();
+        return {
+          ok: true,
+          delivered: typeof json?.delivered === 'number' ? json.delivered : 0,
+        };
+      } catch {
+        return { ok: true, delivered: 0 };
       }
     } catch (err) {
       console.error('[Realtime] Publish error:', err);
+      return { ok: false, delivered: 0 };
     }
   }
 

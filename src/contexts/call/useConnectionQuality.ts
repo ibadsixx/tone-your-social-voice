@@ -1,12 +1,13 @@
 import { useCallback, useRef, useEffect, useState } from 'react';
 import { ConnectionQuality, initialConnectionQuality } from './types';
+import { WebRTCService } from '@/services/webrtc';
 
 interface UseConnectionQualityOptions {
-  peerConnection: RTCPeerConnection | null;
+  webrtcService: WebRTCService | null;
   isConnected: boolean;
 }
 
-export const useConnectionQuality = ({ peerConnection, isConnected }: UseConnectionQualityOptions) => {
+export const useConnectionQuality = ({ webrtcService, isConnected }: UseConnectionQualityOptions) => {
   const [quality, setQuality] = useState<ConnectionQuality>(initialConnectionQuality);
   const statsIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const previousStatsRef = useRef<{
@@ -24,6 +25,9 @@ export const useConnectionQuality = ({ peerConnection, isConnected }: UseConnect
   }, []);
 
   const collectStats = useCallback(async () => {
+    // Read the current peer connection at collection time so stats always come
+    // from the live PC, even right after the service was recreated on reset.
+    const peerConnection = webrtcService?.getPeerConnection();
     if (!peerConnection) return;
 
     try {
@@ -80,9 +84,10 @@ export const useConnectionQuality = ({ peerConnection, isConnected }: UseConnect
     } catch (error) {
       console.error('[Quality] Error collecting stats:', error);
     }
-  }, [peerConnection, calculateQualityLevel]);
+  }, [webrtcService, calculateQualityLevel]);
 
   useEffect(() => {
+    const peerConnection = webrtcService?.getPeerConnection();
     if (isConnected && peerConnection) {
       // Start collecting stats every 2 seconds
       statsIntervalRef.current = setInterval(collectStats, 2000);
@@ -102,7 +107,7 @@ export const useConnectionQuality = ({ peerConnection, isConnected }: UseConnect
         clearInterval(statsIntervalRef.current);
       }
     };
-  }, [isConnected, peerConnection, collectStats]);
+  }, [isConnected, webrtcService, collectStats]);
 
   return quality;
 };

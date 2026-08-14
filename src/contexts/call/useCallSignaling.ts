@@ -1,5 +1,5 @@
 import { useCallback, useRef, useEffect } from 'react';
-import { openCallChannel, CallRealtimeChannel } from '@/lib/callRealtime';
+import { openCallChannel, CallRealtimeChannel, CallDelivery } from '@/lib/callRealtime';
 import { CallSignal } from '@/services/webrtc';
 
 interface UseCallSignalingOptions {
@@ -13,9 +13,9 @@ export const useCallSignaling = ({ userId, onSignal }: UseCallSignalingOptions) 
   onSignalRef.current = onSignal;
 
   // Send signal to target user through the gateway SSE bridge.
-  const sendSignal = useCallback(async (signal: CallSignal) => {
+  const sendSignal = useCallback(async (signal: CallSignal): Promise<CallDelivery> => {
     const targetChannel = openCallChannel(`calls:${signal.to}`);
-    await targetChannel.send({
+    return targetChannel.send({
       type: 'broadcast',
       event: 'call-signal',
       payload: signal,

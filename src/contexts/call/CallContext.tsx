@@ -13,6 +13,8 @@ import {
 import { useCallSignaling } from './useCallSignaling';
 import { useCallDatabase } from './useCallDatabase';
 import { useConnectionQuality } from './useConnectionQuality';
+import { callTabCoordinator, CALL_ACTIVE_STORAGE_KEY, CALL_RESOLVED_STORAGE_KEY, markCallResolved } from './callTabCoordinator';
+import { CallDelivery } from '@/lib/callRealtime';
 
 const CallContext = createContext<CallContextType | undefined>(undefined);
 
@@ -48,7 +50,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Connection quality monitoring
   const connectionQuality = useConnectionQuality({
-    peerConnection: webrtcRef.current?.getPeerConnection() || null,
+    webrtcService: webrtcRef.current,
     isConnected: callState.status === 'connected',
   });
 
@@ -75,7 +77,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const resetCallState = useCallback(() => {
     console.log('[Call] Resetting call state');
     clearCallTimeout();
-    
+
+    callTabCoordinator.exitCall();
+
     webrtcRef.current?.cleanup();
     webrtcRef.current = new WebRTCService();
     
@@ -102,7 +106,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // Setup WebRTC callbacks helper
-  const setupWebRTCCallbacks = useCallback((targetUserId: string, callType: CallType, sendSignal: (signal: CallSignal) => Promise<void>) => {
+  const setupWebRTCCallbacks = useCallback((targetUserId: string, callType: CallType, sendSignal: (signal: CallSignal) => Promise<CallDelivery>) => {
     if (!webrtcRef.current || !user?.id) return;
 
     webrtcRef.current.setOnRemoteStream((stream) => {
@@ -154,7 +158,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user?.id, toast, resetCallState]);
 
   // Handle incoming signals
-  const handleSignal = useCallback(async (signal: CallSignal, sendSignal: (signal: CallSignal) => Promise<void>) => {
+  const handleSignal = useCallback(async (signal: CallSignal, sendSignal: (signal: CallSignal) => Promise<CallDelivery>) => {
     if (!user?.id || signal.to !== user.id) return;
 
     const currentState = callStateRef.current;
@@ -162,7 +166,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     switch (signal.type) {
       case 'call-request':
-        if (currentState.status !== 'idle') {
+        if (currentState.status !== 'idle' || callTabCoordinator.isActive()) {
           console.log('[Call] Already in call, sending busy');
           sendSignal({
             type: 'call-busy',
@@ -206,6 +210,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   to: callStateRef.current.remoteUser.id,
                   callType: callStateRef.current.callType || 'voice',
                 });
+                logCallToDb(
+                  user.id,
+                  callStateRef.current.remoteUser.id,
+                  callStateRef.current.callType || 'voice',
+                  'failed',
+                  0,
+                );
               }
               
               resetCallState();
@@ -276,16 +287,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       case 'ice-candidate':
         if (webrtcRef.current && signal.payload) {
-          const connectionState = webrtcRef.current.getConnectionState();
-          if (connectionState === null || currentState.status === 'calling' || currentState.status === 'ringing') {
-            console.log('[Call] Queueing ICE candidate');
-            iceCandidateQueueRef.current.push(signal.payload as RTCIceCandidateInit);
-          } else {
+          if (webrtcRef.current.hasRemoteDescription()) {
             try {
               await webrtcRef.current.addIceCandidate(signal.payload as RTCIceCandidateInit);
             } catch (error) {
               console.error('[Call] Error adding ICE candidate:', error);
             }
+          } else {
+            console.log('[Call] Queueing ICE candidate (no remote description yet)');
+            iceCandidateQueueRef.current.push(signal.payload as RTCIceCandidateInit);
           }
         }
         break;
@@ -318,11 +328,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       case 'call-ended':
         clearCallTimeout();
-        // Log call history for receiver when call ends normally
-        if (!currentState.isOutgoing && currentState.remoteUser) {
+        // Log call history for the caller when the remote side ends the call.
+        // The caller owns the record (RLS only allows inserts as caller_id), so
+        // exactly one row is written per call regardless of who ended it.
+        if (currentState.isOutgoing && currentState.remoteUser) {
           const wasConnected = currentState.status === 'connected';
           const dbStatus: CallStatusDb = wasConnected ? 'completed' : 'missed';
-          logCallToDb(currentState.remoteUser.id, user.id, signal.callType, dbStatus, currentState.callDuration);
+          logCallToDb(user.id, currentState.remoteUser.id, signal.callType, dbStatus, currentState.callDuration);
         }
         toast({
           title: 'Call Ended',
@@ -359,6 +371,25 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [callState.status]);
 
+  // If another tab accepts or rejects the incoming call, stop ringing here.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (callStateRef.current.status !== 'ringing') return;
+      if (e.key === CALL_ACTIVE_STORAGE_KEY) {
+        const count = parseInt(e.newValue || '0', 10) || 0;
+        if (count > 0) {
+          console.log('[Call] Call accepted in another tab, cancelling ring');
+          resetCallState();
+        }
+      } else if (e.key === CALL_RESOLVED_STORAGE_KEY) {
+        console.log('[Call] Call resolved in another tab, cancelling ring');
+        resetCallState();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [resetCallState]);
+
   // Initiate a call
   const initiateCall = useCallback(async (userId: string, userInfo: CallParticipant, callType: CallType) => {
     if (!user?.id || !profile || !webrtcRef.current) {
@@ -389,7 +420,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isVideoOff: callType === 'voice',
       }));
 
-      await sendSignal({
+      callTabCoordinator.enterCall();
+
+      const delivery = await sendSignal({
         type: 'call-request',
         from: user.id,
         to: userId,
@@ -401,6 +434,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           profilePic: profile.profile_pic,
         },
       });
+      if (!delivery.ok) {
+        console.warn('[Call] call-request publish failed');
+      } else if (delivery.delivered === 0) {
+        console.warn('[Call] call-request delivered to 0 subscribers (callee likely offline)');
+        toast({
+          title: 'User May Be Offline',
+          description: 'The user is not reachable right now. If they were online, they would receive your call.',
+        });
+      }
 
       callTimeoutRef.current = setTimeout(() => {
         if (callStateRef.current.status === 'calling') {
@@ -443,6 +485,17 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const signal = pendingSignalRef.current;
     console.log('[Call] Accepting call from', signal.from);
 
+    // Guard against double-accept across tabs of the same user.
+    if (callTabCoordinator.isActive()) {
+      console.log('[Call] Already in a call in another tab, ignoring accept');
+      toast({
+        title: 'Call Handled Elsewhere',
+        description: 'You already have an active call in another tab.',
+      });
+      resetCallState();
+      return;
+    }
+
     try {
       const localStream = await webrtcRef.current.getLocalStream(signal.callType);
       setupWebRTCCallbacks(signal.from, signal.callType, sendSignal);
@@ -453,6 +506,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStream,
         isVideoOff: signal.callType === 'voice',
       }));
+
+      callTabCoordinator.enterCall();
 
       await sendSignal({
         type: 'call-accepted',
@@ -469,7 +524,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       rejectCall();
     }
-  }, [user?.id, sendSignal, toast, setupWebRTCCallbacks]);
+  }, [user?.id, sendSignal, toast, setupWebRTCCallbacks, resetCallState, rejectCall]);
 
   // Reject incoming call
   const rejectCall = useCallback(() => {
@@ -485,6 +540,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       callType: signal.callType,
     });
 
+    markCallResolved();
     resetCallState();
   }, [user?.id, sendSignal, resetCallState]);
 

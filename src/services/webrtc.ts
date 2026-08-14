@@ -2,6 +2,8 @@
 // Uses public Google STUN servers plus a TURN relay (served by the gateway's
 // /api/realtime/ice-servers endpoint) with ICE restart capability.
 
+import { gateway } from '@/lib/gateway';
+
 const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
 
 export const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
@@ -25,27 +27,46 @@ function getToken(): string | null {
   return null;
 }
 
+const ICE_CACHE_TTL = 5 * 60 * 1000;
 let iceServersCache: Promise<RTCIceServer[]> | null = null;
+let iceServersCachedAt = 0;
 
 function loadIceServers(): Promise<RTCIceServer[]> {
-  if (iceServersCache) return iceServersCache;
+  if (iceServersCache && Date.now() - iceServersCachedAt < ICE_CACHE_TTL) {
+    return iceServersCache;
+  }
+
   iceServersCache = (async () => {
     if (!GATEWAY_URL) return DEFAULT_ICE_SERVERS;
     try {
-      const token = getToken();
-      const res = await fetch(`${GATEWAY_URL}/api/realtime/ice-servers`, {
+      let token = getToken();
+      let res = await fetch(`${GATEWAY_URL}/api/realtime/ice-servers`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
+
+      if (res.status === 401) {
+        await gateway.auth.refreshSession();
+        token = getToken();
+        res = await fetch(`${GATEWAY_URL}/api/realtime/ice-servers`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+      }
+
       if (!res.ok) throw new Error(`ICE config failed (${res.status})`);
       const json = await res.json();
       if (Array.isArray(json?.iceServers) && json.iceServers.length > 0) {
+        iceServersCachedAt = Date.now();
         return json.iceServers as RTCIceServer[];
       }
-      return DEFAULT_ICE_SERVERS;
+      throw new Error('ICE config returned no servers');
     } catch {
+      // Never cache a failure: retry on the next call instead of staying on
+      // STUN-only for the whole session (which breaks symmetric-NAT users).
+      iceServersCache = null;
       return DEFAULT_ICE_SERVERS;
     }
   })();
+
   return iceServersCache;
 }
 
