@@ -260,7 +260,7 @@ const mediaToDisplay = post_media && post_media.length > 0
    {
      "id": "media-xyz",
      "post_id": "abc-123-def-456",
-     "file_url": "https://ojdhztcetykgvrcwlwen.supabase.co/storage/v1/object/public/stories/user-789/1705315800000-xk7m3p.mp4",
+     "file_url": "https://gateway-iota-two.vercel.app/storage/public/stories/user-789/1705315800000-xk7m3p.mp4",
      "file_type": "video"
    }
    ```

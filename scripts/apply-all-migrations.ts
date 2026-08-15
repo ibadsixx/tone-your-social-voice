@@ -12,9 +12,15 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const PROJECT_REF = 'ojdhztcetykgvrcwlwen';
+const PROJECT_REF = process.env.SUPABASE_PROJECT_REF;
 const MIGRATIONS_DIR = resolve(__dirname, '..', 'supabase', 'migrations');
 const ACCESS_TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
+
+if (!PROJECT_REF) {
+  console.error('Missing SUPABASE_PROJECT_REF');
+  console.error('Set SUPABASE_PROJECT_REF to your Supabase project ref (do not commit it).');
+  process.exit(1);
+}
 
 if (!ACCESS_TOKEN) {
   console.error('Missing SUPABASE_ACCESS_TOKEN');

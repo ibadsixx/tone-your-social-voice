@@ -176,13 +176,13 @@ $ tsc --noEmit
 ### Network Request/Response:
 ---- begin net ----
 ```
-REQUEST: PATCH https://ojdhztcetykgvrcwlwen.supabase.co/rest/v1/editor_projects?id=eq.abc123-def456-ghi789
+REQUEST: PATCH https://gateway-iota-two.vercel.app/rest/v1/editor_projects?id=eq.abc123-def456-ghi789
 
 Headers:
-  Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+  Authorization: Bearer <REDACTED>
   Content-Type: application/json
   Prefer: return=representation
-  apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+  apikey: <REDACTED>
 
 PAYLOAD:
 {
@@ -318,7 +318,7 @@ Content-Type: application/json
       "clips": [
         {
           "id": "audio-1",
-          "src": "https://ojdhztcetykgvrcwlwen.supabase.co/storage/v1/object/public/editor_videos/music.mp3",
+          "src": "https://gateway-iota-two.vercel.app/storage/editor_videos/music.mp3",
           "title": "Background Music",
           "volume": 0.8,
           "effects": {
@@ -496,8 +496,8 @@ Detailed Breakdown:
 ```
 [PLAYER] [10:45:30.123] ▶ loadClip(0)
 [PLAYER] [10:45:30.123]   Clip: "intro.mp4"
-[PLAYER] [10:45:30.123]   URL: https://ojdhztcetykgvrcwlwen.supabase.co/storage/v1/object/public/editor_videos/abc123/intro.mp4
-[PLAYER] HEAD check: https://ojdhztcetykgvrcwlwen.supabase.co/storage/v1/object/public/editor_videos/abc123/intro.mp4
+[PLAYER] [10:45:30.123]   URL: https://gateway-iota-two.vercel.app/storage/editor_videos/abc123/intro.mp4
+[PLAYER] HEAD check: https://gateway-iota-two.vercel.app/storage/editor_videos/abc123/intro.mp4
 [PLAYER] HEAD response: 200 OK, Content-Type: video/mp4
 [PLAYER] [10:45:30.234] ✅ HEAD OK
 [PLAYER] [10:45:30.234] Setting video.src
@@ -521,8 +521,8 @@ Detailed Breakdown:
 ### Network Tab Observations:
 | Request | Method | URL | Status | Content-Type |
 |---------|--------|-----|--------|--------------|
-| HEAD | HEAD | supabase.../intro.mp4 | 200 | video/mp4 |
-| Video | GET | supabase.../intro.mp4 | 206 | video/mp4 |
+| HEAD | HEAD | gateway.../intro.mp4 | 200 | video/mp4 |
+| Video | GET | gateway.../intro.mp4 | 206 | video/mp4 |
 | HEAD | HEAD | external.../video.mp4 | 403 | text/html |
 | Blob | GET | external.../video.mp4 | 200 | video/mp4 |
 

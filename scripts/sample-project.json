@@ -7,7 +7,7 @@
         {
           "id": "clip-1",
           "type": "video",
-          "src": "https://ojdhztcetykgvrcwlwen.supabase.co/storage/v1/object/public/editor_videos/sample1.mp4",
+          "src": "https://gateway-iota-two.vercel.app/storage/editor_videos/sample1.mp4",
           "fileName": "sample1.mp4",
           "start": 0,
           "end": 5,
@@ -24,7 +24,7 @@
         {
           "id": "clip-2",
           "type": "video",
-          "src": "https://ojdhztcetykgvrcwlwen.supabase.co/storage/v1/object/public/editor_videos/sample2.mp4",
+          "src": "https://gateway-iota-two.vercel.app/storage/editor_videos/sample2.mp4",
           "fileName": "sample2.mp4",
           "start": 5,
           "end": 10,
@@ -41,7 +41,7 @@
         {
           "id": "clip-3",
           "type": "video",
-          "src": "https://ojdhztcetykgvrcwlwen.supabase.co/storage/v1/object/public/editor_videos/sample3.mp4",
+          "src": "https://gateway-iota-two.vercel.app/storage/editor_videos/sample3.mp4",
           "fileName": "sample3.mp4",
           "start": 10,
           "end": 15,
@@ -64,7 +64,7 @@
         {
           "id": "audio-1",
           "type": "audio",
-          "src": "https://ojdhztcetykgvrcwlwen.supabase.co/storage/v1/object/public/editor_videos/background-music.mp3",
+          "src": "https://gateway-iota-two.vercel.app/storage/editor_videos/background-music.mp3",
           "sourceType": "direct",
           "start": 0,
           "end": 15,

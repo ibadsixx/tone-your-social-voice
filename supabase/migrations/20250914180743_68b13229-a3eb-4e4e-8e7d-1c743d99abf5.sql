@@ -86,7 +86,7 @@ SELECT
   p.id,
   'Happy Face',
   'default/happy-face.png',
-  'https://ojdhztcetykgvrcwlwen.supabase.co/storage/v1/object/public/stickers/default/happy-face.png',
+  'https://gateway-iota-two.vercel.app/storage/stickers/default/happy-face.png',
   'png',
   ARRAY['happy', 'smile', 'joy']
 FROM sticker_packs p WHERE p.name = 'Default';
@@ -96,7 +96,7 @@ SELECT
   p.id,
   'Thumbs Up',
   'default/thumbs-up.png',
-  'https://ojdhztcetykgvrcwlwen.supabase.co/storage/v1/object/public/stickers/default/thumbs-up.png',
+  'https://gateway-iota-two.vercel.app/storage/stickers/default/thumbs-up.png',
   'png',
   ARRAY['thumbs', 'up', 'good', 'approve']
 FROM sticker_packs p WHERE p.name = 'Default';
@@ -106,7 +106,7 @@ SELECT
   p.id,
   'Cat Love',
   'animals/cat-love.gif',
-  'https://ojdhztcetykgvrcwlwen.supabase.co/storage/v1/object/public/stickers/animals/cat-love.gif',
+  'https://gateway-iota-two.vercel.app/storage/stickers/animals/cat-love.gif',
   'gif',
   ARRAY['cat', 'love', 'heart', 'cute']
 FROM sticker_packs p WHERE p.name = 'Animals';

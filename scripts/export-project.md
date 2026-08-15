@@ -18,7 +18,7 @@ This document provides the FFmpeg command recipes for exporting editor projects.
       "clips": [
         {
           "id": "clip-1",
-          "src": "https://storage.supabase.co/.../video1.mp4",
+          "src": "https://gateway-iota-two.vercel.app/storage/video1.mp4",
           "start": 0,
           "end": 10,
           "duration": 10,
@@ -37,7 +37,7 @@ This document provides the FFmpeg command recipes for exporting editor projects.
       "clips": [
         {
           "id": "audio-1",
-          "src": "https://storage.supabase.co/.../music.mp3",
+          "src": "https://gateway-iota-two.vercel.app/storage/music.mp3",
           "start": 0,
           "end": 30,
           "volume": 0.8,

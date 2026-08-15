@@ -10,8 +10,14 @@ import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://ojdhztcetykgvrcwlwen.supabase.co';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_URL) {
+  console.error('Missing VITE_SUPABASE_URL environment variable');
+  console.error('Set it to your Supabase project URL (do not commit it).');
+  process.exit(1);
+}
 
 if (!SERVICE_ROLE_KEY) {
   console.error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable');
