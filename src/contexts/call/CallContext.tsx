@@ -475,6 +475,24 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user?.id, profile, sendSignal, toast, resetCallState, setupWebRTCCallbacks, logCallToDb]);
 
+  // Reject incoming call
+  const rejectCall = useCallback(() => {
+    if (!user?.id || !pendingSignalRef.current) return;
+
+    const signal = pendingSignalRef.current;
+    console.log('[Call] Rejecting call from', signal.from);
+    
+    sendSignal({
+      type: 'call-rejected',
+      from: user.id,
+      to: signal.from,
+      callType: signal.callType,
+    });
+
+    markCallResolved();
+    resetCallState();
+  }, [user?.id, sendSignal, resetCallState]);
+
   // Accept incoming call
   const acceptCall = useCallback(async () => {
     if (!user?.id || !webrtcRef.current || !pendingSignalRef.current) {
@@ -525,24 +543,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       rejectCall();
     }
   }, [user?.id, sendSignal, toast, setupWebRTCCallbacks, resetCallState, rejectCall]);
-
-  // Reject incoming call
-  const rejectCall = useCallback(() => {
-    if (!user?.id || !pendingSignalRef.current) return;
-
-    const signal = pendingSignalRef.current;
-    console.log('[Call] Rejecting call from', signal.from);
-    
-    sendSignal({
-      type: 'call-rejected',
-      from: user.id,
-      to: signal.from,
-      callType: signal.callType,
-    });
-
-    markCallResolved();
-    resetCallState();
-  }, [user?.id, sendSignal, resetCallState]);
 
   // End call
   const endCall = useCallback(() => {
