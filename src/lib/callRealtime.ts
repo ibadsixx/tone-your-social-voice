@@ -75,7 +75,8 @@ export class CallRealtimeChannel {
         }),
       });
       if (!res.ok) {
-        console.error('[Realtime] Publish failed:', res.status);
+        const body = await res.text().catch(() => '');
+        console.error(`[Realtime] Publish failed: ${res.status} ${body}`);
         return { ok: false, delivered: 0 };
       }
       try {
@@ -157,6 +158,7 @@ export class CallRealtimeChannel {
     const decoder = new TextDecoder();
     let buffer = '';
 
+    console.log('[Realtime] SSE stream connected');
     try {
       while (!this.disposed && !controller.signal.aborted) {
         const { done, value } = await reader.read();
@@ -173,6 +175,7 @@ export class CallRealtimeChannel {
       // Stream error — handled by reconnect below.
     }
 
+    console.log('[Realtime] SSE stream ended');
     if (!this.disposed) {
       this.controller = null;
       this.scheduleReconnect();
@@ -210,6 +213,7 @@ export class CallRealtimeChannel {
 
     for (const listener of this.broadcastListeners) {
       if (listener.event === evt) {
+        console.log(`[Realtime] Received event: ${evt}`);
         try {
           listener.callback({ payload: parsed?.payload });
         } catch {
@@ -222,6 +226,7 @@ export class CallRealtimeChannel {
   private scheduleReconnect(callback?: (status: string) => void): void {
     if (this.disposed) return;
     if (this.retryTimeout) clearTimeout(this.retryTimeout);
+    console.log(`[Realtime] Reconnecting in ${this.retryDelay}ms`);
     this.retryTimeout = setTimeout(() => {
       this.retryDelay = Math.min(this.retryDelay * 2, 30000);
       this.connect(callback);

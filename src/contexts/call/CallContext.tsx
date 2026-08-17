@@ -437,11 +437,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!delivery.ok) {
         console.warn('[Call] call-request publish failed');
       } else if (delivery.delivered === 0) {
-        console.warn('[Call] call-request delivered to 0 subscribers (callee likely offline)');
-        toast({
-          title: 'User May Be Offline',
-          description: 'The user is not reachable right now. If they were online, they would receive your call.',
-        });
+        // delivered counts only subscribers on the gateway instance that served
+        // this publish. With the gateway's cross-instance Realtime bus, the
+        // callee may still receive the call on another instance, so this is no
+        // longer a reliable offline signal; the No Answer timeout handles it.
+        console.warn('[Call] call-request delivered to 0 local subscribers (callee may be on another gateway instance)');
       }
 
       callTimeoutRef.current = setTimeout(() => {
