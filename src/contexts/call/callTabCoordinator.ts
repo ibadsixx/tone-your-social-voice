@@ -11,20 +11,28 @@ export function markCallResolved() {
   }
 }
 
-function readCount(): number {
+// Scope the active-call counter by userId so that different users logged in on
+// the same origin (e.g. two browser tabs with different accounts) don't block
+// each other's incoming calls.
+function storageKey(userId?: string | null): string {
+  return userId ? `${CALL_ACTIVE_STORAGE_KEY}:${userId}` : CALL_ACTIVE_STORAGE_KEY;
+}
+
+function readCount(userId?: string | null): number {
   try {
-    return parseInt(localStorage.getItem(CALL_ACTIVE_STORAGE_KEY) || '0', 10) || 0;
+    return parseInt(localStorage.getItem(storageKey(userId)) || '0', 10) || 0;
   } catch {
     return 0;
   }
 }
 
-function writeCount(count: number) {
+function writeCount(count: number, userId?: string | null) {
   try {
+    const key = storageKey(userId);
     if (count <= 0) {
-      localStorage.removeItem(CALL_ACTIVE_STORAGE_KEY);
+      localStorage.removeItem(key);
     } else {
-      localStorage.setItem(CALL_ACTIVE_STORAGE_KEY, String(count));
+      localStorage.setItem(key, String(count));
     }
   } catch {
     // localStorage unavailable (private mode, SSR) — degrade to per-tab behavior.
@@ -32,19 +40,19 @@ function writeCount(count: number) {
 }
 
 // Cross-tab coordination so multiple tabs of the same user don't all ring for
-// one incoming call and don't both accept it. Uses a localStorage counter, which
-// is shared across tabs of the same origin; other tabs are notified via the
-// `storage` event when the counter changes.
+// one incoming call and don't both accept it. Uses a localStorage counter keyed
+// by userId, which is shared across tabs of the same origin; other tabs are
+// notified via the `storage` event when the counter changes.
 export const callTabCoordinator = {
-  isActive(): boolean {
-    return readCount() > 0;
+  isActive(userId?: string | null): boolean {
+    return readCount(userId) > 0;
   },
 
-  enterCall() {
-    writeCount(readCount() + 1);
+  enterCall(userId?: string | null) {
+    writeCount(readCount(userId) + 1, userId);
   },
 
-  exitCall() {
-    writeCount(Math.max(0, readCount() - 1));
+  exitCall(userId?: string | null) {
+    writeCount(Math.max(0, readCount(userId) - 1), userId);
   },
 };

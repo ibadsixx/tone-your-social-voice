@@ -58,14 +58,22 @@ export class CallRealtimeChannel {
   }
 
   async send(options: { type: string; event: string; payload: unknown }): Promise<CallDelivery> {
-    if (!GATEWAY_URL) return { ok: false, delivered: 0 };
-    const token = getToken();
-    try {
-      const res = await fetch(`${GATEWAY_URL}/api/realtime/publish`, {
+    if (!GATEWAY_URL) {
+      console.error('[Realtime] send() failed: VITE_API_GATEWAY_URL is not set');
+      return { ok: false, delivered: 0 };
+    }
+    let token = getToken();
+    if (!token) {
+      console.error('[Realtime] send() failed: no auth token');
+      return { ok: false, delivered: 0 };
+    }
+
+    const post = async (authToken: string) =>
+      fetch(`${GATEWAY_URL}/api/realtime/publish`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           channel: this.channelName,
@@ -74,6 +82,21 @@ export class CallRealtimeChannel {
           excludeConnId: this.self ? undefined : this.connId,
         }),
       });
+
+    try {
+      let res = await post(token);
+
+      if (res.status === 401) {
+        console.warn('[Realtime] Publish 401 — refreshing token');
+        await gateway.auth.refreshSession();
+        token = getToken();
+        if (!token) {
+          console.error('[Realtime] Publish failed: token refresh returned no token');
+          return { ok: false, delivered: 0 };
+        }
+        res = await post(token);
+      }
+
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         console.error(`[Realtime] Publish failed: ${res.status} ${body}`);
@@ -103,7 +126,11 @@ export class CallRealtimeChannel {
   }
 
   private async connect(callback?: (status: string) => void): Promise<void> {
-    if (this.disposed || !GATEWAY_URL) return;
+    if (this.disposed) return;
+    if (!GATEWAY_URL) {
+      console.error('[Realtime] connect() failed: VITE_API_GATEWAY_URL is not set');
+      return;
+    }
 
     const url = `${GATEWAY_URL}/api/realtime/subscribe/${encodeURIComponent(this.channelName)}`;
     let token = getToken();

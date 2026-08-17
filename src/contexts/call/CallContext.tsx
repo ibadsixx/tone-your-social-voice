@@ -78,7 +78,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('[Call] Resetting call state');
     clearCallTimeout();
 
-    callTabCoordinator.exitCall();
+    callTabCoordinator.exitCall(user?.id);
 
     webrtcRef.current?.cleanup();
     webrtcRef.current = new WebRTCService();
@@ -87,7 +87,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     iceCandidateQueueRef.current = [];
     
     setCallState(initialCallState);
-  }, [clearCallTimeout]);
+  }, [clearCallTimeout, user?.id]);
 
   // Process queued ICE candidates
   const processIceCandidateQueue = useCallback(async () => {
@@ -166,7 +166,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     switch (signal.type) {
       case 'call-request':
-        if (currentState.status !== 'idle' || callTabCoordinator.isActive()) {
+        if (currentState.status !== 'idle' || callTabCoordinator.isActive(user?.id)) {
           console.log('[Call] Already in call, sending busy');
           sendSignal({
             type: 'call-busy',
@@ -375,7 +375,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (callStateRef.current.status !== 'ringing') return;
-      if (e.key === CALL_ACTIVE_STORAGE_KEY) {
+      if (e.key === CALL_ACTIVE_STORAGE_KEY || (e.key && e.key.startsWith(`${CALL_ACTIVE_STORAGE_KEY}:`))) {
         const count = parseInt(e.newValue || '0', 10) || 0;
         if (count > 0) {
           console.log('[Call] Call accepted in another tab, cancelling ring');
@@ -420,7 +420,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isVideoOff: callType === 'voice',
       }));
 
-      callTabCoordinator.enterCall();
+      callTabCoordinator.enterCall(user?.id);
 
       const delivery = await sendSignal({
         type: 'call-request',
@@ -436,6 +436,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       if (!delivery.ok) {
         console.warn('[Call] call-request publish failed');
+        toast({
+          title: 'Call Failed',
+          description: 'Could not reach the other user. Please try again.',
+          variant: 'destructive',
+        });
+        resetCallState();
+        return;
       } else if (delivery.delivered === 0) {
         // delivered counts only subscribers on the gateway instance that served
         // this publish. With the gateway's cross-instance Realtime bus, the
@@ -504,8 +511,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('[Call] Accepting call from', signal.from);
 
     // Guard against double-accept across tabs of the same user.
-    if (callTabCoordinator.isActive()) {
-      console.log('[Call] Already in a call in another tab, ignoring accept');
+    if (callTabCoordinator.isActive(user?.id)) {
       toast({
         title: 'Call Handled Elsewhere',
         description: 'You already have an active call in another tab.',
@@ -525,7 +531,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isVideoOff: signal.callType === 'voice',
       }));
 
-      callTabCoordinator.enterCall();
+      callTabCoordinator.enterCall(user?.id);
 
       await sendSignal({
         type: 'call-accepted',

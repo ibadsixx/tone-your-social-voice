@@ -9,20 +9,25 @@ interface UseCallSignalingOptions {
 
 export const useCallSignaling = ({ userId, onSignal }: UseCallSignalingOptions) => {
   const channelRef = useRef<CallRealtimeChannel | null>(null);
+  const sendChannelRef = useRef<CallRealtimeChannel | null>(null);
   const onSignalRef = useRef(onSignal);
   onSignalRef.current = onSignal;
 
-  // Send signal to target user through the gateway SSE bridge.
   const sendSignal = useCallback(async (signal: CallSignal): Promise<CallDelivery> => {
-    const targetChannel = openCallChannel(`calls:${signal.to}`);
-    return targetChannel.send({
+    const targetChannelName = `calls:${signal.to}`;
+
+    if (!sendChannelRef.current || sendChannelRef.current['channelName'] !== targetChannelName) {
+      sendChannelRef.current?.unsubscribe();
+      sendChannelRef.current = openCallChannel(targetChannelName);
+    }
+
+    return sendChannelRef.current.send({
       type: 'broadcast',
       event: 'call-signal',
       payload: signal,
     });
   }, []);
 
-  // Subscribe to the gateway's realtime channel for incoming call signals.
   useEffect(() => {
     if (!userId) return;
 
@@ -45,6 +50,10 @@ export const useCallSignaling = ({ userId, onSignal }: UseCallSignalingOptions) 
       if (channelRef.current) {
         channelRef.current.unsubscribe();
         channelRef.current = null;
+      }
+      if (sendChannelRef.current) {
+        sendChannelRef.current.unsubscribe();
+        sendChannelRef.current = null;
       }
     };
   }, [userId]);
