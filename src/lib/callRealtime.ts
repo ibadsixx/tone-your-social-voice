@@ -84,6 +84,7 @@ export class CallRealtimeChannel {
       });
 
     try {
+      console.log(`[Realtime] Publishing to ${this.channelName} event=${options.event}`);
       let res = await post(token);
 
       if (res.status === 401) {
@@ -104,6 +105,7 @@ export class CallRealtimeChannel {
       }
       try {
         const json = await res.json();
+        console.log(`[Realtime] Publish OK: delivered=${json?.delivered}`);
         return {
           ok: true,
           delivered: typeof json?.delivered === 'number' ? json.delivered : 0,
@@ -133,8 +135,10 @@ export class CallRealtimeChannel {
     }
 
     const url = `${GATEWAY_URL}/api/realtime/subscribe/${encodeURIComponent(this.channelName)}`;
+    console.log(`[Realtime] SSE connecting to ${url}`);
     let token = getToken();
     if (!token) {
+      console.warn(`[Realtime] SSE connect: no token, scheduling reconnect`);
       this.scheduleReconnect(callback);
       return;
     }
@@ -151,12 +155,15 @@ export class CallRealtimeChannel {
     let res: Response;
     try {
       res = await fetchStream(token);
-    } catch {
+      console.log(`[Realtime] SSE response status: ${res.status}`);
+    } catch (err) {
+      console.error(`[Realtime] SSE fetch failed:`, err);
       if (!this.disposed) this.scheduleReconnect(callback);
       return;
     }
 
     if (res.status === 401) {
+      console.warn('[Realtime] SSE 401 — refreshing token');
       await gateway.auth.refreshSession();
       token = getToken();
       if (!token) {
@@ -165,13 +172,16 @@ export class CallRealtimeChannel {
       }
       try {
         res = await fetchStream(token);
+        console.log(`[Realtime] SSE retry response status: ${res.status}`);
       } catch {
+        console.error(`[Realtime] SSE retry fetch failed`);
         if (!this.disposed) this.scheduleReconnect(callback);
         return;
       }
     }
 
     if (!res.ok || !res.body) {
+      console.warn(`[Realtime] SSE not OK or no body: status=${res.status}`);
       this.scheduleReconnect(callback);
       return;
     }

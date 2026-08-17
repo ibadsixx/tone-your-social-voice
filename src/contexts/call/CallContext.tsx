@@ -159,15 +159,18 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Handle incoming signals
   const handleSignal = useCallback(async (signal: CallSignal, sendSignal: (signal: CallSignal) => Promise<CallDelivery>) => {
-    if (!user?.id || signal.to !== user.id) return;
+    if (!user?.id || signal.to !== user.id) {
+      console.log('[Call] Signal ignored: to=', signal.to, 'my id=', user?.id);
+      return;
+    }
 
     const currentState = callStateRef.current;
-    console.log('[Call] Received signal:', signal.type, 'current status:', currentState.status);
+    console.log('[Call] Received signal:', signal.type, 'from:', signal.from, 'current status:', currentState.status);
 
     switch (signal.type) {
       case 'call-request':
         if (currentState.status !== 'idle' || callTabCoordinator.isActive(user?.id)) {
-          console.log('[Call] Already in call, sending busy');
+          console.log('[Call] Already in call or tab coordinator active, sending busy. status:', currentState.status, 'tabActive:', callTabCoordinator.isActive(user?.id));
           sendSignal({
             type: 'call-busy',
             from: user.id,
@@ -373,9 +376,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // If another tab accepts or rejects the incoming call, stop ringing here.
   useEffect(() => {
+    const activeKey = user?.id ? `${CALL_ACTIVE_STORAGE_KEY}:${user.id}` : CALL_ACTIVE_STORAGE_KEY;
     const onStorage = (e: StorageEvent) => {
       if (callStateRef.current.status !== 'ringing') return;
-      if (e.key === CALL_ACTIVE_STORAGE_KEY || (e.key && e.key.startsWith(`${CALL_ACTIVE_STORAGE_KEY}:`))) {
+      if (e.key === activeKey) {
         const count = parseInt(e.newValue || '0', 10) || 0;
         if (count > 0) {
           console.log('[Call] Call accepted in another tab, cancelling ring');
@@ -388,7 +392,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, [resetCallState]);
+  }, [user?.id, resetCallState]);
 
   // Initiate a call
   const initiateCall = useCallback(async (userId: string, userInfo: CallParticipant, callType: CallType) => {
