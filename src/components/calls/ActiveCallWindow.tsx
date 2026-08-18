@@ -116,6 +116,9 @@ export const ActiveCallWindow: React.FC = () => {
   useEffect(() => {
     if (remoteStream && callType === 'voice' && remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = remoteStream;
+      remoteAudioRef.current.play().catch((err) => {
+        console.warn('[Call] Remote audio play blocked:', err);
+      });
     }
   }, [remoteStream, callType]);
 
@@ -139,7 +142,9 @@ export const ActiveCallWindow: React.FC = () => {
   // Minimized view
   if (isMinimized) {
     return (
-      <motion.div
+      <>
+        <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+        <motion.div
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.8 }}
@@ -195,6 +200,7 @@ export const ActiveCallWindow: React.FC = () => {
           </Button>
         </div>
       </motion.div>
+      </>
     );
   }
 
