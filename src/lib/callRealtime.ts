@@ -45,8 +45,11 @@ export class CallRealtimeChannel {
   }
 
   on(type: string, filter: Record<string, unknown> | string, callback: BroadcastCallback): this {
-    if (type === 'broadcast' && typeof filter === 'string') {
-      this.broadcastListeners.push({ event: filter, callback });
+    if (type === 'broadcast') {
+      const event = typeof filter === 'string' ? filter : (filter as Record<string, unknown>).event as string;
+      if (event) {
+        this.broadcastListeners.push({ event, callback });
+      }
     }
     return this;
   }

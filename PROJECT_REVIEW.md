@@ -7,10 +7,10 @@
 ## Tech Stack
 
 - **Frontend:** React 18, TypeScript 5, Vite 5, Tailwind CSS, shadcn/ui, Framer Motion
-- **Backend:** API Gateway (`https://gateway-iota-two.vercel.app`) → 13 Supabase projects
+- **Backend:** API Gateway (`https://gateway-iota-two.vercel.app`) → 13 backend projects
 - **State Management:** TanStack React Query + React Context (no Redux)
 - **Testing:** Playwright (E2E) + Vitest (unit)
-- **Deployment:** Vercel + Supabase Cloud
+- **Deployment:** Vercel + Cloud
 
 ## Key Features
 
@@ -34,8 +34,8 @@
 - Custom hooks (~85+) encapsulate all API calls and business logic
 - Layout: sticky header + fixed icon sidebar (tooltips) + main content + floating chat windows
 - Database: 80+ tables with auto-generated TypeScript types, 226 SQL migrations
-- 5 Supabase Edge Functions (geocoding, GIF search, audio transcription, scheduled posts, expired message cleanup)
-- All 226 migrations applied via Supabase Management API using access token
+- 5 Edge Functions (geocoding, GIF search, audio transcription, scheduled posts, expired message cleanup)
+- All 226 migrations applied via the gateway infrastructure layer
 
 ## Recent Changes
 
@@ -74,7 +74,7 @@
   - `src/components/groups/InviteToGroupDialog.tsx` — `groupsApi.addGroupMembers()`, `profilesApi.getProfileById()`, `usersApi.getFriendsByUser()`
   - `src/components/groups/ShareGroupDialog.tsx` — `profilesApi.getProfileById()`, `usersApi.getFriendsByUser()`, `postsApi.createPost()`
   - `src/components/groups/GroupSearchDialog.tsx` — `profilesApi.getProfileById()`
-- **Architecture:** `Tone → API Layer (src/api/) → Gateway Client (src/lib/gateway.ts) → API Gateway → Supabase Projects`
+- **Architecture:** `Tone → API Layer (src/api/) → Gateway Client (src/lib/gateway.ts) → API Gateway → Backend Projects`
 - **TypeScript build:** ✓ 0 errors | **Vite build:** ✓ Success (29s)
 
 ### Client-Side Gateway Query Filtering (`src/lib/gateway.ts`)
@@ -155,7 +155,7 @@
 - **Received/Sent tabs** — tab switcher in dropdown header toggles between incoming and outgoing pending requests
 - **Sent requests** — fetches from `friends` table where `requester_id` = current user and `status = 'pending'`, displaying receiver avatar, name, and username
 - **Red badge** — unread count badge uses `bg-red-500` (Facebook-style)
-- All data fetched directly from Supabase with real-time capable queries
+- All data fetched via the gateway with real-time capable queries
 
 ### NotificationsDropdown (`src/components/NotificationsDropdown.tsx`)
 
@@ -169,7 +169,7 @@
 
 - **Chat bubble with `...`** — replaced the "+" FAB with a `MessageCircle` icon + "..." text
 - **Floating contacts list** — clicking the bubble opens a 260px-tick contacts panel (friends + conversation partners) with search, replaces the old new-message search popup
-- **Contacts fetched from DB** — friends and conversation participants loaded from Supabase on open
+- **Contacts fetched from DB** — friends and conversation participants loaded via the gateway on open
 - **FloatingIM removed** — `src/components/im/FloatingIM.tsx` deleted; contacts sidebar and all references removed from Layout
 
 ### Layout & Navigation (`src/components/Layout.tsx`)
@@ -281,7 +281,7 @@
 
 ### Auto-Upload Hook (`src/hooks/useAutoUpload.ts`)
 
-- `useAutoUpload()` returns an `upload(files)` function that uploads each file to the `media_backups` Supabase Storage bucket under `{userId}/{timestamp}-{random}.{ext}`
+- `useAutoUpload()` returns an `upload(files)` function that uploads each file to the `media_backups` storage bucket via the gateway under `{userId}/{timestamp}-{random}.{ext}`
 - Records each uploaded file in `media_library` table with `file_url`, `file_type`, `file_size`, `file_name`
 - Shows a toast summary on completion
 - Wired into `NewPost.tsx` and `MessageInput.tsx` — when `disableAutoUploads` is `false`, calling `handleFileSelect` triggers immediate auto-upload alongside local preview
@@ -290,7 +290,7 @@
 
 - **Preview Mode toggle** — Switch in the Encryption chats sub-menu, persisted to `profiles.preview_mode` (boolean, default false)
 - **When enabled**, shared links in messages render as rich inline preview cards:
-  - **Post previews** (`src/components/messages/previews/PostLinkPreview.tsx`) — detects `/post/:id` URLs, fetches post data from Supabase, renders a card with author avatar, display name, content snippet, and timestamp; clicking navigates to the post
+  - **Post previews** (`src/components/messages/previews/PostLinkPreview.tsx`) — detects `/post/:id` URLs, fetches post data via the gateway, renders a card with author avatar, display name, content snippet, and timestamp; clicking navigates to the post
   - **Profile previews** (`src/components/messages/previews/ProfileLinkPreview.tsx`) — detects `/profile/:username` URLs, fetches profile data, renders avatar + display name + username + bio; clicking navigates to the profile
   - **Group previews** (`src/components/messages/previews/GroupLinkPreview.tsx`) — detects `/groups/:groupId` URLs, fetches group data, renders avatar + name + member count + description; clicking navigates to the group
   - **Page previews** (`src/components/messages/previews/PageLinkPreview.tsx`) — detects `/pages/:id` URLs, fetches page data, renders avatar + name + follower count + category; clicking navigates to the page
@@ -400,7 +400,7 @@
 ### Liked Status & Toggle (`src/components/PostCard.tsx`, `src/hooks/useHomeFeed.ts`)
 
 - **`isLiked` state** — each `PostCard` independently tracks whether the post is liked by the current user, initialized by checking `post.user_has_liked` or `post.likes` for the current user's ID
-- **`toggleLike` with loading** — clicking the heart button optimistically toggles the UI and calls Supabase (insert into `post_likes` or delete from `post_likes`); if the network call fails, the UI reverts
+- **`toggleLike` with loading** — clicking the heart button optimistically toggles the UI and calls the gateway (insert into `post_likes` or delete from `post_likes`); if the network call fails, the UI reverts
 - **Like count** — displayed alongside the heart icon, decremented/incremented optimistically on toggle
 - **Existing likes on mount** — `user_has_liked` field is populated by the feed query; if not available, the component falls back to checking the `likes` array
 
@@ -491,7 +491,7 @@
 
 ### Database Connection
 
-- All 226 migrations applied to Supabase project `ojdhztcetykgvrcwlwen` via Management API with access token
+- All 226 migrations applied via the gateway infrastructure layer
 - Frontend connects via API Gateway (`VITE_API_GATEWAY_URL` in `.env`)
 - No credentials in source code — `src/integrations/supabase/client.ts` is a dead module when env vars absent; variable names cleaned up from `SUPABASE_URL`/`SUPABASE_ANON_KEY` to `GATEWAY_URL`/`GATEWAY_ANON_KEY`
 - Service role key available for server-side migration scripts
@@ -590,7 +590,7 @@ tone-your-social-voice/
 - **Notifications page** (`/notifications`) — dedicated full-screen page with notification list, unread badges, and "Mark all read" button; replaces dropdown on mobile
 - **Layout.tsx mobile navigation** — both Notifications and Friend Requests header buttons navigate to their respective pages on mobile (`isMobile` check), keep dropdowns on desktop; `GiveFeedbackDialog` removed, `Ctrl+B` navigates to `/feedback`
 
-This is a large, ambitious social media application (~100,000+ lines) with production-level features spanning the full social networking stack. All data access routes through the unified API layer (`src/api/`) → Tone API Gateway (`src/lib/gateway.ts`) → deployed gateway → Supabase projects.
+This is a large, ambitious social media application (~100,000+ lines) with production-level features spanning the full social networking stack. All data access routes through the unified API layer (`src/api/`) → Tone API Gateway (`src/lib/gateway.ts`) → deployed gateway → backend projects.
 
 ---
 
@@ -598,11 +598,11 @@ This is a large, ambitious social media application (~100,000+ lines) with produ
 
 ### Architecture Change
 
-The application has been fully migrated to use the **Tone API Gateway** instead of direct Supabase connections:
+The application has been fully migrated to use the **Tone API Gateway** instead of direct database connections:
 
 | Before | After |
 |--------|-------|
-| Direct Supabase connection | API Gateway proxy |
+| Direct database connection | API Gateway proxy |
 | `VITE_SUPABASE_URL` | `VITE_API_GATEWAY_URL` |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | (removed) |
 | `VITE_SUPABASE_PROJECT_ID` | (removed) |
@@ -615,7 +615,7 @@ The application has been fully migrated to use the **Tone API Gateway** instead 
 
 ### Gateway Capabilities
 
-The API Gateway routes requests to 12 separate Supabase projects by domain:
+The API Gateway routes requests to 12 separate backend projects by domain:
 
 | Domain | Project | Status |
 |--------|---------|--------|
@@ -634,12 +634,12 @@ The API Gateway routes requests to 12 separate Supabase projects by domain:
 
 ### Gateway Compatibility Client (`src/lib/gateway.ts`)
 
-A ~640-line Supabase SDK-compatible client that translates chainable queries to gateway REST API calls, with client-side filtering for unsupported gateway features:
+A ~640-line SDK-compatible client that translates chainable queries to gateway REST API calls, with client-side filtering for unsupported gateway features:
 
 - **Query builder:** `.from()`, `.select()`, `.eq()`, `.neq()`, `.gt()`, `.gte()`, `.lt()`, `.lte()`, `.in()`, `.like()`, `.ilike()`, `.or()`, `.not()`, `.is()`, `.order()`, `.limit()`, `.range()`, `.single()`, `.maybeSingle()`, `.count()`
 - **CRUD:** `.insert()`, `.update()`, `.delete()`, `.upsert()` with proper URL routing (`/api/` for POST/GET, `/api/v1/` for PUT/DELETE)
 - **RPC:** `gateway.rpc('function_name', { params })` → `POST /api/rpc/{function}`
-- **Storage:** `gateway.storage.from('bucket').upload()`, `.getPublicUrl()` — routes uploads through gateway, public URLs construct directly from Supabase storage
+- **Storage:** `gateway.storage.from('bucket').upload()`, `.getPublicUrl()` — routes uploads and public URLs through the gateway
 - **Auth:** Returns structured "not configured" errors (gateway has no auth endpoints)
 - **Realtime:** Channel API with local broadcast support (gateway has no WebSocket)
 
@@ -683,8 +683,8 @@ For full functionality, the gateway needs:
 1. **Query filtering** — ~~URL query params for `.eq()`, `.order()`, `.limit()`, `.range()`, `.in()`, `.or()`, `.ilike()`~~ Done client-side; server-side still recommended to avoid fetching all records
 2. **RPC proxying** — `POST /api/rpc/{function_name}` endpoint
 3. **Auth middleware** — JWT validation or API key system (currently no authentication at all)
-4. **Storage proxying** — File upload passthrough to Supabase Storage
-5. **Realtime/WebSocket support** — Proxy Supabase Realtime connections
+4. **Storage proxying** — File upload passthrough via the gateway
+5. **Realtime/WebSocket support** — Proxy realtime connections via the gateway
 6. **Remove or protect `/api/system/databases`** — never expose service keys publicly
 
 ### Security Notes
@@ -698,14 +698,14 @@ For full functionality, the gateway needs:
 - Regex injection in gateway filter builder (`src/lib/gateway.ts:99-104`) — ReDoS possible
 - No Content Security Policy headers on `index.html`
 - No CSRF protection on gateway fetch calls
-- Original Supabase RLS policies no longer apply through gateway
+- Original RLS policies no longer apply through gateway
 - `src/integrations/supabase/client.ts` is now a dead module (returns `null` when env vars absent)
 
 ### Recommendations (Gateway Integration)
 
 1. **Add gateway authentication** — Implement JWT or API key validation
 2. **Remove `/api/system/databases` endpoint** — Never expose service keys publicly
-3. **Fix offline databases** — Restore `profiles` and `groups` Supabase projects
+3. **Fix offline databases** — Restore `profiles` and `groups` backend projects
 4. **Add gateway RPC proxying** — 20+ RPC functions need proxying
 5. **Add gateway storage proxying** — File uploads need passthrough
 6. **Refactor large components** — Break down 13 files >1000 lines into smaller, focused components
@@ -720,7 +720,7 @@ For full functionality, the gateway needs:
 
 ### Overall Assessment (Migration)
 
-The application has been fully migrated to use the API Gateway with a clean 3-layer architecture: `src/api/` (domain functions) → `src/lib/gateway.ts` (query builder) → API Gateway → Supabase Projects. All 160 source files import from `@/api` or `@/lib/gateway`. The `.env` contains only `VITE_API_GATEWAY_URL` with no credentials. The unified API layer provides typed functions for all 12 domains. The Posts domain is fully migrated to use the API layer. Client-side filtering, sorting, and pagination handle the gateway's lack of query param support. The app compiles and builds cleanly.
+The application has been fully migrated to use the API Gateway with a clean 3-layer architecture: `src/api/` (domain functions) → `src/lib/gateway.ts` (query builder) → API Gateway → Backend Projects. All 160 source files import from `@/api` or `@/lib/gateway`. The `.env` contains only `VITE_API_GATEWAY_URL` with no credentials. The unified API layer provides typed functions for all 12 domains. The Posts domain is fully migrated to use the API layer. Client-side filtering, sorting, and pagination handle the gateway's lack of query param support. The app compiles and builds cleanly.
 
 ---
 
@@ -743,7 +743,7 @@ The application has been fully migrated to use the API Gateway with a clean 3-la
 | 6 | **Auth token leaked via console.log** | `src/hooks/useFileUpload.ts:45` | `console.log('[useFileUpload] ✅ User authenticated:', user.id)` — sensitive user data logged to console in production. Multiple other hooks log user IDs and project data. |
 | 7 | **No CSRF protection** | `src/lib/gateway.ts:536-540` | `_gatewayFetch` sends auth tokens via `Authorization` header but has no CSRF token. Since this is a SPA calling a separate gateway origin, SameSite cookies don't apply. |
 | 8 | **Client-side filtering fetches entire tables** | `src/lib/gateway.ts:303-306` | When gateway ignores query params, client fetches ALL rows per table into the browser. Catastrophic for performance at scale. The comment on line 28 acknowledges this. |
-| 9 | **Supabase client created with wrong credentials** | `src/integrations/supabase/client.ts:7` | `SUPABASE_ANON_KEY` set to `VITE_API_GATEWAY_URL` instead of actual anon key. Misleading for developers even though marked "type compatibility only". |
+| 9 | **Client created with wrong credentials** | `src/integrations/supabase/client.ts:7` | `SUPABASE_ANON_KEY` set to `VITE_API_GATEWAY_URL` instead of actual key. Misleading for developers even though marked "type compatibility only". |
 
 ### Medium
 
@@ -879,7 +879,7 @@ Only 4 test files exist in `src/__tests__/`:
 | Tests | ✗ 4 files, zero component/hook/integration tests |
 | CI/CD | ✗ Not configured |
 | TypeScript strictness | ✗ Disabled (`strict: false`) |
-| Profiles Supabase project | ✗ Unreachable (`kswqecvwphalmsggtccm` — database offline) |
+| Profiles backend project | ✗ Unreachable (database offline) |
 
 ---
 
@@ -899,7 +899,7 @@ Only 4 test files exist in `src/__tests__/`:
 12. **Add Content Security Policy headers** — prevent XSS, inline script injection, and data exfiltration
 13. **Remove console.log statements** — replace with structured logging or remove entirely for production
 14. **Fix bugs** — `getUserPosts` Rules of Hooks violation (`usePosts.tsx:80`), dead channel `send()` (`gateway.ts:516`), `hasActiveStories` always-false return (`stories.ts:29`)
-15. **Restore profiles Supabase project** — `kswqecvwphalmsggtccm` is unreachable; profile page shows empty state until database is restored
+15. **Restore profiles backend project** — unreachable; profile page shows empty state until database is restored
 
 ### Running the Project
 

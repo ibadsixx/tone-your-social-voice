@@ -806,8 +806,11 @@ export class GatewayChannel {
   }
 
   on(type: string, filter: Record<string, unknown> | string, callback: (payload: unknown) => void): this {
-    if (type === 'broadcast' && typeof filter === 'string') {
-      this._broadcastListeners.push({ event: filter, callback });
+    if (type === 'broadcast') {
+      const event = typeof filter === 'string' ? filter : (filter as Record<string, unknown>).event as string;
+      if (event) {
+        this._broadcastListeners.push({ event, callback });
+      }
     } else if (type === 'postgres_changes') {
       this._listeners.push({ event: (filter as Record<string, unknown>).event as string, filter: filter as Record<string, unknown>, callback });
     }
