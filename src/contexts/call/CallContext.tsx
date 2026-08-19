@@ -134,6 +134,28 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         setCallState(prev => ({ ...prev, status: 'connected' }));
       } else if (state === 'failed' || state === 'disconnected') {
+        const notifyRemoteAndReset = () => {
+          const ru = callStateRef.current.remoteUser;
+          if (ru) {
+            sendSignal({
+              type: 'call-ended',
+              from: user.id,
+              to: ru.id,
+              callType: callStateRef.current.callType || 'voice',
+            });
+            if (callStateRef.current.isOutgoing) {
+              logCallToDb(
+                user.id,
+                ru.id,
+                callStateRef.current.callType || 'voice',
+                'failed',
+                callStateRef.current.callDuration,
+              );
+            }
+          }
+          resetCallState();
+        };
+
         // Try ICE restart for recoverable failures
         if (state === 'disconnected' && webrtcRef.current) {
           console.log('[Call] Attempting ICE restart...');
@@ -143,7 +165,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
               description: 'The call connection was interrupted.',
               variant: 'destructive',
             });
-            resetCallState();
+            notifyRemoteAndReset();
           });
         } else {
           toast({
@@ -151,11 +173,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             description: 'The call connection was interrupted.',
             variant: 'destructive',
           });
-          resetCallState();
+          notifyRemoteAndReset();
         }
       }
     });
-  }, [user?.id, toast, resetCallState]);
+  }, [user?.id, toast, resetCallState, logCallToDb]);
 
   // Handle incoming signals
   const handleSignal = useCallback(async (signal: CallSignal, sendSignal: (signal: CallSignal) => Promise<CallDelivery>) => {
@@ -393,6 +415,24 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [user?.id, resetCallState]);
+
+  // Notify remote peer when user closes the tab mid-call
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const state = callStateRef.current;
+      const ru = state.remoteUser;
+      if (ru && state.status !== 'idle') {
+        sendSignal({
+          type: 'call-ended',
+          from: user?.id || '',
+          to: ru.id,
+          callType: state.callType || 'voice',
+        });
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [user?.id, sendSignal]);
 
   // Initiate a call
   const initiateCall = useCallback(async (userId: string, userInfo: CallParticipant, callType: CallType) => {

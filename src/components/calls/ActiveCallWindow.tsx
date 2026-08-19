@@ -113,14 +113,23 @@ export const ActiveCallWindow: React.FC = () => {
 
   // Attach remote stream to audio element for voice calls (the remote video
   // element only renders for video calls, so voice calls need their own output).
+  // `status` is a dependency because the <audio> element mounts when status
+  // becomes 'connected' — without it the effect runs before the ref exists.
   useEffect(() => {
     if (remoteStream && callType === 'voice' && remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = remoteStream;
-      remoteAudioRef.current.play().catch((err) => {
-        console.warn('[Call] Remote audio play blocked:', err);
+      remoteAudioRef.current.play().catch(() => {
+        // Autoplay blocked by browser — retry on next user gesture.
+        const retry = () => {
+          remoteAudioRef.current?.play().catch(() => {});
+          document.removeEventListener('click', retry);
+          document.removeEventListener('touchstart', retry);
+        };
+        document.addEventListener('click', retry, { once: true });
+        document.addEventListener('touchstart', retry, { once: true });
       });
     }
-  }, [remoteStream, callType]);
+  }, [remoteStream, callType, status]);
 
   // Attach remote stream to video element
   useEffect(() => {
