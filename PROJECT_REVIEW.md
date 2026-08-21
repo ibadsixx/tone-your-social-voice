@@ -39,7 +39,11 @@
 
 ## Recent Changes
 
-### Latest — Facebook-Style Call Log Messages in Chat (Aug 21, 2026, frontend `2042cfb`)
+### Latest — Aliased FK Joins Fixed, Message Avatars Restored (Aug 21, 2026, frontend `7540a9a`)
+
+- **`sender_profile:profiles!messages_sender_id_fkey(...)` selects silently returned no joined data** (`src/lib/gateway.ts` `parseJoinSpec`) — the `!`-branch kept the whole `alias:table` header as the related table, so the client-side join resolver fetched `/api/sender_profile:profiles` → gateway 400 (invalid domain) → every message row was missing `sender_profile`, and message avatars fell back to the `'U'` letter (reported as "photo shows as U on mobile" — the open chat is where per-message avatars are most visible; list/header avatars use a separate profile map and worked). Fix: strip an optional `alias:` prefix from the table part and use it as the result key. This repairs **every** aliased FK join in the app (message sender profiles in `useConversations`/`api/conversations.ts`, friends/requests/mentions/reels hooks, etc.). Verified live: the broken URL returns 400; parser now yields `{resultKey: 'sender_profile', relatedTable: 'profiles', localCol: 'sender_id'}`. tsc ✓ 0 errors; eslint unchanged (18 pre-existing errors in `gateway.ts`); build ✓.
+
+### Facebook-Style Call Log Messages in Chat (Aug 21, 2026, frontend `2042cfb`)
 
 - **Call events now leave a message in the conversation** (previously calls vanished without a trace in chat, unlike Messenger) — every terminal call path writes **one system message to the shared DM**, written by the caller only (same single-writer rule as `call_history`), visible to both participants:
   - `ended` (with duration) — completed call; `missed` — no answer / caller cancelled before connect; `declined` — receiver rejected; `failed` ("disconnected") — connection timeout, ICE failure, or watchdog zombie teardown. Busy dials intentionally log nothing.
