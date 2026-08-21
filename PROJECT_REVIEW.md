@@ -39,7 +39,39 @@
 
 ## Recent Changes
 
-### Latest — Hardcoded Supabase References Scrubbed + TDZ Crash Fix (Aug 14, 2026)
+### Latest — Facebook-Style Call Log Messages in Chat (Aug 21, 2026, frontend `2042cfb`)
+
+- **Call events now leave a message in the conversation** (previously calls vanished without a trace in chat, unlike Messenger) — every terminal call path writes **one system message to the shared DM**, written by the caller only (same single-writer rule as `call_history`), visible to both participants:
+  - `ended` (with duration) — completed call; `missed` — no answer / caller cancelled before connect; `declined` — receiver rejected; `failed` ("disconnected") — connection timeout, ICE failure, or watchdog zombie teardown. Busy dials intentionally log nothing.
+- **Storage without schema changes** (`src/lib/callLog.ts` new) — the `messages` table's `message_type` enum has no `'call'` value, so the row uses `is_system: true` + plaintext `content` holding a JSON envelope (`{"__call":{status,callType,duration}}`). `parseCallLog()` safely parses it and falls back to normal rendering for any other content (backward compatible).
+- **API** (`src/api/conversations.ts`) — new `sendCallLogMessage()`: resolves/creates the DM via existing `getOrCreateDM`, inserts the system row. Fire-and-forget from `CallContext` — a failed write never blocks call teardown.
+- **Hook-in points** (`src/contexts/call/CallContext.tsx`) — new `logCallMessage()` called alongside every existing `logCallToDb(...)` site: `endCall`, remote `call-ended`, no-answer timeout, 20s connection timeout, `call-rejected`, and `notifyRemoteAndReset()` (which now also records `completed` instead of `failed` when the peer had connected). Dep arrays updated.
+- **Rendering** (`MessageBubble.tsx`, `MiniChatWindow.tsx`) — call-log rows render as a centered pill (not a bubble): red accent + `PhoneMissed`/`VideoOff` for missed/disconnected, `PhoneOff` for declined, `Phone`/`Video` for ended with duration (`1:05` style) and relative time. Conversation-list previews (`useConversations.ts` → `ConversationList`) show readable labels ("Missed voice call") via `previewContent()`; live INSERT listener picks the row up in an open chat like a normal message.
+- **Verification:** `npx tsc --noEmit` ✓ 0 errors; eslint on changed files ✓ 0 errors (3 pre-existing warnings); `vite build` ✓ (25s). Commit `2042cfb` pushed to `ibadsixx/tone-your-social-voice`.
+
+### Stuck-Busy Self-Healing (Aug 21, 2026, frontend `b5c54ff`)
+
+- **Root cause of recurring "The user is currently in another call"** — the Aug 19 fix (`ae5a69b`) only covered *graceful* disconnects. Three holes still left a peer permanently non-idle, so every incoming `call-request` was auto-answered with `call-busy` (`src/contexts/call/CallContext.tsx`):
+  1. **Stale cross-tab flag** — a tab crashed/killed mid-call never runs cleanup, so the localStorage counter (`tone-call-active-count:<uid>`) stayed >0 forever — surviving reloads — and `callTabCoordinator.isActive()` blocked all incoming calls.
+  2. **Lost `call-ended` during SSE reconnect** — Vercel Hobby kills SSE streams at 300s, so calls longer than ~5 minutes always hit a signaling reconnect gap on both sides; an end/failed publish landing in that gap is lost (no replay on the gateway hub), leaving zombie `connecting`/`connected` state.
+  3. **No self-healing** — the busy reply never verified the local call was actually alive; the callee had no ring timeout; nothing detected silent peer death.
+- **Fixes:**
+  - **Heartbeat + staleness for the cross-tab counter** (`src/contexts/call/callTabCoordinator.ts`) — entries now store `{count, ts}`; `CallContext` heartbeats every 15s while any call is active; entries stale >75s are cleared on read instead of reporting active. Legacy bare-number entries are treated as already stale, so users already stuck by the old format heal automatically on next page load (no manual cache clearing).
+  - **Zombie-check before replying busy** (`CallContext.tsx` `call-request` handler) — when non-idle, the handler first reads `webrtc.getConnectionState()`: if `failed`/`closed`/missing, local state is reset and the incoming call is accepted instead of auto-busy.
+  - **Watchdog interval** (`CallContext.tsx`) — while any call is active: heartbeats the coordinator and ends zombie `'connected'` calls whose peer connection died without firing the state-change callback (via the shared `notifyRemoteAndReset()`).
+  - **45s callee ring timeout** (`CallContext.tsx`) — an unanswered incoming call auto-releases (sends `call-rejected`, marks resolved, resets), so a vanished caller cannot leave us ringing — and non-idle — indefinitely.
+  - **`call-ended` delivery retry** (`publishCallEnded()` in `CallContext.tsx`) — retries twice (2s apart) when the publish reports `delivered=0`, covering the callee's typical SSE reconnect window.
+  - **Counter decrement guard** — `resetCallState()` only calls `exitCall()` if this tab actually entered a call (`inCallRef`), preventing one tab's reset from zeroing another tab's legitimate count.
+- **Verification:** `npx tsc --noEmit` ✓ 0 errors; eslint ✓ 0 errors (1 pre-existing `react-refresh` warning); `vite build` ✓ (30s). Commit `b5c54ff` pushed to `ibadsixx/tone-your-social-voice`.
+
+### Call State Stuck Fix + Voice Audio Fix (Aug 19, 2026, frontend `ae5a69b`)
+
+- **Fixed call state stuck after WebRTC disconnect** (`src/contexts/call/CallContext.tsx:127-158`) — `onConnectionStateChange` handler now sends `call-ended` signal to the remote peer + logs to DB before calling `resetCallState()` on `'failed'`/`'disconnected'` states (including ICE restart failure). Previously the remote peer was never notified, leaving it stuck in `connecting`/`connected` and rejecting new calls with "The user is currently in another call." Extracted `notifyRemoteAndReset()` helper for both paths. Added `logCallToDb` to `setupWebRTCCallbacks` dependency array.
+- **Added `beforeunload` listener** (`src/contexts/call/CallContext.tsx:397-411`) — new `useEffect` sends `call-ended` to remote peer when user closes the tab mid-call, preventing stale state on the other side.
+- **Fixed voice call audio race condition** (`src/components/calls/ActiveCallWindow.tsx:116-123`) — added `status` to the `useEffect` dependency array that attaches `remoteStream` to the `<audio>` element. Without it, the effect ran before the ref was available when the component first mounted (both `remoteStream` and `status: 'connected'` set in the same state update). Also added autoplay retry on user gesture (click/touchstart) when browser blocks `.play()`.
+- **Verification:** `npx tsc --noEmit` ✓ 0 errors; eslint 0 errors (1 pre-existing `react-refresh` warning). Commit `ae5a69b` pushed to `ibadsixx/tone-your-social-voice`.
+
+### Hardcoded Supabase References Scrubbed + TDZ Crash Fix (Aug 14, 2026)
 
 - **Sanitized hardcoded Supabase references** (`PROJECT_REVIEW.md`, `tone-api-gateway.md`, `REVIEW.md` + subfolder copies) — removed all direct Supabase project IDs, URLs, and service keys from documentation. All paths now reference the gateway only. No `.env` files modified.
 - **Fixed TDZ crash in `useCall`** (`src/hooks/useCall.ts`) — destructuring `makeSystemCall` and `endCall` from `CallContext` before the provider mounted caused a `ReferenceError: Cannot access before initialization`. Moved destructuring inside the function body so it runs after the provider provides the context value.
@@ -430,14 +462,16 @@
 - **`createPost`** — after acquiring `mediaUrl`, runs detection for videos and sets `type`/`aspect_ratio` on the post row accordingly
 - No time/duration limit is enforced for regular video uploads
 
-### Liked Posts Page (`src/pages/LikedPosts.tsx`, `src/App.tsx`)
+### Liked Posts Page (`src/pages/LikedPosts.tsx`, `src/App.tsx`) — NOT PRESENT IN CURRENT TREE
+
+> **Stale (re-verified Aug 21, 2026):** `src/pages/LikedPosts.tsx`, `src/components/PostCard.tsx`, the `/liked` route, and `fetchPostsByIds` do not exist in the working tree or git history — this section describes work that was reverted or never committed. The live like toggle lives in `src/hooks/useHomeFeed.ts` against the `likes` table (a registered gateway domain), not `post_likes`. Kept for history only.
 
 - **`/liked` route** — new route mounted in `App.tsx`, renders `LikedPosts` page
 - **Liked posts feed** — queries `post_likes` table for the current user's liked post IDs (ordered by most recent like), then loads full post data via `fetchPostsByIds`
 - **Empty state** — when no liked posts, shows a "No liked posts yet" message with a `Heart` icon and a "Browse posts" link back to the homepage
 - **Navigation** — "Liked posts" entry in the header avatar menu navigates to `/liked`
 
-### Post Card Modularization (`src/components/PostCard.tsx`, `src/hooks/useHomeFeed.ts`)
+### Post Card Modularization (`src/components/PostCard.tsx`, `src/hooks/useHomeFeed.ts`) — NOT PRESENT IN CURRENT TREE (see note above)
 
 - **`PostCard` component** — extracted the per-post rendering from `HomeFeed` into a reusable `PostCard` component
 - **Props** — accepts full `post` object + `currentUserId`; renders avatar, author info, timestamp, content text, media, action bar (like/comment/share counts + buttons), and comment section
@@ -446,7 +480,7 @@
 - **`PostCard` used in `ProfilePage`** — the profile page's "Posts" tab uses `fetchPostsByIds` and renders via `PostCard`, consistent with the main feed
 - **`PostCard` used in `LikedPosts`** — the liked posts page reuses the same component
 
-### Liked Status & Toggle (`src/components/PostCard.tsx`, `src/hooks/useHomeFeed.ts`)
+### Liked Status & Toggle (`src/components/PostCard.tsx`, `src/hooks/useHomeFeed.ts`) — NOT PRESENT IN CURRENT TREE (see note above)
 
 - **`isLiked` state** — each `PostCard` independently tracks whether the post is liked by the current user, initialized by checking `post.user_has_liked` or `post.likes` for the current user's ID
 - **`toggleLike` with loading** — clicking the heart button optimistically toggles the UI and calls the gateway (insert into `post_likes` or delete from `post_likes`); if the network call fails, the UI reverts
@@ -542,7 +576,7 @@
 
 - All 230 migrations applied via the gateway infrastructure layer
 - Frontend connects via API Gateway (`VITE_API_GATEWAY_URL` in `.env`)
-- No credentials in source code — `src/integrations/supabase/client.ts` is a dead module when env vars absent; variable names cleaned up from `SUPABASE_URL`/`SUPABASE_ANON_KEY` to `GATEWAY_URL`/`GATEWAY_ANON_KEY`
+- No credentials in source code — `src/integrations/supabase/client.ts` is a dead module when env vars absent; it is now a type-only re-export (`export type { Database }`) with no client creation and no env vars at all
 - All infrastructure credentials managed via the gateway; never exposed to clients
 - Gateway infrastructure DB (`src/infrastructure/database/infrastructureDb.ts`) now retrieves config from `process.env` instead of hardcoded values
 - Gateway deployed to `ibadsixx/gateway` GitHub repo, auto-deploys to `https://gateway-iota-two.vercel.app`
@@ -684,7 +718,7 @@ The API Gateway routes requests to 13 separate backend projects by domain:
 
 ### Gateway Compatibility Client (`src/lib/gateway.ts`)
 
-A ~1120-line SDK-compatible client that translates chainable queries to gateway REST API calls, with client-side filtering for unsupported gateway features:
+A ~1146-line SDK-compatible client that translates chainable queries to gateway REST API calls, with client-side filtering for unsupported gateway features:
 
 - **Query builder:** `.from()`, `.select()`, `.eq()`, `.neq()`, `.gt()`, `.gte()`, `.lt()`, `.lte()`, `.in()`, `.like()`, `.ilike()`, `.or()`, `.not()`, `.is()`, `.order()`, `.limit()`, `.range()`, `.single()`, `.maybeSingle()`, `.count()`
 - **CRUD:** `.insert()`, `.update()`, `.delete()`, `.upsert()` with proper URL routing (`/api/` for POST/GET, `/api/v1/` for PUT/DELETE)
@@ -793,7 +827,7 @@ The application has been fully migrated to use the API Gateway with a clean 3-la
 | 6 | **Auth token leaked via console.log** | `src/hooks/useFileUpload.ts:45` | `console.log('[useFileUpload] ✅ User authenticated:', user.id)` — sensitive user data logged to console in production. Multiple other hooks log user IDs and project data. |
 | 7 | **No CSRF protection** | `src/lib/gateway.ts:536-540` | `_gatewayFetch` sends auth tokens via `Authorization` header but has no CSRF token. Since this is a SPA calling a separate gateway origin, SameSite cookies don't apply. |
 | 8 | **Client-side filtering fetches entire tables** | `src/lib/gateway.ts:303-306` | When gateway ignores query params, client fetches ALL rows per table into the browser. Catastrophic for performance at scale. The comment on line 28 acknowledges this. |
-| 9 | **Supabase client created with wrong credentials** | `src/integrations/supabase/client.ts:7` | `SUPABASE_ANON_KEY` set to `VITE_API_GATEWAY_URL` instead of actual key. Misleading for developers even though marked "type compatibility only". |
+| 9 | ~~**Supabase client created with wrong credentials**~~ | `src/integrations/supabase/client.ts` | ~~`SUPABASE_ANON_KEY` set to `VITE_API_GATEWAY_URL` instead of actual key.~~ **RESOLVED** — `client.ts` is now a type-only re-export; no client is created and no env vars are read. |
 
 ### Medium
 
@@ -816,6 +850,9 @@ The application has been fully migrated to use the API Gateway with a clean 3-la
 | 6 | **`QueryClient` created at module scope** — persists between test runs | `src/App.tsx:46` | Low | Open |
 | 7 | **`fetchConversationsDirectly` returns wrong shape** — local `Conversation` type conflicts with `api/types.ts` type | `src/hooks/useConversations.ts:71-96` | Low | Open |
 | 8 | **Column selection broken with nested joins** — complex select strings with PostgREST nested joins (e.g., `group_members!...(...)`) caused `parseSelect` to return partial columns instead of full rows | `src/lib/gateway.ts:326-340` | High | **FIXED** — `parseSelectColumns()` + `hasNestedJoins()` helpers added |
+| 9 | ~~**Call state stuck after WebRTC disconnect** — `onConnectionStateChange` calls `resetCallState()` without sending `call-ended` to remote peer; remote stays busy~~ | `src/contexts/call/CallContext.tsx:127-157` | Critical | **FIXED (Aug 19, 2026)** — sends `call-ended` + logs to DB before `resetCallState()`; added `beforeunload` listener for tab close |
+| 10 | ~~**No audio during voice calls** — `useEffect` attaching `remoteStream` to `<audio>` missing `status` dep; effect runs before ref mounts~~ | `src/components/calls/ActiveCallWindow.tsx:116-123` | Critical | **FIXED (Aug 19, 2026)** — added `status` to deps + autoplay retry on user gesture |
+| 11 | ~~**Stuck-busy relapse after graceful-disconnect fix** — crashed tab left the cross-tab localStorage counter >0 forever (auto-busy survived reloads); `call-ended` lost in SSE reconnect gaps left zombie state; busy reply never checked whether the local call was alive; no callee ring timeout~~ | `src/contexts/call/CallContext.tsx`, `src/contexts/call/callTabCoordinator.ts` | Critical | **FIXED (Aug 21, 2026, `b5c54ff`)** — heartbeat + 75s staleness self-heals stale counter entries (legacy values heal on load); zombie-check accepts incoming calls when own peer connection is failed/closed; 15s watchdog ends silent-death calls; 45s ring timeout; `call-ended` retries on `delivered=0`; counter decrement guarded by `inCallRef` |
 
 ---
 
@@ -851,7 +888,7 @@ With `strict: false` and `strictNullChecks: false`, TypeScript catches very few 
 | `src/components/messages/ChatInfoPanel.tsx` | 1182 |
 | `src/api/users.ts` | 1153 |
 | `src/components/AboutSection.tsx` | 1076 |
-| `src/lib/gateway.ts` | 1120 |
+| `src/lib/gateway.ts` | 1146 |
 | `src/hooks/useConversations.ts` | 977 |
 | `src/components/messages/MessageBubble.tsx` | 932 |
 | `src/pages/Settings.tsx` | 914 |
@@ -889,7 +926,7 @@ Over 100 `console.log`, `console.error`, and `console.warn` statements in hooks 
 
 ### Gateway Code Duplication
 
-`src/lib/gateway.ts` (1120 lines) contains `GatewayQueryBuilder` (lines 353-428) and `PostgrestFilterBuilder` (lines 127-351) with nearly identical filter/order/limit/offset methods duplicated between the two classes.
+`src/lib/gateway.ts` (1146 lines) contains `GatewayQueryBuilder` (lines 353-428) and `PostgrestFilterBuilder` (lines 127-351) with nearly identical filter/order/limit/offset methods duplicated between the two classes.
 
 ---
 
@@ -924,7 +961,7 @@ Only 4 test files exist in `src/__tests__/`:
 | Dev server | ✓ Running at `http://localhost:8080/` |
 | `.env` | ✓ Only `VITE_API_GATEWAY_URL` |
 | Hardcoded credentials | ✓ Removed from `client.ts` |
-| Gateway client | ✓ `src/lib/gateway.ts` (1120 lines) — column selection, join cardinality, `not.` serialization fixed |
+| Gateway client | ✓ `src/lib/gateway.ts` (1146 lines) — column selection, join cardinality, `not.` serialization fixed |
 | API layer | ✓ `src/api/` — 14 domain modules (18 files), typed functions |
 | Import migration | ✓ 160 files: `supabase` → `gateway` or `api` |
 | Posts domain | ✓ 5 files migrated to `postsApi.*` |
