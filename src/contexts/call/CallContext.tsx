@@ -15,6 +15,7 @@ import { useCallDatabase } from './useCallDatabase';
 import { useConnectionQuality } from './useConnectionQuality';
 import { callTabCoordinator, CALL_ACTIVE_STORAGE_KEY, CALL_RESOLVED_STORAGE_KEY, markCallResolved } from './callTabCoordinator';
 import { CallDelivery } from '@/lib/callRealtime';
+import { sendCallLogMessage } from '@/api/conversations';
 
 const CallContext = createContext<CallContextType | undefined>(undefined);
 
@@ -117,6 +118,21 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })().catch(() => {});
   }, [user?.id]);
 
+  // Facebook-style chat entry for the call. Written by the caller only (same
+  // single-writer rule as logCallToDb) so exactly one system message appears in
+  // the shared DM per call, visible to both participants. Fire-and-forget: a
+  // failed write must never block or break call teardown.
+  const logCallMessage = useCallback((
+    otherUserId: string,
+    callType: 'voice' | 'video',
+    status: 'ended' | 'missed' | 'declined' | 'failed',
+    duration = 0,
+  ) => {
+    const uid = user?.id;
+    if (!uid || !otherUserId) return;
+    sendCallLogMessage(uid, otherUserId, callType, status, duration).catch(() => {});
+  }, [user?.id]);
+
   // Notify the remote peer that the call is over, then reset local state.
   // Shared by every terminal path (user hang-up, ICE failure/disconnect,
   // watchdog-detected zombie state) so the peer can never be left stuck busy.
@@ -126,17 +142,24 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (ru) {
       publishCallEnded(ru.id, state.callType || 'voice');
       if (state.isOutgoing) {
+        const wasConnected = state.status === 'connected' || state.callDuration > 0;
         logCallToDb(
           user.id!,
           ru.id,
           state.callType || 'voice',
-          'failed',
+          wasConnected ? 'completed' : 'failed',
+          state.callDuration,
+        );
+        logCallMessage(
+          ru.id,
+          state.callType || 'voice',
+          wasConnected ? 'ended' : 'failed',
           state.callDuration,
         );
       }
     }
     resetCallState();
-  }, [user?.id, publishCallEnded, logCallToDb, resetCallState]);
+  }, [user?.id, publishCallEnded, logCallToDb, resetCallState, logCallMessage]);
 
   // Process queued ICE candidates
   const processIceCandidateQueue = useCallback(async () => {
@@ -278,6 +301,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   'failed',
                   0,
                 );
+                logCallMessage(
+                  callStateRef.current.remoteUser.id,
+                  callStateRef.current.callType || 'voice',
+                  'failed',
+                  0,
+                );
               }
               
               resetCallState();
@@ -365,6 +394,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearCallTimeout();
         if (currentState.isOutgoing && currentState.remoteUser) {
           logCallToDb(user.id, currentState.remoteUser.id, signal.callType, 'declined', 0);
+          logCallMessage(currentState.remoteUser.id, signal.callType, 'declined', 0);
         }
         toast({
           title: 'Call Declined',
@@ -396,6 +426,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const wasConnected = currentState.status === 'connected';
           const dbStatus: CallStatusDb = wasConnected ? 'completed' : 'missed';
           logCallToDb(user.id, currentState.remoteUser.id, signal.callType, dbStatus, currentState.callDuration);
+          logCallMessage(
+            currentState.remoteUser.id,
+            signal.callType,
+            wasConnected ? 'ended' : 'missed',
+            currentState.callDuration,
+          );
         }
         toast({
           title: 'Call Ended',
@@ -404,7 +440,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetCallState();
         break;
     }
-  }, [user?.id, toast, resetCallState, clearCallTimeout, processIceCandidateQueue, setupWebRTCCallbacks, logCallToDb]);
+  }, [user?.id, toast, resetCallState, clearCallTimeout, processIceCandidateQueue, setupWebRTCCallbacks, logCallToDb, logCallMessage]);
 
   // Signaling hook with wrapped handler
   const { sendSignal } = useCallSignaling({
@@ -594,6 +630,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
           
           logCallToDb(user.id, userId, callType, 'missed', 0);
+          logCallMessage(userId, callType, 'missed', 0);
           resetCallState();
         }
       }, 30000);
@@ -606,7 +643,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       resetCallState();
     }
-  }, [user?.id, profile, sendSignal, toast, resetCallState, setupWebRTCCallbacks, logCallToDb]);
+  }, [user?.id, profile, sendSignal, toast, resetCallState, setupWebRTCCallbacks, logCallToDb, logCallMessage]);
 
   // Reject incoming call
   const rejectCall = useCallback(() => {
@@ -700,11 +737,17 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isOutgoing) {
         const dbStatus: CallStatusDb = wasConnected ? 'completed' : 'missed';
         logCallToDb(user.id, remoteUser.id, callType || 'voice', dbStatus, duration);
+        logCallMessage(
+          remoteUser.id,
+          callType || 'voice',
+          wasConnected ? 'ended' : 'missed',
+          duration,
+        );
       }
     }
 
     resetCallState();
-  }, [user?.id, sendSignal, resetCallState, logCallToDb]);
+  }, [user?.id, sendSignal, resetCallState, logCallToDb, logCallMessage]);
 
   // Toggle mute
   const toggleMute = useCallback(() => {

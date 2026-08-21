@@ -22,12 +22,18 @@ import {
   Smile,
   Flame,
   Check,
-  CheckCheck
+  CheckCheck,
+  Phone,
+  PhoneMissed,
+  PhoneOff,
+  Video,
+  VideoOff
 } from 'lucide-react';
 import { PollMessage } from './PollMessage';
 import MessageReactionPicker from './MessageReactionPicker';
 import StaticReactionIcon from '@/components/StaticReactionIcon';
 import { getReactionConfig, type ReactionKey } from '@/lib/reactions';
+import { parseCallLog, callLogLabel, formatCallDuration, isMissedLike } from '@/lib/callLog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -476,6 +482,41 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       </div>
     );
   };
+
+  // Facebook-style call log: render as a centered system pill, not a bubble.
+  const callLog = parseCallLog(message.content);
+
+  if (callLog) {
+    const missedLike = isMissedLike(callLog.status);
+    const CallIcon = (() => {
+      if (missedLike) return callLog.callType === 'video' ? VideoOff : PhoneMissed;
+      if (callLog.status === 'declined') return PhoneOff;
+      return callLog.callType === 'video' ? Video : Phone;
+    })();
+    const label = callLogLabel(callLog);
+
+    return (
+      <div data-message-id={message.id} className="flex justify-center my-3">
+        <div
+          className={cn(
+            'inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs border max-w-[90%]',
+            missedLike
+              ? 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400'
+              : 'bg-muted/60 border-border text-muted-foreground'
+          )}
+        >
+          <CallIcon className="h-3.5 w-3.5 shrink-0" />
+          <span className="font-medium truncate">{label}</span>
+          {callLog.status === 'ended' && callLog.duration > 0 && (
+            <span className="opacity-80">· {formatCallDuration(callLog.duration)}</span>
+          )}
+          <span className="opacity-70 shrink-0">
+            · {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

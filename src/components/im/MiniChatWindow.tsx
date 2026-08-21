@@ -7,6 +7,7 @@ import { MessageInput } from '@/components/messages/MessageInput';
 import type { GifItem } from '@/hooks/useGifSearch';
 import { gateway } from '@/lib/gateway';
 import { useCall } from '@/contexts/CallContext';
+import { parseCallLog, callLogLabel, formatCallDuration } from '@/lib/callLog';
 
 interface MiniChatUser {
   id: string;
@@ -171,6 +172,19 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
           </div>
         ) : (
           messages.map((msg) => {
+            const callInfo = parseCallLog(msg.content);
+            if (callInfo) {
+              return (
+                <div key={msg.id} className="flex justify-center my-1">
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-muted/60 border border-border text-muted-foreground">
+                    {callLogLabel(callInfo)}
+                    {callInfo.status === 'ended' && callInfo.duration > 0 && (
+                      <> · {formatCallDuration(callInfo.duration)}</>
+                    )}
+                  </span>
+                </div>
+              );
+            }
             const isMine = msg.sender_id === currentUserId;
             return (
               <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>

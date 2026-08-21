@@ -1,6 +1,7 @@
 import { gateway } from './client';
 import type { ApiResult } from './client';
 import type { Conversation, Message } from './types';
+import { encodeCallLogContent } from '@/lib/callLog';
 
 export async function getConversationsByIds(ids: string[]): Promise<ApiResult<Conversation[]>> {
   return gateway.from('conversations').select('id, type, description, created_at, updated_at').in('id', ids) as Promise<ApiResult<Conversation[]>>;
@@ -39,6 +40,41 @@ export async function sendMessage(data: Partial<Message>): Promise<ApiResult<Mes
 
 export async function deleteMessage(messageId: string, senderId: string): Promise<ApiResult<null>> {
   return gateway.from('messages').delete().eq('id', messageId).eq('sender_id', senderId) as Promise<ApiResult<null>>;
+}
+
+// Facebook-style call-log entry: one system message per call, written by the
+// caller only (mirrors the call_history RLS ownership pattern), visible to both
+// DM participants. Content is a JSON envelope parsed by src/lib/callLog.ts.
+export async function sendCallLogMessage(
+  senderId: string,
+  otherUserId: string,
+  callType: 'voice' | 'video',
+  status: 'ended' | 'missed' | 'declined' | 'failed',
+  duration = 0,
+): Promise<ApiResult<Message | null>> {
+  if (!senderId || !otherUserId) {
+    return { data: null, error: { message: 'Missing user id' } };
+  }
+
+  try {
+    const { data: conversationId, error: dmError } = await getOrCreateDM(senderId, otherUserId);
+    if (dmError || !conversationId) {
+      return { data: null, error: dmError || { message: 'Failed to resolve DM conversation' } };
+    }
+
+    return gateway.from('messages').insert({
+      conversation_id: conversationId,
+      sender_id: senderId,
+      receiver_id: otherUserId,
+      content: encodeCallLogContent({ status, callType, duration }),
+      is_system: true,
+      message_type: 'text',
+    }).select(`
+      id, conversation_id, sender_id, content, created_at, message_type, is_system
+    `).single() as Promise<ApiResult<Message>>;
+  } catch (err) {
+    return { data: null, error: { message: String(err) } };
+  }
 }
 
 export async function getConversationMedia(conversationId: string): Promise<ApiResult<Message[]>> {
