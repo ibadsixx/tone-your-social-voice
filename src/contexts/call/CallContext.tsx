@@ -34,6 +34,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const connectingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingSignalRef = useRef<CallSignal | null>(null);
   const iceCandidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
+  // Latest sendSignal for use in effects/helpers defined before the signaling hook.
+  const sendSignalRef = useRef<((signal: CallSignal) => Promise<CallDelivery>) | null>(null);
+  // Whether THIS tab entered the cross-tab call counter, so resetCallState only
+  // decrements it when this tab actually incremented it.
+  const inCallRef = useRef(false);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -78,16 +83,60 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('[Call] Resetting call state');
     clearCallTimeout();
 
-    callTabCoordinator.exitCall(user?.id);
+    if (inCallRef.current) {
+      inCallRef.current = false;
+      callTabCoordinator.exitCall(user?.id);
+    }
 
     webrtcRef.current?.cleanup();
     webrtcRef.current = new WebRTCService();
-    
+
     pendingSignalRef.current = null;
     iceCandidateQueueRef.current = [];
-    
+
     setCallState(initialCallState);
   }, [clearCallTimeout, user?.id]);
+
+  // Fire-and-forget publish of `call-ended` with retry. If the callee's SSE
+  // connection is mid-reconnect (e.g. the gateway's 300s Vercel cap just killed
+  // the stream), the first publish reports delivered=0 and would otherwise be
+  // lost forever — leaving the peer stuck non-idle and auto-replying busy to
+  // every future call. A couple of spaced retries covers typical reconnect gaps.
+  const publishCallEnded = useCallback((toUserId: string, callType: CallType) => {
+    const attempt = async (): Promise<CallDelivery> => {
+      const send = sendSignalRef.current;
+      if (!send || !user?.id) return { ok: false, delivered: 0 };
+      return send({ type: 'call-ended', from: user.id, to: toUserId, callType });
+    };
+    (async () => {
+      let delivery = await attempt();
+      for (let i = 0; i < 2 && delivery.ok && delivery.delivered === 0; i++) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        delivery = await attempt();
+      }
+    })().catch(() => {});
+  }, [user?.id]);
+
+  // Notify the remote peer that the call is over, then reset local state.
+  // Shared by every terminal path (user hang-up, ICE failure/disconnect,
+  // watchdog-detected zombie state) so the peer can never be left stuck busy.
+  const notifyRemoteAndReset = useCallback(() => {
+    const state = callStateRef.current;
+    const ru = state.remoteUser;
+    if (ru) {
+      publishCallEnded(ru.id, state.callType || 'voice');
+      if (state.isOutgoing) {
+        logCallToDb(
+          user.id!,
+          ru.id,
+          state.callType || 'voice',
+          'failed',
+          state.callDuration,
+        );
+      }
+    }
+    resetCallState();
+  }, [user?.id, publishCallEnded, logCallToDb, resetCallState]);
 
   // Process queued ICE candidates
   const processIceCandidateQueue = useCallback(async () => {
@@ -134,28 +183,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         setCallState(prev => ({ ...prev, status: 'connected' }));
       } else if (state === 'failed' || state === 'disconnected') {
-        const notifyRemoteAndReset = () => {
-          const ru = callStateRef.current.remoteUser;
-          if (ru) {
-            sendSignal({
-              type: 'call-ended',
-              from: user.id,
-              to: ru.id,
-              callType: callStateRef.current.callType || 'voice',
-            });
-            if (callStateRef.current.isOutgoing) {
-              logCallToDb(
-                user.id,
-                ru.id,
-                callStateRef.current.callType || 'voice',
-                'failed',
-                callStateRef.current.callDuration,
-              );
-            }
-          }
-          resetCallState();
-        };
-
         // Try ICE restart for recoverable failures
         if (state === 'disconnected' && webrtcRef.current) {
           console.log('[Call] Attempting ICE restart...');
@@ -177,7 +204,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     });
-  }, [user?.id, toast, resetCallState, logCallToDb]);
+  }, [user?.id, toast, notifyRemoteAndReset]);
 
   // Handle incoming signals
   const handleSignal = useCallback(async (signal: CallSignal, sendSignal: (signal: CallSignal) => Promise<CallDelivery>) => {
@@ -190,8 +217,17 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('[Call] Received signal:', signal.type, 'from:', signal.from, 'current status:', currentState.status);
 
     switch (signal.type) {
-      case 'call-request':
-        if (currentState.status !== 'idle' || callTabCoordinator.isActive(user?.id)) {
+      case 'call-request': {
+        // Self-heal zombie state: if we think we're in a call but the peer
+        // connection is gone (failed/closed — e.g. a lost `call-ended` during a
+        // signaling reconnect), recover instead of auto-replying busy forever.
+        const connState = webrtcRef.current?.getConnectionState();
+        const ownCallDead = currentState.status !== 'idle' &&
+          (!connState || connState === 'failed' || connState === 'closed');
+        if (ownCallDead) {
+          console.warn('[Call] Stale local call state detected (peer connection:', connState, ') — recovering instead of replying busy');
+          resetCallState();
+        } else if (currentState.status !== 'idle' || callTabCoordinator.isActive(user?.id)) {
           console.log('[Call] Already in call or tab coordinator active, sending busy. status:', currentState.status, 'tabActive:', callTabCoordinator.isActive(user?.id));
           sendSignal({
             type: 'call-busy',
@@ -201,7 +237,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
           return;
         }
-
         pendingSignalRef.current = signal;
         setCallState(prev => ({
           ...prev,
@@ -211,6 +246,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           remoteUser: signal.callerInfo || null,
         }));
         break;
+      }
 
       case 'call-accepted':
         if (webrtcRef.current && currentState.status === 'calling') {
@@ -375,6 +411,51 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     userId: user?.id,
     onSignal: (signal) => handleSignal(signal, sendSignal),
   });
+  sendSignalRef.current = sendSignal;
+
+  // Call liveness watchdog. While any call is active locally:
+  // - heartbeat the cross-tab coordinator so a crashed tab's stale entry can be
+  //   distinguished from a live one (stale entries otherwise block all incoming
+  //   calls with auto-busy forever);
+  // - detect zombie "connected" state where the peer connection died without
+  //   firing the state-change callback, and recover via notifyRemoteAndReset.
+  useEffect(() => {
+    if (callState.status === 'idle' || !user?.id) return;
+    callTabCoordinator.heartbeat(user.id);
+    const interval = setInterval(() => {
+      callTabCoordinator.heartbeat(user.id);
+      if (callStateRef.current.status === 'connected') {
+        const connState = webrtcRef.current?.getConnectionState();
+        if (!connState || connState === 'failed' || connState === 'closed') {
+          console.warn('[Call] Watchdog: zombie connected state (peer connection:', connState, ') — ending call');
+          notifyRemoteAndReset();
+        }
+      }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [callState.status, user?.id, notifyRemoteAndReset]);
+
+  // Incoming-call ring timeout. If the caller vanished (crash, lost signals)
+  // its no-answer timeout can never reach us and we would ring — and stay
+  // non-idle — forever, auto-replying busy to everyone else.
+  useEffect(() => {
+    if (callState.status !== 'ringing' || !user?.id) return;
+    const timeout = setTimeout(() => {
+      console.log('[Call] Incoming call not answered within 45s — releasing');
+      const pending = pendingSignalRef.current;
+      if (pending) {
+        sendSignalRef.current?.({
+          type: 'call-rejected',
+          from: user.id,
+          to: pending.from,
+          callType: pending.callType,
+        })?.catch(() => {});
+      }
+      markCallResolved();
+      resetCallState();
+    }, 45000);
+    return () => clearTimeout(timeout);
+  }, [callState.status, user?.id, resetCallState]);
 
   // Call duration timer
   useEffect(() => {
@@ -465,6 +546,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
 
       callTabCoordinator.enterCall(user?.id);
+      inCallRef.current = true;
 
       const delivery = await sendSignal({
         type: 'call-request',
@@ -576,6 +658,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
 
       callTabCoordinator.enterCall(user?.id);
+      inCallRef.current = true;
 
       await sendSignal({
         type: 'call-accepted',
