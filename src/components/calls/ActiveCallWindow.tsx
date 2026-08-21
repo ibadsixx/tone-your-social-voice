@@ -104,12 +104,16 @@ export const ActiveCallWindow: React.FC = () => {
   // Handle audio for outgoing calls (ringback tone)
   useCallAudio({ status, isOutgoing });
 
-  // Attach remote stream to video element
+  // Attach local stream to the PiP preview. `isVideoOff` must be a dependency:
+  // the preview is conditionally rendered, so turning the camera back on
+  // remounts the <video> even though `localStream` itself never changed —
+  // the same MediaStream must be attached to the new element again.
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
+    if (localVideoRef.current && localStream && !isVideoOff) {
       localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(() => {});
     }
-  }, [localStream]);
+  }, [localStream, isVideoOff]);
 
   // Attach remote stream to audio element for voice calls (the remote video
   // element only renders for video calls, so voice calls need their own output).
@@ -131,12 +135,13 @@ export const ActiveCallWindow: React.FC = () => {
     }
   }, [remoteStream, callType, status]);
 
-  // Attach remote stream to video element
+  // Attach remote stream to video element. `status` is a dependency because the
+  // element only renders once status is 'connected' (same remount concern as above).
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
     }
-  }, [remoteStream]);
+  }, [remoteStream, status]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
