@@ -845,6 +845,34 @@ export const useConversations = (currentUserId?: string) => {
     }
   }, [currentUserId, fetchConversations]);
 
+  // Keep latest fetchMessages for the call-log event listener below
+  const fetchMessagesRef = useRef(fetchMessages);
+  useEffect(() => {
+    fetchMessagesRef.current = fetchMessages;
+  }, [fetchMessages]);
+
+  // Call-log events (dispatched by sendCallLogMessage after a successful
+  // insert). The gateway client's postgres_changes listeners never fire, so
+  // this is what makes an open chat show the new entry without a reload.
+  const activeConversationIdRef = useRef<string | null>(activeConversationId);
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    const onCallLog = (e: Event) => {
+      const conversationId = (e as CustomEvent).detail?.conversationId as string | undefined;
+      if (!conversationId) return;
+      debouncedFetchConversations();
+      if (conversationId === activeConversationIdRef.current) {
+        fetchMessagesRef.current(conversationId, 0);
+      }
+    };
+    window.addEventListener('tone:call-log', onCallLog);
+    return () => window.removeEventListener('tone:call-log', onCallLog);
+  }, [currentUserId, debouncedFetchConversations]);
+
   // Refresh conversations when user returns to the tab (handles stale unread counts after navigation)
   useEffect(() => {
     if (!currentUserId) return;

@@ -62,7 +62,7 @@ export async function sendCallLogMessage(
       return { data: null, error: dmError || { message: 'Failed to resolve DM conversation' } };
     }
 
-    return gateway.from('messages').insert({
+    const result = await gateway.from('messages').insert({
       conversation_id: conversationId,
       sender_id: senderId,
       receiver_id: otherUserId,
@@ -72,6 +72,17 @@ export async function sendCallLogMessage(
     }).select(`
       id, conversation_id, sender_id, content, created_at, message_type, is_system
     `).single() as Promise<ApiResult<Message>>;
+
+    // The gateway client's postgres_changes listeners never fire (no server
+    // push), so announce the insert ourselves — open chats/lists listen for
+    // this event to show the entry without a reload.
+    if (!result.error && result.data) {
+      window.dispatchEvent(new CustomEvent('tone:call-log', {
+        detail: { conversationId },
+      }));
+    }
+
+    return result;
   } catch (err) {
     return { data: null, error: { message: String(err) } };
   }

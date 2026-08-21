@@ -130,7 +130,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     const uid = user?.id;
     if (!uid || !otherUserId) return;
-    sendCallLogMessage(uid, otherUserId, callType, status, duration).catch(() => {});
+    sendCallLogMessage(uid, otherUserId, callType, status, duration)
+      .then(({ error }) => {
+        if (error) console.warn('[Call] Call-log message write failed:', error.message);
+      })
+      .catch((err) => console.warn('[Call] Call-log message error:', err));
   }, [user?.id]);
 
   // Notify the remote peer that the call is over, then reset local state.
