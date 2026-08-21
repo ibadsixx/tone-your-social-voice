@@ -1,9 +1,13 @@
 /**
- * Apply ALL Supabase migrations in order using the Management API.
+ * Apply ALL SQL migrations in order against a configured SQL execution endpoint.
  *
- * 1. Get a personal access token from https://supabase.com/dashboard/account/tokens
+ * 1. Set MIGRATION_SQL_ENDPOINT to an HTTP endpoint that accepts
+ *    POST { "sql": "..." } with Bearer authentication.
+ *    Use {ref} as a placeholder for the project ref if the endpoint needs it.
  * 2. Run:
- *    SUPABASE_ACCESS_TOKEN="sbp_..." npx tsx scripts/apply-all-migrations.ts
+ *    MIGRATION_SQL_ENDPOINT="https://..." \
+ *    MIGRATION_ACCESS_TOKEN="..." \
+ *    npx tsx scripts/apply-all-migrations.ts
  */
 import { readFileSync, readdirSync } from 'fs';
 import { resolve, join, dirname } from 'path';
@@ -12,25 +16,31 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const PROJECT_REF = process.env.SUPABASE_PROJECT_REF;
+const ENDPOINT_TEMPLATE = process.env.MIGRATION_SQL_ENDPOINT;
+const PROJECT_REF = process.env.MIGRATION_PROJECT_REF ?? '';
 const MIGRATIONS_DIR = resolve(__dirname, '..', 'supabase', 'migrations');
-const ACCESS_TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
+const ACCESS_TOKEN = process.env.MIGRATION_ACCESS_TOKEN;
 
-if (!PROJECT_REF) {
-  console.error('Missing SUPABASE_PROJECT_REF');
-  console.error('Set SUPABASE_PROJECT_REF to your Supabase project ref (do not commit it).');
+if (!ENDPOINT_TEMPLATE) {
+  console.error('Missing MIGRATION_SQL_ENDPOINT');
+  console.error('Set it to the HTTP endpoint that executes SQL (POST { sql }); use {ref} for the project ref placeholder.');
+  process.exit(1);
+}
+
+if (ENDPOINT_TEMPLATE.includes('{ref}') && !PROJECT_REF) {
+  console.error('MIGRATION_SQL_ENDPOINT contains {ref} but MIGRATION_PROJECT_REF is not set.');
   process.exit(1);
 }
 
 if (!ACCESS_TOKEN) {
-  console.error('Missing SUPABASE_ACCESS_TOKEN');
-  console.error('Create one at: https://supabase.com/dashboard/account/tokens');
+  console.error('Missing MIGRATION_ACCESS_TOKEN');
+  console.error('Export a token authorized to run SQL against the target database.');
   process.exit(1);
 }
 
 async function runSql(query: string): Promise<void> {
   const response = await fetch(
-    `https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`,
+    ENDPOINT_TEMPLATE!.replace('{ref}', encodeURIComponent(PROJECT_REF)),
     {
       method: 'POST',
       headers: {
