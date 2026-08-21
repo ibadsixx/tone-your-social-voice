@@ -177,7 +177,7 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
               return (
                 <div key={msg.id} className="flex justify-center my-1">
                   <span className="text-[11px] px-2 py-0.5 rounded-full bg-muted/60 border border-border text-muted-foreground">
-                    {callLogLabel(callInfo)}
+                    {callLogLabel(callInfo, currentUserId)}
                     {callInfo.status === 'ended' && callInfo.duration > 0 && (
                       <> · {formatCallDuration(callInfo.duration)}</>
                     )}

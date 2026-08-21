@@ -51,6 +51,7 @@ export async function sendCallLogMessage(
   callType: 'voice' | 'video',
   status: 'ended' | 'missed' | 'declined' | 'failed',
   duration = 0,
+  participants?: { callerName?: string; receiverName?: string },
 ): Promise<ApiResult<Message | null>> {
   if (!senderId || !otherUserId) {
     return { data: null, error: { message: 'Missing user id' } };
@@ -66,7 +67,15 @@ export async function sendCallLogMessage(
       conversation_id: conversationId,
       sender_id: senderId,
       receiver_id: otherUserId,
-      content: encodeCallLogContent({ status, callType, duration }),
+      content: encodeCallLogContent({
+        status,
+        callType,
+        duration,
+        callerId: senderId,
+        receiverId: otherUserId,
+        callerName: participants?.callerName,
+        receiverName: participants?.receiverName,
+      }),
       is_system: true,
       message_type: 'text',
     }).select(`

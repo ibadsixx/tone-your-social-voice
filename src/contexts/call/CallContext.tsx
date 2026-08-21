@@ -120,8 +120,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Facebook-style chat entry for the call. Written by the caller only (same
   // single-writer rule as logCallToDb) so exactly one system message appears in
-  // the shared DM per call, visible to both participants. Fire-and-forget: a
-  // failed write must never block or break call teardown.
+  // the shared DM per call, visible to both participants. Both display names
+  // are stored so each side sees a label phrased from their own perspective.
+  // Fire-and-forget: a failed write must never block or break call teardown.
   const logCallMessage = useCallback((
     otherUserId: string,
     callType: 'voice' | 'video',
@@ -130,12 +131,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     const uid = user?.id;
     if (!uid || !otherUserId) return;
-    sendCallLogMessage(uid, otherUserId, callType, status, duration)
+    sendCallLogMessage(uid, otherUserId, callType, status, duration, {
+      callerName: profile?.display_name || '',
+      receiverName: callStateRef.current.remoteUser?.displayName || '',
+    })
       .then(({ error }) => {
         if (error) console.warn('[Call] Call-log message write failed:', error.message);
       })
       .catch((err) => console.warn('[Call] Call-log message error:', err));
-  }, [user?.id]);
+  }, [user?.id, profile?.display_name]);
 
   // Notify the remote peer that the call is over, then reset local state.
   // Shared by every terminal path (user hang-up, ICE failure/disconnect,

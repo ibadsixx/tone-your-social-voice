@@ -493,7 +493,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       if (callLog.status === 'declined') return PhoneOff;
       return callLog.callType === 'video' ? Video : Phone;
     })();
-    const label = callLogLabel(callLog);
+    const label = callLogLabel(callLog, currentUserId);
 
     return (
       <div data-message-id={message.id} className="flex justify-center my-3">

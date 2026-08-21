@@ -15,13 +15,15 @@ import { playMessageNotification } from '@/lib/notificationSounds';
 import { parseCallLog, callLogLabel, formatCallDuration } from '@/lib/callLog';
 
 // Call-log messages store a JSON envelope in `content`; show a readable label
-// ("Missed voice call", "Voice call · 1:05") in conversation-list previews.
-function previewContent(content?: string | null): string {
+// ("Malak missed your voice call") in conversation-list previews, phrased from
+// the viewing user's side where participant names are known.
+function previewContent(content: string | null | undefined, viewerId?: string): string {
   const call = parseCallLog(content);
   if (!call) return content || '';
+  const base = callLogLabel(call, viewerId);
   return call.duration > 0 && call.status === 'ended'
-    ? `${callLogLabel(call)} · ${formatCallDuration(call.duration)}`
-    : callLogLabel(call);
+    ? `${base} · ${formatCallDuration(call.duration)}`
+    : base;
 }
 
 async function tryDecryptMessage(msg: Message, convId: string): Promise<Message> {
@@ -106,7 +108,7 @@ async function fetchConversationsDirectly(userId: string): Promise<Conversation[
         last_seen_at: otherProfile.last_seen_at,
       } : undefined,
       last_message: lastMsg ? {
-        content: previewContent(lastMsg.content),
+        content: previewContent(lastMsg.content, userId),
         created_at: lastMsg.created_at,
       } : undefined,
       unread_count: 0,
@@ -180,7 +182,7 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
         last_seen_at: otherProfile.last_seen_at,
       } : undefined,
       last_message: lastMsg ? {
-        content: previewContent(lastMsg.content),
+        content: previewContent(lastMsg.content, userId),
         created_at: lastMsg.created_at,
       } : undefined,
       unread_count: 0,
