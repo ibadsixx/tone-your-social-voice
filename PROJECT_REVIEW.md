@@ -42,6 +42,7 @@
 ### Personalized Call-Log Labels (Aug 21, 2026, frontend `442631e`)
 
 - **Call pills now name both parties** — the envelope stores `callerId/callerName/receiverId/receiverName` (`CallContext` passes own `profile.display_name` + `remoteUser.displayName`; `sendCallLogMessage()` persists them). Labels render from the viewer's side via `callLogLabel(info, viewerId)`: caller sees **"Malak missed your voice call"** / **"Malak declined the video call"**; callee sees **"You missed Badsi's voice call"** / "You declined the video call". Rows written before this change (no names) fall back to generic labels ("Missed voice call"). Previews and both chat surfaces pass `currentUserId`. tsc 0 errors; eslint 0 errors (4 pre-existing warnings); build OK.
+- **Legacy rows backfilled (Aug 21, 2026, data-only)** — post-deploy test calls still produced generic labels because the browser was still running the pre-`442631e` bundle (proof: those rows carried no `callerId` at all — the new code always writes IDs even when names are empty). All 6 existing `is_system` call-log rows in the live messages project were PATCHed via its infra-registered service key to add `callerId/receiverId/callerName/receiverName` (derived from each row's `sender_id`/`receiver_id` + profiles), so history renders personalized labels immediately. No code change; no `.env` modified. New calls store names automatically once clients run `442631e+`.
 
 ### Latest — Aliased FK Joins Fixed, Message Avatars Restored (Aug 21, 2026, frontend `7540a9a`)
 
