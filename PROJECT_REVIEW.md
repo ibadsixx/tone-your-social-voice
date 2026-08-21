@@ -39,6 +39,10 @@
 
 ## Recent Changes
 
+### Personalized Call-Log Labels (Aug 21, 2026, frontend `442631e`)
+
+- **Call pills now name both parties** — the envelope stores `callerId/callerName/receiverId/receiverName` (`CallContext` passes own `profile.display_name` + `remoteUser.displayName`; `sendCallLogMessage()` persists them). Labels render from the viewer's side via `callLogLabel(info, viewerId)`: caller sees **"Malak missed your voice call"** / **"Malak declined the video call"**; callee sees **"You missed Badsi's voice call"** / "You declined the video call". Rows written before this change (no names) fall back to generic labels ("Missed voice call"). Previews and both chat surfaces pass `currentUserId`. tsc 0 errors; eslint 0 errors (4 pre-existing warnings); build OK.
+
 ### Latest — Aliased FK Joins Fixed, Message Avatars Restored (Aug 21, 2026, frontend `7540a9a`)
 
 - **`sender_profile:profiles!messages_sender_id_fkey(...)` selects silently returned no joined data** (`src/lib/gateway.ts` `parseJoinSpec`) — the `!`-branch kept the whole `alias:table` header as the related table, so the client-side join resolver fetched `/api/sender_profile:profiles` → gateway 400 (invalid domain) → every message row was missing `sender_profile`, and message avatars fell back to the `'U'` letter (reported as "photo shows as U on mobile" — the open chat is where per-message avatars are most visible; list/header avatars use a separate profile map and worked). Fix: strip an optional `alias:` prefix from the table part and use it as the result key. This repairs **every** aliased FK join in the app (message sender profiles in `useConversations`/`api/conversations.ts`, friends/requests/mentions/reels hooks, etc.). Verified live: the broken URL returns 400; parser now yields `{resultKey: 'sender_profile', relatedTable: 'profiles', localCol: 'sender_id'}`. tsc ✓ 0 errors; eslint unchanged (18 pre-existing errors in `gateway.ts`); build ✓.
