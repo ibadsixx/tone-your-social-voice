@@ -239,14 +239,25 @@ function parseJoinSpec(entry: string, currentTable: string): JoinSpec | null {
 
   if (header.includes('!')) {
     const idx = header.indexOf('!');
-    const table = header.slice(0, idx).trim();
+    let tablePart = header.slice(0, idx).trim();
     const fkName = header.slice(idx + 1).trim();
+
+    // Support the full PostgREST shape "alias:table!fk(columns)" — without
+    // stripping "alias:", relatedTable becomes "alias:table" and the lookup
+    // request 400s, silently leaving rows without the joined field.
+    let alias = '';
+    const colonIdx = tablePart.indexOf(':');
+    if (colonIdx !== -1) {
+      alias = tablePart.slice(0, colonIdx).trim();
+      tablePart = tablePart.slice(colonIdx + 1).trim();
+    }
+
     const prefix = `${currentTable}_`;
     const suffix = '_fkey';
     let localCol = fkName;
     if (localCol.startsWith(prefix)) localCol = localCol.slice(prefix.length);
     if (localCol.endsWith(suffix)) localCol = localCol.slice(0, -suffix.length);
-    return { resultKey: table, relatedTable: table, localCol, relatedCol: 'id', columns, kind: 'one' };
+    return { resultKey: alias || tablePart, relatedTable: tablePart, localCol, relatedCol: 'id', columns, kind: 'one' };
   }
 
   if (header.includes(':')) {
