@@ -211,22 +211,48 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
             .from('conversation_participants')
             .select('user_id')
             .eq('conversation_id', conversationId);
-          const ids = ((parts || []) as Array<{ user_id: string }>).map(p => p.user_id);
-          if (ids.length === 0) {
+          const userIds = Array.from(new Set(
+            ((parts || []) as Array<{ user_id: string }>)
+              .map(p => p.user_id)
+              .filter((id): id is string => typeof id === 'string' && id.length > 0)
+          ));
+          if (userIds.length === 0) {
             setGroupMembers([]);
             return;
           }
           const { data: profilesData } = await gateway
             .from('profiles')
             .select('id, username, display_name, profile_pic, last_seen_at')
-            .in('id', ids);
-          setGroupMembers((profilesData || []).map(p => ({
-            user_id: p.id,
-            display_name: p.display_name,
-            username: p.username,
-            profile_pic: p.profile_pic ?? undefined,
-            last_seen_at: p.last_seen_at ?? undefined,
-          })));
+            .in('id', userIds);
+          // The gateway aggregates a domain read across every readable project
+          // and flattens the results, so the SAME profile can be returned once
+          // per project for a single user. Dedupe by the unique user id — never
+          // by username / display name / avatar — so the creator/admin and
+          // every member appear exactly once in the Members list.
+          const memberMap = new Map<string, {
+            user_id: string;
+            display_name: string;
+            username: string;
+            profile_pic?: string;
+            last_seen_at?: string;
+          }>();
+          for (const p of (profilesData || []) as Array<{
+            id: string;
+            username: string;
+            display_name: string;
+            profile_pic?: string | null;
+            last_seen_at?: string | null;
+          }>) {
+            if (!p || typeof p.id !== 'string' || memberMap.has(p.id)) continue;
+            memberMap.set(p.id, {
+              user_id: p.id,
+              display_name: p.display_name,
+              username: p.username,
+              profile_pic: p.profile_pic ?? undefined,
+              last_seen_at: p.last_seen_at ?? undefined,
+            });
+          }
+          setGroupMembers([...memberMap.values()]);
         } catch {
           setGroupMembers([]);
         }
