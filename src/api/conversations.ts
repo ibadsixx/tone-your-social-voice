@@ -1,10 +1,60 @@
-import { gateway } from './client';
+import { gateway, API_URL } from './client';
 import type { ApiResult } from './client';
 import type { Conversation, Message } from './types';
 import { encodeCallLogContent } from '@/lib/callLog';
 
+function getAccessToken(): string | null {
+  try {
+    const sessionStr = localStorage.getItem('tone-auth-token');
+    if (sessionStr) {
+      const session = JSON.parse(sessionStr);
+      return session?.access_token ?? null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export async function getConversationsByIds(ids: string[]): Promise<ApiResult<Conversation[]>> {
   return gateway.from('conversations').select('id, type, name, description, created_at, updated_at').in('id', ids) as Promise<ApiResult<Conversation[]>>;
+}
+
+// Leaves a group conversation via the dedicated Gateway endpoint
+// (DELETE /api/v1/conversations/:id/leave). The Gateway verifies the caller is
+// a member and removes ONLY their own membership row — the conversation, its
+// messages, and the other members are never touched.
+export async function leaveGroupConversation(conversationId: string): Promise<ApiResult<null>> {
+  if (!conversationId) {
+    return { data: null, error: { message: 'Missing conversation id' } };
+  }
+  if (!API_URL) {
+    return { data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } };
+  }
+  try {
+    const token = getAccessToken();
+    const res = await fetch(
+      `${API_URL}/api/v1/conversations/${encodeURIComponent(conversationId)}/leave`,
+      {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      }
+    );
+    if (res.status === 204) return { data: null, error: null };
+    const body = await res.json().catch(() => null);
+    return {
+      data: null,
+      error: {
+        message: body?.error || body?.message || `Failed to leave group (${res.status})`,
+        code: String(res.status),
+      },
+    };
+  } catch (err) {
+    return { data: null, error: { message: String(err) } };
+  }
 }
 
 export async function getConversationsByPage(pageId: string): Promise<ApiResult<Conversation[]>> {

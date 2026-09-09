@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dialog';
 import { gateway } from '@/lib/gateway';
 import { blockingApi, profilesApi } from '@/api';
+import { leaveGroupConversation } from '@/api/conversations';
 
 const Messages = () => {
   const [showNewConversation, setShowNewConversation] = useState(false);
@@ -63,6 +64,7 @@ const Messages = () => {
   const [loginDevicesLoading, setLoginDevicesLoading] = useState(false);
   const [privacyView, setPrivacyView] = useState<'main' | 'encryption_chats' | null>(null);
   const [activePage, setActivePage] = useState(0);
+  const [leavingGroup, setLeavingGroup] = useState(false);
   const navigate = useNavigate();
   const params = useParams();
   const urlConversationId = params['*'] || '';
@@ -369,6 +371,30 @@ const Messages = () => {
 
   const handleBackToList = () => {
     setActiveConversationId(null);
+    navigate('/messages');
+  };
+
+  // Leaves the active group conversation. The Gateway verifies membership and
+  // removes ONLY the current user's membership — the conversation, its messages,
+  // and the other members are untouched. On success the group drops out of the
+  // Chats list (it no longer has a conversation_participants row for this user)
+  // and the chat is closed, returning to the Chats screen.
+  const handleLeaveGroup = async () => {
+    if (!activeConversationId) return;
+    setLeavingGroup(true);
+    const { error } = await leaveGroupConversation(activeConversationId);
+    setLeavingGroup(false);
+    if (error) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to leave group',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setViewMode('chats');
+    setActiveConversationId(null);
+    refetchConversations();
     navigate('/messages');
   };
 
@@ -1074,6 +1100,8 @@ const Messages = () => {
             refetchConversations();
             navigate('/messages');
           }}
+          onLeaveGroup={handleLeaveGroup}
+          leavingGroup={leavingGroup}
           onBack={handleBackToList}
           hasMoreMessages={hasMoreMessages}
           loading={loading}

@@ -50,6 +50,8 @@ interface ChatWindowProps {
   onSendAudioMessage?: (audioPath: string, duration: number, mimeType: string, fileSize: number) => void;
   onLoadMore?: () => void;
   onClearHistory?: () => void;
+  onLeaveGroup?: () => void;
+  leavingGroup?: boolean;
   hasMoreMessages: boolean;
   loading?: boolean;
   previewMode?: boolean;
@@ -75,6 +77,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onSendAudioMessage,
   onLoadMore,
   onClearHistory,
+  onLeaveGroup,
+  leavingGroup = false,
   hasMoreMessages,
   loading = false,
   previewMode = false,
@@ -915,6 +919,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           if (otherUser) navigate(`/profile/${otherUser.username}`);
         }}
         onSearch={() => console.log('Search in chat')}
+        onLeaveGroup={onLeaveGroup}
+        leavingGroup={leavingGroup}
         onBlock={async (blockType?: 'messaging' | 'full') => {
           if (blockStatus.isBlocked) {
             await unblockUser();

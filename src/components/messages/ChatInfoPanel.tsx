@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   X, User, Bell, BellOff, Search, ChevronDown, ChevronUp, 
   Lock, Image, FileText, Link, Shield, Ban, Flag, Trash2, Pin,
-  Settings, Clock, Eye, Loader2, MessageCircle, ChevronRight, Users
+  Settings, Clock, Eye, Loader2, MessageCircle, ChevronRight, Users, LogOut
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isOnline, formatLastSeen } from '@/hooks/usePresence';
@@ -118,6 +118,8 @@ interface ChatInfoPanelProps {
   onQuickEmojiChange?: (emoji: string) => void;
   onViewProfile?: () => void;
   onSearch?: () => void;
+  onLeaveGroup?: () => void;
+  leavingGroup?: boolean;
   onBlock?: (blockType?: 'messaging' | 'full') => void;
   isBlocked?: boolean;
   onReport?: (reportedUserId: string, reason?: string, details?: string) => void;
@@ -145,6 +147,8 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   onQuickEmojiChange,
   onViewProfile,
   onSearch,
+  onLeaveGroup,
+  leavingGroup = false,
   onBlock,
   isBlocked = false,
   onReport,
@@ -169,6 +173,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   const [restrictLoading, setRestrictLoading] = useState(false);
   const [showBlockDialog, setShowBlockDialog] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [encryptionData, setEncryptionData] = useState<EncryptionDetails | null>(null);
   const [encryptionLoading, setEncryptionLoading] = useState(false);
   const [encryptionVerified, setEncryptionVerified] = useState(false);
@@ -597,6 +602,23 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
                 </div>
                 <span className="text-xs">Search</span>
               </button>
+
+              {isGroup && (
+              <button
+                onClick={() => setShowLeaveConfirm(true)}
+                disabled={leavingGroup}
+                className="flex flex-col items-center gap-1.5 text-foreground hover:text-red-500 transition-colors disabled:opacity-50"
+              >
+                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
+                  {leavingGroup ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <LogOut className="h-5 w-5" />
+                  )}
+                </div>
+                <span className="text-xs">Leave</span>
+              </button>
+              )}
             </div>
 
             {/* Expandable Sections */}
@@ -1239,6 +1261,34 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Leave Group Confirmation */}
+      {isGroup && (
+      <AlertDialog open={showLeaveConfirm} onOpenChange={setShowLeaveConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave group?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to leave this group?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={leavingGroup}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={leavingGroup}
+              onClick={() => {
+                setShowLeaveConfirm(false);
+                onLeaveGroup?.();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {leavingGroup ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Leave
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      )}
 
       {/* Block Dialog - Facebook style */}
       <Dialog open={showBlockDialog} onOpenChange={setShowBlockDialog}>
