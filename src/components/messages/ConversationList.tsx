@@ -16,6 +16,7 @@ type Conversation = {
   type: string;
   name?: string;
   description?: string | null;
+  group_image?: string | null;
   other_user?: {
     id: string;
     username: string;
@@ -88,16 +89,24 @@ const ConversationItem = memo(({
     >
       <div className="relative shrink-0">
         {isMulti ? (
-          <div className={cn(
-            "w-10 h-10 rounded-full flex items-center justify-center",
-            isChannel ? "bg-orange-500/10" : "bg-muted"
-          )}>
-            {isChannel ? (
-              <Hash className="h-5 w-5 text-orange-500" />
+          <Avatar className="w-10 h-10">
+            {isGroup && conversation.group_image ? (
+              <>
+                <AvatarImage src={conversation.group_image} alt={displayName} />
+                <AvatarFallback className="bg-muted text-muted-foreground text-sm">
+                  {initial}
+                </AvatarFallback>
+              </>
+            ) : isChannel ? (
+              <AvatarFallback className="bg-orange-500/10 text-orange-500 text-sm">
+                <Hash className="h-5 w-5" />
+              </AvatarFallback>
             ) : (
-              <Users className="h-5 w-5 text-muted-foreground" />
+              <AvatarFallback className="bg-muted text-muted-foreground text-sm">
+                <Users className="h-5 w-5" />
+              </AvatarFallback>
             )}
-          </div>
+          </Avatar>
         ) : (
           <Avatar className="w-10 h-10">
             <AvatarImage

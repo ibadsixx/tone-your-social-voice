@@ -40,6 +40,7 @@ interface ChatWindowProps {
   conversationType?: string;
   conversationName?: string;
   conversationDescription?: string | null;
+  groupImage?: string | null;
   onlineCount?: number;
   messages: Message[];
   firstUnreadIndex?: number;
@@ -60,6 +61,7 @@ interface ChatWindowProps {
   onAcceptRequest?: () => void;
   onDeclineRequest?: () => void;
   onBlockRequest?: () => void;
+  onGroupImageChange?: (newUrl: string) => void;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -67,6 +69,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   conversationType,
   conversationName,
   conversationDescription,
+  groupImage,
   onlineCount = 0,
   messages,
   firstUnreadIndex,
@@ -86,7 +89,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   readOnly = false,
   onAcceptRequest,
   onDeclineRequest,
-  onBlockRequest
+  onBlockRequest,
+  onGroupImageChange,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -527,6 +531,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       {otherUser.display_name.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </>
+                ) : groupImage ? (
+                  <>
+                    <AvatarImage src={groupImage} alt={conversationName || 'Group'} />
+                    <AvatarFallback className={cn(
+                      "bg-primary text-primary-foreground",
+                      vanishingMessagesEnabled && "ring-2 ring-orange-500/50"
+                    )}>
+                      <Users className="h-5 w-5" />
+                    </AvatarFallback>
+                  </>
                 ) : (
                   <AvatarFallback className={cn(
                     "bg-primary text-primary-foreground",
@@ -902,12 +916,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       </div>
 
       {/* Chat Info Panel */}
-      <ChatInfoPanel
+<ChatInfoPanel
         isOpen={isInfoPanelOpen}
         onClose={() => setIsInfoPanelOpen(false)}
         conversationId={conversationId}
         conversationType={conversationType}
         conversationName={conversationName}
+        groupImage={groupImage}
+        onGroupImageChange={onGroupImageChange}
         onlineCount={onlineCount}
         otherUser={otherUser}
         pinnedMessageIds={pinnedMessageIds}

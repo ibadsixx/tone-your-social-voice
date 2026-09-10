@@ -99,6 +99,7 @@ export interface Conversation {
   can_add_members: string | null;
   name: string | null;
   description: string | null;
+  group_image: string | null;
   page_id: string | null;
   updated_at: string;
   created_at: string;

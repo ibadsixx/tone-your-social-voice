@@ -455,6 +455,7 @@ const Messages = () => {
     type: string;
     name?: string;
     description?: string | null;
+    group_image?: string | null;
     online_count?: number;
     other_user?: {
       id: string;
@@ -464,6 +465,15 @@ const Messages = () => {
       last_seen_at?: string;
     };
   } | null>(null);
+
+  // Latest group picture per conversation, so an image change appears
+  // immediately in the header/info panel before the inbox refetches.
+  const [groupImageOverrides, setGroupImageOverrides] = useState<Record<string, string>>({});
+
+  const handleGroupImageChange = (conversationId: string, newUrl: string) => {
+    setGroupImageOverrides(prev => ({ ...prev, [conversationId]: newUrl }));
+    refetchConversations();
+  };
 
   useEffect(() => {
     if (!currentUserId || !activeConversationId) {
@@ -487,7 +497,7 @@ const Messages = () => {
         if (!otherId) return;
         const [{ data: convData }, { data: profileData }] = await Promise.all([
           gateway.from('conversations')
-            .select('type, name, description')
+            .select('type, name, description, group_image')
             .eq('id', activeConversationId)
             .maybeSingle(),
           gateway.from('profiles')
@@ -501,6 +511,7 @@ const Messages = () => {
           type: convType,
           name: (convData as any)?.name,
           description: (convData as any)?.description,
+          group_image: (convData as any)?.group_image,
           other_user: convType !== 'dm' ? undefined : profileData ? {
             id: profileData.id,
             username: profileData.username,
@@ -517,6 +528,11 @@ const Messages = () => {
   }, [activeConversationId, currentUserId, conversations]);
 
   const resolvedConvInfo = activeConversation ?? fallbackConvInfo;
+
+  // Prefer the most recent group picture (applied optimistically on change)
+  const resolvedGroupImage = (resolvedConvInfo && activeConversationId && groupImageOverrides[activeConversationId])
+    ? groupImageOverrides[activeConversationId]
+    : (resolvedConvInfo?.group_image ?? null);
 
   // True when this conversation is open as a READ-ONLY pending message request
   // from a non-friend — i.e. the current user is the RECIPIENT of a request from
@@ -1082,6 +1098,7 @@ const Messages = () => {
           conversationType={resolvedConvInfo?.type}
           conversationName={resolvedConvInfo?.name}
           conversationDescription={resolvedConvInfo?.description}
+          groupImage={resolvedGroupImage}
           onlineCount={resolvedConvInfo?.online_count}
           messages={messages}
           firstUnreadIndex={firstUnreadIndex}
@@ -1103,6 +1120,9 @@ const Messages = () => {
           onLeaveGroup={handleLeaveGroup}
           leavingGroup={leavingGroup}
           onBack={handleBackToList}
+          onGroupImageChange={(newUrl) => {
+            if (activeConversationId) handleGroupImageChange(activeConversationId, newUrl);
+          }}
           hasMoreMessages={hasMoreMessages}
           loading={loading}
           previewMode={previewMode}

@@ -6,12 +6,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   X, User, Bell, BellOff, Search, ChevronDown, ChevronUp, 
   Lock, Image, FileText, Link, Shield, Ban, Flag, Trash2, Pin,
-  Settings, Clock, Eye, Loader2, MessageCircle, ChevronRight, Users, LogOut
+  Settings, Clock, Eye, Loader2, MessageCircle, ChevronRight, Users, LogOut, Camera
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isOnline, formatLastSeen } from '@/hooks/usePresence';
 import { usePresencePrivacy } from '@/hooks/usePresencePrivacy';
 import { useConversationSettings } from '@/hooks/useConversationSettings';
+import { useFileUpload } from '@/hooks/useFileUpload';
 import { ChatThemeModal } from './ChatThemeModal';
 import { THEME_OPTIONS } from './chatThemeOptions';
 import { ChatEmojiModal } from './ChatEmojiModal';
@@ -103,6 +104,7 @@ interface ChatInfoPanelProps {
   conversationId?: string;
   conversationType?: string;
   conversationName?: string;
+  groupImage?: string | null;
   onlineCount?: number;
   otherUser: {
     id: string;
@@ -128,6 +130,7 @@ interface ChatInfoPanelProps {
   vanishingMessagesEnabled?: boolean;
   onToggleVanishingMessages?: () => void;
   otherUserReadReceiptsEnabled?: boolean;
+  onGroupImageChange?: (newUrl: string) => void;
 }
 
 type ExpandableSection = 'chat-info' | 'members' | 'customize' | 'media' | 'privacy' | null;
@@ -138,6 +141,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   conversationId,
   conversationType,
   conversationName,
+  groupImage,
   onlineCount = 0,
   otherUser,
   pinnedMessageIds = [],
@@ -157,6 +161,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   vanishingMessagesEnabled: propVanishingEnabled,
   onToggleVanishingMessages: propToggleVanishing,
   otherUserReadReceiptsEnabled,
+  onGroupImageChange,
 }) => {
   const [expandedSection, setExpandedSection] = useState<ExpandableSection>(null);
   const isGroup = conversationType === 'group';
@@ -184,7 +189,9 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   const [allowMessageSharing, setAllowMessageSharing] = useState(true);
   const [savingControls, setSavingControls] = useState(false);
   const { toast } = useToast();
+  const { uploadFile, uploading } = useFileUpload();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const { isPresenceHidden } = usePresencePrivacy(currentUserId || undefined);
   const presenceHidden = isPresenceHidden(otherUser?.id);
   const [groupMembers, setGroupMembers] = useState<Array<{
@@ -497,6 +504,47 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     }
   };
 
+  const isGroupMember = isGroup && (groupMembers?.some(m => m.user_id === currentUserId) ?? false);
+
+  const handleGroupImageUpload = async (file: File) => {
+    if (!conversationId) return;
+
+    // Only group members may change the group picture
+    if (!currentUserId || !isGroupMember) {
+      toast({
+        title: 'Permission denied',
+        description: 'Only group members can change the group picture',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const url = await uploadFile(file, 'group_covers');
+    if (!url) return;
+
+    try {
+      const { error } = await gateway
+        .from('conversations')
+        .update({ group_image: url })
+        .eq('id', conversationId);
+
+      if (error) throw error;
+
+      onGroupImageChange?.(url);
+      toast({
+        title: 'Group picture updated',
+        description: 'The group picture has been changed',
+      });
+    } catch (error: any) {
+      console.error('Error updating group picture:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update group picture',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (!otherUser && !isGroup) return null;
 
   const isMuted = settings?.is_muted ?? false;
@@ -536,11 +584,47 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
             <div className="flex flex-col items-center text-center mb-6">
               {isGroup ? (
                 <>
-                  <Avatar className="w-20 h-20 mb-3">
-                    <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
-                      <Users className="h-10 w-10" />
-                    </AvatarFallback>
-                  </Avatar>
+                  <div className="relative mb-3">
+                    <Avatar className="w-20 h-20">
+                      {groupImage ? (
+                        <>
+                          <AvatarImage src={groupImage} alt={conversationName || 'Group'} />
+                          <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
+                            <Users className="h-10 w-10" />
+                          </AvatarFallback>
+                        </>
+                      ) : (
+                        <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
+                          <Users className="h-10 w-10" />
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
+                    {isGroupMember && (
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                        className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
+                        title="Change group picture"
+                      >
+                        {uploading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Camera className="h-4 w-4" />
+                        )}
+                      </button>
+                    )}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleGroupImageUpload(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </div>
                   <h3 className="font-semibold text-lg text-foreground">{conversationName || 'Group'}</h3>
                   <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
                     <span className={cn(

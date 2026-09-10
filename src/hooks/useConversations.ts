@@ -284,7 +284,7 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
 
   const { data: convs } = await gateway
     .from('conversations')
-    .select('id, type, name, description, created_at, updated_at')
+    .select('id, type, name, description, group_image, created_at, updated_at')
     .in('id', convIds);
 
   if (!convs) return [];
@@ -351,6 +351,7 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
       type: conv.type,
       name: conv.name ?? undefined,
       description: conv.description,
+      group_image: conv.group_image ?? undefined,
       created_at: conv.created_at,
       updated_at: conv.updated_at,
       other_user: conv.type !== 'dm' ? undefined : otherProfile ? {
@@ -455,6 +456,7 @@ type Conversation = {
   type: string;
   name?: string;
   description?: string | null;
+  group_image?: string | null;
   created_at: string;
   updated_at: string;
   other_user?: {
