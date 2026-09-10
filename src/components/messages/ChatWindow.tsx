@@ -62,6 +62,7 @@ interface ChatWindowProps {
   onDeclineRequest?: () => void;
   onBlockRequest?: () => void;
   onGroupImageChange?: (newUrl: string) => void;
+  onGroupNameChange?: (newName: string) => void;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -91,6 +92,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onDeclineRequest,
   onBlockRequest,
   onGroupImageChange,
+  onGroupNameChange,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -924,6 +926,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         conversationName={conversationName}
         groupImage={groupImage}
         onGroupImageChange={onGroupImageChange}
+        onGroupNameChange={onGroupNameChange}
         onlineCount={onlineCount}
         otherUser={otherUser}
         pinnedMessageIds={pinnedMessageIds}

@@ -470,8 +470,17 @@ const Messages = () => {
   // immediately in the header/info panel before the inbox refetches.
   const [groupImageOverrides, setGroupImageOverrides] = useState<Record<string, string>>({});
 
+  // Latest group name per conversation, so a rename appears immediately in
+  // the header/info panel before the inbox refetches.
+  const [groupNameOverrides, setGroupNameOverrides] = useState<Record<string, string>>({});
+
   const handleGroupImageChange = (conversationId: string, newUrl: string) => {
     setGroupImageOverrides(prev => ({ ...prev, [conversationId]: newUrl }));
+    refetchConversations();
+  };
+
+  const handleGroupNameChange = (conversationId: string, newName: string) => {
+    setGroupNameOverrides(prev => ({ ...prev, [conversationId]: newName }));
     refetchConversations();
   };
 
@@ -533,6 +542,11 @@ const Messages = () => {
   const resolvedGroupImage = (resolvedConvInfo && activeConversationId && groupImageOverrides[activeConversationId])
     ? groupImageOverrides[activeConversationId]
     : (resolvedConvInfo?.group_image ?? null);
+
+  // Prefer the most recent group name (applied optimistically on rename)
+  const resolvedGroupName = (resolvedConvInfo && activeConversationId && groupNameOverrides[activeConversationId])
+    ? groupNameOverrides[activeConversationId]
+    : (resolvedConvInfo?.name ?? undefined);
 
   // True when this conversation is open as a READ-ONLY pending message request
   // from a non-friend — i.e. the current user is the RECIPIENT of a request from
@@ -1096,7 +1110,7 @@ const Messages = () => {
           key={activeConversationId || 'no-conversation'}
           otherUser={resolvedConvInfo?.other_user || null}
           conversationType={resolvedConvInfo?.type}
-          conversationName={resolvedConvInfo?.name}
+          conversationName={resolvedGroupName}
           conversationDescription={resolvedConvInfo?.description}
           groupImage={resolvedGroupImage}
           onlineCount={resolvedConvInfo?.online_count}
@@ -1122,6 +1136,9 @@ const Messages = () => {
           onBack={handleBackToList}
           onGroupImageChange={(newUrl) => {
             if (activeConversationId) handleGroupImageChange(activeConversationId, newUrl);
+          }}
+          onGroupNameChange={(newName) => {
+            if (activeConversationId) handleGroupNameChange(activeConversationId, newName);
           }}
           hasMoreMessages={hasMoreMessages}
           loading={loading}

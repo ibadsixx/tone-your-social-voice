@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   X, User, Bell, BellOff, Search, ChevronDown, ChevronUp, 
   Lock, Image, FileText, Link, Shield, Ban, Flag, Trash2, Pin,
-  Settings, Clock, Eye, Loader2, MessageCircle, ChevronRight, Users, LogOut, Camera
+  Settings, Clock, Eye, Loader2, MessageCircle, ChevronRight, Users, LogOut, Camera, Pencil
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isOnline, formatLastSeen } from '@/hooks/usePresence';
@@ -43,6 +43,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
 
 const getThemeGradient = (themeId: string) => {
   const theme = THEME_OPTIONS.find(t => t.id === themeId);
@@ -131,6 +132,7 @@ interface ChatInfoPanelProps {
   onToggleVanishingMessages?: () => void;
   otherUserReadReceiptsEnabled?: boolean;
   onGroupImageChange?: (newUrl: string) => void;
+  onGroupNameChange?: (newName: string) => void;
 }
 
 type ExpandableSection = 'chat-info' | 'members' | 'customize' | 'media' | 'privacy' | null;
@@ -162,6 +164,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   onToggleVanishingMessages: propToggleVanishing,
   otherUserReadReceiptsEnabled,
   onGroupImageChange,
+  onGroupNameChange,
 }) => {
   const [expandedSection, setExpandedSection] = useState<ExpandableSection>(null);
   const isGroup = conversationType === 'group';
@@ -192,6 +195,10 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   const { uploadFile, uploading } = useFileUpload();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [showRenameDialog, setShowRenameDialog] = useState(false);
+  const [renameName, setRenameName] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [canChangeGroupName, setCanChangeGroupName] = useState(false);
   const { isPresenceHidden } = usePresencePrivacy(currentUserId || undefined);
   const presenceHidden = isPresenceHidden(otherUser?.id);
   const [groupMembers, setGroupMembers] = useState<Array<{
@@ -268,6 +275,37 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
       setGroupMembers(null);
     }
   }, [isOpen, isGroup, conversationId]);
+
+  // Determine whether the current user may rename the group (owner or admin)
+  useEffect(() => {
+    if (!isOpen || !isGroup || !conversationId || !currentUserId) {
+      setCanChangeGroupName(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: convData } = await gateway
+          .from('conversations')
+          .select('created_by')
+          .eq('id', conversationId)
+          .maybeSingle();
+        const { data: roleData } = await gateway
+          .from('conversation_participants')
+          .select('role')
+          .eq('conversation_id', conversationId)
+          .eq('user_id', currentUserId)
+          .maybeSingle();
+        if (cancelled) return;
+        const createdBy = (convData as any)?.created_by;
+        const role = (roleData as any)?.role;
+        setCanChangeGroupName(createdBy === currentUserId || role === 'admin');
+      } catch {
+        setCanChangeGroupName(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, isGroup, conversationId, currentUserId]);
 
   // Auto-fetch encryption status when panel opens
   useEffect(() => {
@@ -545,6 +583,51 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     }
   };
 
+  const openRenameDialog = () => {
+    setRenameName(conversationName || '');
+    setShowRenameDialog(true);
+  };
+
+  const handleRenameGroup = async () => {
+    if (!conversationId) return;
+
+    const trimmedName = renameName.trim();
+    if (!trimmedName) {
+      toast({
+        title: 'Error',
+        description: 'Group name cannot be empty',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setRenaming(true);
+    try {
+      const { data, error } = await gateway.rpc('rename_group_conversation', {
+        p_conversation_id: conversationId,
+        p_name: trimmedName,
+      });
+      if (error) throw error;
+
+      const newName = (data?.[0] as { name?: string } | undefined)?.name || trimmedName;
+      onGroupNameChange?.(newName);
+      setShowRenameDialog(false);
+      toast({
+        title: 'Group name updated',
+        description: `The group is now called "${newName}"`,
+      });
+    } catch (error: any) {
+      console.error('Error renaming group:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to rename group',
+        variant: 'destructive',
+      });
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   if (!otherUser && !isGroup) return null;
 
   const isMuted = settings?.is_muted ?? false;
@@ -765,6 +848,22 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
                       </span>
                     </div>
                   </button>
+                  {isGroup && (
+                    <button
+                      onClick={openRenameDialog}
+                      disabled={!canChangeGroupName}
+                      title={canChangeGroupName ? 'Change the group name' : 'Only the group owner or admins can rename this group'}
+                      className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-foreground text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Pencil className="h-5 w-5 text-muted-foreground" />
+                      <div className="flex flex-col items-start">
+                        <span>Change group name</span>
+                        <span className="text-xs text-muted-foreground">
+                          {conversationName || 'Group'}
+                        </span>
+                      </div>
+                    </button>
+                  )}
                   {!isGroup && (
                     <p className="text-sm text-muted-foreground">@{otherUser?.username || ''}</p>
                   )}
@@ -1476,6 +1575,37 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
         }}
         userName={otherUser?.display_name}
       />
+
+      {/* Rename Group Dialog */}
+      {isGroup && (
+        <Dialog open={showRenameDialog} onOpenChange={setShowRenameDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Change group name</DialogTitle>
+              <DialogDescription>
+                Choose a new name for this group.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2">
+              <Input
+                value={renameName}
+                onChange={(e) => setRenameName(e.target.value)}
+                placeholder="Group name"
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowRenameDialog(false)} disabled={renaming}>
+                Cancel
+              </Button>
+              <Button onClick={handleRenameGroup} disabled={renaming || !renameName.trim()}>
+                {renaming && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 };
