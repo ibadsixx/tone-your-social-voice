@@ -6,7 +6,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   X, User, Bell, BellOff, Search, ChevronDown, ChevronUp, 
   Lock, Image, FileText, Link, Shield, Ban, Flag, Trash2, Pin,
-  Settings, Clock, Eye, Loader2, MessageCircle, ChevronRight, Users, LogOut, Camera, Pencil
+  Settings, Clock, Eye, Loader2, MessageCircle, ChevronRight, Users, LogOut, Camera, Pencil,
+  MoreVertical, ShieldCheck, UserMinus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isOnline, formatLastSeen } from '@/hooks/usePresence';
@@ -44,6 +45,12 @@ import {
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const getThemeGradient = (themeId: string) => {
   const theme = THEME_OPTIONS.find(t => t.id === themeId);
@@ -199,6 +206,18 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   const [renameName, setRenameName] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [canChangeGroupName, setCanChangeGroupName] = useState(false);
+  const [groupOwnerId, setGroupOwnerId] = useState<string | null>(null);
+  const [myGroupRole, setMyGroupRole] = useState<string | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<{
+    user_id: string;
+    display_name: string;
+  } | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [memberToPromote, setMemberToPromote] = useState<{
+    user_id: string;
+    display_name: string;
+  } | null>(null);
+  const [promoting, setPromoting] = useState(false);
   const { isPresenceHidden } = usePresencePrivacy(currentUserId || undefined);
   const presenceHidden = isPresenceHidden(otherUser?.id);
   const [groupMembers, setGroupMembers] = useState<Array<{
@@ -207,6 +226,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     username: string;
     profile_pic?: string;
     last_seen_at?: string;
+    role?: string;
   }> | null>(null);
 
   useEffect(() => {
@@ -223,13 +243,15 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
         try {
           const { data: parts } = await gateway
             .from('conversation_participants')
-            .select('user_id')
+            .select('user_id, role')
             .eq('conversation_id', conversationId);
-          const userIds = Array.from(new Set(
-            ((parts || []) as Array<{ user_id: string }>)
-              .map(p => p.user_id)
-              .filter((id): id is string => typeof id === 'string' && id.length > 0)
-          ));
+          const roleMap = new Map<string, string>();
+          ((parts || []) as Array<{ user_id: string; role?: string }>).forEach(p => {
+            if (typeof p?.user_id === 'string' && p.user_id.length > 0 && typeof p.role === 'string') {
+              roleMap.set(p.user_id, p.role);
+            }
+          });
+          const userIds = Array.from(new Set(roleMap.keys()));
           if (userIds.length === 0) {
             setGroupMembers([]);
             return;
@@ -249,6 +271,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
             username: string;
             profile_pic?: string;
             last_seen_at?: string;
+            role?: string;
           }>();
           for (const p of (profilesData || []) as Array<{
             id: string;
@@ -264,6 +287,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
               username: p.username,
               profile_pic: p.profile_pic ?? undefined,
               last_seen_at: p.last_seen_at ?? undefined,
+              role: roleMap.get(p.id),
             });
           }
           setGroupMembers([...memberMap.values()]);
@@ -276,10 +300,12 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     }
   }, [isOpen, isGroup, conversationId]);
 
-  // Determine whether the current user may rename the group (owner or admin)
+  // Determine the current user's group permissions (owner or admin)
   useEffect(() => {
     if (!isOpen || !isGroup || !conversationId || !currentUserId) {
       setCanChangeGroupName(false);
+      setGroupOwnerId(null);
+      setMyGroupRole(null);
       return;
     }
     let cancelled = false;
@@ -299,9 +325,13 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
         if (cancelled) return;
         const createdBy = (convData as any)?.created_by;
         const role = (roleData as any)?.role;
+        setGroupOwnerId(createdBy || null);
+        setMyGroupRole(role || null);
         setCanChangeGroupName(createdBy === currentUserId || role === 'admin');
       } catch {
         setCanChangeGroupName(false);
+        setGroupOwnerId(null);
+        setMyGroupRole(null);
       }
     })();
     return () => { cancelled = true; };
@@ -628,6 +658,66 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     }
   };
 
+  const canManageMembers = isGroup && (groupOwnerId === currentUserId || myGroupRole === 'admin');
+
+  const handleRemoveMember = async () => {
+    if (!conversationId || !memberToRemove) return;
+    setRemoving(true);
+    try {
+      const { error } = await gateway.rpc('remove_group_member', {
+        p_conversation_id: conversationId,
+        p_member_id: memberToRemove.user_id,
+      });
+      if (error) throw error;
+
+      setGroupMembers(prev => (prev || []).filter(m => m.user_id !== memberToRemove.user_id));
+      toast({
+        title: 'Member removed',
+        description: `${memberToRemove.display_name} was removed from the group`,
+      });
+      setMemberToRemove(null);
+    } catch (error) {
+      console.error('Error removing member:', error);
+      toast({
+        title: 'Error',
+        description: (error as { message?: string })?.message || 'Failed to remove member',
+        variant: 'destructive',
+      });
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const handlePromoteMember = async () => {
+    if (!conversationId || !memberToPromote) return;
+    setPromoting(true);
+    try {
+      const { error } = await gateway.rpc('promote_group_member', {
+        p_conversation_id: conversationId,
+        p_member_id: memberToPromote.user_id,
+      });
+      if (error) throw error;
+
+      setGroupMembers(prev => (prev || []).map(m =>
+        m.user_id === memberToPromote.user_id ? { ...m, role: 'admin' } : m
+      ));
+      toast({
+        title: 'Admin added',
+        description: `${memberToPromote.display_name} is now a group admin`,
+      });
+      setMemberToPromote(null);
+    } catch (error) {
+      console.error('Error promoting member:', error);
+      toast({
+        title: 'Error',
+        description: (error as { message?: string })?.message || 'Failed to make member an admin',
+        variant: 'destructive',
+      });
+    } finally {
+      setPromoting(false);
+    }
+  };
+
   if (!otherUser && !isGroup) return null;
 
   const isMuted = settings?.is_muted ?? false;
@@ -888,28 +978,77 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
                     <div className="px-3 pb-3 space-y-2">
                       {groupMembers ? (
                         groupMembers.length > 0 ? (
-                          groupMembers.map(member => (
-                            <div key={member.user_id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
-                              <div className="relative shrink-0">
-                                <Avatar className="h-9 w-9">
-                                  <AvatarImage src={member.profile_pic} alt={member.display_name} />
-                                  <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                                    {member.display_name?.charAt(0)?.toUpperCase() || '?'}
-                                  </AvatarFallback>
-                                </Avatar>
-                                {!isPresenceHidden(member.user_id) && (
-                                  <div className={cn(
-                                    "absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-card",
-                                    isOnline(member.last_seen_at) ? "bg-green-500" : "bg-gray-400"
-                                  )} />
+                          groupMembers.map(member => {
+                            const isOwner = member.user_id === groupOwnerId;
+                            const isAdmin = member.role === 'admin';
+                            const isSelf = member.user_id === currentUserId;
+                            const canManageHere = canManageMembers && !isSelf && !isOwner &&
+                              (isAdmin ? currentUserId === groupOwnerId : true);
+                            const canRemove = canManageHere;
+                            const canPromote = canManageHere && !isAdmin;
+                            return (
+                              <div key={member.user_id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
+                                <div className="relative shrink-0">
+                                  <Avatar className="h-9 w-9">
+                                    <AvatarImage src={member.profile_pic} alt={member.display_name} />
+                                    <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                                      {member.display_name?.charAt(0)?.toUpperCase() || '?'}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  {isAdmin && (
+                                    <div className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-primary text-primary-foreground flex items-center justify-center border-2 border-card">
+                                      <ShieldCheck className="h-2.5 w-2.5" />
+                                    </div>
+                                  )}
+                                  {!isPresenceHidden(member.user_id) && (
+                                    <div className={cn(
+                                      "absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-card",
+                                      isOnline(member.last_seen_at) ? "bg-green-500" : "bg-gray-400"
+                                    )} />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="text-sm font-medium truncate">{member.display_name}</p>
+                                    {isOwner ? (
+                                      <span className="text-[10px] font-medium text-primary uppercase tracking-wide shrink-0">Owner</span>
+                                    ) : isAdmin ? (
+                                      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide shrink-0">Admin</span>
+                                    ) : null}
+                                  </div>
+                                  <p className="text-xs text-muted-foreground truncate">@{member.username}</p>
+                                </div>
+                                {(canRemove || canPromote) && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0">
+                                        <MoreVertical className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-48">
+                                      {canPromote && (
+                                        <DropdownMenuItem
+                                          onClick={() => setMemberToPromote({ user_id: member.user_id, display_name: member.display_name })}
+                                        >
+                                          <ShieldCheck className="h-4 w-4 mr-2 text-muted-foreground" />
+                                          Make admin
+                                        </DropdownMenuItem>
+                                      )}
+                                      {canRemove && (
+                                        <DropdownMenuItem
+                                          onClick={() => setMemberToRemove({ user_id: member.user_id, display_name: member.display_name })}
+                                          className="text-destructive"
+                                        >
+                                          <UserMinus className="h-4 w-4 mr-2 text-destructive" />
+                                          Remove from group
+                                        </DropdownMenuItem>
+                                      )}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 )}
                               </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium truncate">{member.display_name}</p>
-                                <p className="text-xs text-muted-foreground truncate">@{member.username}</p>
-                              </div>
-                            </div>
-                          ))
+                            );
+                          })
                         ) : (
                           <p className="text-sm text-muted-foreground">No members found</p>
                         )
@@ -1606,6 +1745,62 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Remove Member Confirmation */}
+      <AlertDialog
+        open={!!memberToRemove}
+        onOpenChange={(open) => {
+          if (!open && !removing) setMemberToRemove(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove from group?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this member from the group?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleRemoveMember(); }}
+              disabled={removing}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removing && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Make Admin Confirmation */}
+      <AlertDialog
+        open={!!memberToPromote}
+        onOpenChange={(open) => {
+          if (!open && !promoting) setMemberToPromote(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Make admin?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to make {memberToPromote?.display_name} a group admin?
+              They will be able to manage group members.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={promoting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handlePromoteMember(); }}
+              disabled={promoting}
+            >
+              {promoting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Make admin
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };
