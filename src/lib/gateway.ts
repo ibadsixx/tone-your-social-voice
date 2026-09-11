@@ -459,6 +459,10 @@ class PostgrestFilterBuilder<T> {
           : undefined,
       };
 
+      if (this._method === 'PUT') {
+        console.log(`[gateway] PUT ${url}`, { body: this._body, filters: this._filters });
+      }
+
       let res = await fetch(url, fetchOptions);
 
       // Handle 401 - try refresh token and retry

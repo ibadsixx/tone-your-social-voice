@@ -590,6 +590,8 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     const url = await uploadFile(file, 'group_covers');
     if (!url) return;
 
+    console.log('[ChatInfoPanel] group image upload result', { conversationId, url });
+
     try {
       const { error } = await gateway
         .from('conversations')
