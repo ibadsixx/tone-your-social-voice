@@ -202,6 +202,19 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   const { uploadFile, uploading } = useFileUpload();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  // Local blob preview of the freshly-selected group picture, shown immediately
+  // on selection while the upload + DB update run in the background.
+  const [pendingGroupImageUrl, setPendingGroupImageUrl] = useState<string | null>(null);
+  const pendingGroupImageRef = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pendingGroupImageRef.current) {
+        URL.revokeObjectURL(pendingGroupImageRef.current);
+        pendingGroupImageRef.current = null;
+      }
+    };
+  }, []);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [renameName, setRenameName] = useState('');
   const [renaming, setRenaming] = useState(false);
@@ -587,8 +600,25 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
       return;
     }
 
+    // Immediately replace the current group picture with the selected image
+    const objectUrl = URL.createObjectURL(file);
+    pendingGroupImageRef.current = objectUrl;
+    setPendingGroupImageUrl(objectUrl);
+
+    const clearPendingPreview = () => {
+      if (pendingGroupImageRef.current) {
+        URL.revokeObjectURL(pendingGroupImageRef.current);
+        pendingGroupImageRef.current = null;
+      }
+      setPendingGroupImageUrl(null);
+    };
+
     const url = await uploadFile(file, 'group_covers');
-    if (!url) return;
+    if (!url) {
+      // Upload failed — keep the old group picture
+      clearPendingPreview();
+      return;
+    }
 
     console.log('[ChatInfoPanel] group image upload result', { conversationId, url });
 
@@ -601,12 +631,14 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
       if (error) throw error;
 
       onGroupImageChange?.(url);
+      clearPendingPreview();
       toast({
         title: 'Group picture updated',
         description: 'The group picture has been changed',
       });
     } catch (error: any) {
       console.error('Error updating group picture:', error);
+      clearPendingPreview();
       toast({
         title: 'Error',
         description: error.message || 'Failed to update group picture',
@@ -761,9 +793,9 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
                 <>
                   <div className="relative mb-3">
                     <Avatar className="w-20 h-20">
-                      {groupImage ? (
+                      {(pendingGroupImageUrl ?? groupImage) ? (
                         <>
-                          <AvatarImage src={groupImage} alt={conversationName || 'Group'} />
+                          <AvatarImage src={pendingGroupImageUrl ?? groupImage} alt={conversationName || 'Group'} />
                           <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
                             <Users className="h-10 w-10" />
                           </AvatarFallback>
