@@ -8,9 +8,10 @@ export interface Notification {
   id: string;
   user_id: string;
   actor_id: string;
-  type: 'like' | 'comment' | 'mention' | 'follow' | 'tag' | 'share' | 'post_from_followed' | 'group_post' | 'poke' | 'hashtag_post' | 'friend_request' | 'message_request' | 'invitation' | 'group_membership_accepted' | 'security_login';
+  type: 'like' | 'comment' | 'mention' | 'follow' | 'tag' | 'share' | 'post_from_followed' | 'group_post' | 'poke' | 'hashtag_post' | 'friend_request' | 'message_request' | 'invitation' | 'group_membership_accepted' | 'security_login' | 'channel_post';
   group_id?: string;
   page_id?: string;
+  channel_id?: string;
   hashtag?: string;
   post_id?: string;
   comment_id?: string;
@@ -213,8 +214,9 @@ export const createNotification = async (params: {
   message: string;
   postId?: string;
   commentId?: string;
+  channelId?: string;
 }) => {
-  const { userId, actorId, type, message, postId, commentId } = params;
+  const { userId, actorId, type, message, postId, commentId, channelId } = params;
 
   // Don't notify yourself
   if (userId === actorId) return;
@@ -226,7 +228,8 @@ export const createNotification = async (params: {
       type,
       message,
       post_id: postId,
-      comment_id: commentId
+      comment_id: commentId,
+      channel_id: channelId
     });
 
     // TRACE: notification creation (point 4)

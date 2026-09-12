@@ -34,6 +34,7 @@ import {
 import { gateway } from '@/lib/gateway';
 import { blockingApi, profilesApi } from '@/api';
 import { leaveGroupConversation } from '@/api/conversations';
+import { createNotification } from '@/hooks/useNotifications';
 
 const Messages = () => {
   const [showNewConversation, setShowNewConversation] = useState(false);
@@ -410,6 +411,33 @@ const Messages = () => {
     );
     if (success) {
       // Message will be added via real-time subscription
+      notifyChannelFollowers();
+    }
+  };
+
+  // When an admin publishes a channel post, followers receive activity through
+  // the EXISTING notification infrastructure (messages.md) — one notification
+  // row per follower, exactly like follow/hashtag notifications. Best-effort:
+  // a notification failure never fails the post itself.
+  const notifyChannelFollowers = async () => {
+    if (!activeConversationId || !currentUserId) return;
+    if (resolvedConvInfo?.type !== 'channel') return;
+
+    const channelName = resolvedGroupName || 'channel';
+    const { data: followers } = await gateway
+      .from('conversation_participants')
+      .select('user_id')
+      .eq('conversation_id', activeConversationId)
+      .eq('role', 'follower');
+
+    for (const follower of followers || []) {
+      await createNotification({
+        userId: follower.user_id,
+        actorId: currentUserId,
+        type: 'channel_post',
+        message: `posted a new message in #${channelName}`,
+        channelId: activeConversationId,
+      });
     }
   };
 

@@ -26,6 +26,7 @@ const getNotificationIcon = (type: string) => {
     case 'invitation': return <Handshake className={className} />;
     case 'group_membership_accepted': return <ShieldCheck className={className} />;
     case 'security_login': return <Lock className={className} />;
+    case 'channel_post': return <Hash className={className} />;
     default: return <Bell className={className} />;
   }
 };
@@ -68,6 +69,8 @@ const NotificationsPage = () => {
       navigate(`/pages/${notification.page_id}`);
     } else if (notification.type === 'group_membership_accepted' && notification.group_id) {
       navigate(`/groups/${notification.group_id}`);
+    } else if (notification.type === 'channel_post' && notification.channel_id) {
+      navigate(`/messages/${notification.channel_id}`);
     } else if (notification.type === 'hashtag_post') {
       navigate(`/hashtag/${notification.hashtag || ''}`);
     } else if (notification.type === 'security_login') {

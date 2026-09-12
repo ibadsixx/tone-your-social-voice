@@ -57,6 +57,56 @@ export async function leaveGroupConversation(conversationId: string): Promise<Ap
   }
 }
 
+// Publishes a Channel post via the dedicated Gateway endpoint
+// (POST /api/v1/conversations/:id/publish). The Gateway verifies the caller is
+// the channel owner or moderator BEFORE the insert, so a follower can never
+// publish by calling Supabase directly. The returned row matches the shape the
+// messages hook inserts, so the caller's post-send handling stays identical.
+export async function publishChannelPost(
+  conversationId: string,
+  payload: {
+    content?: string | null;
+    imageUrl?: string | null;
+    mediaUrl?: string | null;
+    attachmentUrl?: string | null;
+  }
+): Promise<ApiResult<Record<string, unknown> | null>> {
+  if (!conversationId) {
+    return { data: null, error: { message: 'Missing conversation id' } };
+  }
+  if (!API_URL) {
+    return { data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } };
+  }
+  try {
+    const token = getAccessToken();
+    const res = await fetch(
+      `${API_URL}/api/v1/conversations/${encodeURIComponent(conversationId)}/publish`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+    if (res.status === 201) {
+      const data = await res.json().catch(() => null);
+      return { data, error: null };
+    }
+    const body = await res.json().catch(() => null);
+    return {
+      data: null,
+      error: {
+        message: body?.error || body?.message || `Failed to publish (${res.status})`,
+        code: String(res.status),
+      },
+    };
+  } catch (err) {
+    return { data: null, error: { message: String(err) } };
+  }
+}
+
 export async function getConversationsByPage(pageId: string): Promise<ApiResult<Conversation[]>> {
   return gateway.from('conversations').select('id, type, name, description, created_at, updated_at').eq('page_id', pageId).order('updated_at', { ascending: false }) as Promise<ApiResult<Conversation[]>>;
 }

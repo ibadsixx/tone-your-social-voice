@@ -26,6 +26,7 @@ import { GifItem } from '@/hooks/useGifSearch';
 import { isOnline, formatLastSeen } from '@/hooks/usePresence';
 import { usePresencePrivacy } from '@/hooks/usePresencePrivacy';
 import { CreatePollModal } from './CreatePollModal';
+import { ChannelAdminsDialog } from './ChannelAdminsDialog';
 
 type OtherUser = {
   id: string;
@@ -104,6 +105,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [reportMessage, setReportMessage] = useState<Message | null>(null);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
+  const [showChannelAdmins, setShowChannelAdmins] = useState(false);
   const [pinnedMessageIds, setPinnedMessageIds] = useState<string[]>([]);
   const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
   const [chatTheme, setChatTheme] = useState('default');
@@ -633,6 +635,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       <span className="text-xs text-muted-foreground hidden sm:inline">Publisher</span>
                     </div>
                   )}
+                  {channelRole === 'owner' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowChannelAdmins(true)}
+                      className="h-8 text-xs gap-1"
+                      title="Manage admins"
+                    >
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Admins</span>
+                    </Button>
+                  )}
                   {isFollower && (
                     <Button
                       variant="outline"
@@ -982,6 +996,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onOpenChange={setShowPollModal}
         conversationId={conversationId}
         currentUserId={currentUserId}
+      />
+
+      {/* Channel Admins Modal (owner only) */}
+      <ChannelAdminsDialog
+        open={showChannelAdmins}
+        onOpenChange={setShowChannelAdmins}
+        conversationId={conversationId}
+        conversationName={conversationName}
       />
     </div>
   );

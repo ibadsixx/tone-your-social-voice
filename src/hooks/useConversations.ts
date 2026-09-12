@@ -8,6 +8,7 @@ import {
   getConversationReadStatus,
   getMyReadMessageIds,
   markMessageDelivered,
+  publishChannelPost,
 } from '@/api/conversations';
 import { initConversationEncryption, decryptContent, isEncryptionReady } from '@/lib/conversationEncryption';
 import { loadEcdhPrivateKey } from '@/hooks/useEncryptionKeys';
@@ -341,6 +342,31 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
   const groupConvIds = visibleConvs.filter(c => c.type === 'group').map(c => c.id);
   const groupOnlineCounts = await fetchGroupOnlineCounts(groupConvIds, userId);
 
+  // Channel unread counts. Channels reuse the existing read-state architecture
+  // (`message_reads`): UNREAD = recent channel messages sent by others that the
+  // current user has no `message_reads` row for. DM/group unread stays 0 as
+  // before — this must never collide with the messaging read-receipt system.
+  const unreadMap = new Map<string, number>();
+  const channelIds = visibleConvs.filter(c => c.type === 'channel').map(c => c.id);
+  if (channelIds.length > 0) {
+    const { data: chanMsgs } = await gateway
+      .from('messages')
+      .select('id, conversation_id, sender_id')
+      .in('conversation_id', channelIds)
+      .limit(500);
+    if (chanMsgs && chanMsgs.length > 0) {
+      const chanMsgIds = chanMsgs.map(m => m.id);
+      const { data: myChannelReads } = await getMyReadMessageIds(chanMsgIds, userId);
+      const readSet = new Set(myChannelReads || []);
+      for (const convId of channelIds) {
+        const unread = (chanMsgs || []).filter(
+          m => m.conversation_id === convId && m.sender_id !== userId && !readSet.has(m.id)
+        ).length;
+        unreadMap.set(convId, unread);
+      }
+    }
+  }
+
   return visibleConvs.map(conv => {
     const otherUserId = firstOtherPerConv.get(conv.id);
     const otherProfile = otherUserId ? profileMap.get(otherUserId) : null;
@@ -366,7 +392,7 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
         content: previewContent(lastMsg.content, userId),
         created_at: lastMsg.created_at,
       } : undefined,
-      unread_count: 0,
+      unread_count: conv.type === 'channel' ? (unreadMap.get(conv.id) || 0) : 0,
     };
   });
 }
@@ -831,39 +857,69 @@ export const useConversations = (currentUserId?: string) => {
       receiverId || (await resolveDmReceiver({ conversationId, currentUserId, conversationsDataRef }));
 
     try {
-      const { data, error } = await gateway
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          sender_id: currentUserId,
-          receiver_id: resolvedReceiverId || null,
-          content: encryptedContent ? null : (isImage || isVideo ? (content || null) : content),
-          encrypted_content: encryptedContent || null,
-          encryption_iv: encryptionIv || null,
-          attachment_url: attachmentUrl,
-          image_url: isImage ? attachmentUrl : null,
-          media_url: isVideo ? attachmentUrl : null,
-          is_image: Boolean(isImage),
-          message_type: isVideo ? 'video' : isImage ? 'image' : 'text',
-          reply_to_id: replyToId || null
-        } as Record<string, unknown>)
-        .select(`
-          id,
-          conversation_id,
-          sender_id,
-          content,
-          encrypted_content,
-          encryption_iv,
-          attachment_url,
-          image_url,
-          media_url,
-          is_image,
-          message_type,
-          reply_to_id,
-          created_at,
-          sender_profile:profiles!messages_sender_id_fkey(username, display_name, profile_pic)
-        `)
-        .single();
+      // Channels are broadcast, not group chats: only owner/moderators publish,
+      // and that authorization is enforced by the Gateway (POST
+      // /conversations/:id/publish) — never by the client. Every other
+      // conversation type uses the normal generic insert through the Gateway.
+      const isChannelSend = conversationsDataRef.current.find(
+        c => c.conversation_id === conversationId
+      )?.type === 'channel';
+
+      const insertPayload = {
+        conversation_id: conversationId,
+        sender_id: currentUserId,
+        receiver_id: resolvedReceiverId || null,
+        content: encryptedContent ? null : (isImage || isVideo ? (content || null) : content),
+        encrypted_content: encryptedContent || null,
+        encryption_iv: encryptionIv || null,
+        attachment_url: attachmentUrl,
+        image_url: isImage ? attachmentUrl : null,
+        media_url: isVideo ? attachmentUrl : null,
+        is_image: Boolean(isImage),
+        message_type: isVideo ? 'video' : isImage ? 'image' : 'text',
+        reply_to_id: replyToId || null
+      } as Record<string, unknown>;
+
+      const MESSAGE_SELECT = `
+        id,
+        conversation_id,
+        sender_id,
+        content,
+        encrypted_content,
+        encryption_iv,
+        attachment_url,
+        image_url,
+        media_url,
+        is_image,
+        message_type,
+        reply_to_id,
+        created_at,
+        sender_profile:profiles!messages_sender_id_fkey(username, display_name, profile_pic)
+      `;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let data: any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let error: any = null;
+
+      if (isChannelSend) {
+        const result = await publishChannelPost(conversationId, {
+          content: (insertPayload.content as string | null) ?? null,
+          imageUrl: (insertPayload.image_url as string | null) ?? null,
+          mediaUrl: (insertPayload.media_url as string | null) ?? null,
+          attachmentUrl: (insertPayload.attachment_url as string | null) ?? null,
+        });
+        data = result.data;
+        error = result.error;
+      } else {
+        const result = await gateway
+          .from('messages')
+          .insert(insertPayload)
+          .select(MESSAGE_SELECT)
+          .single();
+        data = result.data;
+        error = result.error;
+      }
 
       if (error) {
         console.error('[useConversations] Supabase message insert error:', error);
@@ -1008,6 +1064,16 @@ export const useConversations = (currentUserId?: string) => {
 
     try {
       await markConversationMessagesRead(conversationId, currentUserId);
+
+      // Channels keep their own unread state (independent of the messaging
+      // read-receipt system): once an open channel's messages are marked read,
+      // clear the Chats-list badge immediately instead of waiting for refetch.
+      const readConv = conversationsDataRef.current.find(c => c.conversation_id === conversationId);
+      if (readConv?.type === 'channel') {
+        setConversations(prev => prev.map(c =>
+          c.conversation_id === conversationId ? { ...c, unread_count: 0 } : c
+        ));
+      }
 
       // Ping the other participant live so their client flips seen states
       // without waiting for a refetch. Best-effort.

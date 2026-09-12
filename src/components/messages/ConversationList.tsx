@@ -90,7 +90,7 @@ const ConversationItem = memo(({
       <div className="relative shrink-0">
         {isMulti ? (
           <Avatar className="w-10 h-10">
-            {isGroup && conversation.group_image ? (
+            {(isGroup || isChannel) && conversation.group_image ? (
               <>
                 <AvatarImage src={conversation.group_image} alt={displayName} />
                 <AvatarFallback className="bg-muted text-muted-foreground text-sm">
