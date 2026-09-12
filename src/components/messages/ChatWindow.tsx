@@ -27,6 +27,7 @@ import { isOnline, formatLastSeen } from '@/hooks/usePresence';
 import { usePresencePrivacy } from '@/hooks/usePresencePrivacy';
 import { CreatePollModal } from './CreatePollModal';
 import { ChannelAdminsDialog } from './ChannelAdminsDialog';
+import { InviteToConversationDialog } from './InviteToConversationDialog';
 
 type OtherUser = {
   id: string;
@@ -106,6 +107,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
   const [showChannelAdmins, setShowChannelAdmins] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
   const [pinnedMessageIds, setPinnedMessageIds] = useState<string[]>([]);
   const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
   const [chatTheme, setChatTheme] = useState('default');
@@ -120,6 +122,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const { deleteMessage, pinMessage, reportMessage: submitReport, getPinnedMessages } = useMessageActions(conversationId, currentUserId);
 
   const isChannel = conversationType === 'channel';
+  const isGroup = conversationType === 'group';
   const [channelRole, setChannelRole] = useState<string | null>(null);
   const [channelRoleLoading, setChannelRoleLoading] = useState(false);
   const [channelStats, setChannelStats] = useState<{ follower_count: number; owner_name: string; moderator_count: number } | null>(null);
@@ -642,6 +645,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             <div className="flex items-center space-x-2">
               {isChannel ? (
                 <>
+                  {canPost && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowInvite(true)}
+                      className="h-8 text-xs gap-1"
+                      title="Add friends & followers"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Add</span>
+                    </Button>
+                  )}
                   {canPost && channelStats && (
                     <div className="flex items-center gap-1.5 mr-1">
                       <Megaphone className="h-3.5 w-3.5 text-orange-500" />
@@ -686,6 +701,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     </Button>
                   )}
                 </>
+              ) : isGroup ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowInvite(true)}
+                  className="h-8 text-xs gap-1"
+                  title="Add friends & followers"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Add</span>
+                </Button>
               ) : (
                 <>
                   {/* Call Buttons */}
@@ -1017,6 +1043,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onOpenChange={setShowChannelAdmins}
         conversationId={conversationId}
         conversationName={conversationName}
+      />
+
+      {/* Add friends & followers (channels and groups) */}
+      <InviteToConversationDialog
+        open={showInvite}
+        onOpenChange={setShowInvite}
+        conversationId={conversationId}
+        conversationType={conversationType}
+        conversationName={conversationName}
+        currentUserId={currentUserId}
+        onInvitesSent={() => {
+          if (!isChannel || !conversationId) return;
+          gateway.rpc('get_channel_stats', { p_conversation_id: conversationId })
+            .then(({ data }) => {
+              if (data && data.length > 0) setChannelStats(data[0]);
+            })
+            .catch(() => undefined);
+        }}
       />
     </div>
   );

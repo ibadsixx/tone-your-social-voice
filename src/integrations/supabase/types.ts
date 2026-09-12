@@ -4426,6 +4426,13 @@ export type Database = {
         }
         Returns: undefined
       }
+      add_channel_follower: {
+        Args: {
+          p_conversation_id: string
+          p_new_follower_id: string
+        }
+        Returns: undefined
+      }
       remove_channel_moderator: {
         Args: {
           p_conversation_id: string
