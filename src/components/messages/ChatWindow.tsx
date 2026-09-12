@@ -176,21 +176,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const isFollower = channelRole === 'follower';
   const isChannelOwner = isChannel && !!channelOwnerId && channelOwnerId === currentUserId;
 
-  const handleReplyInChannel = async (content?: string, _mediaUrl?: string, replyToId?: string) => {
-    if (!conversationId || !replyToId || !content?.trim()) return;
-    const { data, error } = await gateway.rpc('send_channel_reply', {
-      p_conversation_id: conversationId,
-      p_reply_to_id: replyToId,
-      p_content: content.trim(),
-      p_sender_id: currentUserId,
-    });
-    if (error) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    } else {
-      setReplyTo(null);
-    }
-  };
-
   const handleFollowChannel = async () => {
     if (!conversationId) return;
     const { error } = await gateway.rpc('follow_channel', { p_conversation_id: conversationId });
@@ -821,16 +806,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         previewMode={previewMode}
                       onReact={handleReaction}
                       onReply={(msg) => {
+                        if (isChannel && !canPost) return;
                         const replyInfo = {
                           id: msg.id,
                           content: msg.content,
                           sender_profile: msg.sender_profile,
                         };
-                        if (isChannel && isFollower) {
-                          setReplyTo(replyInfo);
-                        } else {
-                          setReplyTo(replyInfo);
-                        }
+                        setReplyTo(replyInfo);
                       }}
                       onForward={(msg) => {
                         setForwardMessage(msg);
@@ -939,17 +921,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               />
             </div>
           ) : (
-            <MessageInput
-              onSendMessage={handleReplyInChannel}
-              onSendGif={undefined}
-              onSendAudioMessage={undefined}
-              conversationId={conversationId}
-              placeholder="Reply to a message..."
-              replyTo={replyTo}
-              onCancelReply={() => setReplyTo(null)}
-              quickEmoji={undefined}
-              vanishing={vanishingMessagesEnabled}
-            />
+            <div className={cn(
+              "px-4 py-3 border-t",
+              vanishingMessagesEnabled ? "border-zinc-700/50" : "border-border"
+            )}>
+              <p className="text-xs text-muted-foreground text-center">
+                This channel is read-only — only the channel owner and moderators can post.
+              </p>
+            </div>
           )
         ) : (
           <MessageInput
