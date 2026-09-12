@@ -645,7 +645,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             <div className="flex items-center space-x-2">
               {isChannel ? (
                 <>
-                  {(canPost || isChannelOwner) && (
+                  {!isFollower && (
                     <Button
                       variant="ghost"
                       size="sm"
