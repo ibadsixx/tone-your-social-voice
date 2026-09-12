@@ -123,6 +123,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [channelRole, setChannelRole] = useState<string | null>(null);
   const [channelRoleLoading, setChannelRoleLoading] = useState(false);
   const [channelStats, setChannelStats] = useState<{ follower_count: number; owner_name: string; moderator_count: number } | null>(null);
+  const [channelOwnerId, setChannelOwnerId] = useState<string | null>(null);
 
   // Hide the other user's presence while a non-friend PENDING message request
   // is in effect (see usePresencePrivacy): the sender must not see online/
@@ -135,12 +136,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!conversationId || !isChannel) {
       setChannelRole(null);
       setChannelStats(null);
+      setChannelOwnerId(null);
       setChannelRoleLoading(false);
       return;
     }
     setChannelRoleLoading(true);
     setChannelRole(null);
     setChannelStats(null);
+    setChannelOwnerId(null);
 
     let ignore = false;
 
@@ -153,12 +156,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         if (!ignore && data && data.length > 0) setChannelStats(data[0]);
       })
       .catch(() => { if (!ignore) setChannelStats(null); });
+    // `conversations.created_by` is the channel owner. It is authoritative for
+    // hiding the Follow control even when the user's participant role lookup
+    // comes back null/stale — an owner must never see Follow on their channel.
+    gateway.from('conversations')
+      .select('created_by')
+      .eq('id', conversationId)
+      .maybeSingle()
+      .then(({ data }) => { if (!ignore) setChannelOwnerId((data as { created_by: string | null } | null)?.created_by ?? null); })
+      .catch(() => { if (!ignore) setChannelOwnerId(null); });
 
     return () => { ignore = true; };
   }, [conversationId, isChannel]);
 
   const canPost = channelRole === 'owner' || channelRole === 'moderator';
   const isFollower = channelRole === 'follower';
+  const isChannelOwner = isChannel && !!channelOwnerId && channelOwnerId === currentUserId;
 
   const handleReplyInChannel = async (content?: string, _mediaUrl?: string, replyToId?: string) => {
     if (!conversationId || !replyToId || !content?.trim()) return;
@@ -647,7 +660,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       <span className="hidden sm:inline">Admins</span>
                     </Button>
                   )}
-                  {isFollower && (
+                  {!isChannelOwner && isFollower && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -661,7 +674,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   {channelRoleLoading && (
                     <div className="h-8 w-20 bg-muted rounded-md animate-pulse" />
                   )}
-                  {!channelRole && !channelRoleLoading && (
+                  {!isChannelOwner && !channelRole && !channelRoleLoading && (
                     <Button
                       variant="default"
                       size="sm"
