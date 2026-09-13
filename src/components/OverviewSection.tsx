@@ -21,7 +21,20 @@ import {
   User,
   Eye,
   Lock,
-  Globe
+  Globe,
+  Facebook,
+  Instagram,
+  Twitter,
+  Linkedin,
+  Youtube,
+  Github,
+  Send,
+  Music2,
+  Sparkles,
+  Briefcase,
+  Newspaper,
+  Link2,
+  type LucideIcon
 } from 'lucide-react';
 
 interface OverviewSectionProps {
@@ -80,6 +93,25 @@ interface FamilyMember {
     username: string;
   };
 }
+
+const WEBSITE_TYPE_ICONS: Record<string, LucideIcon> = {
+  website: Globe,
+  facebook: Facebook,
+  instagram: Instagram,
+  twitter: Twitter,
+  x: Twitter,
+  linkedin: Linkedin,
+  youtube: Youtube,
+  tiktok: Music2,
+  github: Github,
+  telegram: Send,
+  tone: Sparkles,
+  portfolio: Briefcase,
+  blog: Newspaper,
+  other: Link2,
+};
+
+const getWebsiteIcon = (type: string): LucideIcon => WEBSITE_TYPE_ICONS[type.toLowerCase()] || Link2;
 
 const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
   const { user } = useAuth();
@@ -380,20 +412,23 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
       icon: <Globe className="h-4 w-4" />,
       label: 'Websites and Social Links',
       value: (
-        <div className="space-y-1">
-          {websiteLinks.map((link, index) => (
-            <div key={index} className="flex items-center gap-2">
+        <div className="flex flex-wrap gap-2">
+          {websiteLinks.map((link, index) => {
+            const Icon = getWebsiteIcon(link.type);
+            return (
               <a
+                key={index}
                 href={buildSocialUrl(link.type, link.url)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="break-all text-primary hover:underline"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-primary"
               >
-                {link.url}
+                <Icon className="h-4 w-4 shrink-0 text-primary" />
+                <span>{link.label || link.type}</span>
+                {index === 0 && getVisibilityIcon(extendedProfile.websites_visibility)}
               </a>
-              {index === 0 && getVisibilityIcon(extendedProfile.websites_visibility)}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )
     });
