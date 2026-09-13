@@ -141,10 +141,14 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
         if (error) throw error;
         setMembers((data as ChannelMember[]) || []);
       })
-      .catch(() => {
+      .catch((e: unknown) => {
         if (active) {
           setMembers([]);
-          toast({ title: 'Error', description: 'Failed to load channel members', variant: 'destructive' });
+          const message =
+            e && typeof e === 'object' && 'message' in e && typeof (e as { message?: unknown }).message === 'string'
+              ? (e as { message: string }).message
+              : 'Failed to load channel members';
+          toast({ title: 'Error', description: message, variant: 'destructive' });
         }
       })
       .finally(() => { if (active) setMembersLoading(false); });
