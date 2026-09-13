@@ -46,6 +46,7 @@ export interface ChannelStats {
 const ROLE_RANK: Record<string, number> = { owner: 0, moderator: 1, follower: 2 };
 
 interface ChannelMember {
+  id?: string;
   user_id: string;
   username: string;
   display_name: string;
@@ -135,8 +136,10 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
     let active = true;
     setMembersLoading(true);
     gateway.rpc('get_channel_members', { p_conversation_id: conversationId })
-      .then(({ data }) => {
-        if (active) setMembers((data as ChannelMember[]) || []);
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) throw error;
+        setMembers((data as ChannelMember[]) || []);
       })
       .catch(() => {
         if (active) {
@@ -668,16 +671,16 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
                 {[...members]
                   .sort((a, b) => (ROLE_RANK[a.role] ?? 3) - (ROLE_RANK[b.role] ?? 3))
                   .map(m => (
-                    <div key={m.user_id} className="flex items-center gap-3 py-2">
+                    <div key={m.user_id || m.id} className="flex items-center gap-3 py-2">
                       <Avatar className="h-9 w-9 shrink-0">
                         {m.profile_pic ? <AvatarImage src={m.profile_pic} /> : null}
                         <AvatarFallback className="text-xs">
-                          {m.display_name.charAt(0).toUpperCase()}
+                          {(m.display_name || m.username || '?').charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{m.display_name}</p>
-                        <p className="text-xs text-muted-foreground truncate">@{m.username}</p>
+                        <p className="text-sm font-medium truncate">{m.display_name || m.username || 'Unknown'}</p>
+                        <p className="text-xs text-muted-foreground truncate">@{m.username || 'unknown'}</p>
                       </div>
                       <Badge variant="outline" className="capitalize text-xs">{m.role}</Badge>
                     </div>
