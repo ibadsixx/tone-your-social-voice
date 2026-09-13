@@ -116,6 +116,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [selectedCollege, setSelectedCollege] = useState<College | null>(null);
   const [selectedHighSchool, setSelectedHighSchool] = useState<HighSchool | null>(null);
+  const [customFunction, setCustomFunction] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState('overview');
 
@@ -323,6 +324,16 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
         visibilityData.college_visibility = normalizeVisibilityValue(profile.college_visibility) || 'public';
         visibilityData.high_school_visibility = normalizeVisibilityValue(profile.high_school_visibility) || 'public';
       }
+
+      // If the saved function isn't one of the preset options, pre-select
+      // "Other" and pre-fill the custom job-title field so it stays editable.
+      const savedFunction = formData.job_function;
+      if (savedFunction && !jobFunctions.includes(savedFunction)) {
+        formData.job_function = 'Other';
+        setCustomFunction(savedFunction);
+      } else {
+        setCustomFunction('');
+      }
     }
     
     setEditForm(formData);
@@ -343,7 +354,14 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
         // Handle work_education section with profiles table
         const updateData: any = {};
         
-        if (editForm.job_function) updateData.function = editForm.job_function;
+        let functionValue: string | undefined = editForm.job_function;
+        if (functionValue === 'Other') {
+          // "Other" reveals a free-text job-title field; the typed title is the
+          // saved function. Fall back to "Other" only when nothing was typed.
+          const typed = customFunction.trim();
+          if (typed) functionValue = typed;
+        }
+        if (functionValue) updateData.function = functionValue;
         if (selectedCompany) {
           updateData.company_id = selectedCompany.id;
         }
@@ -435,6 +453,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
       setEditingSection(null);
       setEditForm({});
       setVisibilityForm({});
+      setCustomFunction('');
 
       toast({
         title: 'Success',
@@ -453,6 +472,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
     setEditingSection(null);
       setEditForm({});
       setVisibilityForm({});
+      setCustomFunction('');
       // Reset company selection when canceling
     fetchProfileDetails();
   };
@@ -740,7 +760,10 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
             ) : field.name === 'job_function' ? (
               <>
                 <Label htmlFor={field.name}>{field.label}</Label>
-                <Select value={editForm[field.name] || ''} onValueChange={(value) => updateFormField(field.name, value)}>
+                <Select value={editForm[field.name] || ''} onValueChange={(value) => {
+                  updateFormField(field.name, value);
+                  if (value !== 'Other') setCustomFunction('');
+                }}>
                   <SelectTrigger>
                     <SelectValue placeholder={field.placeholder} />
                   </SelectTrigger>
@@ -752,6 +775,14 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
                     ))}
                   </SelectContent>
                 </Select>
+                {editForm[field.name] === 'Other' && (
+                  <Input
+                    className="mt-2"
+                    value={customFunction}
+                    onChange={(e) => setCustomFunction(e.target.value)}
+                    placeholder="Enter your job title…"
+                  />
+                )}
               </>
             ) : field.name === 'job_company' ? (
               <CompanyAutocomplete
