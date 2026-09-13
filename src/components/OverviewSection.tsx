@@ -399,34 +399,28 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
     });
   }
 
-  // Add birth date if visible
-  if (extendedProfile.birth_date && isFieldVisible(extendedProfile.birth_date_visibility)) {
-    const birthDateStr = formatBirthDate(extendedProfile.birth_date);
-    if (birthDateStr) {
-      contactItems.push({
-        icon: <Calendar className="h-4 w-4" />,
-        label: 'Birth Date',
-        value: (
-          <div className="flex items-center gap-2">
-            <span>{birthDateStr}</span>
-            {getVisibilityIcon(extendedProfile.birth_date_visibility)}
-          </div>
+  // Add date of birth if visible (combines month/day with year, falling back
+  // to the legacy `birthday` column when `birth_date` is not populated).
+  const birthYearVisible = isFieldVisible(extendedProfile.birth_year_visibility);
+  const hasBirthDate = Boolean(extendedProfile.birth_date || extendedProfile.birthday);
+  if (hasBirthDate && isFieldVisible(extendedProfile.birth_date_visibility)) {
+    const birthDateSource = String(extendedProfile.birth_date || extendedProfile.birthday || '');
+    let birthText = formatBirthDate(birthDateSource);
+    const year = birthYearVisible
+      ? formatBirthYear(
+          extendedProfile.birth_year ||
+            (extendedProfile.birthday ? new Date(extendedProfile.birthday).getFullYear() : null)
         )
-      });
-    }
-  }
-
-  // Add birth year if visible (separate from birth date)
-  if (extendedProfile.birth_year && isFieldVisible(extendedProfile.birth_year_visibility)) {
-    const birthYearStr = formatBirthYear(extendedProfile.birth_year);
-    if (birthYearStr) {
+      : '';
+    if (year) birthText += `, ${year}`;
+    if (birthText) {
       contactItems.push({
         icon: <Calendar className="h-4 w-4" />,
-        label: 'Birth Year',
+        label: 'Date of Birth',
         value: (
           <div className="flex items-center gap-2">
-            <span>{birthYearStr}</span>
-            {getVisibilityIcon(extendedProfile.birth_year_visibility)}
+            <span>{birthText}</span>
+            {getVisibilityIcon(extendedProfile.birth_date_visibility)}
           </div>
         )
       });
