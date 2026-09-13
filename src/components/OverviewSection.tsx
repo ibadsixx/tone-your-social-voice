@@ -4,6 +4,7 @@ import { useProfile } from '@/hooks/useProfile';
 import { useOtherNames } from '@/hooks/useOtherNames';
 import { useFriends } from '@/hooks/useFriends';
 import { gateway } from '@/lib/gateway';
+import { buildSocialUrl } from '@/utils/socialLinks';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +19,8 @@ import {
   Users,
   User,
   Eye,
-  Lock
+  Lock,
+  Globe
 } from 'lucide-react';
 
 interface OverviewSectionProps {
@@ -45,9 +47,12 @@ interface ExtendedProfile {
   about_you: string | null;
   gender: string | null;
   pronouns: string | null;
+  current_city: string | null;
+  websites_social_links: { type: string; url: string; label?: string }[] | null;
   // Visibility fields
   email_visibility: string;
   phone_visibility: string;
+  websites_visibility: string;
   birth_date_visibility: string;
   birth_year_visibility: string;
   function_visibility: string;
@@ -108,7 +113,23 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
         if (error && error.code !== 'PGRST116') throw error;
 
         if (profile) {
-          setExtendedProfile(profile as ExtendedProfile);
+          // Places (current city) live in profile_details, not profiles.
+          const { data: place, error: placeError } = await gateway
+            .from('profile_details')
+            .select('field_value')
+            .eq('profile_id', profileId)
+            .eq('section', 'places')
+            .eq('field_name', 'current_city')
+            .maybeSingle();
+
+          if (placeError && placeError.code !== 'PGRST116') {
+            console.error('Error fetching current city:', placeError);
+          }
+
+          setExtendedProfile({
+            ...(profile as ExtendedProfile),
+            ...(place?.field_value ? { current_city: place.field_value } : {})
+          });
         }
 
         // Fetch family relationships
@@ -289,6 +310,19 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
   // Contact and Basic Info Section
   const contactItems = [];
 
+  // Current city (from profile_details "places" section; no privacy setting)
+  if (extendedProfile.current_city) {
+    contactItems.push({
+      icon: <MapPin className="h-4 w-4" />,
+      label: 'Current City',
+      value: (
+        <div className="flex items-center gap-2">
+          <span>{extendedProfile.current_city}</span>
+        </div>
+      )
+    });
+  }
+
   const profileEmails: string[] = (() => {
     const email = extendedProfile.email;
     if (!email) return [];
@@ -326,6 +360,34 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
         <div className="flex items-center gap-2">
           <span>{phoneNumber}</span>
           {getVisibilityIcon(extendedProfile.phone_visibility)}
+        </div>
+      )
+    });
+  }
+
+  // Add websites and social links if visible
+  const websiteLinks = Array.isArray(extendedProfile.websites_social_links)
+    ? extendedProfile.websites_social_links
+    : [];
+  if (websiteLinks.length > 0 && isFieldVisible(extendedProfile.websites_visibility)) {
+    contactItems.push({
+      icon: <Globe className="h-4 w-4" />,
+      label: 'Websites and Social Links',
+      value: (
+        <div className="space-y-1">
+          {websiteLinks.map((link, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <a
+                href={buildSocialUrl(link.type, link.url)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="break-all text-primary hover:underline"
+              >
+                {link.url}
+              </a>
+              {index === 0 && getVisibilityIcon(extendedProfile.websites_visibility)}
+            </div>
+          ))}
         </div>
       )
     });
