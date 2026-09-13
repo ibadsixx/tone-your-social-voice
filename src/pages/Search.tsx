@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Search as SearchIcon, User, Users, FileText, Loader2, Grid3X3, Plus, RefreshCw, Hash } from 'lucide-react';
@@ -322,8 +321,8 @@ const Search = () => {
                   transition={{ duration: 0.2 }}
                 >
                   <Card className="absolute top-full left-0 right-0 mt-2 z-50 border shadow-lg">
-                    <ScrollArea className="max-h-96">
-                      <CardContent className="p-0">
+                      <div className="max-h-96 overflow-y-auto">
+                        <CardContent className="p-0">
                         {loading ? (
                           <div className="flex items-center justify-center py-8">
                             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -368,7 +367,7 @@ const Search = () => {
                           </div>
                         )}
                       </CardContent>
-                    </ScrollArea>
+                      </div>
                   </Card>
                 </motion.div>
               )}
