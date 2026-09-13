@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { MessageBubble, Message } from './MessageBubble';
 import { MessageInput, ReplyToMessage } from './MessageInput';
 import { ChatInfoPanel } from './ChatInfoPanel';
+import { ChannelInfoPanel } from './ChannelInfoPanel';
 import { ForwardMessageModal } from './ForwardMessageModal';
 import { ReportMessageModal } from './ReportMessageModal';
 import { PinnedMessagesBanner } from './PinnedMessagesBanner';
@@ -116,7 +117,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const { toast } = useToast();
   const [otherUserReadReceiptsEnabled, setOtherUserReadReceiptsEnabled] = useState(true);
   const { reportConversation } = useConversationReport();
-  const { settings: conversationSettings, updateChatTheme, toggleVanishingMessages: toggleVanish, updateQuickEmoji } = useConversationSettings(conversationId);
+  const { settings: conversationSettings, updateChatTheme, toggleVanishingMessages: toggleVanish, updateQuickEmoji, toggleMute } = useConversationSettings(conversationId);
   const { toggleReaction, fetchReactions, getMessageReactions } = useMessageReactions(conversationId);
   const { blockStatus, blockUser, unblockUser } = useBlocks(otherUser?.id || '', currentUserId);
   const { deleteMessage, pinMessage, reportMessage: submitReport, getPinnedMessages } = useMessageActions(conversationId, currentUserId);
@@ -965,6 +966,31 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       </div>
 
       {/* Chat Info Panel */}
+{isChannel ? (
+        <ChannelInfoPanel
+          isOpen={isInfoPanelOpen}
+          onClose={() => setIsInfoPanelOpen(false)}
+          conversationId={conversationId}
+          conversationName={conversationName}
+          conversationDescription={conversationDescription}
+          groupImage={groupImage}
+          isOwner={isChannelOwner}
+          channelRole={channelRole}
+          channelStats={channelStats}
+          channelOwnerId={channelOwnerId}
+          pinnedMessageIds={pinnedMessageIds}
+          onScrollToMessage={handleScrollToMessage}
+          isMuted={conversationSettings?.is_muted ?? false}
+          onToggleMute={toggleMute}
+          onLeaveChannel={handleUnfollowChannel}
+          onChannelNameChange={(name) => onGroupNameChange?.(name)}
+          onReportChannel={async (reportedUserId, reason, details) => {
+            if (conversationId) {
+              await reportConversation(conversationId, reportedUserId, reason, details);
+            }
+          }}
+        />
+      ) : (
 <ChatInfoPanel
         isOpen={isInfoPanelOpen}
         onClose={() => setIsInfoPanelOpen(false)}
@@ -1006,6 +1032,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onToggleVanishingMessages={handleToggleVanish}
         otherUserReadReceiptsEnabled={otherUserReadReceiptsEnabled}
       />
+      )}
 
       {/* Forward Message Modal */}
       <ForwardMessageModal
