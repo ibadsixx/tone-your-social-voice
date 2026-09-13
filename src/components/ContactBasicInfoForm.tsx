@@ -601,6 +601,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                     <SelectItem value="linkedin">LinkedIn</SelectItem>
                     <SelectItem value="youtube">YouTube</SelectItem>
                     <SelectItem value="tiktok">TikTok</SelectItem>
+                    <SelectItem value="tone">Tone</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
