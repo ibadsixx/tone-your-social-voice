@@ -125,6 +125,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const isGroup = conversationType === 'group';
   const [channelRole, setChannelRole] = useState<string | null>(null);
   const [channelRoleLoading, setChannelRoleLoading] = useState(false);
+  const [channelOwnerLoading, setChannelOwnerLoading] = useState(true);
   const [channelStats, setChannelStats] = useState<{ follower_count: number; owner_name: string; moderator_count: number } | null>(null);
   const [channelOwnerId, setChannelOwnerId] = useState<string | null>(null);
 
@@ -141,9 +142,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setChannelStats(null);
       setChannelOwnerId(null);
       setChannelRoleLoading(false);
+      setChannelOwnerLoading(false);
       return;
     }
     setChannelRoleLoading(true);
+    setChannelOwnerLoading(true);
     setChannelRole(null);
     setChannelStats(null);
     setChannelOwnerId(null);
@@ -167,14 +170,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       .eq('id', conversationId)
       .maybeSingle()
       .then(({ data }) => { if (!ignore) setChannelOwnerId((data as { created_by: string | null } | null)?.created_by ?? null); })
-      .catch(() => { if (!ignore) setChannelOwnerId(null); });
+      .catch(() => { if (!ignore) setChannelOwnerId(null); })
+      .finally(() => { if (!ignore) setChannelOwnerLoading(false); });
 
     return () => { ignore = true; };
   }, [conversationId, isChannel]);
 
-  const canPost = channelRole === 'owner' || channelRole === 'moderator';
-  const isFollower = channelRole === 'follower';
+  // The channel creator (conversations.created_by) is always a publisher. The
+  // participant-role lookup can come back null/stale (or a legacy follower row
+  // when the owner followed before the Follow control was hidden), so OWNER
+  // permissions must take priority over the role-derived follower state.
   const isChannelOwner = isChannel && !!channelOwnerId && channelOwnerId === currentUserId;
+  const canPost = isChannelOwner || channelRole === 'owner' || channelRole === 'moderator';
+  const isFollower = channelRole === 'follower';
 
   const handleFollowChannel = async () => {
     if (!conversationId) return;
@@ -630,7 +638,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             <div className="flex items-center space-x-2">
               {isChannel ? (
                 <>
-                  {!isFollower && (
+                  {(!isFollower || isChannelOwner) && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -648,7 +656,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       <span className="text-xs text-muted-foreground hidden sm:inline">Publisher</span>
                     </div>
                   )}
-                  {channelRole === 'owner' && (
+                  {(isChannelOwner || channelRole === 'owner') && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -660,7 +668,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       <span className="hidden sm:inline">Admins</span>
                     </Button>
                   )}
-                  {!isChannelOwner && isFollower && (
+                  {!isChannelOwner && isFollower && !channelOwnerLoading && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -671,10 +679,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       <span className="hidden sm:inline">Following</span>
                     </Button>
                   )}
-                  {channelRoleLoading && (
+                  {(channelRoleLoading || channelOwnerLoading) && (
                     <div className="h-8 w-20 bg-muted rounded-md animate-pulse" />
                   )}
-                  {!isChannelOwner && !channelRole && !channelRoleLoading && (
+                  {!isChannelOwner && !channelRole && !channelRoleLoading && !channelOwnerLoading && (
                     <Button
                       variant="default"
                       size="sm"
@@ -880,7 +888,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
           </div>
         ) : isChannel ? (
-          channelRoleLoading ? (
+          (channelRoleLoading || channelOwnerLoading) ? (
             <div className={cn(
               "px-4 py-3 border-t",
               vanishingMessagesEnabled ? "border-zinc-700/50" : "border-border"
