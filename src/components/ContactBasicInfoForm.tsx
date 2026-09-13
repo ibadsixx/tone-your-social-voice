@@ -234,12 +234,25 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
 
     setLoading(true);
     try {
-      // Build the update data using the sanitizer
+      // Build the update data using the sanitizer.
+      // Only editable fields are sent back: email is read-only and is never
+      // written to avoid clobbering the account's linked email column.
       const updateData = {
-        ...formData,
-        websites_social_links: websites as any,
-        phone_number: formData.phone_number?.trim() || null,
         phone_country_code: formData.phone_number?.trim() ? formData.phone_country_code : null,
+        phone_number: formData.phone_number?.trim() || null,
+        websites_social_links: websites as any,
+        gender: formData.gender,
+        pronouns: formData.pronouns,
+        birth_date: formData.birth_date,
+        birth_year: formData.birth_year,
+        // Visibility settings
+        email_visibility: formData.email_visibility,
+        phone_visibility: formData.phone_visibility,
+        websites_visibility: formData.websites_visibility,
+        gender_visibility: formData.gender_visibility,
+        pronouns_visibility: formData.pronouns_visibility,
+        birth_date_visibility: formData.birth_date_visibility,
+        birth_year_visibility: formData.birth_year_visibility,
       };
 
       // Apply sanitization which handles the proper casing for each field
