@@ -191,8 +191,10 @@ export const usePeopleYouMayKnow = (limit: number = 10): UsePeopleYouMayKnowRetu
         });
 
       if (friendshipError) {
-        // Check if it's a duplicate key error (request already exists)
-        if (friendshipError.code === '23505') {
+        // Duplicate key error (request already exists). The gateway client
+        // reports `error.code` as the HTTP status, so 409 (and 23505 if ever
+        // surfaced directly) both mean "already sent" — not a failure.
+        if (friendshipError.code === '409' || friendshipError.code === '23505') {
           toast({
             title: 'Request already sent',
             description: 'You already have a pending friend request with this user.',
@@ -210,8 +212,8 @@ export const usePeopleYouMayKnow = (limit: number = 10): UsePeopleYouMayKnowRetu
           following_id: personId
         });
 
-      // Ignore duplicate key errors for followers
-      if (followError && followError.code !== '23505') {
+      // Ignore duplicate key errors for followers (409 = HTTP-mapped 23505)
+      if (followError && followError.code !== '409' && followError.code !== '23505') {
         console.warn('[usePeopleYouMayKnow] Follow error:', followError);
       }
 

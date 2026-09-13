@@ -6,6 +6,21 @@ import { createNotification } from '@/hooks/useNotifications';
 
 export const FRIEND_REQUEST_SENT_EVENT = 'tone:friend-request-sent';
 
+// Guards against concurrent sends for the same pair: without it, a rapid second
+// click on "Add Friend" races the first insert and hits the UNIQUE(requester_id,
+// receiver_id) constraint, surfacing a confusing "Failed to send friend request"
+// toast even though the request was created.
+const inFlightFriendRequestSends = new Set<string>();
+
+// The gateway client reports `error.code` as the HTTP status (String(res.status)),
+// never the Postgres code, so a duplicate unique-violation on the friends pair
+// surfaces as 409 (or 23505 if it is ever surfaced directly). A duplicate means
+// the request already exists — treated as success, never as failure.
+const isDuplicateFriendRequestError = (error: { code?: string; message?: string }) =>
+  error.code === '409' ||
+  error.code === '23505' ||
+  /duplicate|already exists/i.test(error.message ?? '');
+
 interface FriendshipStatus {
   id: string | null;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | null;
@@ -98,6 +113,10 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
   const sendRequest = async () => {
     if (!currentUserId || !profileId) return;
 
+    const sendKey = `${currentUserId}:${profileId}`;
+    if (inFlightFriendRequestSends.has(sendKey)) return;
+    inFlightFriendRequestSends.add(sendKey);
+
     try {
       // A declined request keeps its row at status='rejected', occupying the
       // UNIQUE(requester_id, receiver_id) pair. A plain insert would then
@@ -150,8 +169,21 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
           .select()
           .single();
 
-        if (error) throw error;
-        friendshipData = data;
+        if (error) {
+          if (!isDuplicateFriendRequestError(error)) throw error;
+          // A duplicate insert means the request was created by a concurrent
+          // send (double-click or another in-flight caller). Idempotence:
+          // resolve the existing row and continue instead of failing.
+          const { data: dup } = await gateway
+            .from('friends')
+            .select('id')
+            .eq('requester_id', currentUserId)
+            .eq('receiver_id', profileId)
+            .maybeSingle();
+          friendshipData = dup ?? undefined;
+        } else {
+          friendshipData = data;
+        }
 
         // Insert follow relationship. This is secondary to sending the
         // request and must not fail it: the user may already be following, in
@@ -188,11 +220,14 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
 
       window.dispatchEvent(new CustomEvent(FRIEND_REQUEST_SENT_EVENT));
     } catch (error: any) {
+      console.error('Friend request failed:', error?.message, error?.code, error?.details);
       toast({
         title: 'Error',
         description: 'Failed to send friend request.',
         variant: 'destructive',
       });
+    } finally {
+      inFlightFriendRequestSends.delete(sendKey);
     }
   };
 
