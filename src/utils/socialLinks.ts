@@ -19,6 +19,8 @@ export function buildSocialUrl(type: string, url: string): string {
       return `https://linkedin.com/in/${username}`;
     case 'GitHub':
       return `https://github.com/${username}`;
+    case 'Tone':
+      return `https://tonesn.vercel.app/profile/${username}`;
     case 'Telegram':
       return `https://t.me/${username}`;
     default:

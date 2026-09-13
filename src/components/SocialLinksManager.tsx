@@ -25,6 +25,7 @@ const socialLinkTypes = [
   { value: 'YouTube', label: 'YouTube', placeholder: 'https://youtube.com/@username' },
   { value: 'TikTok', label: 'TikTok', placeholder: 'https://tiktok.com/@username' },
   { value: 'GitHub', label: 'GitHub', placeholder: 'https://github.com/username' },
+  { value: 'Tone', label: 'Tone', placeholder: 'tonesn.vercel.app/profile/username' },
   { value: 'Website', label: 'Personal Website', placeholder: 'https://yourwebsite.com' },
   { value: 'Portfolio', label: 'Portfolio', placeholder: 'https://yourportfolio.com' },
   { value: 'Blog', label: 'Blog', placeholder: 'https://yourblog.com' },
