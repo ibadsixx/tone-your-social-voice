@@ -31,6 +31,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { ChannelAdminsDialog } from './ChannelAdminsDialog';
 import { SharedMediaModal } from './SharedMediaModal';
 import { ReportMessageModal } from './ReportMessageModal';
@@ -40,6 +41,17 @@ export interface ChannelStats {
   owner_name: string;
   owner_id?: string | null;
   moderator_count: number;
+}
+
+const ROLE_RANK: Record<string, number> = { owner: 0, moderator: 1, follower: 2 };
+
+interface ChannelMember {
+  user_id: string;
+  username: string;
+  display_name: string;
+  profile_pic: string | null;
+  role: string;
+  joined_at?: string;
 }
 
 interface ChannelInfoPanelProps {
@@ -94,6 +106,9 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
   const [showSettings, setShowSettings] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
+  const [members, setMembers] = useState<ChannelMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
@@ -112,6 +127,26 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
       setEditDescription(conversationDescription || '');
     }
   }, [showEdit, conversationName, conversationDescription]);
+
+  // Load channel members when the Members dialog opens (owner only, reuses the
+  // existing get_channel_members RPC used by the Channel admins dialog).
+  useEffect(() => {
+    if (!showMembers || !conversationId) return;
+    let active = true;
+    setMembersLoading(true);
+    gateway.rpc('get_channel_members', { p_conversation_id: conversationId })
+      .then(({ data }) => {
+        if (active) setMembers((data as ChannelMember[]) || []);
+      })
+      .catch(() => {
+        if (active) {
+          setMembers([]);
+          toast({ title: 'Error', description: 'Failed to load channel members', variant: 'destructive' });
+        }
+      })
+      .finally(() => { if (active) setMembersLoading(false); });
+    return () => { active = false; };
+  }, [showMembers, conversationId, toast]);
 
   const handleSearch = () => {
     toast({
@@ -387,6 +422,14 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
                     </button>
 
                     <button
+                      onClick={() => setShowMembers(true)}
+                      className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-foreground text-sm"
+                    >
+                      <Users className="h-5 w-5 text-muted-foreground" />
+                      <span>Members</span>
+                    </button>
+
+                    <button
                       onClick={() => setShowAdmins(true)}
                       className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-foreground text-sm"
                     >
@@ -601,6 +644,47 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowStats(false)}>Close</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Channel members (owner only - read-only list) */}
+      <Dialog open={showMembers} onOpenChange={setShowMembers}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              Channel members {conversationName ? `· #${conversationName}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh]">
+            {membersLoading ? (
+              <div className="flex justify-center py-10">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : members.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">No members yet.</p>
+            ) : (
+              <div className="space-y-1 pr-3">
+                {[...members]
+                  .sort((a, b) => (ROLE_RANK[a.role] ?? 3) - (ROLE_RANK[b.role] ?? 3))
+                  .map(m => (
+                    <div key={m.user_id} className="flex items-center gap-3 py-2">
+                      <Avatar className="h-9 w-9 shrink-0">
+                        {m.profile_pic ? <AvatarImage src={m.profile_pic} /> : null}
+                        <AvatarFallback className="text-xs">
+                          {m.display_name.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{m.display_name}</p>
+                        <p className="text-xs text-muted-foreground truncate">@{m.username}</p>
+                      </div>
+                      <Badge variant="outline" className="capitalize text-xs">{m.role}</Badge>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </ScrollArea>
         </DialogContent>
       </Dialog>
     </>
