@@ -126,7 +126,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [channelRole, setChannelRole] = useState<string | null>(null);
   const [channelRoleLoading, setChannelRoleLoading] = useState(false);
   const [channelOwnerLoading, setChannelOwnerLoading] = useState(true);
-  const [channelStats, setChannelStats] = useState<{ follower_count: number; owner_name: string; moderator_count: number } | null>(null);
+  const [channelStats, setChannelStats] = useState<{ follower_count: number; owner_name: string; owner_id?: string | null; moderator_count: number } | null>(null);
   const [channelOwnerId, setChannelOwnerId] = useState<string | null>(null);
 
   // Hide the other user's presence while a non-friend PENDING message request
@@ -179,8 +179,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // The channel creator (conversations.created_by) is always a publisher. The
   // participant-role lookup can come back null/stale (or a legacy follower row
   // when the owner followed before the Follow control was hidden), so OWNER
-  // permissions must take priority over the role-derived follower state.
-  const isChannelOwner = isChannel && !!channelOwnerId && channelOwnerId === currentUserId;
+  // permissions must take priority over the role-derived follower state. When
+  // `created_by` itself is null/unavailable, the channel's own owner record
+  // (get_channel_stats owner_id / the participant row with role='owner') pins
+  // ownership instead.
+  const statsOwnerId = isChannel ? (channelStats?.owner_id ?? null) : null;
+  const isChannelOwner = isChannel && (
+    (!!channelOwnerId && channelOwnerId === currentUserId) ||
+    (!!statsOwnerId && statsOwnerId === currentUserId)
+  );
   const canPost = isChannelOwner || channelRole === 'owner' || channelRole === 'moderator';
   const isFollower = channelRole === 'follower';
 
