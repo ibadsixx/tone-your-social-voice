@@ -7,8 +7,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { VisibilitySelector, Visibility } from '@/components/VisibilitySelector';
 import { useToast } from '@/hooks/use-toast';
-import { useFriends } from '@/hooks/useFriends';
 import { gateway } from '@/lib/gateway';
+import { searchProfiles } from '@/api/profiles';
 import { Plus, X, Edit, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -72,11 +72,12 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
   onSave
 }) => {
   const { toast } = useToast();
-  const { friends, loading: friendsLoading } = useFriends(profileId);
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Friend[]>([]);
+  const [searching, setSearching] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
   const [selectedRelationType, setSelectedRelationType] = useState('');
   const [selectedVisibility, setSelectedVisibility] = useState<Visibility>('friends');
@@ -89,6 +90,32 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
       checkFriendshipStatus();
     }
   }, [profileId, isOwnProfile]);
+
+  useEffect(() => {
+    const query = searchQuery.trim().replace(/^@/, '');
+    if (!query) {
+      setSearchResults([]);
+      return;
+    }
+
+    let cancelled = false;
+    const delay = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const { data } = await searchProfiles(query, profileId);
+        if (!cancelled) setSearchResults((data || []) as Friend[]);
+      } catch {
+        if (!cancelled) setSearchResults([]);
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(delay);
+    };
+  }, [searchQuery, profileId]);
 
   const checkFriendshipStatus = async () => {
     try {
@@ -270,12 +297,7 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
     return true; // Default to true for public if visibility is not set
   };
 
-  const filteredFriends = friends.filter(friend =>
-    friend.display_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    friend.username.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const availableFriends = filteredFriends.filter(friend =>
+  const availableFriends = searchResults.filter(friend =>
     !familyMembers.some(member => member.member_id === friend.id)
   );
 
@@ -348,12 +370,14 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
             <CardContent className="p-3 md:p-4 space-y-3 md:space-y-4">
               <div>
                 <Input
-                  placeholder="Search friends..."
+                  placeholder="Search profiles..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="mb-2 h-14 border-0"
                 />
-                {searchQuery && availableFriends.length > 0 && (
+                {searching ? (
+                  <div className="py-2 text-center text-xs text-muted-foreground">Searching...</div>
+                ) : searchQuery && availableFriends.length > 0 ? (
                   <div className="max-h-32 overflow-y-auto border rounded-md">
                     {availableFriends.slice(0, 5).map((friend) => (
                       <div
@@ -377,7 +401,9 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
                       </div>
                     ))}
                   </div>
-                )}
+                ) : searchQuery.trim() ? (
+                  <div className="py-2 text-center text-xs text-muted-foreground">No profiles found</div>
+                ) : null}
               </div>
 
               {selectedFriend && (
