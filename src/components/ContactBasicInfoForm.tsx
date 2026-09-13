@@ -142,6 +142,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
   const [formData, setFormData] = useState<ProfileData>({});
   const [websites, setWebsites] = useState<WebsiteLink[]>([]);
   const [newWebsite, setNewWebsite] = useState({ type: 'website', url: '', label: '' });
+  const [birthDateParts, setBirthDateParts] = useState<{ day: string; month: string }>({ day: '', month: '' });
   const [viewerCanSeeFriend, setViewerCanSeeFriend] = useState(false);
 
   useEffect(() => {
@@ -219,6 +220,8 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
           ? (websitesData as unknown as WebsiteLink[]).filter((item) => item && item.type && item.url && item.label)
           : []
       );
+      const { day, month } = formatBirthDate(profile.birth_date || undefined);
+      setBirthDateParts({ day, month });
     } catch (error) {
       console.error('Error loading profile data:', error);
       toast({
@@ -303,18 +306,20 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
   };
 
   const setBirthDate = (day: string, month: string) => {
+    // Keep partial selections so the Day/Month selects don't snap back.
+    setBirthDateParts({ day, month });
     if (day && month) {
       const monthIndex = MONTHS.indexOf(month);
       if (monthIndex !== -1) {
-        const date = new Date(2000, monthIndex, parseInt(day));
+        const date = new Date(Date.UTC(2000, monthIndex, parseInt(day)));
         setFormData(prev => ({ 
           ...prev, 
           birth_date: date.toISOString().split('T')[0] 
         }));
+        return;
       }
-    } else {
-      setFormData(prev => ({ ...prev, birth_date: undefined }));
     }
+    setFormData(prev => ({ ...prev, birth_date: undefined }));
   };
 
   const birthDateData = formatBirthDate(formData.birth_date);
@@ -710,8 +715,8 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
             </div>
             <div className="flex gap-1.5 md:gap-2">
               <Select
-                value={birthDateData.day}
-                onValueChange={(value) => setBirthDate(value, birthDateData.month)}
+                value={birthDateParts.day}
+                onValueChange={(value) => setBirthDate(value, birthDateParts.month)}
               >
                 <SelectTrigger className="w-14 md:w-20 h-14 border-0">
                   <SelectValue placeholder="Day" />
@@ -725,8 +730,8 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                 </SelectContent>
               </Select>
               <Select
-                value={birthDateData.month}
-                onValueChange={(value) => setBirthDate(birthDateData.day, value)}
+                value={birthDateParts.month}
+                onValueChange={(value) => setBirthDate(birthDateParts.day, value)}
               >
                 <SelectTrigger className="flex-1 h-14 border-0">
                   <SelectValue placeholder="Month" />
