@@ -5,6 +5,7 @@ import { useOtherNames } from '@/hooks/useOtherNames';
 import { useFriends } from '@/hooks/useFriends';
 import { gateway } from '@/lib/gateway';
 import { buildSocialUrl } from '@/utils/socialLinks';
+import { normalizeVisibilityValue } from '@/utils/profileValidation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
@@ -160,12 +161,17 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
   // Helper function to check if field should be visible based on visibility setting
   const isFieldVisible = (visibility: string): boolean => {
     if (isOwnProfile) return true; // Owner can always see their own data
-    
-    switch (visibility) {
+
+    // DB stores some visibility columns Title Case ("Public") and others
+    // lowercase ("public"); normalize before comparing.
+    const normalized = normalizeVisibilityValue(visibility);
+
+    switch (normalized) {
       case 'public':
         return true;
       case 'friends':
         return isFriend;
+      case 'only_me':
       case 'private':
         return false;
       default:
