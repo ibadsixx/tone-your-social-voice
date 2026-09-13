@@ -77,7 +77,7 @@ export const ChannelAdminsDialog: React.FC<ChannelAdminsDialogProps> = ({
     try {
       const { error } = await gateway.rpc('add_channel_moderator', {
         p_conversation_id: conversationId,
-        p_user_id: userId,
+        p_moderator_id: userId,
       });
       if (error) throw error;
       toast({ title: 'Admin added', description: `${displayName} is now an admin of #${conversationName || 'channel'}` });
@@ -95,7 +95,7 @@ export const ChannelAdminsDialog: React.FC<ChannelAdminsDialogProps> = ({
     try {
       const { error } = await gateway.rpc('remove_channel_moderator', {
         p_conversation_id: conversationId,
-        p_user_id: userId,
+        p_moderator_id: userId,
       });
       if (error) throw error;
       toast({ description: `${displayName} is no longer an admin of #${conversationName || 'channel'}` });
