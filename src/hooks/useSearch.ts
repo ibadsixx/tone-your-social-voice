@@ -4,27 +4,31 @@ import { gateway } from '@/lib/gateway';
 export interface SearchResult {
   id: string;
   name: string;
-  type: 'person' | 'page' | 'group';
+  type: 'person' | 'page' | 'group' | 'hashtag';
   avatar?: string;
   username?: string;
+  tag?: string;
 }
 
 interface SearchResults {
   people: SearchResult[];
   pages: SearchResult[];
   groups: SearchResult[];
+  hashtags: SearchResult[];
 }
 
 export const useSearch = (query: string, debounceMs: number = 300) => {
   const [results, setResults] = useState<SearchResults>({
     people: [],
     pages: [],
-    groups: []
+    groups: [],
+    hashtags: []
   });
   const [exploreResults, setExploreResults] = useState<SearchResults>({
     people: [],
     pages: [],
-    groups: []
+    groups: [],
+    hashtags: []
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +59,15 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
 
       if (groupsError) throw groupsError;
 
+      // Get suggested hashtags (top 5 by followers)
+      const { data: hashtags, error: hashtagsError } = await gateway
+        .from('hashtags')
+        .select('id, tag, follower_count')
+        .order('follower_count', { ascending: false })
+        .limit(5);
+
+      if (hashtagsError) throw hashtagsError;
+
       // Transform results
       const exploreData: SearchResults = {
         people: profiles?.map(profile => ({
@@ -75,6 +88,12 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
           name: group.name,
           type: 'group' as const,
           avatar: undefined
+        })) || [],
+        hashtags: hashtags?.map(hashtag => ({
+          id: hashtag.id,
+          name: `#${hashtag.tag}`,
+          tag: hashtag.tag,
+          type: 'hashtag' as const
         })) || []
       };
 
@@ -86,7 +105,7 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
 
   const searchDatabase = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim()) {
-      setResults({ people: [], pages: [], groups: [] });
+      setResults({ people: [], pages: [], groups: [], hashtags: [] });
       return;
     }
 
@@ -126,6 +145,15 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
 
       if (groupsError) throw groupsError;
 
+      // Search hashtags
+      const { data: hashtags, error: hashtagsError } = await gateway
+        .from('hashtags')
+        .select('id, tag, follower_count')
+        .ilike('tag', searchPattern)
+        .limit(5);
+
+      if (hashtagsError) throw hashtagsError;
+
       // Transform results
       const searchResults: SearchResults = {
         people: profiles?.map(profile => ({
@@ -146,12 +174,23 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
           name: group.name,
           type: 'group' as const,
           avatar: undefined
+        })) || [],
+        hashtags: hashtags?.map(hashtag => ({
+          id: hashtag.id,
+          name: `#${hashtag.tag}`,
+          tag: hashtag.tag,
+          type: 'hashtag' as const
         })) || []
       };
 
       // Alphabetical ordering: as each character is typed the narrowed results
       // are listed A→Z, making the reduction predictable and scannable.
-      for (const section of [searchResults.people, searchResults.pages, searchResults.groups]) {
+      for (const section of [
+        searchResults.people,
+        searchResults.pages,
+        searchResults.groups,
+        searchResults.hashtags
+      ]) {
         section.sort((a, b) => a.name.localeCompare(b.name));
       }
 
@@ -178,8 +217,8 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
     return () => clearTimeout(timeoutId);
   }, [query, searchDatabase, debounceMs]);
 
-  const totalResults = results.people.length + results.pages.length + results.groups.length;
-  const totalExploreResults = exploreResults.people.length + exploreResults.pages.length + exploreResults.groups.length;
+  const totalResults = results.people.length + results.pages.length + results.groups.length + results.hashtags.length;
+  const totalExploreResults = exploreResults.people.length + exploreResults.pages.length + exploreResults.groups.length + exploreResults.hashtags.length;
 
   return {
     results,

@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
-import { Search as SearchIcon, User, Users, FileText, Loader2, Grid3X3, Plus, RefreshCw } from 'lucide-react';
+import { Search as SearchIcon, User, Users, FileText, Loader2, Grid3X3, Plus, RefreshCw, Hash } from 'lucide-react';
 import { useSearch, SearchResult } from '@/hooks/useSearch';
 import { useExplorePosts } from '@/hooks/useExplorePosts';
 import { gateway } from '@/lib/gateway';
@@ -40,7 +40,8 @@ const Search = () => {
   const flatResults: (SearchResult & { section: string })[] = [
     ...results.people.map(r => ({ ...r, section: 'people' })),
     ...results.pages.map(r => ({ ...r, section: 'pages' })),
-    ...results.groups.map(r => ({ ...r, section: 'groups' }))
+    ...results.groups.map(r => ({ ...r, section: 'groups' })),
+    ...results.hashtags.map(r => ({ ...r, section: 'hashtags' }))
   ];
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -69,6 +70,9 @@ const Search = () => {
         break;
       case 'group':
         navigate(`/groups/${result.id}`);
+        break;
+      case 'hashtag':
+        navigate(`/hashtag/${result.tag}`);
         break;
     }
     setShowResults(false);
@@ -133,6 +137,7 @@ const Search = () => {
       case 'person': return User;
       case 'page': return FileText;
       case 'group': return Users;
+      case 'hashtag': return Hash;
     }
   };
 
@@ -141,6 +146,7 @@ const Search = () => {
       case 'person': return 'Person';
       case 'page': return 'Page';
       case 'group': return 'Group';
+      case 'hashtag': return 'Hashtag';
     }
   };
 
@@ -298,7 +304,7 @@ const Search = () => {
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
                 onFocus={() => query.trim().length > 0 && setShowResults(true)}
-                placeholder="Search people, pages, and groups"
+                placeholder="Search people, pages, groups, and hashtags"
                 className="pl-10 text-base h-12 rounded-xl bg-muted/50 border-0"
               />
               {loading && (
@@ -351,6 +357,12 @@ const Search = () => {
                               title="Groups" 
                               results={results.groups} 
                               icon={Users}
+                              isSearch={true}
+                            />
+                            <ResultSection 
+                              title="Hashtags" 
+                              results={results.hashtags} 
+                              icon={Hash}
                               isSearch={true}
                             />
                           </div>
