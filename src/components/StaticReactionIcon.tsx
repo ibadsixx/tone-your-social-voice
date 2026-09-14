@@ -8,6 +8,7 @@ interface StaticReactionIconProps {
   count?: number;
   isActive?: boolean;
   onDark?: boolean;
+  showZero?: boolean;
 }
 
 const imgSizes = {
@@ -24,8 +25,10 @@ const StaticReactionIcon = memo(({
   count,
   isActive = false,
   onDark = false,
+  showZero = false,
 }: StaticReactionIconProps) => {
   const config = reactionKey ? getReactionConfig(reactionKey) : null;
+  const showCount = count !== undefined && (count > 0 || showZero);
   
   // No reaction selected - show default 👌 (ok hand) icon
   if (!config) {
@@ -38,7 +41,7 @@ const StaticReactionIcon = memo(({
           loading="lazy"
           draggable={false}
         />
-        {count !== undefined && count > 0 && (
+        {showCount && (
           <span className={`text-xs ${isActive ? 'text-primary' : onDark ? 'text-white' : 'text-muted-foreground'}`}>
             {count}
           </span>
