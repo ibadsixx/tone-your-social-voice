@@ -214,6 +214,7 @@ export const ExploreViewer = ({ open, posts, index, onClose, onNavigate }: Explo
                     isLiked={!!reactions.userReaction}
                     selectedReaction={reactions.userReaction}
                     likesCount={reactions.reactionsCount}
+                    onDark
                     onReact={(key) => reactions.toggleReaction(key)}
                     onLike={() => reactions.toggleReaction('ok')}
                   />

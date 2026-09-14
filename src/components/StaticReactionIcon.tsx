@@ -7,6 +7,7 @@ interface StaticReactionIconProps {
   showLabel?: boolean;
   count?: number;
   isActive?: boolean;
+  onDark?: boolean;
 }
 
 const imgSizes = {
@@ -22,6 +23,7 @@ const StaticReactionIcon = memo(({
   showLabel = false,
   count,
   isActive = false,
+  onDark = false,
 }: StaticReactionIconProps) => {
   const config = reactionKey ? getReactionConfig(reactionKey) : null;
   
@@ -32,12 +34,12 @@ const StaticReactionIcon = memo(({
         <img
           src="/emoji/1f44c.png"
           alt="Like"
-          className={`${imgSizes[size]} object-contain ${!isActive ? 'grayscale opacity-60' : ''}`}
+          className={`${imgSizes[size]} object-contain ${!isActive && !onDark ? 'grayscale opacity-60' : ''}`}
           loading="lazy"
           draggable={false}
         />
         {count !== undefined && count > 0 && (
-          <span className={`text-xs ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
+          <span className={`text-xs ${isActive ? 'text-primary' : onDark ? 'text-white' : 'text-muted-foreground'}`}>
             {count}
           </span>
         )}

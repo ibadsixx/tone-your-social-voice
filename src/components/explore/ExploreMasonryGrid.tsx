@@ -166,7 +166,7 @@ export const ExploreMasonryGrid = ({ posts, loading, columnsClassName, onPostCli
               )}
             >
               <span className="flex items-center text-sm font-semibold text-white">
-                <StaticReactionIcon reactionKey={null} size="sm" count={likes} />
+                <StaticReactionIcon reactionKey={null} size="sm" count={likes} onDark />
               </span>
               <span className="flex items-center gap-1.5 text-sm font-semibold text-white">
                 <MessageCircle className="h-5 w-5 fill-current" />

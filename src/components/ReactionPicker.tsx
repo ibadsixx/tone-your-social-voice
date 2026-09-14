@@ -10,11 +10,12 @@ interface ReactionPickerProps {
   isLiked: boolean;
   selectedReaction?: ReactionKey | string | null;
   likesCount: number;
+  onDark?: boolean;
   onReact: (reactionKey: ReactionKey) => void;
   onLike: () => void;
 }
 
-const ReactionPicker = ({ isLiked, selectedReaction, likesCount, onReact, onLike }: ReactionPickerProps) => {
+const ReactionPicker = ({ isLiked, selectedReaction, likesCount, onDark = false, onReact, onLike }: ReactionPickerProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [hoveredReaction, setHoveredReaction] = useState<ReactionKey | null>(null);
 
@@ -48,6 +49,7 @@ const ReactionPicker = ({ isLiked, selectedReaction, likesCount, onReact, onLike
             size="sm"
             count={likesCount}
             isActive={isLiked || !!currentReaction}
+            onDark={onDark}
           />
         </Button>
       </PopoverTrigger>
