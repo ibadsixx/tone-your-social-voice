@@ -122,7 +122,7 @@ export const ExploreMasonryGrid = ({ posts, loading, columnsClassName, onPostCli
       {posts.map((post, index) => {
         const playable = exploreMediaType(post) !== 'photo';
         const aspect = tileAspect(post, index);
-        const likes = post.likes?.[0]?.count ?? post.likes_count ?? 0;
+        const likes = post.reactions?.[0]?.count ?? post.likes_count ?? post.like_count ?? 0;
         const comments = formatCount(post.comments?.[0]?.count ?? post.comments_count ?? 0);
 
         return (

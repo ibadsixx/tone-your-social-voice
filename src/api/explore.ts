@@ -41,7 +41,7 @@ export interface ExplorePost {
   shares_count: number | null;
   created_at: string;
   profiles: ExploreAuthor;
-  likes?: { count: number }[];
+  reactions?: { count: number }[];
   comments?: { count: number }[];
   post_shares?: { count: number }[];
   [key: string]: unknown;
@@ -71,7 +71,7 @@ export const EXPLORE_POST_SELECT = `
   shares_count,
   created_at,
   profiles!posts_user_id_fkey (username, display_name, profile_pic),
-  likes (count),
+  reactions (count),
   comments (count),
   post_shares (count)
 `;
