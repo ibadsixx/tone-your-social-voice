@@ -5,7 +5,7 @@ import { X, Heart, MessageCircle, Play } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { resolveMediaSrc } from '@/lib/mediaUrl';
-import { getMediaThumbnail } from '@/lib/mediaThumbnail';
+import { getMediaThumbnail, getVideoPoster } from '@/lib/mediaThumbnail';
 import { exploreMediaType, formatCount } from '@/api/explore';
 import type { ExplorePost } from '@/api/explore';
 
@@ -163,7 +163,11 @@ export const ExploreViewer = ({ open, posts, index, onClose, onNavigate }: Explo
                 {mediaType !== 'photo' ? (
                   <video
                     src={src || ''}
-                    poster={getMediaThumbnail(current.thumbnail || current.media_url, 1080)}
+                    poster={
+                      current.thumbnail
+                        ? getMediaThumbnail(current.thumbnail, 1080, { height: 1920, crop: 'fill' })
+                        : getVideoPoster(current.media_url, 1080, 1920) || undefined
+                    }
                     className="max-h-full max-w-full object-contain"
                     playsInline
                     autoPlay={false}

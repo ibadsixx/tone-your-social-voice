@@ -26,6 +26,33 @@ export function getMediaThumbnail(
   return src.replace(match[1], `${match[1]}${transforms}/`);
 }
 
+const VIDEO_FILE_EXT_RE = /\.(mp4|webm|mov|m4v|avi|mkv)(?=$|\?)/i;
+
+// Cloudinary generates a poster image for any video resource. Requesting the
+// same delivery URL with a .jpg extension returns that frame, so Reels/videos
+// without a saved cover still get a lightweight 9:16 poster for the grid.
+export function getVideoPoster(
+  url: string | null | undefined,
+  width = 720,
+  height?: number
+): string {
+  const src = resolveMediaSrc(url);
+  if (!src || !isCloudinaryUrl(src) || !src.includes('/video/upload/')) return '';
+  const match = src.match(/^(https?:\/\/res\.cloudinary\.com\/[^/]+\/video\/upload\/)(.*)$/i);
+  if (!match) return '';
+  const transforms = [
+    `w_${width}`,
+    height ? `h_${height}` : null,
+    'c_fill',
+    'f_auto',
+    'q_auto',
+  ]
+    .filter((t): t is string => !!t)
+    .join(',');
+  const resource = match[2].replace(VIDEO_FILE_EXT_RE, '');
+  return `${match[1]}${transforms}/${resource}.jpg`;
+}
+
 export function isVideoUrl(url: string | null | undefined): boolean {
   const src = resolveMediaSrc(url);
   return !!src && (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(src) || src.includes('/video/upload/'));

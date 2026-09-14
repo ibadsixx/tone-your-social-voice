@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Heart, MessageCircle, Play } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { getMediaThumbnail, formatDuration } from '@/lib/mediaThumbnail';
+import { getMediaThumbnail, getVideoPoster, formatDuration } from '@/lib/mediaThumbnail';
+import { resolveMediaSrc } from '@/lib/mediaUrl';
 import { exploreMediaType, formatCount } from '@/api/explore';
 import type { ExplorePost } from '@/api/explore';
 
@@ -14,10 +15,8 @@ export interface ExploreMasonryGridProps {
 }
 
 const LOADER_COUNT = 12;
-
-function thumbnailUrl(post: ExplorePost): string {
-  return getMediaThumbnail(post.thumbnail || post.media_url, 700);
-}
+const IMG_WIDTH = 700;
+const PORTRAIT_HEIGHT = Math.round(IMG_WIDTH * (16 / 9));
 
 function tileAspect(post: ExplorePost, index: number): string {
   if (exploreMediaType(post) !== 'photo') return '9 / 16';
@@ -28,8 +27,52 @@ function tileAspect(post: ExplorePost, index: number): string {
   return '4 / 5';
 }
 
-function isPlayable(post: ExplorePost): boolean {
-  return exploreMediaType(post) !== 'photo';
+function tilePosterUrl(post: ExplorePost): string {
+  if (post.thumbnail) {
+    return getMediaThumbnail(post.thumbnail, IMG_WIDTH, { height: PORTRAIT_HEIGHT, crop: 'fill' });
+  }
+  return getVideoPoster(post.media_url, IMG_WIDTH, PORTRAIT_HEIGHT);
+}
+
+function TileMedia({ post, className }: { post: ExplorePost; className: string }) {
+  const [posterFailed, setPosterFailed] = useState(false);
+
+  if (exploreMediaType(post) === 'photo') {
+    return (
+      <img
+        src={getMediaThumbnail(post.thumbnail || post.media_url, IMG_WIDTH)}
+        alt={post.content || 'Post'}
+        loading="lazy"
+        className={className}
+      />
+    );
+  }
+
+  const posterSrc = tilePosterUrl(post);
+  const videoSrc = resolveMediaSrc(post.media_url);
+
+  if (posterSrc && !posterFailed) {
+    return (
+      <img
+        src={posterSrc}
+        alt={post.content || 'Reel'}
+        loading="lazy"
+        onError={() => setPosterFailed(true)}
+        className={className}
+      />
+    );
+  }
+
+  return (
+    <video
+      src={videoSrc || ''}
+      preload="metadata"
+      muted
+      playsInline
+      controls={false}
+      className={cn(className, 'pointer-events-none')}
+    />
+  );
 }
 
 function TileSkeleton() {
@@ -66,8 +109,7 @@ export const ExploreMasonryGrid = ({ posts, loading, columnsClassName, onPostCli
   return (
     <div className={cn(columnsClass, 'gap-1')}>
       {posts.map((post, index) => {
-        const type = exploreMediaType(post);
-        const playable = isPlayable(post);
+        const playable = exploreMediaType(post) !== 'photo';
         const aspect = tileAspect(post, index);
         const likes = formatCount(post.likes?.[0]?.count ?? post.likes_count ?? 0);
         const comments = formatCount(post.comments?.[0]?.count ?? post.comments_count ?? 0);
@@ -86,10 +128,8 @@ export const ExploreMasonryGrid = ({ posts, loading, columnsClassName, onPostCli
             style={{ aspectRatio: aspect }}
             aria-label={`View post by ${post.profiles?.display_name || post.profiles?.username || 'user'}`}
           >
-            <img
-              src={thumbnailUrl(post)}
-              alt={post.content || 'Post'}
-              loading="lazy"
+            <TileMedia
+              post={post}
               className={cn(
                 'h-full w-full object-cover transition-transform duration-300 group-hover:scale-105',
                 'group-hover:brightness-90'
@@ -102,7 +142,7 @@ export const ExploreMasonryGrid = ({ posts, loading, columnsClassName, onPostCli
               </div>
             )}
 
-            {type === 'reel' && post.duration ? (
+            {playable && post.duration ? (
               <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
                 {formatDuration(post.duration)}
               </span>
