@@ -35,14 +35,10 @@ function clamp(value: number, min = 0, max = 1): number {
 }
 
 function engagementCounts(post: ExplorePost): EngagementCounts {
-  const joinedCount = (arr: unknown): number => {
-    if (Array.isArray(arr)) return arr[0]?.count ?? 0;
-    return typeof arr === 'number' ? arr : 0;
-  };
   return {
-    likes: joinedCount(post.likes) || Math.max(post.likes_count || 0, post.like_count || 0),
-    comments: joinedCount(post.comments) || post.comments_count || 0,
-    shares: joinedCount(post.post_shares) || Math.max(post.share_count || 0, post.shares_count || 0),
+    likes: post.reactions?.[0]?.count ?? post.likes_count ?? post.like_count ?? 0,
+    comments: post.comments?.[0]?.count ?? post.comments_count ?? 0,
+    shares: post.post_shares?.[0]?.count ?? Math.max(post.share_count || 0, post.shares_count || 0),
   };
 }
 
