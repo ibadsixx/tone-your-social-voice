@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   Home,
   Search,
+  Compass,
   MessageCircle,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -21,6 +22,7 @@ interface MobileNavProps {
 const mainNav = [
   { icon: Home, label: 'Home', href: '/' },
   { icon: Search, label: 'Search', href: '/search' },
+  { icon: Compass, label: 'Explore', href: '/explore' },
   { icon: MessageCircle, label: 'Messages', href: '/messages' },
 ];
 

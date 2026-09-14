@@ -18,6 +18,7 @@ import PostPage from "@/pages/PostPage";
 import Messages from "@/pages/Messages";
 
 import Search from "@/pages/Search";
+import Explore from "@/pages/Explore";
 import Groups from "@/pages/Groups";
 import GroupDetail from "@/pages/GroupDetail";
 import Pages from "@/pages/Pages";
@@ -75,6 +76,7 @@ const App = () => (
                 <Route path="post/:id" element={<PostPage />} />
                 <Route path="messages/*" element={<Messages />} />
                 <Route path="search" element={<Search />} />
+                <Route path="explore" element={<Explore />} />
                 <Route path="groups" element={<Groups />} />
                 <Route path="groups/:groupId" element={<GroupDetail />} />
                 <Route path="pages" element={<Pages />} />
