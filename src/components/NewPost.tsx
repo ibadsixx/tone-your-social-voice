@@ -26,6 +26,7 @@ import { useAutoUpload } from '@/hooks/useAutoUpload';
 import { useHasActiveStories } from '@/hooks/useHasActiveStories';
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 import TagPeopleModal from './TagPeopleModal';
 import TaggedUserChip from './TaggedUserChip';
 import MentionAutocomplete from './MentionAutocomplete';
@@ -90,6 +91,7 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [location, setLocation] = useState<LocationData | null>(null);
   const [showLocationSelector, setShowLocationSelector] = useState(false);
+  const { toast } = useToast();
   const [showReelDialog, setShowReelDialog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -124,6 +126,18 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
     
     const newFiles = Array.from(files);
     if (newFiles.length === 0) return;
+
+    if (_type === 'image') {
+      const videoFile = newFiles.find((file) => file.type.startsWith('video/'));
+      if (videoFile) {
+        toast({
+          title: 'Videos not allowed',
+          description: 'The Photo option only accepts images. Use the Reel button to upload a video.',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
 
     const items: typeof mediaItems = [];
 
@@ -526,7 +540,7 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
             {/* Main Action Buttons */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 md:gap-2">
-                {/* Photo/Video Button */}
+                {/* Photo Button */}
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -534,7 +548,7 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
                   className="flex items-center gap-1.5 md:gap-2 px-3 md:px-4 h-8 md:h-9 rounded-lg bg-accent/50 hover:bg-accent transition-colors text-xs md:text-sm font-medium"
                 >
                   <ImageIcon className="w-3.5 h-3.5 md:w-4 md:h-4 text-green-600" />
-                  <span className="hidden sm:inline">Photo/Video</span>
+                  <span className="hidden sm:inline">Photo</span>
                   <span className="sm:hidden">Photo</span>
                 </motion.button>
 
@@ -631,7 +645,7 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,video/*"
+            accept="image/*"
             multiple
             className="hidden"
             onChange={(e) => handleFileSelect(e.target.files, 'image')}
