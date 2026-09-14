@@ -173,7 +173,7 @@ const CreateReelDialog = ({ open, onOpenChange, onSuccess }: CreateReelDialogPro
                     <span className="font-semibold">Click to upload</span> or drag and drop
                   </p>
                   <p className="text-xs text-muted-foreground">Vertical video (9:16)</p>
-                  <p className="text-xs text-muted-foreground">3-60 seconds, MAX 100MB</p>
+                  <p className="text-xs text-muted-foreground">Minimum 3 seconds · No maximum duration · MAX 100MB</p>
                   <p className="text-xs text-primary mt-2">Add filters, stickers & music</p>
                 </>
               )}

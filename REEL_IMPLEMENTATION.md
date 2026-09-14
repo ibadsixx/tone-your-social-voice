@@ -16,7 +16,7 @@ The Reel feature has been successfully updated to behave like Instagram/TikTok r
 
 Features:
 - Validates vertical aspect ratio (9:16 with 10% tolerance)
-- Enforces 3-60 second duration limit
+- Enforces minimum 3 second duration (no maximum)
 - Max file size 100MB
 - Reads video metadata using HTML5 video element
 - Returns detailed validation errors
@@ -29,7 +29,6 @@ Features:
 - Shows clear error messages for invalid videos:
   - "Please upload a vertical (9:16) video." for horizontal videos
   - "Reels must be at least 3 seconds long." for too short
-  - "Reels must be between 3 and 60 seconds." for too long
 - Preview with proper 9:16 container
 - Saves duration and aspect_ratio to database
 - Uploads to Supabase Storage (stories bucket)
@@ -72,7 +71,7 @@ Features:
 ### Creating a Reel
 1. Click "Reel" button in NewPost component
 2. Upload a vertical (9:16) video
-3. Video must be 3-60 seconds
+3. Video must be at least 3 seconds long (no maximum duration)
 4. Add optional caption
 5. Video validates automatically before upload
 
@@ -110,7 +109,7 @@ const isVertical = calculatedRatio >= 0.506 && calculatedRatio <= 0.619;
 ### Database Structure
 ```sql
 -- posts table now includes:
-duration INTEGER  -- Video duration in seconds (3-60 for reels)
+duration INTEGER  -- Video duration in seconds (min 3 for reels, no max)
 aspect_ratio TEXT DEFAULT '9:16'  -- Aspect ratio, '9:16' for reels
 ```
 

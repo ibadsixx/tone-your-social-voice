@@ -1,7 +1,7 @@
 /**
  * Validates media file for Reel requirements
  * - Must be vertical (9:16 aspect ratio)
- * - Duration between 3-60 seconds
+ * - Minimum duration 3 seconds (no maximum duration)
  * - Supports both video and image
  */
 
@@ -89,9 +89,6 @@ export const getVideoMetadata = (file: File): Promise<MediaMetadata> => {
         isValid = false;
       } else if (duration < 3) {
         error = 'Reels must be at least 3 seconds long.';
-        isValid = false;
-      } else if (duration > 60) {
-        error = 'Reels must be between 3 and 60 seconds.';
         isValid = false;
       }
       
