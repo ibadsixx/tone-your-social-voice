@@ -102,5 +102,6 @@ export async function getExplorePostsData(): Promise<ApiResult<ExplorePost[]>> {
   return gateway.from('posts').select(EXPLORE_POST_SELECT)
     .eq('status', 'published')
     .not('media_url', 'is', null)
+    .neq('media_url', '')
     .order('created_at', { ascending: false }) as Promise<ApiResult<ExplorePost[]>>;
 }

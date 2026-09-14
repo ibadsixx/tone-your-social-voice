@@ -66,7 +66,7 @@ export const useExploreFeed = (options: UseExploreFeedOptions = {}) => {
     if (!ready) return [];
     const viewerId = user?.id;
     return rawPosts.filter(post => {
-      if (!post.media_url) return false;
+      if (!post.media_url || !post.media_url.trim()) return false;
       if (viewerId !== post.user_id && !isPostVisibleToViewer(post, viewerId || '', friendIds)) return false;
       if (!shouldShowContent(post.id, post.user_id)) return false;
       if (!matchesCategory(post, category)) return false;
