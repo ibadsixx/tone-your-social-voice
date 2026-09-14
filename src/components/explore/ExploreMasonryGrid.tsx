@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, MessageCircle, Play } from 'lucide-react';
+import { MessageCircle, Play } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import StaticReactionIcon from '@/components/StaticReactionIcon';
 import { cn } from '@/lib/utils';
 import { getMediaThumbnail, getVideoPoster, formatDuration } from '@/lib/mediaThumbnail';
 import { resolveMediaSrc } from '@/lib/mediaUrl';
@@ -121,7 +122,7 @@ export const ExploreMasonryGrid = ({ posts, loading, columnsClassName, onPostCli
       {posts.map((post, index) => {
         const playable = exploreMediaType(post) !== 'photo';
         const aspect = tileAspect(post, index);
-        const likes = formatCount(post.likes?.[0]?.count ?? post.likes_count ?? 0);
+        const likes = post.likes?.[0]?.count ?? post.likes_count ?? 0;
         const comments = formatCount(post.comments?.[0]?.count ?? post.comments_count ?? 0);
 
         return (
@@ -164,9 +165,8 @@ export const ExploreMasonryGrid = ({ posts, loading, columnsClassName, onPostCli
                 hoveredId === post.id ? 'opacity-100' : 'opacity-0'
               )}
             >
-              <span className="flex items-center gap-1.5 text-sm font-semibold text-white">
-                <Heart className="h-5 w-5 fill-current" />
-                {likes}
+              <span className="flex items-center text-sm font-semibold text-white">
+                <StaticReactionIcon reactionKey={null} size="sm" count={likes} />
               </span>
               <span className="flex items-center gap-1.5 text-sm font-semibold text-white">
                 <MessageCircle className="h-5 w-5 fill-current" />

@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Heart, MessageCircle, Play } from 'lucide-react';
+import { X, MessageCircle, Play } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import ReactionPicker from '@/components/ReactionPicker';
+import { useReactions } from '@/hooks/useReactions';
 import { cn } from '@/lib/utils';
 import { resolveMediaSrc } from '@/lib/mediaUrl';
 import { getMediaThumbnail, getVideoPoster } from '@/lib/mediaThumbnail';
@@ -29,6 +31,7 @@ export const ExploreViewer = ({ open, posts, index, onClose, onNavigate }: Explo
   const current = posts[index];
   const mediaType = current ? exploreMediaType(current) : 'photo';
   const src = current ? resolveMediaSrc(current.media_url) : '';
+  const reactions = useReactions(current?.id ?? '', current?.user_id);
 
   const goTo = useCallback(
     (next: number) => {
@@ -206,10 +209,15 @@ export const ExploreViewer = ({ open, posts, index, onClose, onNavigate }: Explo
                 </p>
               ) : null}
               <div className="mt-3 flex items-center gap-5 text-white">
-                <span className="flex items-center gap-1.5 text-sm font-semibold">
-                  <Heart className="h-5 w-5 fill-current" />
-                  {formatCount(current.likes?.[0]?.count ?? current.likes_count ?? 0)}
-                </span>
+                <div className="pointer-events-auto">
+                  <ReactionPicker
+                    isLiked={!!reactions.userReaction}
+                    selectedReaction={reactions.userReaction}
+                    likesCount={reactions.reactionsCount}
+                    onReact={(key) => reactions.toggleReaction(key)}
+                    onLike={() => reactions.toggleReaction('ok')}
+                  />
+                </div>
                 <span className="flex items-center gap-1.5 text-sm font-semibold">
                   <MessageCircle className="h-5 w-5 fill-current" />
                   {formatCount(current.comments?.[0]?.count ?? current.comments_count ?? 0)}
