@@ -9,6 +9,7 @@ import type { ExplorePost } from '@/api/explore';
 export interface ExploreMasonryGridProps {
   posts: ExplorePost[];
   loading?: boolean;
+  columnsClassName?: string;
   onPostClick: (post: ExplorePost, index: number) => void;
 }
 
@@ -39,12 +40,13 @@ function TileSkeleton() {
   );
 }
 
-export const ExploreMasonryGrid = ({ posts, loading, onPostClick }: ExploreMasonryGridProps) => {
+export const ExploreMasonryGrid = ({ posts, loading, columnsClassName, onPostClick }: ExploreMasonryGridProps) => {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const columnsClass = columnsClassName || 'columns-2 sm:columns-3 lg:columns-4';
 
   if (loading && posts.length === 0) {
     return (
-      <div className="columns-2 sm:columns-3 lg:columns-4 gap-1">
+      <div className={cn(columnsClass, 'gap-1')}>
         {Array.from({ length: LOADER_COUNT }, (_, i) => (
           <TileSkeleton key={i} />
         ))}
@@ -62,7 +64,7 @@ export const ExploreMasonryGrid = ({ posts, loading, onPostClick }: ExploreMason
   }
 
   return (
-    <div className="columns-2 sm:columns-3 lg:columns-4 gap-1">
+    <div className={cn(columnsClass, 'gap-1')}>
       {posts.map((post, index) => {
         const type = exploreMediaType(post);
         const playable = isPlayable(post);

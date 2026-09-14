@@ -1,17 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
-import { Search as SearchIcon, User, Users, FileText, Loader2, Grid3X3, Plus, RefreshCw, Hash } from 'lucide-react';
+import { Search as SearchIcon, User, Users, FileText, Loader2, Hash } from 'lucide-react';
 import { useSearch, SearchResult } from '@/hooks/useSearch';
-import { useExplorePosts } from '@/hooks/useExplorePosts';
 import { gateway } from '@/lib/gateway';
-import ExplorePostGrid from '@/components/ExplorePostGrid';
-import PostModal from '@/components/PostModal';
+import { ExploreSection } from '@/components/explore/ExploreSection';
 import { cn } from '@/lib/utils';
 import PageContainer from '@/components/PageContainer';
 
@@ -19,21 +17,11 @@ const Search = () => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showResults, setShowResults] = useState(false);
-  const [selectedPost, setSelectedPost] = useState<any>(null);
-  const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   
-  const { results, exploreResults, loading, error, totalResults, totalExploreResults } = useSearch(query, 150);
-  const { 
-    posts: explorePosts, 
-    loading: postsLoading, 
-    hasMore, 
-    error: exploreError,
-    loadMore, 
-    refresh 
-  } = useExplorePosts();
+  const { results, loading, error, totalResults } = useSearch(query, 150);
 
   // Create flat array for keyboard navigation
   const flatResults: (SearchResult & { section: string })[] = [
@@ -78,16 +66,6 @@ const Search = () => {
     setQuery('');
   };
 
-  const handlePostClick = (post: any) => {
-    setSelectedPost(post);
-    setIsPostModalOpen(true);
-  };
-
-  const handleClosePostModal = () => {
-    setIsPostModalOpen(false);
-    setSelectedPost(null);
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!showResults || totalResults === 0) return;
 
@@ -130,15 +108,6 @@ const Search = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const getResultIcon = (type: SearchResult['type']) => {
-    switch (type) {
-      case 'person': return User;
-      case 'page': return FileText;
-      case 'group': return Users;
-      case 'hashtag': return Hash;
-    }
-  };
 
   const getResultLabel = (type: SearchResult['type']) => {
     switch (type) {
@@ -218,76 +187,6 @@ const Search = () => {
       </>
     );
   };
-
-  const ExploreSection = () => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.2 }}
-      className="space-y-6"
-    >
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <Grid3X3 className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold">Explore</h2>
-        </div>
-        <Button variant="ghost" size="sm" onClick={refresh}>
-          <Plus className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
-      </div>
-      
-      {postsLoading && explorePosts.length === 0 ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-muted-foreground">Loading posts...</span>
-        </div>
-      ) : exploreError ? (
-        <div className="text-center text-muted-foreground py-12">
-          <Grid3X3 className="h-16 w-16 mx-auto mb-4 opacity-30" />
-          <h3 className="text-lg font-medium mb-2">Couldn't load posts</h3>
-          <p className="mb-4">{exploreError}</p>
-          <Button variant="outline" onClick={refresh}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Retry
-          </Button>
-        </div>
-      ) : explorePosts.length === 0 ? (
-        <div className="text-center text-muted-foreground py-12">
-          <Grid3X3 className="h-16 w-16 mx-auto mb-4 opacity-30" />
-          <h3 className="text-lg font-medium mb-2">No posts to explore</h3>
-          <p>Check back later for new content</p>
-        </div>
-      ) : (
-        <>
-          <ExplorePostGrid 
-            posts={explorePosts} 
-            onPostClick={handlePostClick}
-          />
-          
-          {hasMore && (
-            <div className="text-center py-6">
-              <Button 
-                onClick={loadMore} 
-                disabled={postsLoading}
-                variant="outline"
-              >
-                {postsLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Loading...
-                  </>
-                ) : (
-                  'Load More'
-                )}
-              </Button>
-            </div>
-          )}
-        </>
-      )}
-    </motion.div>
-  );
 
   return (
     <>
@@ -374,7 +273,7 @@ const Search = () => {
             </AnimatePresence>
           </div>
 
-          {/* Content Area */}
+          {/* Content Area - Explore grid below search bar when no query */}
           <div className="py-4">
             <AnimatePresence mode="wait">
               {!showResults && !query && <ExploreSection />}
@@ -382,13 +281,6 @@ const Search = () => {
           </div>
         </div>
       </PageContainer>
-
-      {/* Post Modal */}
-      <PostModal 
-        post={selectedPost}
-        isOpen={isPostModalOpen}
-        onClose={handleClosePostModal}
-      />
     </>
   );
 };
