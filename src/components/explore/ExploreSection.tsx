@@ -10,7 +10,6 @@ import type { ExplorePost, ExplorePostCategory } from '@/api/explore';
 const CATEGORIES: { value: ExplorePostCategory; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'photos', label: 'Photos' },
-  { value: 'videos', label: 'Videos' },
   { value: 'reels', label: 'Reels' },
 ];
 

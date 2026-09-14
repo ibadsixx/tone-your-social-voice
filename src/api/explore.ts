@@ -3,7 +3,7 @@ import type { ApiResult } from './client';
 
 export type ExploreMediaType = 'photo' | 'video' | 'reel';
 
-export type ExplorePostCategory = 'all' | 'photos' | 'videos' | 'reels';
+export type ExplorePostCategory = 'all' | 'photos' | 'reels';
 
 export interface ExploreAuthor {
   username: string;
@@ -94,8 +94,7 @@ export function matchesCategory(post: ExplorePost, category: ExplorePostCategory
   if (category === 'all') return true;
   const mediaType = exploreMediaType(post);
   if (category === 'photos') return mediaType === 'photo';
-  if (category === 'videos') return mediaType === 'video' || mediaType === 'reel';
-  if (category === 'reels') return mediaType === 'reel';
+  if (category === 'reels') return mediaType === 'video' || mediaType === 'reel';
   return true;
 }
 
