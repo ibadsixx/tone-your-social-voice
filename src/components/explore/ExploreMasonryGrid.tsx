@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Heart, MessageCircle, Play } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -85,7 +86,16 @@ function TileSkeleton() {
 
 export const ExploreMasonryGrid = ({ posts, loading, columnsClassName, onPostClick }: ExploreMasonryGridProps) => {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const navigate = useNavigate();
   const columnsClass = columnsClassName || 'columns-2 sm:columns-3 lg:columns-4';
+
+  const handleTileClick = (post: ExplorePost, index: number) => {
+    if (exploreMediaType(post) === 'photo') {
+      navigate(`/post/${post.id}`);
+      return;
+    }
+    onPostClick(post, index);
+  };
 
   if (loading && posts.length === 0) {
     return (
@@ -118,7 +128,7 @@ export const ExploreMasonryGrid = ({ posts, loading, columnsClassName, onPostCli
           <button
             key={post.id}
             type="button"
-            onClick={() => onPostClick(post, index)}
+            onClick={() => handleTileClick(post, index)}
             onMouseEnter={() => setHoveredId(post.id)}
             onMouseLeave={() => setHoveredId(null)}
             className={cn(
