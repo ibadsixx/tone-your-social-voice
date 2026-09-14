@@ -23,8 +23,11 @@ const PORTRAIT_HEIGHT = Math.round(IMG_WIDTH * (16 / 9));
 function tileAspect(post: ExplorePost, index: number): string {
   const mediaType = exploreMediaType(post);
   const ratio = post.aspect_ratio;
-  if (ratio && /^\d+\s*:\s*\d+$/.test(ratio)) return ratio.split(':').join(' / ');
-  if (mediaType !== 'photo') return '9 / 16';
+  if (mediaType !== 'photo') {
+    if (ratio && /^\d+\s*:\s*\d+$/.test(ratio)) return ratio.split(':').join(' / ');
+    return '9 / 16';
+  }
+  if (ratio && /^\d+\s*\/\s*\d+$/.test(ratio)) return ratio;
   if (index % 6 === 0) return '3 / 4';
   if (index % 6 === 3) return '1 / 1';
   return '4 / 5';
