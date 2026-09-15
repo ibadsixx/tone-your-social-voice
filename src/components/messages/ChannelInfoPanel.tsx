@@ -71,7 +71,6 @@ interface ChannelInfoPanelProps {
   isMuted: boolean;
   onToggleMute: () => void | Promise<void>;
   onLeaveChannel: () => void | Promise<void>;
-  onChannelNameChange: (name: string) => void;
   onReportChannel: (reportedUserId: string, reason: string, details?: string) => void | Promise<void>;
   onChannelStatsChange?: (stats: ChannelStats) => void;
   onChannelDeleted?: () => void;
@@ -96,7 +95,6 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
   isMuted,
   onToggleMute,
   onLeaveChannel,
-  onChannelNameChange,
   onReportChannel,
   onChannelStatsChange,
   onChannelDeleted,
@@ -120,7 +118,6 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
   const [memberToRemove, setMemberToRemove] = useState<{ user_id: string; display_name: string } | null>(null);
   const [removing, setRemoving] = useState(false);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -150,10 +147,9 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
 
   useEffect(() => {
     if (showEdit) {
-      setEditName(conversationName || '');
       setEditDescription(conversationDescription || '');
     }
-  }, [showEdit, conversationName, conversationDescription]);
+  }, [showEdit, conversationDescription]);
 
   // Load channel members when the Members or Channel settings dialog opens. Any
   // participant may read the list (get_channel_members); the owner and moderators
@@ -216,21 +212,15 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
 
   const handleSaveEdit = async () => {
     if (!conversationId) return;
-    const name = editName.trim();
-    if (!name) {
-      toast({ title: 'Error', description: 'Channel name cannot be empty', variant: 'destructive' });
-      return;
-    }
     setSavingEdit(true);
     try {
       const { error } = await gateway
         .from('conversations')
-        .update({ name, description: editDescription.trim() || null })
+        .update({ description: editDescription.trim() || null })
         .eq('id', conversationId);
       if (error) throw error;
-      onChannelNameChange(name);
       setShowEdit(false);
-      toast({ title: 'Channel updated', description: `#${name} updated` });
+      toast({ title: 'Channel updated', description: `#${conversationName || 'channel'} updated` });
     } catch (e: unknown) {
       toast({
         title: 'Error',
@@ -699,19 +689,10 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
           <DialogHeader>
             <DialogTitle>Edit channel</DialogTitle>
             <DialogDescription>
-              Update the channel name and description. Followers will see these changes.
+              Update the channel description. Followers will see these changes.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="channel-name">Channel name</Label>
-              <Input
-                id="channel-name"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder="Channel name"
-              />
-            </div>
             <div className="space-y-2">
               <Label htmlFor="channel-description">Description</Label>
               <Input
@@ -743,13 +724,6 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
             <DialogTitle>Channel settings</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <div className="flex items-center justify-between p-4 rounded-lg border border-border">
-              <div className="pr-4">
-                <Label className="text-sm font-medium">Channel name</Label>
-                <p className="text-xs text-muted-foreground">#{conversationName || 'channel'}</p>
-              </div>
-            </div>
-
             <div className="flex items-center justify-between p-4 rounded-lg border border-border">
               <div className="pr-4">
                 <Label className="text-sm font-medium">Notifications</Label>
