@@ -83,7 +83,10 @@ export const ChannelAdminsDialog: React.FC<ChannelAdminsDialogProps> = ({
       toast({ title: 'Admin added', description: `${displayName} is now an admin of #${conversationName || 'channel'}` });
       await load();
     } catch (e: unknown) {
-      toast({ title: 'Error', description: e instanceof Error ? e.message : 'Failed to add admin', variant: 'destructive' });
+      const msg = (e && typeof e === 'object' && typeof (e as Record<string, unknown>).message === 'string')
+        ? String((e as Record<string, unknown>).message)
+        : 'Failed to add admin';
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
     } finally {
       setBusyUserId(null);
     }
@@ -101,7 +104,10 @@ export const ChannelAdminsDialog: React.FC<ChannelAdminsDialogProps> = ({
       toast({ description: `${displayName} is no longer an admin of #${conversationName || 'channel'}` });
       await load();
     } catch (e: unknown) {
-      toast({ title: 'Error', description: e instanceof Error ? e.message : 'Failed to remove admin', variant: 'destructive' });
+      const msg = (e && typeof e === 'object' && typeof (e as Record<string, unknown>).message === 'string')
+        ? String((e as Record<string, unknown>).message)
+        : 'Failed to remove admin';
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
     } finally {
       setBusyUserId(null);
     }

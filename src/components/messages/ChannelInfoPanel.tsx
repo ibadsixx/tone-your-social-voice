@@ -268,11 +268,10 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
       }
       toast({ title: 'Moderator added', description: `${displayName} is now a moderator of #${conversationName || 'channel'}` });
     } catch (e: unknown) {
-      toast({
-        title: 'Error',
-        description: e instanceof Error ? e.message : 'Failed to add moderator',
-        variant: 'destructive',
-      });
+      const msg = (e && typeof e === 'object' && typeof (e as Record<string, unknown>).message === 'string')
+        ? String((e as Record<string, unknown>).message)
+        : 'Failed to add moderator';
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
     } finally {
       setBusyUserId(null);
     }
@@ -299,11 +298,10 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
       }
       toast({ description: `${displayName} is no longer a moderator of #${conversationName || 'channel'}` });
     } catch (e: unknown) {
-      toast({
-        title: 'Error',
-        description: e instanceof Error ? e.message : 'Failed to remove moderator',
-        variant: 'destructive',
-      });
+      const msg = (e && typeof e === 'object' && typeof (e as Record<string, unknown>).message === 'string')
+        ? String((e as Record<string, unknown>).message)
+        : 'Failed to remove moderator';
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
     } finally {
       setBusyUserId(null);
     }
@@ -326,11 +324,10 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
       toast({ title: 'Member removed', description: `${memberToRemove.display_name} was removed from #${conversationName || 'channel'}` });
       setMemberToRemove(null);
     } catch (e: unknown) {
-      toast({
-        title: 'Error',
-        description: e instanceof Error ? e.message : 'Failed to remove member',
-        variant: 'destructive',
-      });
+      const msg = (e && typeof e === 'object' && typeof (e as Record<string, unknown>).message === 'string')
+        ? String((e as Record<string, unknown>).message)
+        : 'Failed to remove member';
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
     } finally {
       setRemoving(false);
     }
