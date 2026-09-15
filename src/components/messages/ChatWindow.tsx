@@ -1003,6 +1003,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           isMuted={conversationSettings?.is_muted ?? false}
           onToggleMute={toggleMute}
           onLeaveChannel={handleUnfollowChannel}
+          onChannelNameChange={(name) => onGroupNameChange?.(name)}
           onChannelStatsChange={setChannelStats}
           onChannelDeleted={() => navigate('/messages')}
           onReportChannel={async (reportedUserId, reason, details) => {
