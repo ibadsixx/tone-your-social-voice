@@ -45,6 +45,55 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
     }
   };
 
+  // Edit a message's content (channel posts: owner/moderator only — the
+  // gateway re-checks authorization server-side and ignores non-editable body
+  // fields). No sender filter: an admin can edit any channel post.
+  const updateMessage = async (messageId: string, content: string): Promise<boolean> => {
+    if (!currentUserId) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to edit messages",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    if (!content.trim()) {
+      toast({
+        title: "Error",
+        description: "Message content cannot be empty",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await gateway
+        .from('messages')
+        .update({ content })
+        .eq('id', messageId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Message updated",
+        description: "The message has been updated"
+      });
+      return true;
+    } catch (error) {
+      console.error('Error updating message:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update message",
+        variant: "destructive"
+      });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Pin a message
   const pinMessage = async (messageId: string): Promise<boolean> => {
     if (!conversationId || !currentUserId) {
@@ -175,6 +224,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
   return {
     loading,
     deleteMessage,
+    updateMessage,
     pinMessage,
     reportMessage,
     getPinnedMessages

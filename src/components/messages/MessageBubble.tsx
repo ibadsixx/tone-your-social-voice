@@ -12,6 +12,7 @@ import {
   Copy,
   Pin,
   Flag,
+  Pencil,
   Trash2,
   Download,
   Play,
@@ -23,6 +24,7 @@ import {
   Flame,
   Check,
   CheckCheck,
+  Loader2,
   Phone,
   PhoneMissed,
   PhoneOff,
@@ -118,6 +120,13 @@ interface MessageBubbleProps {
   onScrollToMessage?: (messageId: string) => void;
   showSeenStatus?: boolean;
   previewMode?: boolean;
+  /** Channel posts: true when the current user is the channel owner or a
+      moderator, giving access to Edit Post (server re-validates). */
+  isChannelAdmin?: boolean;
+  /** Overrides message.content for edited channel posts (local optimistic map). */
+  editedContent?: string;
+  /** Persist an edited channel post. Returns true on success. */
+  onEdit?: (messageId: string, content: string) => Promise<boolean>;
 }
 
 // Theme gradient mappings
@@ -149,9 +158,25 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onReport,
   onScrollToMessage,
   showSeenStatus = true,
-  previewMode = false
+  previewMode = false,
+  isChannelAdmin = false,
+  editedContent,
+  onEdit
 }) => {
   const themeClass = THEME_GRADIENTS[chatTheme] || THEME_GRADIENTS['default'];
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Edited channel posts render the local override (ChatWindow keeps the map);
+  // unedited messages fall through to the server content.
+  const displayContent = editedContent !== undefined ? editedContent : message.content;
+
+  // Channel posts are text-editable only when the current user can moderate the
+  // channel (owner or moderator). Media/attachments stay immutable.
+  const canEditPost = isChannelAdmin && !!onEdit && !message.is_system &&
+    (message.message_type === undefined || message.message_type === 'text') &&
+    !!displayContent;
   const currentUserReactionKey: ReactionKey | null = (() => {
     if (!currentUserId) return null;
     const mine = reactions.find(r => r.user_id === currentUserId);
@@ -259,6 +284,27 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     }
   };
 
+  const startEdit = () => {
+    setDraft(displayContent || '');
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setDraft('');
+  };
+
+  const saveEdit = async () => {
+    if (!message.id || !onEdit || !draft.trim()) return;
+    setSavingEdit(true);
+    try {
+      const ok = await onEdit(message.id, draft.trim());
+      if (ok) setEditing(false);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   // Helper to strip query params from URL for extension matching
   const getUrlPath = (url: string) => url.split('?')[0];
 
@@ -300,8 +346,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   // Check if this is an emoji-only message (1-3 emojis, no other text)
   const isEmojiOnlyMessage = () => {
-    if (!message.content) return false;
-    const content = message.content.trim();
+    if (!displayContent) return false;
+    const content = displayContent.trim();
     if (content.length === 0) return false;
     
     // Comprehensive emoji regex
@@ -596,11 +642,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               {isOwn && showSeenStatus !== false && (message.seen ? <CheckCheck className="h-3 w-3 inline ml-1 text-blue-400" /> : message.delivered ? <CheckCheck className="h-3 w-3 inline ml-1 text-muted-foreground/40" /> : <Check className="h-3 w-3 inline ml-1 text-muted-foreground/40" />)}
             </p>
           </div>
-        ) : isEmojiOnlyMessage() ? (
+        ) : (!editing && isEmojiOnlyMessage()) ? (
           /* Emoji-only message - large emoji without bubble like Facebook Messenger */
           <div className={`relative ${isOwn ? 'text-right' : 'text-left'}`}>
             <EmojiText 
-              text={message.content || ''} 
+              text={displayContent || ''} 
               emojiSize={64}
               className="leading-none inline-block"
             />
@@ -720,14 +766,64 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               ) : (
               <>
                 {/* Text content */}
-                {message.content && message.message_type !== 'poll' && (
-                  <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                    <EmojiText
-                      text={message.content}
-                      emojiSize={18}
-                      className={isOwn ? 'text-primary-foreground' : 'text-foreground'}
-                    />
-                  </div>
+                {displayContent && message.message_type !== 'poll' && (
+                  editing ? (
+                    <div className={cn(
+                      "flex flex-col gap-2",
+                      isOwn ? "items-end" : "items-start"
+                    )}>
+                      <textarea
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        rows={2}
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') cancelEdit();
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            saveEdit();
+                          }
+                        }}
+                        className={cn(
+                          "w-full min-w-[220px] resize-none rounded-lg border bg-background px-2.5 py-2 text-sm text-foreground outline-none focus:ring-1",
+                          isOwn ? "border-primary-foreground/30" : "border-border"
+                        )}
+                        placeholder="Edit post..."
+                      />
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={cancelEdit}
+                          disabled={savingEdit}
+                          className="h-7 px-2 text-xs"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={saveEdit}
+                          disabled={savingEdit || !draft.trim()}
+                          className="h-7 px-3 text-xs"
+                        >
+                          {savingEdit ? (
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                          ) : (
+                            <Check className="h-3 w-3 mr-1" />
+                          )}
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                      <EmojiText
+                        text={displayContent}
+                        emojiSize={18}
+                        className={isOwn ? 'text-primary-foreground' : 'text-foreground'}
+                      />
+                    </div>
+                  )
                 )}
 
                 {/* Poll content */}
@@ -833,8 +929,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               {renderMediaContent()}
 
               {/* Link previews */}
-              {previewMode && message.content && message.message_type !== 'poll' && (
-                <MessageLinkPreview content={message.content} />
+              {previewMode && !editing && displayContent && message.message_type !== 'poll' && (
+                <MessageLinkPreview content={displayContent} />
               )}
             </>
           )}
@@ -932,7 +1028,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               className="min-w-[140px] z-[100] bg-popover border border-border shadow-lg"
               onCloseAutoFocus={(e) => e.preventDefault()}
             >
-              {isOwn && (
+              {canEditPost && (
+                <DropdownMenuItem
+                  onClick={startEdit}
+                  className="cursor-pointer"
+                >
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit
+                </DropdownMenuItem>
+              )}
+              {(isOwn || isChannelAdmin) && (
                 <DropdownMenuItem 
                   onClick={() => onDelete?.(message.id)}
                   className="cursor-pointer text-destructive focus:text-destructive"

@@ -120,7 +120,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const { settings: conversationSettings, updateChatTheme, toggleVanishingMessages: toggleVanish, updateQuickEmoji, toggleMute } = useConversationSettings(conversationId);
   const { toggleReaction, fetchReactions, getMessageReactions } = useMessageReactions(conversationId);
   const { blockStatus, blockUser, unblockUser } = useBlocks(otherUser?.id || '', currentUserId);
-  const { deleteMessage, pinMessage, reportMessage: submitReport, getPinnedMessages } = useMessageActions(conversationId, currentUserId);
+  const { deleteMessage, updateMessage, pinMessage, reportMessage: submitReport, getPinnedMessages } = useMessageActions(conversationId, currentUserId);
 
   const isChannel = conversationType === 'channel';
   const isGroup = conversationType === 'group';
@@ -129,6 +129,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [channelOwnerLoading, setChannelOwnerLoading] = useState(true);
   const [channelStats, setChannelStats] = useState<{ follower_count: number; owner_name: string; owner_id?: string | null; moderator_count: number } | null>(null);
   const [channelOwnerId, setChannelOwnerId] = useState<string | null>(null);
+  // Local override map for edited channel posts (see handleEditMessage).
+  const [editedContent, setEditedContent] = useState<Record<string, string>>({});
 
   // Hide the other user's presence while a non-friend PENDING message request
   // is in effect (see usePresencePrivacy): the sender must not see online/
@@ -191,6 +193,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   );
   const canPost = isChannelOwner || channelRole === 'owner' || channelRole === 'moderator';
   const isFollower = channelRole === 'follower';
+  // Owner and moderators are the channel admins (messages.md): they can manage
+  // posts/pins/members/statistics. Followers are read-only.
+  const isChannelAdmin = isChannel && canPost;
 
   const handleFollowChannel = async () => {
     if (!conversationId) return;
@@ -364,6 +369,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           : [...prev, messageId]
       );
     }
+  };
+
+  // Edited channel posts render from this local map so the rendered text can
+  // be refreshed without mutating the parent-owned messages array. The gateway
+  // persists the change (gateway-owned channel message gate).
+  const handleEditMessage = async (messageId: string, content: string): Promise<boolean> => {
+    const success = await updateMessage(messageId, content);
+    if (success) {
+      setEditedContent(prev => ({ ...prev, [messageId]: content }));
+    }
+    return success;
   };
 
   // Handle report message
@@ -841,6 +857,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         setIsReportModalOpen(true);
                       }}
                       onScrollToMessage={handleScrollToMessage}
+                      isChannelAdmin={isChannelAdmin}
+                      editedContent={editedContent[message.id]}
+                      onEdit={isChannel ? handleEditMessage : undefined}
                     />
                     </React.Fragment>
                   );
@@ -986,6 +1005,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           onLeaveChannel={handleUnfollowChannel}
           onChannelNameChange={(name) => onGroupNameChange?.(name)}
           onChannelStatsChange={setChannelStats}
+          onChannelDeleted={() => navigate('/messages')}
           onReportChannel={async (reportedUserId, reason, details) => {
             if (conversationId) {
               await reportConversation(conversationId, reportedUserId, reason, details);

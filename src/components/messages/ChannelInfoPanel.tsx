@@ -6,7 +6,7 @@ import {
   X, Hash, Users, Bell, BellOff, Search, Share2, Flag, Pin, Image,
   Settings, Pencil, ShieldCheck, UserCog, BarChart3, MessageSquare,
   LogOut, Loader2, ChevronUp, ChevronDown, Megaphone, MoreVertical,
-  UserPlus, UserMinus, UserX
+  UserPlus, UserMinus, UserX, Trash2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -83,6 +83,7 @@ interface ChannelInfoPanelProps {
   onChannelNameChange: (name: string) => void;
   onReportChannel: (reportedUserId: string, reason: string, details?: string) => void | Promise<void>;
   onChannelStatsChange?: (stats: ChannelStats) => void;
+  onChannelDeleted?: () => void;
 }
 
 type ExpandableSection = 'channel' | 'control' | null;
@@ -107,6 +108,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
   onChannelNameChange,
   onReportChannel,
   onChannelStatsChange,
+  onChannelDeleted,
 }) => {
   const { toast } = useToast();
   const [expandedSection, setExpandedSection] = useState<ExpandableSection>(null);
@@ -120,6 +122,8 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
   const [showComments, setShowComments] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [members, setMembers] = useState<ChannelMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<{ user_id: string; display_name: string } | null>(null);
@@ -133,6 +137,12 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
   // moderators never see the Leave action, matching the server-side RPCs.
   const isFollower = channelRole === 'follower' && !isOwner;
 
+  // Channel Control is visible to the owner and moderators only (messages.md).
+  // The contents are permission-aware: owner-only actions (manage moderators,
+  // permissions, delete channel) are hidden from moderators.
+  const isModerator = channelRole === 'moderator' && !isOwner;
+  const canAccessChannelControl = isOwner || isModerator;
+
   const toggleSection = (section: ExpandableSection) => {
     setExpandedSection(prev => (prev === section ? null : section));
   };
@@ -144,8 +154,9 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
     }
   }, [showEdit, conversationName, conversationDescription]);
 
-  // Load channel members when the Members dialog opens (owner only, reuses the
-  // existing get_channel_members RPC used by the Channel admins dialog).
+  // Load channel members when the Members dialog opens. Any participant may
+  // read the list (get_channel_members); the owner and moderators get the
+  // management menu (moderators: remove followers only).
   useEffect(() => {
     if (!showMembers || !conversationId) return;
     let active = true;
@@ -239,10 +250,10 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
     }
   };
 
-  // Owner-only member management (messages.md). Promotion/demotion reuse the
-  // existing backend-enforced RPCs (add/remove_channel_moderator); removal runs
-  // through the gateway-owned DELETE member endpoint. All authorization lives
-  // server-side — the UI only decides whether to surface the actions.
+  // Channel member management (messages.md): promoting/demoting moderators is
+  // owner-only, while removal is owner-or-moderator (moderators may remove
+  // followers only). Reuses the backend-enforced RPCs and the gateway-owned
+  // DELETE member endpoint — the UI only decides whether to surface actions.
   const pushChannelStats = (stats: ChannelStats) => {
     onChannelStatsChange?.(stats);
   };
@@ -333,6 +344,26 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
     }
   };
 
+  const handleDeleteChannel = async () => {
+    if (!conversationId) return;
+    setDeleting(true);
+    try {
+      // Owner-only: the gateway re-validates ownership before deleting.
+      const { error } = await gateway.rpc('delete_channel', { p_conversation_id: conversationId });
+      if (error) throw error;
+      toast({ title: 'Channel deleted', description: `#${conversationName || 'channel'} has been deleted` });
+      setShowDeleteConfirm(false);
+      onChannelDeleted?.();
+    } catch (e: unknown) {
+      const msg = (e && typeof e === 'object' && typeof (e as Record<string, unknown>).message === 'string')
+        ? String((e as Record<string, unknown>).message)
+        : 'Failed to delete channel';
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleReport = async (reason: string, details?: string) => {
     const reportedUserId = channelOwnerId ?? channelStats?.owner_id ?? null;
     if (reportedUserId) {
@@ -388,12 +419,16 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
               {conversationDescription && (
                 <p className="text-sm text-muted-foreground mt-1">{conversationDescription}</p>
               )}
-              <p className="text-sm text-muted-foreground flex items-center justify-center gap-1.5 mt-2">
-                <Users className="h-4 w-4" />
-                <span>{channelStats?.follower_count ?? 0} followers</span>
-                <span>·</span>
-                <span>{channelStats?.moderator_count ?? 0} moderators</span>
-              </p>
+              {/* Statistics are owner/moderator-only (messages.md): followers
+                  must not see counts, and the gateway denies them the stats. */}
+              {channelStats && (
+                <p className="text-sm text-muted-foreground flex items-center justify-center gap-1.5 mt-2">
+                  <Users className="h-4 w-4" />
+                  <span>{channelStats.follower_count} followers</span>
+                  <span>·</span>
+                  <span>{channelStats.moderator_count} moderators</span>
+                </p>
+              )}
               {channelStats?.owner_name && (
                 <p className="text-xs text-muted-foreground mt-1">
                   Channel owner: {channelStats.owner_name}
@@ -513,8 +548,10 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
               </button>
             )}
 
-            {/* Owner controls */}
-            {isOwner && (
+            {/* Channel control — visible to owner AND moderators (messages.md).
+                Owner-only actions (manage moderators, permissions, delete
+                channel) are hidden from moderators; the gateway re-checks. */}
+            {canAccessChannelControl && (
               <div className="space-y-1">
                 <button
                   onClick={() => toggleSection('control')}
@@ -545,21 +582,25 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
                       <span>Members</span>
                     </button>
 
-                    <button
-                      onClick={() => setShowAdmins(true)}
-                      className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-foreground text-sm"
-                    >
-                      <ShieldCheck className="h-5 w-5 text-muted-foreground" />
-                      <span>Manage moderators & admins</span>
-                    </button>
+                    {isOwner && (
+                      <>
+                        <button
+                          onClick={() => setShowAdmins(true)}
+                          className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-foreground text-sm"
+                        >
+                          <ShieldCheck className="h-5 w-5 text-muted-foreground" />
+                          <span>Manage moderators & admins</span>
+                        </button>
 
-                    <button
-                      onClick={() => setShowSettings(true)}
-                      className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-foreground text-sm"
-                    >
-                      <UserCog className="h-5 w-5 text-muted-foreground" />
-                      <span>Manage permissions</span>
-                    </button>
+                        <button
+                          onClick={() => setShowSettings(true)}
+                          className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-foreground text-sm"
+                        >
+                          <UserCog className="h-5 w-5 text-muted-foreground" />
+                          <span>Manage permissions</span>
+                        </button>
+                      </>
+                    )}
 
                     <button
                       onClick={() => setShowComments(true)}
@@ -584,6 +625,16 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
                       <BarChart3 className="h-5 w-5 text-muted-foreground" />
                       <span>Channel statistics</span>
                     </button>
+
+                    {isOwner && (
+                      <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 text-destructive text-sm"
+                      >
+                        <Trash2 className="h-5 w-5" />
+                        <span>Delete channel</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -786,7 +837,9 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
                   .map(m => {
                     const isMemberOwner = m.user_id === channelOwnerId || m.role === 'owner';
                     const isSelf = m.user_id === currentUserId;
-                    const showMenu = isOwner && !isMemberOwner && !isSelf;
+                    // Owner can act on anyone except the owner/self; moderators
+                    // may only remove followers (messages.md).
+                    const showMenu = (isOwner || (isModerator && m.role === 'follower')) && !isMemberOwner && !isSelf;
                     const name = m.display_name || m.username || 'Unknown';
                     return (
                       <div key={m.user_id || m.id} className="flex items-center gap-3 py-2">
@@ -814,7 +867,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-52">
-                              {m.role === 'follower' && (
+                              {isOwner && m.role === 'follower' && (
                                 <DropdownMenuItem
                                   disabled={busyUserId === m.user_id}
                                   onClick={() => handlePromoteMember(m.user_id, name)}
@@ -827,7 +880,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
                                   Make moderator
                                 </DropdownMenuItem>
                               )}
-                              {m.role === 'moderator' && (
+                              {isOwner && m.role === 'moderator' && (
                                 <DropdownMenuItem
                                   disabled={busyUserId === m.user_id}
                                   onClick={() => handleDemoteMember(m.user_id, name)}
@@ -880,6 +933,30 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
             >
               {removing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <UserX className="h-4 w-4 mr-2" />}
               Remove from channel
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {/* Delete channel confirmation (owner only, messages.md). Deleting a
+          channel cascades to its posts/pins/members server-side. */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={(open) => { if (!open && !deleting) setShowDeleteConfirm(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete #{conversationName || 'channel'}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the channel, its posts, pins and memberships.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDeleteChannel(); }}
+              disabled={deleting}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Delete channel
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
