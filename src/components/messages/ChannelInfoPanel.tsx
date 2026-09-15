@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { gateway } from '@/lib/gateway';
 import { removeChannelMember } from '@/api/conversations';
+import { deriveChannelModerators, type ChannelMember } from '@/lib/channelMembers';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,16 +53,6 @@ export interface ChannelStats {
 }
 
 const ROLE_RANK: Record<string, number> = { owner: 0, moderator: 1, follower: 2 };
-
-interface ChannelMember {
-  id?: string;
-  user_id: string;
-  username: string;
-  display_name: string;
-  profile_pic: string | null;
-  role: string;
-  joined_at?: string;
-}
 
 interface ChannelInfoPanelProps {
   isOpen: boolean;
@@ -143,6 +134,16 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
   const isModerator = channelRole === 'moderator' && !isOwner;
   const canAccessChannelControl = isOwner || isModerator;
 
+  // Actual moderators come from the real membership rows returned by
+  // get_channel_members (role='moderator'), never from a hardcoded list. The
+  // Members dialog and the Channel Settings dialog share this one fetch, so the
+  // Moderators section has names/avatars even before the Members list is opened.
+  const moderators = useMemo(() => deriveChannelModerators(members), [members]);
+  const moderatorCount = members.length > 0
+    ? moderators.length
+    : (channelStats?.moderator_count ?? 0);
+  const shouldLoadMembers = showMembers || showSettings;
+
   const toggleSection = (section: ExpandableSection) => {
     setExpandedSection(prev => (prev === section ? null : section));
   };
@@ -154,11 +155,12 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
     }
   }, [showEdit, conversationName, conversationDescription]);
 
-  // Load channel members when the Members dialog opens. Any participant may
-  // read the list (get_channel_members); the owner and moderators get the
-  // management menu (moderators: remove followers only).
+  // Load channel members when the Members or Channel settings dialog opens. Any
+  // participant may read the list (get_channel_members); the owner and moderators
+  // get the management menu (moderators: remove followers only). The same rows
+  // feed the Channel settings → Moderators section (role='moderator').
   useEffect(() => {
-    if (!showMembers || !conversationId) return;
+    if (!shouldLoadMembers || !conversationId) return;
     let active = true;
     setMembersLoading(true);
     gateway.rpc('get_channel_members', { p_conversation_id: conversationId })
@@ -179,7 +181,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
       })
       .finally(() => { if (active) setMembersLoading(false); });
     return () => { active = false; };
-  }, [showMembers, conversationId, toast]);
+  }, [shouldLoadMembers, conversationId, toast]);
 
   const handleSearch = () => {
     toast({
@@ -426,7 +428,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
                   <Users className="h-4 w-4" />
                   <span>{channelStats.follower_count} followers</span>
                   <span>·</span>
-                  <span>{channelStats.moderator_count} moderators</span>
+                  <span>{moderatorCount} moderators</span>
                 </p>
               )}
               {channelStats?.owner_name && (
@@ -566,13 +568,15 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
                 </button>
                 {expandedSection === 'control' && (
                   <div className="px-3 pb-3 space-y-2">
-                    <button
-                      onClick={() => setShowEdit(true)}
-                      className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-foreground text-sm"
-                    >
-                      <Pencil className="h-5 w-5 text-muted-foreground" />
-                      <span>Edit channel</span>
-                    </button>
+                    {isOwner && (
+                      <button
+                        onClick={() => setShowEdit(true)}
+                        className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-foreground text-sm"
+                      >
+                        <Pencil className="h-5 w-5 text-muted-foreground" />
+                        <span>Edit channel</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={() => setShowMembers(true)}
@@ -730,9 +734,11 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* Manage permissions / Channel settings (owner only) */}
+      {/* Channel settings. Opened by "Channel settings" (owner & moderators,
+          read-only view of permissions/moderators) and "Manage permissions"
+          (owner only). Moderators cannot change channel permissions here. */}
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Channel settings</DialogTitle>
           </DialogHeader>
@@ -752,18 +758,70 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
               <Switch checked={!isMuted} onCheckedChange={() => onToggleMute()} />
             </div>
 
-            <div className="p-4 rounded-lg border border-border space-y-1">
+            <div className="p-4 rounded-lg border border-border space-y-3">
               <Label className="text-sm font-medium">Permissions</Label>
-              <p className="text-xs text-muted-foreground">
-                The channel owner and moderators can post. Followers can read posts and react, but are read-only.
-              </p>
+              <div className="space-y-3 text-xs text-muted-foreground">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Owner</p>
+                  <p>
+                    Post, edit posts, delete posts, manage comments, pin/unpin posts, invite followers,
+                    ban/restrict followers, view statistics, manage moderators, delete channel, and all
+                    other owner controls.
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Moderator</p>
+                  <p>
+                    Post, edit channel posts, manage comments, pin/unpin posts, invite followers,
+                    ban/restrict followers, view statistics.
+                  </p>
+                  <p className="mt-1">
+                    Cannot add, remove or modify moderators, modify moderator permissions, transfer
+                    ownership, change/remove/ban the owner, modify owner permissions, or delete the channel.
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Follower</p>
+                  <p>Read posts and react. No administrative permissions.</p>
+                </div>
+              </div>
             </div>
 
-            <div className="p-4 rounded-lg border border-border space-y-1">
+            <div className="p-4 rounded-lg border border-border space-y-2">
               <Label className="text-sm font-medium">Moderators</Label>
-              <p className="text-xs text-muted-foreground">
-                {channelStats?.moderator_count ?? 0} moderators currently help manage this channel.
-              </p>
+              {membersLoading ? (
+                <p className="text-xs text-muted-foreground">Loading moderators…</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {moderators.length} {moderators.length === 1 ? 'moderator' : 'moderators'} currently help manage this channel.
+                </p>
+              )}
+              {!membersLoading && moderators.length > 0 && (
+                <ul className="space-y-2 pt-1">
+                  {moderators.map((moderator) => {
+                    const name = moderator.display_name || moderator.username || 'Unknown';
+                    return (
+                      <li key={moderator.user_id || moderator.id} className="flex items-center gap-3">
+                        <Avatar className="h-8 w-8 shrink-0">
+                          {moderator.profile_pic ? (
+                            <AvatarImage src={moderator.profile_pic} alt={name} />
+                          ) : null}
+                          <AvatarFallback className="text-xs">
+                            {name.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{name}</p>
+                          {moderator.username && (
+                            <p className="text-xs text-muted-foreground truncate">@{moderator.username}</p>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="text-xs">Moderator</Badge>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -772,7 +830,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* Manage comments (owner only) */}
+      {/* Manage comments (owner & moderators) */}
       <Dialog open={showComments} onOpenChange={setShowComments}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -788,7 +846,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* Channel statistics (owner only) */}
+      {/* Channel statistics (owner & moderators) */}
       <Dialog open={showStats} onOpenChange={setShowStats}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -805,7 +863,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
             </div>
             <div className="flex items-center justify-between p-4 rounded-lg border border-border">
               <Label className="text-sm font-medium">Moderators</Label>
-              <span className="text-sm text-foreground">{channelStats?.moderator_count ?? 0}</span>
+              <span className="text-sm text-foreground">{moderatorCount}</span>
             </div>
           </div>
           <DialogFooter>
@@ -814,7 +872,8 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* Channel members (owner only - read-only list) */}
+      {/* Channel members (owner & moderators; owner manages all, moderators
+          may remove followers only) */}
       <Dialog open={showMembers} onOpenChange={setShowMembers}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
