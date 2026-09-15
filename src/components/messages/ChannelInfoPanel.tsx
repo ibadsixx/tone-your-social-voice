@@ -139,10 +139,8 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
   // Members dialog and the Channel Settings dialog share this one fetch, so the
   // Moderators section has names/avatars even before the Members list is opened.
   const moderators = useMemo(() => deriveChannelModerators(members), [members]);
-  const moderatorCount = members.length > 0
-    ? moderators.length
-    : (channelStats?.moderator_count ?? 0);
-  const shouldLoadMembers = showMembers || showSettings;
+  const moderatorCount = channelStats?.moderator_count ?? moderators.length;
+  const shouldLoadMembers = showMembers || showSettings || showStats;
 
   const toggleSection = (section: ExpandableSection) => {
     setExpandedSection(prev => (prev === section ? null : section));
@@ -852,11 +850,11 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
             </div>
             <div className="flex items-center justify-between p-4 rounded-lg border border-border">
               <Label className="text-sm font-medium">Followers</Label>
-              <span className="text-sm text-foreground">{channelStats?.follower_count ?? 0}</span>
+              <span className="text-sm text-foreground">{channelStats ? channelStats.follower_count : '—'}</span>
             </div>
             <div className="flex items-center justify-between p-4 rounded-lg border border-border">
               <Label className="text-sm font-medium">Moderators</Label>
-              <span className="text-sm text-foreground">{moderatorCount}</span>
+              <span className="text-sm text-foreground">{channelStats ? channelStats.moderator_count : '—'}</span>
             </div>
           </div>
           <DialogFooter>
