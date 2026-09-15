@@ -975,6 +975,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           conversationDescription={conversationDescription}
           groupImage={groupImage}
           isOwner={isChannelOwner}
+          currentUserId={currentUserId}
           channelRole={channelRole}
           channelStats={channelStats}
           channelOwnerId={channelOwnerId}
@@ -984,6 +985,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           onToggleMute={toggleMute}
           onLeaveChannel={handleUnfollowChannel}
           onChannelNameChange={(name) => onGroupNameChange?.(name)}
+          onChannelStatsChange={setChannelStats}
           onReportChannel={async (reportedUserId, reason, details) => {
             if (conversationId) {
               await reportConversation(conversationId, reportedUserId, reason, details);

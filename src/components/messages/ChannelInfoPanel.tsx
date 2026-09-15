@@ -5,11 +5,19 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   X, Hash, Users, Bell, BellOff, Search, Share2, Flag, Pin, Image,
   Settings, Pencil, ShieldCheck, UserCog, BarChart3, MessageSquare,
-  LogOut, Loader2, ChevronUp, ChevronDown, Megaphone
+  LogOut, Loader2, ChevronUp, ChevronDown, Megaphone, MoreVertical,
+  UserPlus, UserMinus, UserX
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { gateway } from '@/lib/gateway';
+import { removeChannelMember } from '@/api/conversations';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -63,6 +71,7 @@ interface ChannelInfoPanelProps {
   conversationDescription?: string | null;
   groupImage?: string | null;
   isOwner: boolean;
+  currentUserId: string;
   channelRole: string | null;
   channelStats: ChannelStats | null;
   channelOwnerId: string | null;
@@ -73,6 +82,7 @@ interface ChannelInfoPanelProps {
   onLeaveChannel: () => void | Promise<void>;
   onChannelNameChange: (name: string) => void;
   onReportChannel: (reportedUserId: string, reason: string, details?: string) => void | Promise<void>;
+  onChannelStatsChange?: (stats: ChannelStats) => void;
 }
 
 type ExpandableSection = 'channel' | 'control' | null;
@@ -85,6 +95,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
   conversationDescription,
   groupImage,
   isOwner,
+  currentUserId,
   channelRole,
   channelStats,
   channelOwnerId,
@@ -95,6 +106,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
   onLeaveChannel,
   onChannelNameChange,
   onReportChannel,
+  onChannelStatsChange,
 }) => {
   const { toast } = useToast();
   const [expandedSection, setExpandedSection] = useState<ExpandableSection>(null);
@@ -110,6 +122,9 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
   const [showMembers, setShowMembers] = useState(false);
   const [members, setMembers] = useState<ChannelMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<{ user_id: string; display_name: string } | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
@@ -221,6 +236,103 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
     } finally {
       setLeaving(false);
       setShowLeaveConfirm(false);
+    }
+  };
+
+  // Owner-only member management (messages.md). Promotion/demotion reuse the
+  // existing backend-enforced RPCs (add/remove_channel_moderator); removal runs
+  // through the gateway-owned DELETE member endpoint. All authorization lives
+  // server-side — the UI only decides whether to surface the actions.
+  const pushChannelStats = (stats: ChannelStats) => {
+    onChannelStatsChange?.(stats);
+  };
+
+  const handlePromoteMember = async (userId: string, displayName: string) => {
+    if (!conversationId) return;
+    setBusyUserId(userId);
+    try {
+      const { error } = await gateway.rpc('add_channel_moderator', {
+        p_conversation_id: conversationId,
+        p_moderator_id: userId,
+      });
+      if (error) throw error;
+      setMembers(prev => prev.map(m =>
+        m.user_id === userId ? { ...m, role: 'moderator' } : m
+      ));
+      if (channelStats) {
+        pushChannelStats({
+          ...channelStats,
+          follower_count: Math.max(0, channelStats.follower_count - 1),
+          moderator_count: channelStats.moderator_count + 1,
+        });
+      }
+      toast({ title: 'Moderator added', description: `${displayName} is now a moderator of #${conversationName || 'channel'}` });
+    } catch (e: unknown) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : 'Failed to add moderator',
+        variant: 'destructive',
+      });
+    } finally {
+      setBusyUserId(null);
+    }
+  };
+
+  const handleDemoteMember = async (userId: string, displayName: string) => {
+    if (!conversationId) return;
+    setBusyUserId(userId);
+    try {
+      const { error } = await gateway.rpc('remove_channel_moderator', {
+        p_conversation_id: conversationId,
+        p_moderator_id: userId,
+      });
+      if (error) throw error;
+      setMembers(prev => prev.map(m =>
+        m.user_id === userId ? { ...m, role: 'follower' } : m
+      ));
+      if (channelStats) {
+        pushChannelStats({
+          ...channelStats,
+          follower_count: channelStats.follower_count + 1,
+          moderator_count: Math.max(0, channelStats.moderator_count - 1),
+        });
+      }
+      toast({ description: `${displayName} is no longer a moderator of #${conversationName || 'channel'}` });
+    } catch (e: unknown) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : 'Failed to remove moderator',
+        variant: 'destructive',
+      });
+    } finally {
+      setBusyUserId(null);
+    }
+  };
+
+  const handleRemoveMember = async () => {
+    if (!conversationId || !memberToRemove) return;
+    setRemoving(true);
+    try {
+      const { error } = await removeChannelMember(conversationId, memberToRemove.user_id);
+      if (error) throw error;
+      const removed = members.find(m => m.user_id === memberToRemove.user_id);
+      setMembers(prev => prev.filter(m => m.user_id !== memberToRemove.user_id));
+      if (channelStats && removed) {
+        const updated = removed.role === 'moderator'
+          ? { ...channelStats, moderator_count: Math.max(0, channelStats.moderator_count - 1) }
+          : { ...channelStats, follower_count: Math.max(0, channelStats.follower_count - 1) };
+        pushChannelStats(updated);
+      }
+      toast({ title: 'Member removed', description: `${memberToRemove.display_name} was removed from #${conversationName || 'channel'}` });
+      setMemberToRemove(null);
+    } catch (e: unknown) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : 'Failed to remove member',
+        variant: 'destructive',
+      });
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -674,26 +786,107 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
               <div className="space-y-1 pr-3">
                 {[...members]
                   .sort((a, b) => (ROLE_RANK[a.role] ?? 3) - (ROLE_RANK[b.role] ?? 3))
-                  .map(m => (
-                    <div key={m.user_id || m.id} className="flex items-center gap-3 py-2">
-                      <Avatar className="h-9 w-9 shrink-0">
-                        {m.profile_pic ? <AvatarImage src={m.profile_pic} /> : null}
-                        <AvatarFallback className="text-xs">
-                          {(m.display_name || m.username || '?').charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{m.display_name || m.username || 'Unknown'}</p>
-                        <p className="text-xs text-muted-foreground truncate">@{m.username || 'unknown'}</p>
+                  .map(m => {
+                    const isMemberOwner = m.user_id === channelOwnerId || m.role === 'owner';
+                    const isSelf = m.user_id === currentUserId;
+                    const showMenu = isOwner && !isMemberOwner && !isSelf;
+                    const name = m.display_name || m.username || 'Unknown';
+                    return (
+                      <div key={m.user_id || m.id} className="flex items-center gap-3 py-2">
+                        <Avatar className="h-9 w-9 shrink-0">
+                          {m.profile_pic ? <AvatarImage src={m.profile_pic} /> : null}
+                          <AvatarFallback className="text-xs">
+                            {name.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{name}</p>
+                          <p className="text-xs text-muted-foreground truncate">@{m.username || 'unknown'}</p>
+                        </div>
+                        <Badge variant="outline" className="capitalize text-xs">{m.role}</Badge>
+                        {showMenu && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 shrink-0"
+                                aria-label={`Actions for ${name}`}
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52">
+                              {m.role === 'follower' && (
+                                <DropdownMenuItem
+                                  disabled={busyUserId === m.user_id}
+                                  onClick={() => handlePromoteMember(m.user_id, name)}
+                                >
+                                  {busyUserId === m.user_id ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <UserPlus className="h-4 w-4 mr-2 text-muted-foreground" />
+                                  )}
+                                  Make moderator
+                                </DropdownMenuItem>
+                              )}
+                              {m.role === 'moderator' && (
+                                <DropdownMenuItem
+                                  disabled={busyUserId === m.user_id}
+                                  onClick={() => handleDemoteMember(m.user_id, name)}
+                                >
+                                  {busyUserId === m.user_id ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <UserMinus className="h-4 w-4 mr-2 text-muted-foreground" />
+                                  )}
+                                  Remove moderator
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem
+                                disabled={removing && memberToRemove?.user_id === m.user_id}
+                                onClick={() => setMemberToRemove({ user_id: m.user_id, display_name: name })}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <UserX className="h-4 w-4 mr-2 text-destructive" />
+                                Remove from channel
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </div>
-                      <Badge variant="outline" className="capitalize text-xs">{m.role}</Badge>
-                    </div>
-                  ))}
+                    );
+                  })}
               </div>
             )}
           </ScrollArea>
         </DialogContent>
       </Dialog>
+
+      {/* Remove member confirmation (messages.md): removal is destructive and
+          permanent, so it always requires an explicit confirm. */}
+      <AlertDialog open={!!memberToRemove} onOpenChange={(open) => { if (!open && !removing) setMemberToRemove(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {memberToRemove?.display_name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This member will be removed from #{conversationName || 'channel'}. Their
+              existing messages and conversation history remain unchanged.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleRemoveMember(); }}
+              disabled={removing}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {removing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <UserX className="h-4 w-4 mr-2" />}
+              Remove from channel
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };
