@@ -4647,10 +4647,18 @@ export type Database = {
       get_people_you_may_know: {
         Args: { p_limit?: number; p_user_id: string }
         Returns: {
+          created_at: string
           display_name: string
           id: string
+          mutual_followers_count: number
           mutual_friends_count: number
+          mutual_groups_count: number
           profile_pic: string
+          same_city: boolean
+          same_college: boolean
+          same_company: boolean
+          same_high_school: boolean
+          score: number
           username: string
         }[]
       }

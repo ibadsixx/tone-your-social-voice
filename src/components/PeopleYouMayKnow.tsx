@@ -88,10 +88,19 @@ export const PeopleYouMayKnow = () => {
                     >
                       {person.display_name}
                     </Link>
-                    {person.mutual_friends_count > 0 && (
-                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
-                        {person.mutual_friends_count} mutual
-                      </p>
+                    {(person.mutual_friends_count > 0 || person.mutual_groups_count > 0) && (
+                      <div className="mt-0.5 leading-tight">
+                        {person.mutual_friends_count > 0 && (
+                          <p className="text-[10px] text-muted-foreground">
+                            {person.mutual_friends_count} mutual friend{person.mutual_friends_count > 1 ? 's' : ''}
+                          </p>
+                        )}
+                        {person.mutual_groups_count > 0 && (
+                          <p className="text-[10px] text-muted-foreground">
+                            {person.mutual_groups_count} mutual group{person.mutual_groups_count > 1 ? 's' : ''}
+                          </p>
+                        )}
+                      </div>
                     )}
                     <Button
                       size="sm"
