@@ -4,6 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import Post from './Post';
 import ProfilePhotosGrid from './ProfilePhotosGrid';
+import ProfileReelsGrid from './ProfileReelsGrid';
 import { Image, Video, Share2, Grid3X3 } from 'lucide-react';
 
 interface PostData {
@@ -59,9 +60,6 @@ const FilteredPostsLayout = ({ posts, loading, isOwnProfile, coverPic }: Filtere
     
     return posts.filter(post => {
       switch (activeFilter) {
-        case 'reels':
-          return post.type === 'reel' || 
-                 (post.media_type === 'video' && post.media_url?.includes('reel'));
         case 'videos':
           return post.media_type === 'video' && 
                  post.type !== 'reel' && 
@@ -165,10 +163,14 @@ const FilteredPostsLayout = ({ posts, loading, isOwnProfile, coverPic }: Filtere
         </div>
       </div>
 
-      {/* Posts List / Photos gallery */}
+      {/* Posts List / Photos gallery / Reels gallery */}
       {activeFilter === 'photos' ? (
         <div className="flex-1">
           <ProfilePhotosGrid posts={posts} loading={loading} coverPic={coverPic} />
+        </div>
+      ) : activeFilter === 'reels' ? (
+        <div className="flex-1">
+          <ProfileReelsGrid posts={posts} loading={loading} />
         </div>
       ) : (
         <div className="flex-1 space-y-4">
