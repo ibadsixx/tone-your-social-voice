@@ -72,6 +72,28 @@ describe('extractProfileReels', () => {
     expect(reels.map((r) => r.id)).toEqual(['reel2', 'reel1']);
   });
 
+  it('Test 7: 16:9 and long reels are still included (aspect/length do not matter)', () => {
+    const reels = extractProfileReels([
+      post({
+        id: 'wide',
+        type: 'reel',
+        media_url: 'https://cdn.test/wide.mp4',
+        media_type: 'video',
+        aspect_ratio: '16:9',
+        duration: 45,
+      }),
+      post({
+        id: 'long',
+        type: 'reel',
+        media_url: 'https://cdn.test/long.mp4',
+        media_type: 'video',
+        aspect_ratio: '9:16',
+        duration: 600,
+      }),
+    ]);
+    expect(reels.map((r) => r.id)).toEqual(['wide', 'long']);
+  });
+
   it('handles empty and null input', () => {
     expect(extractProfileReels([])).toEqual([]);
     expect(extractProfileReels(null)).toEqual([]);

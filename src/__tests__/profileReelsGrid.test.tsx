@@ -112,4 +112,13 @@ describe('FilteredPostsLayout Reels filter', () => {
     expect(tiles).toHaveLength(1);
     expect(screen.queryByTestId('post-card')).toBeNull();
   });
+
+  it('Test 7: the Videos tab is gone and the remaining filters are intact', () => {
+    renderWithRouter(<FilteredPostsLayout posts={[]} loading={false} isOwnProfile />);
+
+    expect(screen.queryByRole('button', { name: 'Videos' })).toBeNull();
+    for (const label of ['All', 'Photos', 'Reels', 'Shared']) {
+      expect(screen.getAllByRole('button', { name: label }).length).toBeGreaterThan(0);
+    }
+  });
 });

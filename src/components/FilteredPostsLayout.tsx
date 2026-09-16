@@ -42,7 +42,7 @@ interface FilteredPostsLayoutProps {
   coverPic?: string | null;
 }
 
-type FilterType = 'all' | 'photos' | 'reels' | 'videos' | 'shared';
+type FilterType = 'all' | 'photos' | 'reels' | 'shared';
 
 const FilteredPostsLayout = ({ posts, loading, isOwnProfile, coverPic }: FilteredPostsLayoutProps) => {
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
@@ -51,7 +51,6 @@ const FilteredPostsLayout = ({ posts, loading, isOwnProfile, coverPic }: Filtere
     { id: 'all', label: 'All', icon: Grid3X3 },
     { id: 'photos', label: 'Photos', icon: Image },
     { id: 'reels', label: 'Reels', icon: Video },
-    { id: 'videos', label: 'Videos', icon: Video },
     { id: 'shared', label: 'Shared', icon: Share2 },
   ] as const;
 
@@ -60,10 +59,6 @@ const FilteredPostsLayout = ({ posts, loading, isOwnProfile, coverPic }: Filtere
     
     return posts.filter(post => {
       switch (activeFilter) {
-        case 'videos':
-          return post.media_type === 'video' && 
-                 post.type !== 'reel' && 
-                 !post.media_url?.includes('reel');
         case 'shared':
           return post.type === 'shared_post' || post.shared_post_id;
         default:
