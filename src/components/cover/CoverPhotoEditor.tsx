@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { gateway } from '@/lib/gateway';
 import PhotoLibraryModal from './PhotoLibraryModal';
 import CoverRepositionModal from './CoverRepositionModal';
+import { createPhotoUpdatePost } from '@/hooks/usePhotoUpload';
 
 interface CoverPhotoEditorProps {
   profile: {
@@ -87,13 +88,22 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
 
       if (updateError) throw updateError;
 
+      // Automatic cover-photo-change post — only after the upload AND profile
+      // update have succeeded. If the post insert itself fails the cover is
+      // already saved, so the cover success toast still stands.
+      try {
+        await createPhotoUpdatePost(user.id, publicUrl, 'cover');
+      } catch (postError) {
+        console.warn('[CoverPhotoEditor] Failed to create cover-change post:', postError);
+      }
+
       toast({
         title: 'Success',
         description: 'Cover photo updated successfully'
       });
 
       onProfileUpdate?.();
-    } catch (error: any) {
+    } catch {
       toast({
         title: 'Error',
         description: 'Failed to upload cover photo',
@@ -124,7 +134,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
       });
 
       onProfileUpdate?.();
-    } catch (error: any) {
+    } catch {
       toast({
         title: 'Error',
         description: 'Failed to remove cover photo',
@@ -240,6 +250,13 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
 
             if (error) throw error;
 
+            // Automatic cover-photo-change post once the cover update succeeds.
+            try {
+              await createPhotoUpdatePost(user.id, photoUrl, 'cover');
+            } catch (postError) {
+              console.warn('[CoverPhotoEditor] Failed to create cover-change post:', postError);
+            }
+
             toast({
               title: 'Success',
               description: 'Cover photo updated'
@@ -247,7 +264,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
 
             onProfileUpdate?.();
             setShowPhotoLibrary(false);
-          } catch (error: any) {
+          } catch {
             toast({
               title: 'Error',
               description: 'Failed to update cover photo',
@@ -280,7 +297,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
 
             onProfileUpdate?.();
             setShowReposition(false);
-          } catch (error: any) {
+          } catch {
             toast({
               title: 'Error',
               description: 'Failed to update position',

@@ -4,11 +4,27 @@
 // by Post.tsx in the POST HEADER next to the user's name. It must never be
 // stored as part of the caption — the stored `content` is ONLY the user's own
 // caption text, and the stored `type` is what triggers the header text.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-import { buildProfileUpdatePost } from '@/hooks/usePhotoUpload';
+import { buildProfileUpdatePost, createPhotoUpdatePost } from '@/hooks/usePhotoUpload';
 
 const PHRASE = 'changed their profile picture';
+
+function jsonResponse(status: number, body: unknown): Response {
+  return {
+    ok: status < 400,
+    status,
+    headers: new Headers({ 'content-type': 'application/json' }),
+    json: async () => body,
+  } as Response;
+}
+
+const POSTS_URL = 'http://mock.test/api/posts';
+
+beforeEach(() => {
+  localStorage.clear();
+  localStorage.setItem('tone-auth-token', JSON.stringify({ access_token: 'test-token', refresh_token: 'test-refresh' }));
+});
 
 describe('buildProfileUpdatePost (photo update post payload)', () => {
   it('new profile picture without caption stores an empty content and the update type', () => {
@@ -53,5 +69,67 @@ describe('buildProfileUpdatePost (photo update post payload)', () => {
 
   it('trims surrounding whitespace from the caption', () => {
     expect(buildProfileUpdatePost('profile', '  spaced caption  ').content).toBe('spaced caption');
+  });
+});
+
+describe('createPhotoUpdatePost (cover photo changes)', () => {
+  it('posts cover_photo_update with the new cover URL and NO caption phrase', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const method = init?.method || 'GET';
+      if (String(input) === POSTS_URL && method === 'POST') {
+        return jsonResponse(201, {});
+      }
+      throw new Error(`no mock route for ${method} ${input}`);
+    });
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock;
+
+    const coverUrl = 'http://mock.test/api/media/cover.jpeg';
+    await createPhotoUpdatePost('alice-uuid', coverUrl, 'cover');
+
+    const insertCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+    expect(insertCall).toBeTruthy();
+    const body = JSON.parse(insertCall![1].body as string);
+    expect(body).toEqual({
+      user_id: 'alice-uuid',
+      content: '',
+      media_url: coverUrl,
+      type: 'cover_photo_update',
+    });
+    expect(body.content).not.toContain('changed their cover photo');
+  });
+
+  it('stores ONLY the user caption when one is provided (still cover_photo_update)', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === POSTS_URL && init?.method === 'POST') {
+        return jsonResponse(201, {});
+      }
+      throw new Error(`no mock route for ${init?.method} ${input}`);
+    });
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock;
+
+    await createPhotoUpdatePost('alice-uuid', 'http://mock.test/api/media/cover2.jpeg', 'cover', 'My new cover photo!');
+
+    const insertCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+    const body = JSON.parse(insertCall![1].body as string);
+    expect(body.type).toBe('cover_photo_update');
+    expect(body.content).toBe('My new cover photo!');
+    expect(body.content).not.toContain('changed their cover photo');
+  });
+
+  it('cover post media references the newly uploaded cover URL', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === POSTS_URL && init?.method === 'POST') {
+        return jsonResponse(201, {});
+      }
+      throw new Error(`no mock route for ${init?.method} ${input}`);
+    });
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock;
+
+    const coverUrl = 'https://cdn.example.com/covers/alice/1712345678.jpg';
+    await createPhotoUpdatePost('alice-uuid', coverUrl, 'cover');
+
+    const insertCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+    const body = JSON.parse(insertCall![1].body as string);
+    expect(body.media_url).toBe(coverUrl);
   });
 });
