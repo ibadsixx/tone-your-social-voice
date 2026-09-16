@@ -3,6 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import Post from './Post';
+import ProfilePhotosGrid from './ProfilePhotosGrid';
 import { Image, Video, Share2, Grid3X3 } from 'lucide-react';
 
 interface PostData {
@@ -19,7 +20,18 @@ interface PostData {
     display_name: string;
     profile_pic: string | null;
   };
-  shared_post?: any;
+  shared_post?: {
+    id: string;
+    content: string | null;
+    media_url: string | null;
+    type: string;
+    created_at: string;
+    profiles: {
+      username: string;
+      display_name: string;
+      profile_pic: string | null;
+    };
+  } | null;
 }
 
 interface FilteredPostsLayoutProps {
@@ -46,9 +58,6 @@ const FilteredPostsLayout = ({ posts, loading, isOwnProfile }: FilteredPostsLayo
     
     return posts.filter(post => {
       switch (activeFilter) {
-        case 'photos':
-          return post.media_type === 'image' || 
-                 (post.media_url && !post.media_url.includes('.mp4') && post.media_type !== 'video');
         case 'reels':
           return post.type === 'reel' || 
                  (post.media_type === 'video' && post.media_url?.includes('reel'));
@@ -155,37 +164,43 @@ const FilteredPostsLayout = ({ posts, loading, isOwnProfile }: FilteredPostsLayo
         </div>
       </div>
 
-      {/* Posts List */}
-      <div className="flex-1 space-y-4">
-        {filteredPosts.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <p className="text-muted-foreground">
-                {activeFilter === 'all' 
-                  ? 'No posts yet'
-                  : `No ${activeFilter} found`
-                }
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          filteredPosts.map(post => (
-            <Post
-              key={post.id}
-              id={post.id}
-              user_id={post.user_id}
-              content={post.content}
-              media_url={post.media_url}
-              media_type={post.media_type}
-              created_at={post.created_at}
-              type={post.type}
-              shared_post_id={post.shared_post_id}
-              profiles={post.profiles}
-              shared_post={post.shared_post}
-            />
-          ))
-        )}
-      </div>
+      {/* Posts List / Photos gallery */}
+      {activeFilter === 'photos' ? (
+        <div className="flex-1">
+          <ProfilePhotosGrid posts={posts} loading={loading} />
+        </div>
+      ) : (
+        <div className="flex-1 space-y-4">
+          {filteredPosts.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="text-muted-foreground">
+                  {activeFilter === 'all'
+                    ? 'No posts yet'
+                    : `No ${activeFilter} found`
+                  }
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            filteredPosts.map(post => (
+              <Post
+                key={post.id}
+                id={post.id}
+                user_id={post.user_id}
+                content={post.content}
+                media_url={post.media_url}
+                media_type={post.media_type}
+                created_at={post.created_at}
+                type={post.type}
+                shared_post_id={post.shared_post_id}
+                profiles={post.profiles}
+                shared_post={post.shared_post}
+              />
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 };
