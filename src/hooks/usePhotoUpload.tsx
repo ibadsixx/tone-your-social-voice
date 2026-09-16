@@ -7,6 +7,24 @@ interface UploadResponse {
   fileName: string;
 }
 
+export interface ProfileUpdatePostPayload {
+  content: string;
+  type: 'profile_picture_update' | 'cover_photo_update';
+}
+
+// Data integrity rule (photo profile posts): the stored caption is ONLY the
+// user's own text. The "changed their profile picture" / "updated their cover
+// photo" phrase is rendered by Post.tsx in the POST HEADER next to the user's
+// name — it must never be inserted into, appended to, or stored as part of the
+// caption. Posting the update back is what lets the header text appear.
+export const buildProfileUpdatePost = (
+  type: 'profile' | 'cover',
+  customText?: string
+): ProfileUpdatePostPayload => ({
+  content: (customText ?? '').trim(),
+  type: type === 'profile' ? 'profile_picture_update' : 'cover_photo_update',
+});
+
 export const usePhotoUpload = () => {
   const [uploading, setUploading] = useState(false);
   const { toast } = useToast();
@@ -51,21 +69,15 @@ export const usePhotoUpload = () => {
     type: 'profile' | 'cover',
     customText?: string
   ) => {
-    const defaultText = type === 'profile' 
-      ? 'changed their profile picture' 
-      : 'updated their cover photo';
-    
-    const content = customText 
-      ? `${customText}\n\n${defaultText}` 
-      : defaultText;
+    const payload = buildProfileUpdatePost(type, customText);
 
     const { error } = await gateway
       .from('posts')
       .insert({
         user_id: userId,
-        content,
+        content: payload.content,
         media_url: imageUrl,
-        type: 'normal_post'
+        type: payload.type
       });
 
     if (error) throw error;
@@ -97,7 +109,7 @@ export const usePhotoUpload = () => {
       });
 
       return publicUrl;
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
         description: `Failed to upload ${type === 'profile' ? 'profile picture' : 'cover photo'}`,
