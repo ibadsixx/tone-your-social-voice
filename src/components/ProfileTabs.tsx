@@ -8,14 +8,17 @@ import ScheduledPostsTab from './ScheduledPostsTab';
 import FilteredPostsLayout from './FilteredPostsLayout';
 import FriendsTab from './FriendsTab';
 import Mentions from '@/pages/Mentions';
+import type { ProfileSectionFilter } from '@/lib/profileSections';
 
 interface ProfileTabsProps {
   profileId: string;
   isOwnProfile: boolean;
   coverPic?: string | null;
+  activeFilter?: ProfileSectionFilter;
+  onFilterChange?: (filter: ProfileSectionFilter) => void;
 }
 
-const ProfileTabs = ({ profileId, isOwnProfile, coverPic }: ProfileTabsProps) => {
+const ProfileTabs = ({ profileId, isOwnProfile, coverPic, activeFilter, onFilterChange }: ProfileTabsProps) => {
   const [activeTab, setActiveTab] = useState('posts');
   const { posts, loading: postsLoading } = useUserPosts(profileId);
 
@@ -50,6 +53,8 @@ const ProfileTabs = ({ profileId, isOwnProfile, coverPic }: ProfileTabsProps) =>
           loading={postsLoading} 
           isOwnProfile={isOwnProfile} 
           coverPic={coverPic}
+          activeFilter={activeFilter}
+          onFilterChange={onFilterChange}
         />
       </TabsContent>
       

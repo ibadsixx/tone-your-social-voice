@@ -10,9 +10,15 @@ import { useToast } from '@/hooks/use-toast';
 import ProfileHeader from '@/components/ProfileHeader';
 import ProfileTabs from '@/components/ProfileTabs';
 import PageContainer from '@/components/PageContainer';
+import {
+  sectionToFilter,
+  profileSectionPath,
+  redirectForInvalidSection,
+} from '@/lib/profileSections';
+import type { ProfileSectionFilter } from '@/lib/profileSections';
 
 const ProfilePage = () => {
-  const { username } = useParams<{ username: string }>();
+  const { username, section } = useParams<{ username: string; section?: string }>();
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -73,6 +79,21 @@ const ProfilePage = () => {
     }
   };
 
+  // The active profile section is derived from the URL, so deep links, refresh
+  // and browser back/forward all stay in sync. Unknown segments are redirected:
+  // the removed Videos section goes to Reels, anything else to Posts.
+  const activeFilter = sectionToFilter(section);
+
+  useEffect(() => {
+    const redirect = redirectForInvalidSection(section);
+    if (!profile || !redirect) return;
+    navigate(profileSectionPath(profile.username, redirect), { replace: true });
+  }, [section, profile, navigate]);
+
+  const handleFilterChange = (filter: ProfileSectionFilter) => {
+    if (!profile) return;
+    navigate(profileSectionPath(profile.username, filter));
+  };
 
   if (loading) {
     return (
@@ -81,7 +102,6 @@ const ProfilePage = () => {
       </PageContainer>
     );
   }
-
   if (!profile) {
     // This shouldn't render since we navigate to /404, but just in case
     navigate('/404');
@@ -108,7 +128,13 @@ const ProfilePage = () => {
       </Card>
 
       {/* Profile Tabs */}
-      <ProfileTabs profileId={profile.id} isOwnProfile={isOwnProfile} coverPic={profile.cover_pic} />
+      <ProfileTabs
+        profileId={profile.id}
+        isOwnProfile={isOwnProfile}
+        coverPic={profile.cover_pic}
+        activeFilter={activeFilter}
+        onFilterChange={handleFilterChange}
+      />
     </PageContainer>
   );
 };

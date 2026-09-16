@@ -117,7 +117,7 @@ describe('FilteredPostsLayout Reels filter', () => {
     renderWithRouter(<FilteredPostsLayout posts={[]} loading={false} isOwnProfile />);
 
     expect(screen.queryByRole('button', { name: 'Videos' })).toBeNull();
-    for (const label of ['All', 'Photos', 'Reels', 'Shared']) {
+    for (const label of ['Posts', 'Photos', 'Reels', 'Shared']) {
       expect(screen.getAllByRole('button', { name: label }).length).toBeGreaterThan(0);
     }
   });

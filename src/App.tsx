@@ -72,6 +72,9 @@ const App = () => (
                 <Route index element={<Home />} />
                 <Route path="profile" element={<Profile />} />
                 <Route path="profile/:username" element={<ProfilePage />} />
+                {/* Profile sections are URL-driven (Posts/Photos/Reels/Shared) while
+                    the profile shell stays mounted. */}
+                <Route path="profile/:username/:section" element={<ProfilePage />} />
                 <Route path="post/:id" element={<PostPage />} />
                 <Route path="messages/*" element={<Messages />} />
                 <Route path="search" element={<Search />} />

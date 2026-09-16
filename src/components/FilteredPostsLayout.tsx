@@ -6,6 +6,7 @@ import Post from './Post';
 import ProfilePhotosGrid from './ProfilePhotosGrid';
 import ProfileReelsGrid from './ProfileReelsGrid';
 import { Image, Video, Share2, Grid3X3 } from 'lucide-react';
+import type { ProfileSectionFilter } from '@/lib/profileSections';
 
 interface PostData {
   id: string;
@@ -40,15 +41,32 @@ interface FilteredPostsLayoutProps {
   loading: boolean;
   isOwnProfile: boolean;
   coverPic?: string | null;
+  // When provided, the profile section is controlled by the URL (the parent
+  // derives it from the route) and clicks are reported back to the parent so it
+  // can navigate. Without these props the component falls back to local state,
+  // which keeps it usable on its own.
+  activeFilter?: ProfileSectionFilter;
+  onFilterChange?: (filter: ProfileSectionFilter) => void;
 }
 
-type FilterType = 'all' | 'photos' | 'reels' | 'shared';
+const FilteredPostsLayout = ({
+  posts,
+  loading,
+  isOwnProfile,
+  coverPic,
+  activeFilter: controlledFilter,
+  onFilterChange,
+}: FilteredPostsLayoutProps) => {
+  const [internalFilter, setInternalFilter] = useState<ProfileSectionFilter>('all');
+  const activeFilter = controlledFilter ?? internalFilter;
 
-const FilteredPostsLayout = ({ posts, loading, isOwnProfile, coverPic }: FilteredPostsLayoutProps) => {
-  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const handleFilterChange = (filter: ProfileSectionFilter) => {
+    setInternalFilter(filter);
+    onFilterChange?.(filter);
+  };
 
   const filters = [
-    { id: 'all', label: 'All', icon: Grid3X3 },
+    { id: 'all', label: 'Posts', icon: Grid3X3 },
     { id: 'photos', label: 'Photos', icon: Image },
     { id: 'reels', label: 'Reels', icon: Video },
     { id: 'shared', label: 'Shared', icon: Share2 },
@@ -118,7 +136,8 @@ const FilteredPostsLayout = ({ posts, loading, isOwnProfile, coverPic }: Filtere
             return (
               <button
                 key={filter.id}
-                onClick={() => setActiveFilter(filter.id)}
+                data-testid={`profile-section-${filter.id}`}
+                onClick={() => handleFilterChange(filter.id)}
                 className={cn(
                   "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors",
                   activeFilter === filter.id
@@ -142,7 +161,8 @@ const FilteredPostsLayout = ({ posts, loading, isOwnProfile, coverPic }: Filtere
             return (
               <button
                 key={filter.id}
-                onClick={() => setActiveFilter(filter.id)}
+                data-testid={`profile-section-${filter.id}`}
+                onClick={() => handleFilterChange(filter.id)}
                 className={cn(
                   "flex items-center gap-2 px-4 py-2 rounded-full text-sm whitespace-nowrap transition-colors",
                   activeFilter === filter.id
