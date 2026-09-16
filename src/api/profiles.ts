@@ -6,7 +6,7 @@ export interface Profile {
   username: string;
   display_name: string;
   profile_pic: string | null;
-  cover_photo: string | null;
+  cover_pic: string | null;
   bio: string | null;
   location: string | null;
   website: string | null;

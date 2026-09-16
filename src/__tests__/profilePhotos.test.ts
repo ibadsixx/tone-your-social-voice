@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { extractPhotoAlbums, countPhotos } from '@/lib/profilePhotos';
+import {
+  extractPhotoAlbums,
+  buildProfilePhotos,
+  countPhotos,
+  PROFILE_COVER_ALBUM_ID,
+} from '@/lib/profilePhotos';
 import type { PhotoSourcePost } from '@/lib/profilePhotos';
 
 function post(overrides: Partial<PhotoSourcePost> & { id: string }): PhotoSourcePost {
@@ -129,5 +134,56 @@ describe('extractPhotoAlbums', () => {
     expect(extractPhotoAlbums(null)).toEqual([]);
     expect(extractPhotoAlbums(undefined)).toEqual([]);
     expect(countPhotos([])).toBe(0);
+  });
+});
+
+describe('buildProfilePhotos (cover photo)', () => {
+  it('Test 1: adds the current cover photo as the first tile', () => {
+    const albums = buildProfilePhotos(
+      [post({ id: 'p1', media_url: 'https://cdn.test/post.jpg', media_type: 'image' })],
+      'https://cdn.test/cover.jpg'
+    );
+
+    expect(albums).toHaveLength(2);
+    expect(albums[0].id).toBe(PROFILE_COVER_ALBUM_ID);
+    expect(albums[0].images).toEqual([
+      { url: 'https://cdn.test/cover.jpg', postId: PROFILE_COVER_ALBUM_ID, createdAt: null },
+    ]);
+    expect(albums[1].id).toBe('p1');
+    expect(countPhotos(albums)).toBe(2);
+  });
+
+  it('Test 2: shows the cover even when the profile has no photo posts', () => {
+    const albums = buildProfilePhotos([post({ id: 'text' })], 'https://cdn.test/cover.jpg');
+
+    expect(albums).toHaveLength(1);
+    expect(albums[0].id).toBe(PROFILE_COVER_ALBUM_ID);
+  });
+
+  it('Test 3: a profile without a cover photo adds no tile', () => {
+    const withNull = buildProfilePhotos([], null);
+    const withEmpty = buildProfilePhotos([], '  ');
+    expect(withNull).toEqual([]);
+    expect(withEmpty).toEqual([]);
+  });
+
+  it('Test 4: a cover-photo post does not produce a duplicate cover tile', () => {
+    const albums = buildProfilePhotos(
+      [post({ id: 'cp', type: 'cover_photo_update', media_url: 'https://cdn.test/cover.jpg' })],
+      'https://cdn.test/cover.jpg'
+    );
+
+    expect(albums).toHaveLength(1);
+    expect(albums[0].id).toBe(PROFILE_COVER_ALBUM_ID);
+  });
+
+  it('Test 5: skips the standalone cover tile when a post already shows the same image', () => {
+    const albums = buildProfilePhotos(
+      [post({ id: 'p1', media_url: 'https://cdn.test/cover.jpg', media_type: 'image' })],
+      'https://cdn.test/cover.jpg'
+    );
+
+    expect(albums).toHaveLength(1);
+    expect(albums[0].id).toBe('p1');
   });
 });

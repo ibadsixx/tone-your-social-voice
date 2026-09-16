@@ -101,3 +101,53 @@ describe('ProfilePhotosGrid', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
+
+describe('ProfilePhotosGrid cover photo', () => {
+  it('Test 1/6: shows the current cover as a tile (no posts needed) and opens the viewer', () => {
+    render(<ProfilePhotosGrid posts={[]} coverPic="https://cdn.test/cover.jpg" />);
+
+    const grid = screen.getByTestId('profile-photos-grid');
+    expect(grid.querySelectorAll('button')).toHaveLength(1);
+    const cover = grid.querySelector('img') as HTMLImageElement;
+    expect(cover.getAttribute('src')).toBe('https://cdn.test/cover.jpg');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open photo' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('Test 2: a profile without a cover photo has no cover tile', () => {
+    render(<ProfilePhotosGrid posts={[]} coverPic={null} />);
+    expect(screen.getByTestId('profile-photos-empty')).toBeTruthy();
+  });
+
+  it('Test 4: a cover-photo post does not produce a duplicate cover tile', () => {
+    render(
+      <ProfilePhotosGrid
+        posts={[
+          makePost({
+            id: 'cover-post',
+            type: 'cover_photo_update',
+            media_url: 'https://cdn.test/cover.jpg',
+          }),
+        ]}
+        coverPic="https://cdn.test/cover.jpg"
+      />
+    );
+
+    expect(screen.getByTestId('profile-photos-grid').querySelectorAll('button')).toHaveLength(1);
+  });
+
+  it('Test 5: the Photos filter in FilteredPostsLayout includes the cover photo', () => {
+    render(
+      <FilteredPostsLayout
+        posts={[makePost({ id: 'text1' })]}
+        loading={false}
+        isOwnProfile
+        coverPic="https://cdn.test/cover.jpg"
+      />
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Photos' })[0]);
+    expect(screen.getByTestId('profile-photos-grid').querySelectorAll('button')).toHaveLength(1);
+  });
+});

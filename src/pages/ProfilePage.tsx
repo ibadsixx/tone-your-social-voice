@@ -65,7 +65,7 @@ const ProfilePage = () => {
       
       setProfile(data);
       setIsOwnProfile(user?.id === data.id);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Profile fetch error:', error);
       navigate('/404');
     } finally {
@@ -108,7 +108,7 @@ const ProfilePage = () => {
       </Card>
 
       {/* Profile Tabs */}
-      <ProfileTabs profileId={profile.id} isOwnProfile={isOwnProfile} />
+      <ProfileTabs profileId={profile.id} isOwnProfile={isOwnProfile} coverPic={profile.cover_pic} />
     </PageContainer>
   );
 };

@@ -91,3 +91,33 @@ export function extractPhotoAlbums(posts: PhotoSourcePost[] | null | undefined):
 export function countPhotos(albums: PhotoAlbum[]): number {
   return albums.reduce((total, album) => total + album.images.length, 0);
 }
+
+export const PROFILE_COVER_ALBUM_ID = 'profile-cover';
+
+// Builds the Photos gallery including the profile's current cover photo. The
+// cover comes from `profiles.cover_pic` (the same value the header renders), so
+// it shows up even when no automatic "changed their cover photo" post exists.
+// It is skipped when the exact image already appears as one of the posts,
+// which keeps a cover-photo post from producing a duplicate tile.
+export function buildProfilePhotos(
+  posts: PhotoSourcePost[] | null | undefined,
+  coverPic?: string | null
+): PhotoAlbum[] {
+  const albums = extractPhotoAlbums(posts);
+  const cover = coverPic?.trim();
+  if (!cover) return albums;
+
+  const alreadyPresent = albums.some((album) =>
+    album.images.some((image) => image.url.trim() === cover)
+  );
+  if (alreadyPresent) return albums;
+
+  return [
+    {
+      id: PROFILE_COVER_ALBUM_ID,
+      createdAt: null,
+      images: [{ url: cover, postId: PROFILE_COVER_ALBUM_ID, createdAt: null }],
+    },
+    ...albums,
+  ];
+}

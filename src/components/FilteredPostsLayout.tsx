@@ -38,11 +38,12 @@ interface FilteredPostsLayoutProps {
   posts: PostData[];
   loading: boolean;
   isOwnProfile: boolean;
+  coverPic?: string | null;
 }
 
 type FilterType = 'all' | 'photos' | 'reels' | 'videos' | 'shared';
 
-const FilteredPostsLayout = ({ posts, loading, isOwnProfile }: FilteredPostsLayoutProps) => {
+const FilteredPostsLayout = ({ posts, loading, isOwnProfile, coverPic }: FilteredPostsLayoutProps) => {
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
 
   const filters = [
@@ -167,7 +168,7 @@ const FilteredPostsLayout = ({ posts, loading, isOwnProfile }: FilteredPostsLayo
       {/* Posts List / Photos gallery */}
       {activeFilter === 'photos' ? (
         <div className="flex-1">
-          <ProfilePhotosGrid posts={posts} loading={loading} />
+          <ProfilePhotosGrid posts={posts} loading={loading} coverPic={coverPic} />
         </div>
       ) : (
         <div className="flex-1 space-y-4">

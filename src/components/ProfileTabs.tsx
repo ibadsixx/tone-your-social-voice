@@ -12,9 +12,10 @@ import Mentions from '@/pages/Mentions';
 interface ProfileTabsProps {
   profileId: string;
   isOwnProfile: boolean;
+  coverPic?: string | null;
 }
 
-const ProfileTabs = ({ profileId, isOwnProfile }: ProfileTabsProps) => {
+const ProfileTabs = ({ profileId, isOwnProfile, coverPic }: ProfileTabsProps) => {
   const [activeTab, setActiveTab] = useState('posts');
   const { posts, loading: postsLoading } = useUserPosts(profileId);
 
@@ -48,6 +49,7 @@ const ProfileTabs = ({ profileId, isOwnProfile }: ProfileTabsProps) => {
           posts={posts} 
           loading={postsLoading} 
           isOwnProfile={isOwnProfile} 
+          coverPic={coverPic}
         />
       </TabsContent>
       
