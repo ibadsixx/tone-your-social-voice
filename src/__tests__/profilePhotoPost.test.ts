@@ -77,14 +77,15 @@ describe('createPhotoUpdatePost (cover photo changes)', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const method = init?.method || 'GET';
       if (String(input) === POSTS_URL && method === 'POST') {
-        return jsonResponse(201, {});
+        return jsonResponse(201, { id: 'post-cover-1' });
       }
       throw new Error(`no mock route for ${method} ${input}`);
     });
     (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock;
 
     const coverUrl = 'http://mock.test/api/media/cover.jpeg';
-    await createPhotoUpdatePost('alice-uuid', coverUrl, 'cover');
+    const postId = await createPhotoUpdatePost('alice-uuid', coverUrl, 'cover');
+    expect(postId).toBe('post-cover-1');
 
     const insertCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
     expect(insertCall).toBeTruthy();
@@ -101,7 +102,7 @@ describe('createPhotoUpdatePost (cover photo changes)', () => {
   it('stores ONLY the user caption when one is provided (still cover_photo_update)', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input) === POSTS_URL && init?.method === 'POST') {
-        return jsonResponse(201, {});
+        return jsonResponse(201, { id: 'post-cover-2' });
       }
       throw new Error(`no mock route for ${init?.method} ${input}`);
     });
@@ -119,7 +120,7 @@ describe('createPhotoUpdatePost (cover photo changes)', () => {
   it('cover post media references the newly uploaded cover URL', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input) === POSTS_URL && init?.method === 'POST') {
-        return jsonResponse(201, {});
+        return jsonResponse(201, { id: 'post-cover-3' });
       }
       throw new Error(`no mock route for ${init?.method} ${input}`);
     });
@@ -131,5 +132,17 @@ describe('createPhotoUpdatePost (cover photo changes)', () => {
     const insertCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
     const body = JSON.parse(insertCall![1].body as string);
     expect(body.media_url).toBe(coverUrl);
+  });
+
+  it('throws when the gateway rejects the insert (post must never silently disappear)', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === POSTS_URL && init?.method === 'POST') {
+        return jsonResponse(500, { message: 'No writable project for domain: posts' });
+      }
+      throw new Error(`no mock route for ${init?.method} ${input}`);
+    });
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock;
+
+    await expect(createPhotoUpdatePost('alice-uuid', 'http://mock.test/api/media/cover.jpeg', 'cover')).rejects.toThrow();
   });
 });

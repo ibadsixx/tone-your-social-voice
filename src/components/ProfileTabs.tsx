@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getUserPosts } from '@/hooks/usePosts';
+import { useUserPosts } from '@/hooks/usePosts';
 import AboutSection from './AboutSection';
 import Post from './Post';
 import ScheduledPostsTab from './ScheduledPostsTab';
@@ -16,7 +16,7 @@ interface ProfileTabsProps {
 
 const ProfileTabs = ({ profileId, isOwnProfile }: ProfileTabsProps) => {
   const [activeTab, setActiveTab] = useState('posts');
-  const { posts, loading: postsLoading } = getUserPosts(profileId);
+  const { posts, loading: postsLoading } = useUserPosts(profileId);
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">

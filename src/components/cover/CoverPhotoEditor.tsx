@@ -8,6 +8,7 @@ import { gateway } from '@/lib/gateway';
 import PhotoLibraryModal from './PhotoLibraryModal';
 import CoverRepositionModal from './CoverRepositionModal';
 import { createPhotoUpdatePost } from '@/hooks/usePhotoUpload';
+import { POST_CREATED_EVENT } from '@/hooks/useHomeFeed';
 
 interface CoverPhotoEditorProps {
   profile: {
@@ -89,18 +90,26 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
       if (updateError) throw updateError;
 
       // Automatic cover-photo-change post — only after the upload AND profile
-      // update have succeeded. If the post insert itself fails the cover is
-      // already saved, so the cover success toast still stands.
+      // update have succeeded. The insert reuses the composer's canonical
+      // creation path (postsApi), and failure is surfaced loudly rather than
+      // swallowed: the cover is saved, but the announcement post is a real DB
+      // row that must exist (verified by the feed). On success the app's
+      // POST_CREATED_EVENT makes mounted home/profile feeds refresh right away.
       try {
         await createPhotoUpdatePost(user.id, publicUrl, 'cover');
+        window.dispatchEvent(new CustomEvent(POST_CREATED_EVENT));
+        toast({
+          title: 'Success',
+          description: 'Cover photo updated successfully'
+        });
       } catch (postError) {
-        console.warn('[CoverPhotoEditor] Failed to create cover-change post:', postError);
+        console.error('[CoverPhotoEditor] Failed to create cover-change post:', postError);
+        toast({
+          title: 'Cover photo updated',
+          description: 'Your cover photo was saved, but the automatic post could not be created.',
+          variant: 'destructive'
+        });
       }
-
-      toast({
-        title: 'Success',
-        description: 'Cover photo updated successfully'
-      });
 
       onProfileUpdate?.();
     } catch {
@@ -253,14 +262,19 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
             // Automatic cover-photo-change post once the cover update succeeds.
             try {
               await createPhotoUpdatePost(user.id, photoUrl, 'cover');
+              window.dispatchEvent(new CustomEvent(POST_CREATED_EVENT));
+              toast({
+                title: 'Success',
+                description: 'Cover photo updated'
+              });
             } catch (postError) {
-              console.warn('[CoverPhotoEditor] Failed to create cover-change post:', postError);
+              console.error('[CoverPhotoEditor] Failed to create cover-change post:', postError);
+              toast({
+                title: 'Cover photo updated',
+                description: 'Your cover photo was saved, but the automatic post could not be created.',
+                variant: 'destructive'
+              });
             }
-
-            toast({
-              title: 'Success',
-              description: 'Cover photo updated'
-            });
 
             onProfileUpdate?.();
             setShowPhotoLibrary(false);

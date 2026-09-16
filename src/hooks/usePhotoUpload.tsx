@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { gateway } from '@/lib/gateway';
+import { postsApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
+import { POST_CREATED_EVENT } from '@/hooks/useHomeFeed';
 
 interface UploadResponse {
   publicUrl: string;
@@ -25,30 +27,31 @@ export const buildProfileUpdatePost = (
   type: type === 'profile' ? 'profile_picture_update' : 'cover_photo_update',
 });
 
-// Shared post-creation for automatic profile/cover-photo-change posts. Inserted
-// only with the user's actual caption (empty when none was entered) and the
-// dedicated post type so Post.tsx renders "changed their profile picture" /
-// "changed their cover photo" in the header — the phrase is never persisted
-// into the caption. Reused by the profile upload flow and the cover editor so
-// both photo changes produce the same kind of post.
+// Shared post-creation for automatic profile/cover-photo-change posts. Uses the
+// SAME canonical creation path as the main composer (postsApi.createPost) so the
+// announcement post behaves exactly like any other post. Inserted only with the
+// user's actual caption (empty when none was entered) and the dedicated post
+// type so Post.tsx renders "changed their profile picture" / "changed their
+// cover photo" in the header — the phrase is never persisted into the caption.
+// Throws on failure so callers can surface the error instead of silently
+// losing the post.
 export const createPhotoUpdatePost = async (
   userId: string,
   imageUrl: string,
   type: 'profile' | 'cover',
   customText?: string
-): Promise<void> => {
+): Promise<string> => {
   const payload = buildProfileUpdatePost(type, customText);
 
-  const { error } = await gateway
-    .from('posts')
-    .insert({
-      user_id: userId,
-      content: payload.content,
-      media_url: imageUrl,
-      type: payload.type
-    });
+  const { data, error } = await postsApi.createPost({
+    user_id: userId,
+    content: payload.content,
+    media_url: imageUrl,
+    type: payload.type
+  });
 
-  if (error) throw error;
+  if (error) throw new Error(error.message || 'Failed to create the automatic post');
+  return data?.id ?? '';
 };
 
 export const usePhotoUpload = () => {
@@ -89,15 +92,6 @@ export const usePhotoUpload = () => {
     if (error) throw error;
   };
 
-  const createPost = async (
-    userId: string,
-    imageUrl: string,
-    type: 'profile' | 'cover',
-    customText?: string
-  ) => {
-    await createPhotoUpdatePost(userId, imageUrl, type, customText);
-  };
-
   const uploadPhoto = async (
     file: File,
     type: 'profile' | 'cover',
@@ -115,8 +109,10 @@ export const usePhotoUpload = () => {
       const profileField = type === 'profile' ? 'profile_pic' : 'cover_pic';
       await updateProfile(userId, profileField, publicUrl);
       
-      // Create post
-      await createPost(userId, publicUrl, type, customText);
+      // Create post (throws on failure so the error toast below is shown)
+      await createPhotoUpdatePost(userId, publicUrl, type, customText);
+      // Let mounted feeds refresh with the new announcement post, like the composer.
+      window.dispatchEvent(new CustomEvent(POST_CREATED_EVENT));
       
       toast({
         title: 'Success',
