@@ -31,10 +31,17 @@ import { LifeEventsSection } from './LifeEventsSection';
 import { DetailsAboutYouSection } from './DetailsAboutYouSection';
 import { useProfile } from '@/hooks/useProfile';
 import OverviewSection from './OverviewSection';
+import { ABOUT_SECTIONS } from '@/lib/profileAbout';
+import type { AboutSectionId } from '@/lib/profileAbout';
 
 interface AboutSectionProps {
   profileId: string;
   isOwnProfile: boolean;
+  // When provided, the active subsection is controlled by the URL (the parent
+  // derives it from the route). Without these props the component falls back to
+  // local state, which keeps it usable on its own.
+  activeSection?: AboutSectionId;
+  onSectionChange?: (section: AboutSectionId) => void;
 }
 
 interface ProfileDetail {
@@ -52,6 +59,11 @@ interface SocialLink {
   url: string;
 }
 
+// Values held in the About edit forms: text/number inputs, calendar dates and
+// the websites/social-links array.
+type EditFormValue = string | number | Date | SocialLink[];
+type EditFormState = Record<string, EditFormValue>;
+
 interface ProfileData {
   email?: string;
   phone_country_code?: string;
@@ -68,16 +80,6 @@ interface ProfileData {
   birth_date_visibility?: string;
   birth_year_visibility?: string;
 }
-
-const aboutSections = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'work_education', label: 'Work and Education' },
-  { id: 'places', label: 'Places Lived' },
-  { id: 'contact', label: 'Contact and Basic Info' },
-  { id: 'family', label: 'Family and Relationships' },
-  { id: 'life_events', label: 'Life Events' },
-  { id: 'details', label: 'Details About You' }
-];
 
 const jobFunctions = [
   'Software Engineer',
@@ -104,21 +106,27 @@ const jobFunctions = [
   'Other'
 ];
 
-const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
+const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSection, onSectionChange }: AboutSectionProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const { profile, refetch: refetchProfile } = useProfile(profileId);
   const [profileDetails, setProfileDetails] = useState<ProfileDetail[]>([]);
   const [profileData, setProfileData] = useState<ProfileData>({});
   const [editingSection, setEditingSection] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Record<string, any>>({});
+  const [editForm, setEditForm] = useState<EditFormState>({});
   const [visibilityForm, setVisibilityForm] = useState<Record<string, string>>({});
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [selectedCollege, setSelectedCollege] = useState<College | null>(null);
   const [selectedHighSchool, setSelectedHighSchool] = useState<HighSchool | null>(null);
   const [customFunction, setCustomFunction] = useState('');
   const [loading, setLoading] = useState(true);
-  const [activeSection, setActiveSection] = useState('overview');
+  const [internalSection, setInternalSection] = useState<AboutSectionId>('overview');
+  const activeSection = controlledSection ?? internalSection;
+
+  const handleSectionChange = (section: AboutSectionId) => {
+    setInternalSection(section);
+    onSectionChange?.(section);
+  };
 
   useEffect(() => {
     fetchProfileDetails();
@@ -190,7 +198,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
         });
       }
 
-      let allDetails = details || [];
+      const allDetails = details || [];
 
       // Add work_education details from profiles table
       if (profile) {
@@ -207,7 +215,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
         }
         
         if (profile.companies) {
-          const company = profile.companies as any;
+          const company = profile.companies as { name: string; type: string } | null;
           allDetails.push({
             id: 'company',
             section: 'work_education',
@@ -264,7 +272,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
       }
 
       setProfileDetails(allDetails);
-    } catch (error: any) {
+    } catch {
       toast({
         title: 'Error',
         description: 'Failed to load profile details',
@@ -281,7 +289,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
 
   const handleEditSection = async (section: string) => {
     const sectionDetails = getDetailsBySection(section);
-    const formData: Record<string, any> = {};
+    const formData: EditFormState = {};
     const visibilityData: Record<string, string> = {};
     
     // Handle regular profile details sections
@@ -352,9 +360,11 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
     try {
       if (section === 'work_education') {
         // Handle work_education section with profiles table
-        const updateData: any = {};
+        const updateData: Record<string, unknown> = {};
         
-        let functionValue: string | undefined = editForm.job_function;
+        const rawFunction = editForm.job_function;
+        let functionValue: string | undefined =
+          typeof rawFunction === 'string' ? rawFunction : undefined;
         if (functionValue === 'Other') {
           // "Other" reveals a free-text job-title field; the typed title is the
           // saved function. Fall back to "Other" only when nothing was typed.
@@ -389,7 +399,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
         if (error) throw error;
       } else if (section === 'contact') {
         // Handle contact section with profiles table for new fields
-        const updateData: any = {};
+        const updateData: Record<string, unknown> = {};
         
         // Phone fields
         if (editForm.phone_country_code) updateData.phone_country_code = editForm.phone_country_code;
@@ -459,7 +469,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
         title: 'Success',
         description: 'Profile details updated successfully'
       });
-    } catch (error: any) {
+    } catch {
       toast({
         title: 'Error',
         description: 'Failed to update profile details',
@@ -548,7 +558,7 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between p-4 md:p-6">
           <CardTitle className="text-base md:text-lg">
-            {aboutSections.find(s => s.id === section)?.label}
+            {ABOUT_SECTIONS.find(s => s.id === section)?.label}
           </CardTitle>
           {isOwnProfile && !isEditing && (
             <Button
@@ -847,8 +857,8 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
       return (
         <div className="text-center text-muted-foreground py-8">
           {isOwnProfile 
-            ? `Add information to your ${aboutSections.find(s => s.id === section)?.label.toLowerCase()} section`
-            : `No ${aboutSections.find(s => s.id === section)?.label.toLowerCase()} information available`
+            ? `Add information to your ${ABOUT_SECTIONS.find(s => s.id === section)?.label.toLowerCase()} section`
+            : `No ${ABOUT_SECTIONS.find(s => s.id === section)?.label.toLowerCase()} information available`
           }
         </div>
       );
@@ -1058,12 +1068,12 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
     <div className="w-full">
       {/* Mobile Dropdown */}
       <div className="md:hidden mb-6">
-        <Select value={activeSection} onValueChange={setActiveSection}>
+        <Select value={activeSection} onValueChange={(value) => handleSectionChange(value as AboutSectionId)}>
           <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {aboutSections.map(section => (
+            {ABOUT_SECTIONS.map(section => (
               <SelectItem key={section.id} value={section.id}>
                 {section.label}
               </SelectItem>
@@ -1078,10 +1088,10 @@ const AboutSection = ({ profileId, isOwnProfile }: AboutSectionProps) => {
         <div className="hidden md:block w-64 flex-shrink-0">
           <Card className="p-2">
             <nav className="space-y-1">
-              {aboutSections.map(section => (
+              {ABOUT_SECTIONS.map(section => (
                 <button
                   key={section.id}
-                  onClick={() => setActiveSection(section.id)}
+                  onClick={() => handleSectionChange(section.id)}
                   className={cn(
                     "w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors",
                     activeSection === section.id

@@ -9,6 +9,7 @@ import FilteredPostsLayout from './FilteredPostsLayout';
 import FriendsTab from './FriendsTab';
 import Mentions from '@/pages/Mentions';
 import type { ProfileSectionFilter } from '@/lib/profileSections';
+import type { AboutSectionId } from '@/lib/profileAbout';
 
 interface ProfileTabsProps {
   profileId: string;
@@ -16,14 +17,36 @@ interface ProfileTabsProps {
   coverPic?: string | null;
   activeFilter?: ProfileSectionFilter;
   onFilterChange?: (filter: ProfileSectionFilter) => void;
+  // When provided, the selected top-level tab is controlled by the URL. The
+  // scheduled/mentions/friends tabs are not URL-backed, so the component keeps
+  // managing the tab internally unless a value is supplied.
+  activeTab?: string;
+  onTabChange?: (tab: string) => void;
+  aboutSection?: AboutSectionId;
+  onAboutSectionChange?: (section: AboutSectionId) => void;
 }
 
-const ProfileTabs = ({ profileId, isOwnProfile, coverPic, activeFilter, onFilterChange }: ProfileTabsProps) => {
-  const [activeTab, setActiveTab] = useState('posts');
+const ProfileTabs = ({
+  profileId,
+  isOwnProfile,
+  coverPic,
+  activeFilter,
+  onFilterChange,
+  activeTab: controlledTab,
+  onTabChange,
+  aboutSection,
+  onAboutSectionChange,
+}: ProfileTabsProps) => {
+  const [internalTab, setInternalTab] = useState('posts');
+  const activeTab = controlledTab ?? internalTab;
+  const handleTabChange = (tab: string) => {
+    setInternalTab(tab);
+    onTabChange?.(tab);
+  };
   const { posts, loading: postsLoading } = useUserPosts(profileId);
 
   return (
-    <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
+    <Tabs value={activeTab} onValueChange={handleTabChange} className="mt-6">
       <TabsList className={`w-full grid h-9 md:h-10 ${isOwnProfile ? 'grid-cols-5' : 'grid-cols-3'}`}>
         <TabsTrigger value="posts" className="px-1 md:px-3" aria-label="Posts">
           <span className="md:hidden">P</span>
@@ -71,7 +94,12 @@ const ProfileTabs = ({ profileId, isOwnProfile, coverPic, activeFilter, onFilter
       )}
       
       <TabsContent value="about" className="mt-6">
-        <AboutSection profileId={profileId} isOwnProfile={isOwnProfile} />
+        <AboutSection
+          profileId={profileId}
+          isOwnProfile={isOwnProfile}
+          activeSection={aboutSection}
+          onSectionChange={onAboutSectionChange}
+        />
       </TabsContent>
       
       <TabsContent value="friends" className="mt-6">

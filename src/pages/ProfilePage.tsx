@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useMatch } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { profilesApi } from '@/api';
 import type { Profile } from '@/api/profiles';
@@ -16,6 +16,11 @@ import {
   redirectForInvalidSection,
 } from '@/lib/profileSections';
 import type { ProfileSectionFilter } from '@/lib/profileSections';
+import {
+  aboutSectionPath,
+  slugToAboutSection,
+} from '@/lib/profileAbout';
+import type { AboutSectionId } from '@/lib/profileAbout';
 
 const ProfilePage = () => {
   const { username, section } = useParams<{ username: string; section?: string }>();
@@ -95,6 +100,37 @@ const ProfilePage = () => {
     navigate(profileSectionPath(profile.username, filter));
   };
 
+  // The About tab and its subsections are also URL-driven, so they deep-link
+  // and support back/forward while the profile shell stays mounted.
+  const aboutBaseMatch = useMatch('/profile/:username/about');
+  const aboutSubMatch = useMatch('/profile/:username/about/:aboutSection');
+  const isAboutRoute = Boolean(aboutBaseMatch || aboutSubMatch);
+  const aboutSlug = aboutSubMatch?.params.aboutSection;
+  const resolvedAboutSection = aboutSlug ? slugToAboutSection(aboutSlug) : 'overview';
+  const activeAboutSection: AboutSectionId | undefined = isAboutRoute
+    ? resolvedAboutSection ?? 'overview'
+    : undefined;
+
+  useEffect(() => {
+    if (!profile || !aboutSubMatch || !aboutSlug) return;
+    if (slugToAboutSection(aboutSlug)) return;
+    navigate(aboutSectionPath(profile.username, 'overview'), { replace: true });
+  }, [aboutSubMatch, aboutSlug, profile, navigate]);
+
+  const handleTabChange = (tab: string) => {
+    if (!profile) return;
+    if (tab === 'about') {
+      navigate(aboutSectionPath(profile.username, 'overview'));
+    } else if (tab === 'posts') {
+      navigate(profileSectionPath(profile.username, activeFilter));
+    }
+  };
+
+  const handleAboutSectionChange = (sectionId: AboutSectionId) => {
+    if (!profile) return;
+    navigate(aboutSectionPath(profile.username, sectionId));
+  };
+
   if (loading) {
     return (
       <PageContainer size="md">
@@ -134,6 +170,10 @@ const ProfilePage = () => {
         coverPic={profile.cover_pic}
         activeFilter={activeFilter}
         onFilterChange={handleFilterChange}
+        activeTab={isAboutRoute ? 'about' : undefined}
+        onTabChange={handleTabChange}
+        aboutSection={activeAboutSection}
+        onAboutSectionChange={handleAboutSectionChange}
       />
     </PageContainer>
   );
