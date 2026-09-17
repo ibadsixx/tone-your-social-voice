@@ -6,28 +6,42 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Globe, Lock, EyeOff } from 'lucide-react';
+import { validateGroupName, validateGroupPrivacy } from '@/lib/groupSettings';
 
 interface CreateGroupDialogProps {
-  onCreateGroup: (name: string, description: string, privacy: string) => Promise<any>;
+  onCreateGroup: (name: string, description: string, privacy: string) => Promise<unknown>;
 }
 
 export const CreateGroupDialog = ({ onCreateGroup }: CreateGroupDialogProps) => {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [privacy, setPrivacy] = useState('public');
+  // Privacy is REQUIRED and must be explicitly chosen — no silent default.
+  const [privacy, setPrivacy] = useState('');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [privacyError, setPrivacyError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const reset = () => {
+    setName('');
+    setDescription('');
+    setPrivacy('');
+    setNameError(null);
+    setPrivacyError(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    const nextNameError = validateGroupName(name);
+    const nextPrivacyError = validateGroupPrivacy(privacy);
+    setNameError(nextNameError);
+    setPrivacyError(nextPrivacyError);
+    if (nextNameError || nextPrivacyError) return;
 
     setLoading(true);
     try {
       await onCreateGroup(name.trim(), description.trim(), privacy);
-      setName('');
-      setDescription('');
-      setPrivacy('public');
+      reset();
       setOpen(false);
     } catch (error) {
       // Error handled by hook
@@ -37,7 +51,13 @@ export const CreateGroupDialog = ({ onCreateGroup }: CreateGroupDialogProps) => 
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) reset();
+      }}
+    >
       <DialogTrigger asChild>
         <Button>
           <Plus className="h-4 w-4 mr-2" />
@@ -48,16 +68,22 @@ export const CreateGroupDialog = ({ onCreateGroup }: CreateGroupDialogProps) => 
         <DialogHeader>
           <DialogTitle>Create New Group</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div className="space-y-2">
-            <Label htmlFor="group-name">Group Name</Label>
+            <Label htmlFor="group-name">
+              Group Name <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="group-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (nameError) setNameError(null);
+              }}
               placeholder="Enter group name..."
-              required
+              aria-invalid={!!nameError}
             />
+            {nameError && <p className="text-sm text-destructive">{nameError}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="group-description">Description (Optional)</Label>
@@ -70,10 +96,18 @@ export const CreateGroupDialog = ({ onCreateGroup }: CreateGroupDialogProps) => 
             />
           </div>
           <div className="space-y-2">
-            <Label>Privacy</Label>
-            <Select value={privacy} onValueChange={setPrivacy}>
-              <SelectTrigger>
-                <SelectValue />
+            <Label>
+              Privacy <span className="text-destructive">*</span>
+            </Label>
+            <Select
+              value={privacy}
+              onValueChange={(value) => {
+                setPrivacy(value);
+                if (privacyError) setPrivacyError(null);
+              }}
+            >
+              <SelectTrigger aria-invalid={!!privacyError}>
+                <SelectValue placeholder="Select privacy" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="public">
@@ -96,6 +130,7 @@ export const CreateGroupDialog = ({ onCreateGroup }: CreateGroupDialogProps) => 
                 </SelectItem>
               </SelectContent>
             </Select>
+            {privacyError && <p className="text-sm text-destructive">{privacyError}</p>}
           </div>
           <div className="flex gap-2 pt-2">
             <Button
@@ -106,11 +141,7 @@ export const CreateGroupDialog = ({ onCreateGroup }: CreateGroupDialogProps) => 
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={!name.trim() || loading}
-              className="flex-1"
-            >
+            <Button type="submit" disabled={loading} className="flex-1">
               {loading ? 'Creating...' : 'Create Group'}
             </Button>
           </div>

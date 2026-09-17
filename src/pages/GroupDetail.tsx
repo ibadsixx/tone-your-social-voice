@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { groupsApi, postsApi } from '@/api';
+import type { GroupRule } from '@/api/types';
 import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -10,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +23,7 @@ import {
   UserPlus, Search, MoreHorizontal, ArrowLeft,
   MessageSquare, ImageIcon,
   FileText, CalendarDays, Camera, Bell, UserX, LogOut,
-  LayoutList, Pin, Flag, ChevronRight, Pencil
+  LayoutList, Pin, Flag, ChevronRight, Pencil, ClipboardList, EyeOff
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -35,6 +37,8 @@ import PageContainer from '@/components/PageContainer';
 import GroupMediaFiles from '@/components/groups/GroupMediaFiles';
 import GroupNotificationSettings from '@/components/groups/GroupNotificationSettings';
 import ReportGroupDialog from '@/components/groups/ReportGroupDialog';
+import GroupRulesManagerDialog from '@/components/groups/GroupRulesManagerDialog';
+import { validateGroupName, validateGroupPrivacy, PRIVACY_OPTIONS } from '@/lib/groupSettings';
 import NewPost from '@/components/NewPost';
 import { useHomeFeed } from '@/hooks/useHomeFeed';
 import Post from '@/components/Post';
@@ -48,6 +52,7 @@ interface GroupDetail {
   created_by: string | null;
   invite_followers: boolean;
   cover_image: string | null;
+  rules_enabled: boolean;
 }
 
 interface GroupMember {
@@ -79,22 +84,90 @@ const AboutTabContent = ({
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description || '');
   const [privacy, setPrivacy] = useState(group.privacy);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [privacyError, setPrivacyError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [rules, setRules] = useState<GroupRule[]>([]);
+  const [rulesLoading, setRulesLoading] = useState(false);
+  const [rulesManagerOpen, setRulesManagerOpen] = useState(false);
+  const [togglingRules, setTogglingRules] = useState(false);
   const { toast } = useToast();
 
+  const rulesEnabled = !!group.rules_enabled;
+
+  const loadRules = useCallback(async () => {
+    setRulesLoading(true);
+    const { data, error } = await groupsApi.getGroupRules(group.id);
+    if (!error) setRules(data || []);
+    setRulesLoading(false);
+  }, [group.id]);
+
+  useEffect(() => {
+    if (rulesEnabled) {
+      loadRules();
+    } else {
+      setRules([]);
+    }
+  }, [rulesEnabled, loadRules]);
+
+  const startEditing = () => {
+    setName(group.name);
+    setDescription(group.description || '');
+    setPrivacy(group.privacy);
+    setNameError(null);
+    setPrivacyError(null);
+    setEditing(true);
+  };
+
   const handleSave = async () => {
+    const nextNameError = validateGroupName(name);
+    const nextPrivacyError = validateGroupPrivacy(privacy);
+    setNameError(nextNameError);
+    setPrivacyError(nextPrivacyError);
+    if (nextNameError || nextPrivacyError) return;
+
     setSaving(true);
-    const { error } = await groupsApi.updateGroup(group.id, { name: name.trim(), description: description.trim(), privacy } as any);
+    // Settings are validated and authorized by the Gateway; the caller's owner
+    // identity is resolved server-side, never sent from here.
+    const { data, error } = await groupsApi.updateGroupSettings(group.id, {
+      name: name.trim(),
+      description: description.trim(),
+      privacy,
+    });
+    setSaving(false);
 
     if (error) {
-      toast({ title: 'Error', description: 'Failed to update group info.', variant: 'destructive' });
-    } else {
-      onGroupUpdate({ name: name.trim(), description: description.trim(), privacy });
-      toast({ title: 'Updated', description: 'Group info has been updated.' });
-      setEditing(false);
+      toast({ title: 'Error', description: error.message || 'Failed to update group info.', variant: 'destructive' });
+      return;
     }
-    setSaving(false);
+    onGroupUpdate({
+      name: data?.name ?? name.trim(),
+      description: data?.description ?? (description.trim() || null),
+      privacy: data?.privacy ?? privacy,
+    });
+    toast({ title: 'Updated', description: 'Group info has been updated.' });
+    setEditing(false);
   };
+
+  const handleToggleRules = async (enabled: boolean) => {
+    setTogglingRules(true);
+    const { data, error } = await groupsApi.setGroupRulesEnabled(group.id, enabled);
+    setTogglingRules(false);
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      return;
+    }
+    onGroupUpdate({ rules_enabled: data?.rules_enabled ?? enabled });
+    toast({
+      title: enabled ? 'Group Rules enabled' : 'Group Rules disabled',
+      description: enabled
+        ? 'You can now add rules for this group.'
+        : 'The group is back to normal/free mode.',
+    });
+    if (enabled) loadRules();
+  };
+
+  const privacyOption = PRIVACY_OPTIONS.find((option) => option.value === group.privacy) ?? PRIVACY_OPTIONS[0];
 
   return (
     <Card>
@@ -102,7 +175,7 @@ const AboutTabContent = ({
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">About this group</h3>
           {isAdmin && !editing && (
-            <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+            <Button variant="ghost" size="sm" onClick={startEditing}>
               <Pencil className="h-4 w-4 mr-1" /> Edit
             </Button>
           )}
@@ -111,8 +184,19 @@ const AboutTabContent = ({
         {editing ? (
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium mb-1 block">Group name</label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} />
+              <label className="text-sm font-medium mb-1 block">
+                Group name <span className="text-destructive">*</span>
+              </label>
+              <Input
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (nameError) setNameError(null);
+                }}
+                maxLength={100}
+                aria-invalid={!!nameError}
+              />
+              {nameError && <p className="text-sm text-destructive mt-1">{nameError}</p>}
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Description</label>
@@ -125,22 +209,34 @@ const AboutTabContent = ({
               />
             </div>
             <div>
-              <label className="text-sm font-medium mb-1 block">Privacy</label>
-              <Select value={privacy} onValueChange={setPrivacy}>
-                <SelectTrigger>
-                  <SelectValue />
+              <label className="text-sm font-medium mb-1 block">
+                Privacy <span className="text-destructive">*</span>
+              </label>
+              <Select
+                value={privacy}
+                onValueChange={(value) => {
+                  setPrivacy(value);
+                  if (privacyError) setPrivacyError(null);
+                }}
+              >
+                <SelectTrigger aria-invalid={!!privacyError}>
+                  <SelectValue placeholder="Select privacy" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="public">Public</SelectItem>
-                  <SelectItem value="private">Private</SelectItem>
+                  {PRIVACY_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              {privacyError && <p className="text-sm text-destructive mt-1">{privacyError}</p>}
             </div>
             <div className="flex gap-2 pt-2">
-              <Button onClick={handleSave} disabled={saving || !name.trim()}>
+              <Button onClick={handleSave} disabled={saving}>
                 {saving ? 'Saving...' : 'Save'}
               </Button>
-              <Button variant="ghost" onClick={() => { setEditing(false); setName(group.name); setDescription(group.description || ''); setPrivacy(group.privacy); }}>
+              <Button variant="ghost" onClick={() => setEditing(false)}>
                 Cancel
               </Button>
             </div>
@@ -155,22 +251,16 @@ const AboutTabContent = ({
             <div className="space-y-3 pt-2">
               <div className="flex items-center gap-3 text-sm">
                 {group.privacy === 'public' ? (
-                  <>
-                    <Globe className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="font-medium">Public</p>
-                      <p className="text-muted-foreground">Anyone can see who's in the group and what they post.</p>
-                    </div>
-                  </>
+                  <Globe className="h-5 w-5 text-muted-foreground" />
+                ) : group.privacy === 'closed' ? (
+                  <EyeOff className="h-5 w-5 text-muted-foreground" />
                 ) : (
-                  <>
-                    <Lock className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="font-medium">Private</p>
-                      <p className="text-muted-foreground">Only members can see who's in the group and what they post.</p>
-                    </div>
-                  </>
+                  <Lock className="h-5 w-5 text-muted-foreground" />
                 )}
+                <div>
+                  <p className="font-medium">{privacyOption.label}</p>
+                  <p className="text-muted-foreground">{privacyOption.description}</p>
+                </div>
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <CalendarDays className="h-5 w-5 text-muted-foreground" />
@@ -190,6 +280,62 @@ const AboutTabContent = ({
                 </div>
               </div>
             </div>
+
+            <div className="border-t pt-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 text-sm">
+                  <ClipboardList className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <p className="font-medium">Group Rules</p>
+                    <p className="text-muted-foreground">
+                      {rulesEnabled
+                        ? 'On — members can view the rules below.'
+                        : 'Off — the group is in normal/free mode.'}
+                    </p>
+                  </div>
+                </div>
+                {isAdmin ? (
+                  <Switch
+                    checked={rulesEnabled}
+                    onCheckedChange={handleToggleRules}
+                    disabled={togglingRules}
+                    aria-label="Enable Group Rules"
+                  />
+                ) : (
+                  <Badge variant={rulesEnabled ? 'default' : 'secondary'}>
+                    {rulesEnabled ? 'ON' : 'OFF'}
+                  </Badge>
+                )}
+              </div>
+
+              {rulesEnabled && (
+                <div className="space-y-2 pl-8">
+                  {isAdmin && (
+                    <Button variant="outline" size="sm" onClick={() => setRulesManagerOpen(true)}>
+                      <Pencil className="h-4 w-4 mr-1" /> Manage Group Rules
+                    </Button>
+                  )}
+                  {rulesLoading ? (
+                    <p className="text-sm text-muted-foreground">Loading rules...</p>
+                  ) : rules.length === 0 ? (
+                    <p className="text-sm text-muted-foreground italic">No rules have been added yet.</p>
+                  ) : (
+                    <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
+                      {rules.map((rule) => (
+                        <li key={rule.id}>{rule.rule_text}</li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <GroupRulesManagerDialog
+              open={rulesManagerOpen}
+              onOpenChange={setRulesManagerOpen}
+              groupId={group.id}
+              onRulesChanged={setRules}
+            />
           </>
         )}
       </CardContent>
@@ -392,7 +538,7 @@ const GroupDetailPage = () => {
 
       const coverUrl = `${publicUrl}?t=${Date.now()}`;
 
-      const { error: updateError } = await groupsApi.updateGroup(groupId, { cover_image: coverUrl } as any);
+      const { error: updateError } = await groupsApi.updateGroupCover(groupId, coverUrl);
 
       if (updateError) throw updateError;
 

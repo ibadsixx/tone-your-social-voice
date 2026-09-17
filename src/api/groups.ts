@@ -1,6 +1,132 @@
-import { gateway } from './client';
+import { gateway, API_URL } from './client';
 import type { ApiResult } from './client';
-import type { Group, GroupMember, GroupPost, GroupFollow, GroupPin } from './types';
+import type { Group, GroupMember, GroupPost, GroupFollow, GroupPin, GroupRule } from './types';
+import type { GroupPrivacy } from '@/lib/groupSettings';
+
+function getAccessToken(): string | null {
+  try {
+    const sessionStr = localStorage.getItem('tone-auth-token');
+    if (sessionStr) {
+      const session = JSON.parse(sessionStr);
+      return session?.access_token ?? null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+// All group settings/rules writes go through the API Gateway's authorized
+// v1/group endpoints (the Gateway resolves the owner server-side). The
+// browser never writes these tables directly.
+async function callGateway<T>(path: string, init: RequestInit): Promise<ApiResult<T>> {
+  if (!API_URL) {
+    return { data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } };
+  }
+  try {
+    const token = getAccessToken();
+    const res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init.headers || {}),
+      },
+    });
+    const body = res.status === 204 ? null : await res.json().catch(() => null);
+    if (!res.ok) {
+      return {
+        data: null,
+        error: {
+          message: (body as { error?: string } | null)?.error || `Request failed (${res.status})`,
+          code: String(res.status),
+        },
+      };
+    }
+    return { data: body as T, error: null };
+  } catch (err) {
+    return { data: null, error: { message: String(err) } };
+  }
+}
+
+export async function createGroupSecure(input: {
+  name: string;
+  description?: string | null;
+  privacy: GroupPrivacy | string;
+}): Promise<ApiResult<Group>> {
+  return callGateway<Group>('/api/v1/groups', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateGroupSettings(
+  groupId: string,
+  input: { name: string; description?: string | null; privacy: GroupPrivacy | string }
+): Promise<ApiResult<Group>> {
+  return callGateway<Group>(`/api/v1/groups/${encodeURIComponent(groupId)}/settings`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateGroupCover(
+  groupId: string,
+  coverImage: string | null
+): Promise<ApiResult<Group>> {
+  return callGateway<Group>(`/api/v1/groups/${encodeURIComponent(groupId)}/cover`, {
+    method: 'PUT',
+    body: JSON.stringify({ cover_image: coverImage }),
+  });
+}
+
+export async function setGroupRulesEnabled(groupId: string, enabled: boolean): Promise<ApiResult<Group>> {
+  return callGateway<Group>(`/api/v1/groups/${encodeURIComponent(groupId)}/rules-enabled`, {
+    method: 'PUT',
+    body: JSON.stringify({ rules_enabled: enabled }),
+  });
+}
+
+export async function getGroupRules(groupId: string): Promise<ApiResult<GroupRule[]>> {
+  return callGateway<GroupRule[]>(`/api/v1/groups/${encodeURIComponent(groupId)}/rules`, {
+    method: 'GET',
+  });
+}
+
+export async function addGroupRule(groupId: string, ruleText: string): Promise<ApiResult<GroupRule[]>> {
+  return callGateway<GroupRule[]>(`/api/v1/groups/${encodeURIComponent(groupId)}/rules`, {
+    method: 'POST',
+    body: JSON.stringify({ rule_text: ruleText }),
+  });
+}
+
+export async function updateGroupRule(
+  groupId: string,
+  ruleId: string,
+  ruleText: string
+): Promise<ApiResult<GroupRule[]>> {
+  return callGateway<GroupRule[]>(
+    `/api/v1/groups/${encodeURIComponent(groupId)}/rules/${encodeURIComponent(ruleId)}`,
+    { method: 'PUT', body: JSON.stringify({ rule_text: ruleText }) }
+  );
+}
+
+export async function deleteGroupRule(groupId: string, ruleId: string): Promise<ApiResult<GroupRule[]>> {
+  return callGateway<GroupRule[]>(
+    `/api/v1/groups/${encodeURIComponent(groupId)}/rules/${encodeURIComponent(ruleId)}`,
+    { method: 'DELETE' }
+  );
+}
+
+export async function reorderGroupRules(
+  groupId: string,
+  orderedIds: string[]
+): Promise<ApiResult<GroupRule[]>> {
+  return callGateway<GroupRule[]>(`/api/v1/groups/${encodeURIComponent(groupId)}/rules/reorder`, {
+    method: 'PUT',
+    body: JSON.stringify({ ordered_ids: orderedIds }),
+  });
+}
 
 const GROUP_SELECT_WITH_MEMBERS = `
   *,

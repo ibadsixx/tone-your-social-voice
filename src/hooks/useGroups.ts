@@ -9,6 +9,7 @@ export interface Group {
   name: string;
   description: string | null;
   privacy: string;
+  rules_enabled?: boolean;
   created_at: string;
   member_count?: number;
   is_member?: boolean;
@@ -101,17 +102,24 @@ export const useGroups = () => {
     if (!user) return;
 
     try {
-      const { data: newGroup, error: createError } = await groupsApi.createGroup({ name, description, privacy });
+      // The Gateway validates name/privacy, stamps created_by with the
+      // authenticated user, and creates the owner membership row.
+      const { data: newGroup, error: createError } = await groupsApi.createGroupSecure({
+        name,
+        description,
+        privacy,
+      });
       if (createError) throw createError;
-
-      const { error: joinError } = await groupsApi.joinGroup(newGroup.id, user.id, 'admin');
-      if (joinError) throw joinError;
 
       toast({ title: 'Success', description: 'Group created successfully!' });
       fetchGroups();
       return newGroup;
     } catch (error: any) {
-      toast({ title: 'Error', description: 'Failed to create group', variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: error?.message || 'Failed to create group',
+        variant: 'destructive',
+      });
     }
   };
 

@@ -140,9 +140,19 @@ export interface Group {
   privacy: string;
   invite_followers: boolean;
   cover_image: string | null;
+  rules_enabled: boolean;
   member_count?: number;
   created_at: string;
   [key: string]: unknown;
+}
+
+export interface GroupRule {
+  id: string;
+  group_id: string;
+  rule_text: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface GroupMember {
