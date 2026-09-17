@@ -315,6 +315,58 @@ async function computeUnreadCounts(convIds: string[], userId: string): Promise<M
   return unreadMap;
 }
 
+// Chats-list ordering (message.md): the list must ALWAYS be ordered by the most
+// recent message/activity in each chat, newest first — never by conversation
+// creation date, first-message date, conversation id, array position, unread
+// count or a displayed relative time. Direct, Group and Channel items all
+// normalize to the single machine-readable `latestActivityAt` field before
+// sorting. Sorting returns a fresh array (never mutates) so React state
+// updates are reliably detected and the reorder takes effect immediately.
+export function sortConversationsByLatestActivity(convs: Conversation[]): Conversation[] {
+  if (convs.length <= 1) return convs;
+  const ts = (c: Conversation) =>
+    new Date(c.latestActivityAt ?? c.updated_at ?? c.created_at).getTime() || 0;
+  return [...convs].sort((a, b) => ts(b) - ts(a));
+}
+
+export type ConversationActivityPatch = {
+  lastMessage?: Conversation['last_message'];
+  createdAt?: string;
+  unreadDelta?: number;
+};
+
+// Pure core of the "move this chat to the top immediately" path, shared by send
+// (sendMessage) and receive (handleMessageCreated): refresh the chat's
+// last-message preview + latestActivityAt, apply the unread delta (own/active
+// messages pass no delta; a received message in a closed chat passes +1), then
+// re-sort. Returns a NEW array (and new item) so React detects the change; the
+// existing item is UPDATED rather than duplicated. If the chat isn't currently
+// in the list the input is returned unchanged and the authoritative refetch
+// adds it.
+export function applyConversationActivityUpdate(
+  conversations: Conversation[],
+  conversationId: string,
+  patch: ConversationActivityPatch
+): Conversation[] {
+  if (!conversationId) return conversations;
+  const existing = conversations.find(c => c.conversation_id === conversationId);
+  if (!existing) return conversations;
+  const latestActivityAt =
+    patch.createdAt ?? patch.lastMessage?.created_at ?? existing.latestActivityAt;
+  return sortConversationsByLatestActivity(
+    conversations.map(c =>
+      c.conversation_id === conversationId
+        ? {
+            ...c,
+            last_message: patch.lastMessage ?? c.last_message,
+            latestActivityAt: latestActivityAt || existing.updated_at || existing.created_at,
+            unread_count: Math.max(0, (c.unread_count || 0) + (patch.unreadDelta ?? 0)),
+          }
+        : c
+    )
+  );
+}
+
 export async function fetchConversationsDirectly(userId: string): Promise<Conversation[]> {
   const { data: participants } = await gateway
     .from('conversation_participants')
@@ -396,7 +448,7 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
   // list exposes the current user's unread state for every conversation.
   const unreadMap = await computeUnreadCounts(convIds2, userId);
 
-  return visibleConvs.map(conv => {
+  const items = visibleConvs.map(conv => {
     const otherUserId = firstOtherPerConv.get(conv.id);
     const otherProfile = otherUserId ? profileMap.get(otherUserId) : null;
     const lastMsg = lastMsgMap.get(conv.id);
@@ -409,6 +461,7 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
       group_image: conv.group_image ?? undefined,
       created_at: conv.created_at,
       updated_at: conv.updated_at,
+      latestActivityAt: lastMsg ? lastMsg.created_at : (conv.updated_at || conv.created_at),
       other_user: conv.type !== 'dm' ? undefined : otherProfile ? {
         id: otherProfile.id,
         username: otherProfile.username,
@@ -424,14 +477,15 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
       unread_count: unreadMap.get(conv.id) || 0,
     };
   });
+
+  return sortConversationsByLatestActivity(items);
 }
 
 async function fetchPageConversationsDirectly(pageId: string, userId: string): Promise<Conversation[]> {
   const { data: convs } = await gateway
     .from('conversations')
     .select('id, type, name, description, created_at, updated_at')
-    .eq('page_id', pageId)
-    .order('updated_at', { ascending: false });
+    .eq('page_id', pageId);
 
   if (!convs || convs.length === 0) return [];
 
@@ -481,7 +535,7 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
   // Per-user unread counts for every chat type, same as the non-page inbox.
   const unreadMap = await computeUnreadCounts(convIds2, userId);
 
-  return visibleConvs.map(conv => {
+  const items = visibleConvs.map(conv => {
     const otherUserId = firstOtherPerConv.get(conv.id);
     const otherProfile = otherUserId ? profileMap.get(otherUserId) : null;
     const lastMsg = lastMsgMap.get(conv.id);
@@ -493,6 +547,7 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
       description: conv.description,
       created_at: conv.created_at,
       updated_at: conv.updated_at,
+      latestActivityAt: lastMsg ? lastMsg.created_at : (conv.updated_at || conv.created_at),
       other_user: otherProfile ? {
         id: otherProfile.id,
         username: otherProfile.username,
@@ -507,9 +562,11 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
       unread_count: unreadMap.get(conv.id) || 0,
     };
   });
+
+  return sortConversationsByLatestActivity(items);
 }
 
-type Conversation = {
+export type Conversation = {
   conversation_id: string;
   type: string;
   name?: string;
@@ -517,6 +574,12 @@ type Conversation = {
   group_image?: string | null;
   created_at: string;
   updated_at: string;
+  // Machine-readable timestamp of the most RECENT message/activity in this chat
+  // (message.md) — the newest `messages.created_at`; falls back to the
+  // conversation's updated_at/created_at for a brand-new chat with no message
+  // yet. This is THE field the Chats list sorts by (newest first), never
+  // created_at/first-message/updated_at alone.
+  latestActivityAt: string;
   other_user?: {
     id: string;
     username: string;
@@ -841,6 +904,21 @@ export const useConversations = (currentUserId?: string) => {
   const checkFriendship = (receiverId: string): Promise<boolean> =>
     hasAcceptedFriendship(currentUserId, receiverId);
 
+  // Optimistically updates ONE chat's Chats-list entry — its last-message
+  // preview, its `latestActivityAt` timestamp, and optionally its unread count
+  // — then re-sorts the whole list by latestActivityAt so the chat jumps to the
+  // correct position IMMEDIATELY, without waiting for (or requiring) a refetch.
+  // Fired on send (the sender's own view), realtime receive, and call-log
+  // events. React state is always replaced with a fresh sorted array (never an
+  // in-place mutation) so the reorder is reliably detected; a conversation not
+  // present in the list is left to the authoritative refetch to add.
+  const upsertConversationActivity = useCallback(
+    (conversationId: string, patch: ConversationActivityPatch) => {
+      setConversations(prev => applyConversationActivityUpdate(prev, conversationId, patch));
+    },
+    []
+  );
+
   // Send a new message
   const sendMessage = async (conversationId: string, content?: string, attachmentUrl?: string, replyToId?: string, receiverId?: string) => {
     if (!currentUserId || (!content && !attachmentUrl)) return false;
@@ -1022,6 +1100,23 @@ export const useConversations = (currentUserId?: string) => {
           delivered: false
         };
         setMessages(prev => [...prev, newMessage]);
+      }
+
+      // Move this chat to the TOP of the Chats list immediately (no refresh
+      // needed on the sender's own screen): refresh its last-message preview
+      // and latest-activity timestamp, then re-sort by latestActivityAt. Own
+      // messages never add unread. The same reorder reaches the other
+      // participants when their clients receive the realtime event below (or
+      // their next refetch).
+      if (data) {
+        const sentAt = (data.created_at as string) || new Date().toISOString();
+        upsertConversationActivity(conversationId, {
+          lastMessage: {
+            content: previewContent(data.content as string | null | undefined, currentUserId),
+            created_at: sentAt,
+          },
+          createdAt: sentAt,
+        });
       }
 
       // Announce the new message over the gateway's SSE hub so the other
@@ -1263,15 +1358,9 @@ export const useConversations = (currentUserId?: string) => {
       const messageId = evt?.messageId;
       if (!msgConvId || !messageId) return;
 
-      // Always refresh the conversation list (last-message preview + unread
-      // counts), whether or not this chat is currently open on screen.
-      debouncedFetchConversations();
-
-      // Only append inline if this is the chat currently open on screen.
-      if (!activeConversationIdRef.current || msgConvId !== activeConversationIdRef.current) {
-        return;
-      }
-
+      // Single message fetch powers BOTH paths: the Chats-list preview/timestamp
+      // optimistically moved to the top (below), and the inline append when this
+      // chat is currently open on screen.
       const { data: msgData } = await gateway
         .from('messages')
         .select(`
@@ -1285,9 +1374,35 @@ export const useConversations = (currentUserId?: string) => {
         .eq('id', messageId)
         .single();
 
-      if (!msgData) return;
+      // Never optimistically bump a chat for the current user's OWN message —
+      // that comes from sendMessage's own upsert. The authoritative refetch
+      // still runs so the list reconciles fully.
+      if (!msgData || msgData.sender_id === currentUserId) {
+        debouncedFetchConversations();
+        return;
+      }
 
-      if (msgData.sender_id === currentUserId) return;
+      const isActive = activeConversationIdRef.current === msgConvId;
+
+      // Immediately update the Chats list from the realtime event (no refresh,
+      // no waiting for a refetch): refresh this chat's last-message preview and
+      // latest-activity timestamp, bump its unread count when the chat is NOT
+      // open on screen (an open chat is being read), and re-sort the whole list
+      // so it moves to the correct position. The debounced authoritative
+      // refetch below still runs to reconcile preview/unread/read-state from the
+      // DB.
+      upsertConversationActivity(msgConvId, {
+        lastMessage: {
+          content: previewContent(msgData.content, currentUserId),
+          created_at: msgData.created_at,
+        },
+        createdAt: msgData.created_at,
+        unreadDelta: isActive ? 0 : 1,
+      });
+      debouncedFetchConversations();
+
+      // Only inline-append if this is the chat currently open on screen.
+      if (!isActive) return;
 
       // Acknowledge delivery to the sender (DB write + live SSE ping).
       markMessageDelivered(msgData.id).catch(() => {});
@@ -1366,7 +1481,7 @@ export const useConversations = (currentUserId?: string) => {
       unsubDelivered();
       if (debouncedFetchRef.current) clearTimeout(debouncedFetchRef.current);
     };
-  }, [currentUserId, debouncedFetchConversations]);
+  }, [currentUserId, debouncedFetchConversations, upsertConversationActivity]);
 
   // Initial fetch
   useEffect(() => {
@@ -1437,6 +1552,10 @@ export const useConversations = (currentUserId?: string) => {
     const onCallLog = (e: Event) => {
       const conversationId = (e as CustomEvent).detail?.conversationId as string | undefined;
       if (!conversationId) return;
+      // A just-recorded call is chat activity too: move that chat to the top
+      // immediately (the last-message preview is reconciled by the debounced
+      // refetch below).
+      upsertConversationActivity(conversationId, { createdAt: new Date().toISOString() });
       debouncedFetchConversations();
       if (conversationId === activeConversationIdRef.current) {
         fetchMessagesRef.current(conversationId, 0);
@@ -1444,7 +1563,7 @@ export const useConversations = (currentUserId?: string) => {
     };
     window.addEventListener('tone:call-log', onCallLog);
     return () => window.removeEventListener('tone:call-log', onCallLog);
-  }, [currentUserId, debouncedFetchConversations]);
+  }, [currentUserId, debouncedFetchConversations, upsertConversationActivity]);
 
   // Refresh conversations when user returns to the tab (handles stale unread counts after navigation)
   useEffect(() => {
