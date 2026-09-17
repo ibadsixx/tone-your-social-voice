@@ -10,18 +10,23 @@
 // and the realtime message.read ping.
 //
 // This exercises isReadOnlyPendingConversation against an in-memory model of
-// conversation_participants + message_requests to confirm the detection is
-// correctly direction-sensitive:
+// conversations + conversation_participants + message_requests to confirm the
+// detection is correctly direction-sensitive and type-scoped:
 //   - B (recipient of the pending request) is READ-ONLY,
 //   - A (sender) is NOT read-only,
 //   - after the request is accepted, neither side is read-only anymore.
+//   - a GROUP conversation is never read-only, even when a stale pending DM
+//     request exists from the member that happens to be participants[0] (the
+//     pending-request concept is direct-message-only).
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { isReadOnlyPendingConversation } from '@/hooks/useConversations';
 
 const SENDER = 'sender-uuid-0001';
 const RECEIVER = 'receiver-uuid-0002';
+const THIRD = 'third-uuid-0003';
 const CONVERSATION = 'conversation-uuid-0001';
+const GROUP_CONVERSATION = 'conversation-uuid-0002';
 
 function applyServerFilter(rows: any[], filter: string | undefined): any[] {
   if (!filter) return rows;
@@ -35,10 +40,17 @@ function applyServerFilter(rows: any[], filter: string | undefined): any[] {
   return rows;
 }
 
-function makeDb(requestStatus: string | null) {
+function makeDb({ requestStatus, dmType = 'dm' }: { requestStatus: string | null; dmType?: string }) {
+  const conversations: Array<{ id: string; type: string }> = [
+    { id: CONVERSATION, type: dmType },
+    { id: GROUP_CONVERSATION, type: 'group' },
+  ];
   const participants: any[] = [
     { conversation_id: CONVERSATION, user_id: SENDER },
     { conversation_id: CONVERSATION, user_id: RECEIVER },
+    { conversation_id: GROUP_CONVERSATION, user_id: SENDER },
+    { conversation_id: GROUP_CONVERSATION, user_id: RECEIVER },
+    { conversation_id: GROUP_CONVERSATION, user_id: THIRD },
   ];
   const messageRequests: any[] =
     requestStatus === null
@@ -58,6 +70,12 @@ function makeDb(requestStatus: string | null) {
       const url = new URL(req.url, 'http://mock.test');
       const path = url.pathname;
       const params = Object.fromEntries(url.searchParams.entries());
+
+      if (path === '/api/conversations') {
+        let rows = conversations.slice();
+        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
+        return { status: 200, json: rows[0] ?? null };
+      }
 
       if (path === '/api/conversation_participants') {
         let rows = participants.slice();
@@ -99,26 +117,32 @@ function install(db: ReturnType<typeof makeDb>) {
 
 describe('isReadOnlyPendingConversation (read-receipt suppression gate)', () => {
   it('is TRUE for the recipient of a still-pending request (preview is read-only)', async () => {
-    install(makeDb('pending'));
+    install(makeDb({ requestStatus: 'pending' }));
     const ro = await isReadOnlyPendingConversation(CONVERSATION, RECEIVER);
     expect(ro).toBe(true);
   });
 
   it('is FALSE for the sender while the request is pending (they may send + see receipts)', async () => {
-    install(makeDb('pending'));
+    install(makeDb({ requestStatus: 'pending' }));
     const ro = await isReadOnlyPendingConversation(CONVERSATION, SENDER);
     expect(ro).toBe(false);
   });
 
   it('is FALSE for the recipient once the request is accepted (receipts resume)', async () => {
-    install(makeDb('accepted'));
+    install(makeDb({ requestStatus: 'accepted' }));
     const ro = await isReadOnlyPendingConversation(CONVERSATION, RECEIVER);
     expect(ro).toBe(false);
   });
 
   it('is FALSE when no request exists at all', async () => {
-    install(makeDb(null));
+    install(makeDb({ requestStatus: null }));
     const ro = await isReadOnlyPendingConversation(CONVERSATION, RECEIVER);
+    expect(ro).toBe(false);
+  });
+
+  it('is FALSE for a GROUP conversation even when a pending DM request exists from its participants[0] member', async () => {
+    install(makeDb({ requestStatus: 'pending' }));
+    const ro = await isReadOnlyPendingConversation(GROUP_CONVERSATION, RECEIVER);
     expect(ro).toBe(false);
   });
 });

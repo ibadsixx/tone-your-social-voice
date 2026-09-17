@@ -196,12 +196,27 @@ export async function resolveDmReceiver(params: {
 // this conversation's other participant. Such a conversation is opened READ-ONLY
 // (previewable, not accepted), and until the recipient presses Accept the sender
 // must not learn the messages were read — so read receipts are suppressed.
+//
+// Message requests are a DIRECT-MESSAGE concept: they are keyed by
+// (sender_id, receiver_id, conversation_id) but the read-only determination is
+// about the user pair, not the conversation. Scoping this to type='dm' is what
+// prevents cross-contamination into GROUPS — without it, a member with a stale
+// pending DM request (from the member that happens to be participants[0]) would
+// render an unrelated group read-only and permanently suppress its read state.
 export async function isReadOnlyPendingConversation(
   conversationId: string,
   currentUserId: string
 ): Promise<boolean> {
   if (!conversationId || !currentUserId) return false;
   try {
+    const { data: conv } = await gateway
+      .from('conversations')
+      .select('type')
+      .eq('id', conversationId)
+      .maybeSingle();
+    if ((conv as { type?: string } | null)?.type !== 'dm') {
+      return false;
+    }
     const otherId = await resolveDmReceiver({ conversationId, currentUserId });
     if (!otherId || otherId === currentUserId) return false;
     const { data: request } = await gateway
@@ -266,6 +281,38 @@ async function fetchGroupOnlineCounts(
     }
   });
   return counts;
+}
+
+// Per-user unread counts for a set of conversations, reusing the existing
+// read-state architecture (`message_reads`): UNREAD = messages sent by OTHERS
+// in that conversation that the current user has no `message_reads` row for.
+// This is the same calculation the Channel unread badge already used, now
+// applied to DM/group items so every chat type exposes the current user's
+// unread state. Own messages are never counted.
+async function computeUnreadCounts(convIds: string[], userId: string): Promise<Map<string, number>> {
+  const unreadMap = new Map<string, number>();
+  if (convIds.length === 0) return unreadMap;
+
+  const { data: msgs } = await gateway
+    .from('messages')
+    .select('id, conversation_id, sender_id, created_at')
+    .in('conversation_id', convIds)
+    .order('created_at', { ascending: false })
+    .limit(500);
+
+  if (msgs && msgs.length > 0) {
+    const msgIds = msgs.map(m => m.id);
+    const { data: myReads } = await getMyReadMessageIds(msgIds, userId);
+    const readSet = new Set(myReads || []);
+    for (const convId of convIds) {
+      const unread = msgs.filter(
+        m => m.conversation_id === convId && m.sender_id !== userId && !readSet.has(m.id)
+      ).length;
+      if (unread > 0) unreadMap.set(convId, unread);
+    }
+  }
+
+  return unreadMap;
 }
 
 export async function fetchConversationsDirectly(userId: string): Promise<Conversation[]> {
@@ -342,30 +389,12 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
   const groupConvIds = visibleConvs.filter(c => c.type === 'group').map(c => c.id);
   const groupOnlineCounts = await fetchGroupOnlineCounts(groupConvIds, userId);
 
-  // Channel unread counts. Channels reuse the existing read-state architecture
-  // (`message_reads`): UNREAD = recent channel messages sent by others that the
-  // current user has no `message_reads` row for. DM/group unread stays 0 as
-  // before — this must never collide with the messaging read-receipt system.
-  const unreadMap = new Map<string, number>();
-  const channelIds = visibleConvs.filter(c => c.type === 'channel').map(c => c.id);
-  if (channelIds.length > 0) {
-    const { data: chanMsgs } = await gateway
-      .from('messages')
-      .select('id, conversation_id, sender_id')
-      .in('conversation_id', channelIds)
-      .limit(500);
-    if (chanMsgs && chanMsgs.length > 0) {
-      const chanMsgIds = chanMsgs.map(m => m.id);
-      const { data: myChannelReads } = await getMyReadMessageIds(chanMsgIds, userId);
-      const readSet = new Set(myChannelReads || []);
-      for (const convId of channelIds) {
-        const unread = (chanMsgs || []).filter(
-          m => m.conversation_id === convId && m.sender_id !== userId && !readSet.has(m.id)
-        ).length;
-        unreadMap.set(convId, unread);
-      }
-    }
-  }
+  // Per-user unread counts for EVERY chat type (DM, group, channel), reusing
+  // the existing read-state architecture (`message_reads`): UNREAD = messages
+  // sent by others that the current user has no `message_reads` row for. This
+  // extends the Channel unread badge calculation to DM/group items so the Chats
+  // list exposes the current user's unread state for every conversation.
+  const unreadMap = await computeUnreadCounts(convIds2, userId);
 
   return visibleConvs.map(conv => {
     const otherUserId = firstOtherPerConv.get(conv.id);
@@ -392,7 +421,7 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
         content: previewContent(lastMsg.content, userId),
         created_at: lastMsg.created_at,
       } : undefined,
-      unread_count: conv.type === 'channel' ? (unreadMap.get(conv.id) || 0) : 0,
+      unread_count: unreadMap.get(conv.id) || 0,
     };
   });
 }
@@ -449,6 +478,9 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
     }
   });
 
+  // Per-user unread counts for every chat type, same as the non-page inbox.
+  const unreadMap = await computeUnreadCounts(convIds2, userId);
+
   return visibleConvs.map(conv => {
     const otherUserId = firstOtherPerConv.get(conv.id);
     const otherProfile = otherUserId ? profileMap.get(otherUserId) : null;
@@ -472,7 +504,7 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
         content: previewContent(lastMsg.content, userId),
         created_at: lastMsg.created_at,
       } : undefined,
-      unread_count: 0,
+      unread_count: unreadMap.get(conv.id) || 0,
     };
   });
 }
@@ -856,19 +888,36 @@ export const useConversations = (currentUserId?: string) => {
     const resolvedReceiverId: string | undefined =
       receiverId || (await resolveDmReceiver({ conversationId, currentUserId, conversationsDataRef }));
 
+    // Resolve the conversation type once so the send path treats DMs, group
+    // chats, and channels correctly. Falls back to the DB when the
+    // conversation was just created and isn't in the inbox list yet.
+    let convType: string | undefined = conversationsDataRef.current.find(
+      c => c.conversation_id === conversationId
+    )?.type;
+    if (!convType) {
+      const { data: convRow } = await gateway
+        .from('conversations')
+        .select('type')
+        .eq('id', conversationId)
+        .maybeSingle();
+      convType = (convRow as { type?: string } | null)?.type ?? undefined;
+    }
+    const isGroupSend = convType === 'group';
+
     try {
       // Channels are broadcast, not group chats: only owner/moderators publish,
       // and that authorization is enforced by the Gateway (POST
       // /conversations/:id/publish) — never by the client. Every other
       // conversation type uses the normal generic insert through the Gateway.
-      const isChannelSend = conversationsDataRef.current.find(
-        c => c.conversation_id === conversationId
-      )?.type === 'channel';
+      const isChannelSend = convType === 'channel';
 
       const insertPayload = {
         conversation_id: conversationId,
         sender_id: currentUserId,
-        receiver_id: resolvedReceiverId || null,
+        // Group messages are addressed to the whole conversation, never a single
+        // arbitrary member — the DM-style `receiver_id` is left null for groups
+        // exactly like channels.
+        receiver_id: isGroupSend ? null : (resolvedReceiverId || null),
         content: encryptedContent ? null : (isImage || isVideo ? (content || null) : content),
         encrypted_content: encryptedContent || null,
         encryption_iv: encryptionIv || null,
@@ -975,21 +1024,38 @@ export const useConversations = (currentUserId?: string) => {
         setMessages(prev => [...prev, newMessage]);
       }
 
-      // Announce the new message over the gateway's SSE hub so the receiver's
-      // open client shows it live (gateway is the only entry point; the client
-      // postgres_changes listeners never fire). Resolve the receiver from the
-      // conversation participants so this works even when the partner's profile
-      // row (and therefore other_user) isn't present in the in-memory list.
-      // Best-effort: a publish failure never fails the send.
+      // Announce the new message over the gateway's SSE hub so the other
+      // participants' open clients show it live (gateway is the only entry
+      // point; the client postgres_changes listeners never fire). A DM/channel
+      // targets its single other participant; a GROUP fans out to EVERY other
+      // member (resolved from conversation_participants, never a DM's single
+      // "other") so each member's Chats list refreshes and computes its own
+      // per-user unread count + last-message preview. Best-effort: a publish
+      // failure never fails the send.
       if (data?.id) {
         try {
-          const receiverId = resolvedReceiverId;
+          const messageCreatedEvent = { type: 'message.created', conversationId, messageId: data.id };
 
-          if (receiverId && receiverId !== currentUserId) {
+          if (isGroupSend) {
+            const { data: memberRows } = await gateway
+              .from('conversation_participants')
+              .select('user_id')
+              .eq('conversation_id', conversationId)
+              .neq('user_id', currentUserId);
+            const memberIds = (memberRows || [])
+              .map(r => r.user_id)
+              .filter(Boolean);
+            const channel = getMessageRealtime(currentUserId);
+            for (const memberId of memberIds) {
+              if (memberId !== currentUserId) {
+                channel?.publish('message.created', messageCreatedEvent, memberId as string);
+              }
+            }
+          } else if (resolvedReceiverId && resolvedReceiverId !== currentUserId) {
             getMessageRealtime(currentUserId)?.publish(
               'message.created',
-              { type: 'message.created', conversationId, messageId: data.id },
-              receiverId
+              messageCreatedEvent,
+              resolvedReceiverId
             );
           }
         } catch (error) {
@@ -1016,21 +1082,23 @@ export const useConversations = (currentUserId?: string) => {
         // recipient reliably gets the pending-request UX. Best-effort: a
         // failure here still never fails the send, but it is logged rather than
         // swallowed so a regression stays visible.
-        try {
-          const receiverId = resolvedReceiverId;
-
-          if (receiverId && receiverId !== currentUserId) {
-            const areFriends = await checkFriendship(receiverId);
+        //
+        // DM-only: group messages have many recipients and no request UX, so a
+        // group send must never mint a request against a single arbitrary
+        // member.
+        if (convType === 'dm' && resolvedReceiverId && resolvedReceiverId !== currentUserId) {
+          try {
+            const areFriends = await checkFriendship(resolvedReceiverId);
             if (!areFriends) {
               await ensureMessageRequest({
                 senderId: currentUserId,
-                receiverId,
+                receiverId: resolvedReceiverId,
                 conversationId
               });
             }
+          } catch (error) {
+            console.warn('[useConversations] Message request registration failed:', error);
           }
-        } catch (error) {
-          console.warn('[useConversations] Message request registration failed:', error);
         }
       }
 
@@ -1065,44 +1133,46 @@ export const useConversations = (currentUserId?: string) => {
     try {
       await markConversationMessagesRead(conversationId, currentUserId);
 
-      // Channels keep their own unread state (independent of the messaging
-      // read-receipt system): once an open channel's messages are marked read,
-      // clear the Chats-list badge immediately instead of waiting for refetch.
+      // Every conversation type (DM, group, channel) derives its unread badge
+      // from `message_reads`; once the open conversation's messages are marked
+      // read, clear its Chats-list badge immediately instead of waiting for a
+      // refetch.
       const readConv = conversationsDataRef.current.find(c => c.conversation_id === conversationId);
-      if (readConv?.type === 'channel') {
+      if (readConv) {
         setConversations(prev => prev.map(c =>
           c.conversation_id === conversationId ? { ...c, unread_count: 0 } : c
         ));
       }
 
-      // Ping the other participant live so their client flips seen states
-      // without waiting for a refetch. Best-effort.
+      // Ping every other participant who sent a message in this conversation so
+      // their clients flip seen states without waiting for a refetch. A DM has
+      // exactly one such sender (the single other participant); a group has one
+      // per member — each message is announced to ITS OWN sender, so every
+      // participant learns live that this user read their message. Best-effort.
       try {
-        let receiverId = conversationsDataRef.current.find(
-          c => c.conversation_id === conversationId
-        )?.other_user?.id;
-        if (!receiverId) {
-          const { data: participants } = await gateway
-            .from('conversation_participants')
-            .select('user_id')
-            .eq('conversation_id', conversationId)
-            .neq('user_id', currentUserId);
-          receiverId = participants?.[0]?.user_id as string | undefined;
-        }
-        if (receiverId && receiverId !== currentUserId) {
-          const unreadByThem = messagesRef.current.filter(
-            m =>
-              m.conversation_id === conversationId &&
-              m.sender_id === receiverId &&
-              !m.seen
-          );
-          if (unreadByThem.length > 0) {
-            const channel = getMessageRealtime(currentUserId);
-            for (const msg of unreadByThem) {
+        const newlySeenForSenders = messagesRef.current.filter(
+          m =>
+            m.conversation_id === conversationId &&
+            m.sender_id !== currentUserId &&
+            !m.seen
+        );
+        if (newlySeenForSenders.length > 0) {
+          const bySender = new Map<string, Message[]>();
+          for (const msg of newlySeenForSenders) {
+            const senderId = msg.sender_id;
+            if (senderId) {
+              const bucket = bySender.get(senderId) || [];
+              bucket.push(msg);
+              bySender.set(senderId, bucket);
+            }
+          }
+          const channel = getMessageRealtime(currentUserId);
+          for (const [senderId, msgs] of bySender) {
+            for (const msg of msgs) {
               channel?.publish(
                 'message.read',
-                { type: 'message.read', conversationId, messageId: msg.id, userId: receiverId },
-                receiverId
+                { type: 'message.read', conversationId, messageId: msg.id, userId: senderId },
+                senderId
               );
             }
           }
