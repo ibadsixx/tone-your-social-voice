@@ -8,8 +8,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { AtSign, MessageSquare, FileText } from 'lucide-react';
 import PageContainer from '@/components/PageContainer';
 
-const Mentions = () => {
-  const { mentions, loading } = useMentionsFeed();
+const Mentions = ({ targetUserId }: { targetUserId?: string }) => {
+  const { mentions, loading } = useMentionsFeed(targetUserId);
 
   if (loading) {
     return (

@@ -35,31 +35,37 @@ export interface MentionItem {
   };
 }
 
-export const useMentionsFeed = () => {
+export const useMentionsFeed = (targetUserId?: string) => {
   const [mentions, setMentions] = useState<MentionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
 
+  // When called from the standalone Mentions page no target is supplied, so the
+  // feed is the current user's own mentions. The profile Mentions section passes
+  // the viewed profile's id so it shows the mentions of that profile.
+  const effectiveUserId = targetUserId ?? user?.id;
+  const isSelf = !targetUserId;
+
   const fetchMentions = async () => {
-    if (!user?.id) return;
+    if (!effectiveUserId) return;
 
     try {
       setLoading(true);
 
-      // Fetch mentions where the current user is mentioned
+      // Fetch mentions where the target user is mentioned
       const { data: mentionsData, error: mentionsError } = await gateway
         .from('mentions')
         .select('*')
-        .eq('mentioned_user_id', user.id)
+        .eq('mentioned_user_id', effectiveUserId)
         .order('created_at', { ascending: false });
 
       if (mentionsError) throw mentionsError;
 
-      // Fetch tags where current user was tagged in posts
+      // Fetch tags where the target user was tagged in posts
       const { data: tagsData, error: tagsError } = await gateway
         .from('post_tags')
         .select('id, post_id, tagged_by, created_at')
-        .eq('tagged_user_id', user.id)
+        .eq('tagged_user_id', effectiveUserId)
         .order('created_at', { ascending: false });
 
       if (tagsError) throw tagsError;
@@ -156,7 +162,13 @@ export const useMentionsFeed = () => {
   };
 
   useEffect(() => {
+    if (!effectiveUserId) return;
     fetchMentions();
+
+    // Realtime subscription only makes sense for the current user's own feed;
+    // when a profile's mentions are shown the fetch already re-runs whenever
+    // the profile changes.
+    if (!isSelf) return;
 
     // Set up realtime subscription for new mentions
     const channel = gateway
@@ -167,7 +179,7 @@ export const useMentionsFeed = () => {
           event: 'INSERT',
           schema: 'public',
           table: 'mentions',
-          filter: `mentioned_user_id=eq.${user?.id}`,
+          filter: `mentioned_user_id=eq.${effectiveUserId}`,
         },
         () => {
           fetchMentions();
@@ -179,7 +191,7 @@ export const useMentionsFeed = () => {
           event: 'INSERT',
           schema: 'public',
           table: 'post_tags',
-          filter: `tagged_user_id=eq.${user?.id}`,
+          filter: `tagged_user_id=eq.${effectiveUserId}`,
         },
         () => {
           fetchMentions();
@@ -190,7 +202,7 @@ export const useMentionsFeed = () => {
     return () => {
       gateway.removeChannel(channel);
     };
-  }, [user?.id]);
+  }, [effectiveUserId, isSelf]);
 
   return {
     mentions,

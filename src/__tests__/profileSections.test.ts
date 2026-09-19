@@ -43,6 +43,12 @@ describe('profileSections', () => {
       expect(redirectForInvalidSection('shared')).toBeNull();
     });
 
+    it('returns null for the URL-backed top-level tab sections', () => {
+      expect(redirectForInvalidSection('friends')).toBeNull();
+      expect(redirectForInvalidSection('mentions')).toBeNull();
+      expect(redirectForInvalidSection('scheduled')).toBeNull();
+    });
+
     it('redirects the removed Videos section to Reels', () => {
       expect(redirectForInvalidSection('videos')).toBe('reels');
     });

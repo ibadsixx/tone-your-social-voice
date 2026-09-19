@@ -17,9 +17,10 @@ interface ProfileTabsProps {
   coverPic?: string | null;
   activeFilter?: ProfileSectionFilter;
   onFilterChange?: (filter: ProfileSectionFilter) => void;
-  // When provided, the selected top-level tab is controlled by the URL. The
-  // scheduled/mentions/friends tabs are not URL-backed, so the component keeps
-  // managing the tab internally unless a value is supplied.
+  // The selected top-level tab is controlled by the URL (posts/scheduled/
+  // mentions/about/friends), so the tabs deep-link, work with browser
+  // back/forward and survive a page refresh. When absent the component keeps
+  // managing the tab internally.
   activeTab?: string;
   onTabChange?: (tab: string) => void;
   aboutSection?: AboutSectionId;
@@ -47,7 +48,7 @@ const ProfileTabs = ({
 
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="mt-6">
-      <TabsList className={`w-full grid h-9 md:h-10 ${isOwnProfile ? 'grid-cols-5' : 'grid-cols-3'}`}>
+      <TabsList className={`w-full grid h-9 md:h-10 ${isOwnProfile ? 'grid-cols-5' : 'grid-cols-4'}`}>
         <TabsTrigger value="posts" className="px-1 md:px-3" aria-label="Posts">
           <span className="md:hidden">P</span>
           <span className="hidden md:inline text-sm">Posts</span>
@@ -56,10 +57,10 @@ const ProfileTabs = ({
           <span className="md:hidden">S</span>
           <span className="hidden md:inline text-sm">Scheduled</span>
         </TabsTrigger>}
-        {isOwnProfile && <TabsTrigger value="mentions" className="px-1 md:px-3" aria-label="Mentions">
+        <TabsTrigger value="mentions" className="px-1 md:px-3" aria-label="Mentions">
           <span className="md:hidden">@</span>
           <span className="hidden md:inline text-sm">Mentions</span>
-        </TabsTrigger>}
+        </TabsTrigger>
         <TabsTrigger value="about" className="px-1 md:px-3" aria-label="About">
           <span className="md:hidden">A</span>
           <span className="hidden md:inline text-sm">About</span>
@@ -87,11 +88,9 @@ const ProfileTabs = ({
         </TabsContent>
       )}
 
-      {isOwnProfile && (
-        <TabsContent value="mentions" className="mt-6">
-          <Mentions />
-        </TabsContent>
-      )}
+      <TabsContent value="mentions" className="mt-6">
+        <Mentions targetUserId={profileId} />
+      </TabsContent>
       
       <TabsContent value="about" className="mt-6">
         <AboutSection

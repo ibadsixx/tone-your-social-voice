@@ -21,6 +21,10 @@ import {
   slugToAboutSection,
 } from '@/lib/profileAbout';
 import type { AboutSectionId } from '@/lib/profileAbout';
+import {
+  sectionToTab,
+  profileTabPath,
+} from '@/lib/profileTabs';
 
 const ProfilePage = () => {
   const { username, section } = useParams<{ username: string; section?: string }>();
@@ -84,8 +88,8 @@ const ProfilePage = () => {
     }
   };
 
-  // The active profile section is derived from the URL, so deep links, refresh
-  // and browser back/forward all stay in sync. Unknown segments are redirected:
+  // The active profile tab is derived from the URL, so deep links, refresh and
+  // browser back/forward all stay in sync. Unknown segments are redirected:
   // the removed Videos section goes to Reels, anything else to Posts.
   const activeFilter = sectionToFilter(section);
 
@@ -94,6 +98,13 @@ const ProfilePage = () => {
     if (!profile || !redirect) return;
     navigate(profileSectionPath(profile.username, redirect), { replace: true });
   }, [section, profile, navigate]);
+
+  // Scheduled content is private to the profile owner. A visitor reaching
+  // /profile/:username/scheduled is sent back to the Posts feed.
+  useEffect(() => {
+    if (!profile || section !== 'scheduled' || isOwnProfile) return;
+    navigate(profileSectionPath(profile.username, 'all'), { replace: true });
+  }, [section, profile, isOwnProfile, navigate]);
 
   const handleFilterChange = (filter: ProfileSectionFilter) => {
     if (!profile) return;
@@ -111,6 +122,10 @@ const ProfilePage = () => {
     ? resolvedAboutSection ?? 'overview'
     : undefined;
 
+  // The active profile tab is derived from the URL, so deep links, refresh and
+  // browser back/forward all stay in sync.
+  const activeTab: string = isAboutRoute ? 'about' : sectionToTab(section);
+
   useEffect(() => {
     if (!profile || !aboutSubMatch || !aboutSlug) return;
     if (slugToAboutSection(aboutSlug)) return;
@@ -121,6 +136,8 @@ const ProfilePage = () => {
     if (!profile) return;
     if (tab === 'about') {
       navigate(aboutSectionPath(profile.username, 'overview'));
+    } else if (tab === 'scheduled' || tab === 'mentions' || tab === 'friends') {
+      navigate(profileTabPath(profile.username, tab));
     } else if (tab === 'posts') {
       navigate(profileSectionPath(profile.username, activeFilter));
     }
@@ -170,7 +187,7 @@ const ProfilePage = () => {
         coverPic={profile.cover_pic}
         activeFilter={activeFilter}
         onFilterChange={handleFilterChange}
-        activeTab={isAboutRoute ? 'about' : undefined}
+        activeTab={activeTab}
         onTabChange={handleTabChange}
         aboutSection={activeAboutSection}
         onAboutSectionChange={handleAboutSectionChange}

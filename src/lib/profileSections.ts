@@ -8,6 +8,12 @@
 //   /profile/:username/photos   -> Photos
 //   /profile/:username/reels    -> Reels
 //   /profile/:username/shared   -> Shared
+//
+// The friends/mentions/scheduled segments belong to the top-level tabs
+// (see lib/profileTabs.ts); this module only treats them as valid so the
+// posts-section redirect does not fire for them.
+import { isProfileTabSection } from './profileTabs';
+
 export type ProfileSectionFilter = 'all' | 'photos' | 'reels' | 'shared';
 
 function isKnownSection(section: string): section is ProfileSectionFilter {
@@ -31,10 +37,11 @@ export function profileSectionPath(
 
 // For URLs that are no longer valid, returns the section to redirect to.
 // The removed Videos section maps to Reels; anything else falls back to Posts.
-// Returns null when the section is already valid (or absent).
+// Returns null when the section is already valid (or absent). The top-level
+// tab sections (friends/mentions/scheduled) are valid and map to no redirect.
 export function redirectForInvalidSection(
   section: string | undefined
 ): ProfileSectionFilter | null {
-  if (!section || isKnownSection(section)) return null;
+  if (!section || isKnownSection(section) || isProfileTabSection(section)) return null;
   return section === 'videos' ? 'reels' : 'all';
 }
