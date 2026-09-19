@@ -1,6 +1,9 @@
 import { gateway, API_URL } from './client';
 import type { ApiResult } from './client';
-import type { Group, GroupMember, GroupPost, GroupFollow, GroupPin, GroupRule } from './types';
+import type {
+  Group, GroupMember, GroupPost, GroupFollow, GroupPin, GroupRule,
+  GroupMembersList, GroupMemberActionResult, GroupRestrictionType,
+} from './types';
 import type { GroupPrivacy } from '@/lib/groupSettings';
 
 function getAccessToken(): string | null {
@@ -201,6 +204,103 @@ export async function leaveGroup(groupId: string, userId: string): Promise<ApiRe
 export async function addGroupMembers(groupId: string, userIds: string[], role: string = 'member'): Promise<ApiResult<null>> {
   const rows = userIds.map(user_id => ({ group_id: groupId, user_id, role }));
   return gateway.from('group_members').insert(rows) as Promise<ApiResult<null>>;
+}
+
+// These writes go through the API Gateway's authorized group-member endpoints:
+// the caller's identity is resolved from the Bearer token server-side, and the
+// owner→moderator→member hierarchy (plus ban/restriction semantics) is enforced
+// there, never in the browser.
+
+export async function getGroupMembersSecure(groupId: string): Promise<ApiResult<GroupMembersList>> {
+  return callGateway<GroupMembersList>(`/api/v1/groups/${encodeURIComponent(groupId)}/members`, {
+    method: 'GET',
+  });
+}
+
+export async function addGroupMembersSecure(groupId: string, userIds: string[]): Promise<ApiResult<GroupMemberActionResult>> {
+  return callGateway<GroupMemberActionResult>(`/api/v1/groups/${encodeURIComponent(groupId)}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ user_ids: userIds }),
+  });
+}
+
+export async function joinGroupSecure(groupId: string, userId: string): Promise<ApiResult<GroupMemberActionResult>> {
+  return callGateway<GroupMemberActionResult>(`/api/v1/groups/${encodeURIComponent(groupId)}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+export async function leaveGroupSecure(groupId: string, userId: string): Promise<ApiResult<GroupMemberActionResult>> {
+  return callGateway<GroupMemberActionResult>(
+    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
+    { method: 'DELETE' }
+  );
+}
+
+export async function removeGroupMemberSecure(
+  groupId: string,
+  memberId: string,
+  reason?: string | null
+): Promise<ApiResult<GroupMemberActionResult>> {
+  return callGateway<GroupMemberActionResult>(
+    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}`,
+    { method: 'DELETE', body: JSON.stringify({ reason: reason ?? null }) }
+  );
+}
+
+export async function reportGroupMemberSecure(
+  groupId: string,
+  memberId: string,
+  input: { reason: string; description?: string | null }
+): Promise<ApiResult<GroupMemberActionResult>> {
+  return callGateway<GroupMemberActionResult>(
+    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}/report`,
+    { method: 'POST', body: JSON.stringify(input) }
+  );
+}
+
+export async function restrictGroupMemberSecure(
+  groupId: string,
+  memberId: string,
+  input: { restriction_type: GroupRestrictionType; ends_at?: string | null; reason?: string | null; rule_id?: string | null }
+): Promise<ApiResult<GroupMemberActionResult>> {
+  return callGateway<GroupMemberActionResult>(
+    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}/restrict`,
+    { method: 'POST', body: JSON.stringify(input) }
+  );
+}
+
+export async function unrestrictGroupMemberSecure(
+  groupId: string,
+  memberId: string,
+  input?: { restriction_type?: GroupRestrictionType }
+): Promise<ApiResult<GroupMemberActionResult>> {
+  return callGateway<GroupMemberActionResult>(
+    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}/unrestrict`,
+    { method: 'POST', body: JSON.stringify(input || {}) }
+  );
+}
+
+export async function banGroupMemberSecure(
+  groupId: string,
+  memberId: string,
+  input: { ends_at?: string | null; reason?: string | null; rule_id?: string | null }
+): Promise<ApiResult<GroupMemberActionResult>> {
+  return callGateway<GroupMemberActionResult>(
+    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}/ban`,
+    { method: 'POST', body: JSON.stringify(input) }
+  );
+}
+
+export async function unbanGroupMemberSecure(
+  groupId: string,
+  memberId: string
+): Promise<ApiResult<GroupMemberActionResult>> {
+  return callGateway<GroupMemberActionResult>(
+    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}/unban`,
+    { method: 'POST', body: JSON.stringify({}) }
+  );
 }
 
 // --- Group Posts ---

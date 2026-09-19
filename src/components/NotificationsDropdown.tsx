@@ -56,6 +56,15 @@ export const NotificationsDropdown = () => {
       navigate(`/pages/${notification.page_id}`);
     } else if (notification.type === 'group_membership_accepted' && notification.group_id) {
       navigate(`/groups/${notification.group_id}`);
+    } else if (
+      (notification.type === 'group_member_removed' ||
+        notification.type === 'group_member_banned' ||
+        notification.type === 'group_member_unbanned' ||
+        notification.type === 'group_member_restricted' ||
+        notification.type === 'group_member_unrestricted') &&
+      notification.group_id
+    ) {
+      navigate(`/groups/${notification.group_id}`);
     } else if (notification.type === 'channel_post' && notification.channel_id) {
       navigate(`/messages/${notification.channel_id}`);
     } else if (notification.type === 'hashtag_post') {
@@ -98,6 +107,12 @@ export const NotificationsDropdown = () => {
         return <Handshake className={className} />;
       case 'group_membership_accepted':
         return <ShieldCheck className={className} />;
+      case 'group_member_removed':
+      case 'group_member_banned':
+      case 'group_member_unbanned':
+      case 'group_member_restricted':
+      case 'group_member_unrestricted':
+        return <Users className={className} />;
       case 'security_login':
         return <Lock className={className} />;
       case 'channel_post':

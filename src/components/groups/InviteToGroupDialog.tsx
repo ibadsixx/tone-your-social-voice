@@ -99,13 +99,14 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
     if (selected.size === 0) return;
     setSending(true);
     try {
-      const { error } = await groupsApi.addGroupMembers(
+      const { data, error } = await groupsApi.addGroupMembersSecure(
         groupId,
-        Array.from(selected),
-        'member'
+        Array.from(selected)
       );
 
-      if (error) throw error;
+      if (error || data?.status !== 'ok') {
+        throw error || new Error('Failed to send invites');
+      }
 
       toast({ title: 'Invites sent', description: `${selected.size} friend(s) added to the group.` });
       onInvitesSent?.();

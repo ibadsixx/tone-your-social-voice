@@ -164,6 +164,76 @@ export interface GroupMember {
   [key: string]: unknown;
 }
 
+// Group member management + moderation (message.md). These shapes are returned
+// by the authorized /api/v1/groups/:groupId/members endpoints on the Gateway.
+export type GroupMemberAccess = 'owner' | 'moderator' | 'member' | 'none';
+export type GroupRestrictionType = 'posting' | 'all';
+export type GroupMemberStatus = 'active' | 'posting_restricted' | 'restricted';
+
+export interface GroupProfile {
+  username: string;
+  display_name: string;
+  profile_pic: string | null;
+  last_seen_at: string | null;
+}
+
+export interface EnrichedGroupMember extends GroupMember {
+  profiles?: GroupProfile;
+  restriction: {
+    restriction_type: GroupRestrictionType;
+    ends_at: string | null;
+    reason: string | null;
+    rule_id: string | null;
+    created_at: string;
+  } | null;
+  status: GroupMemberStatus;
+}
+
+export interface GroupBanRow {
+  id: string;
+  group_id: string;
+  user_id: string;
+  banned_by: string | null;
+  reason: string | null;
+  created_at: string;
+  expires_at: string | null;
+  status: string;
+  profiles?: GroupProfile | null;
+  [key: string]: unknown;
+}
+
+export interface GroupModerationActionRow {
+  id: string;
+  group_id: string;
+  action: string;
+  target_user_id: string;
+  actor_id: string | null;
+  reason: string | null;
+  rule_id: string | null;
+  ends_at: string | null;
+  created_at: string;
+  actor_profile?: GroupProfile | null;
+  target_profile?: GroupProfile | null;
+  [key: string]: unknown;
+}
+
+export interface GroupMembersList {
+  status: 'ok';
+  your_access: GroupMemberAccess;
+  members: EnrichedGroupMember[];
+  banned: GroupBanRow[];
+  moderation: GroupModerationActionRow[];
+}
+
+export interface GroupMemberActionResult {
+  status: 'ok' | 'not_authenticated' | 'group_not_found' | 'not_allowed' | 'target_not_found' | 'rule_not_found' | 'invalid';
+  left?: boolean;
+  added?: number;
+  affected?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
 export interface GroupPost {
   id: string;
   group_id: string;

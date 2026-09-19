@@ -38,6 +38,7 @@ import GroupMediaFiles from '@/components/groups/GroupMediaFiles';
 import GroupNotificationSettings from '@/components/groups/GroupNotificationSettings';
 import ReportGroupDialog from '@/components/groups/ReportGroupDialog';
 import GroupRulesManagerDialog from '@/components/groups/GroupRulesManagerDialog';
+import GroupMembersTab from '@/components/groups/GroupMembersTab';
 import { validateGroupName, validateGroupPrivacy, PRIVACY_OPTIONS } from '@/lib/groupSettings';
 import NewPost from '@/components/NewPost';
 import { useHomeFeed } from '@/hooks/useHomeFeed';
@@ -440,8 +441,8 @@ const GroupDetailPage = () => {
   const handleJoin = async () => {
     if (!user || !groupId) return;
     try {
-      const { error } = await groupsApi.joinGroup(groupId, user.id);
-      if (error) throw error;
+      const { data, error } = await groupsApi.joinGroupSecure(groupId, user.id);
+      if (error || data?.status !== 'ok') throw error || new Error('Failed to join group');
       toast({ title: 'Joined!', description: 'You are now a member of this group.' });
       fetchGroupDetail();
     } catch (error: any) {
@@ -452,8 +453,8 @@ const GroupDetailPage = () => {
   const handleLeave = async () => {
     if (!user || !groupId) return;
     try {
-      const { error } = await groupsApi.leaveGroup(groupId, user.id);
-      if (error) throw error;
+      const { data, error } = await groupsApi.leaveGroupSecure(groupId, user.id);
+      if (error || data?.status !== 'ok') throw error || new Error('Failed to leave group');
       toast({ title: 'Left group', description: 'You have left this group.' });
       fetchGroupDetail();
     } catch (error: any) {
@@ -771,7 +772,7 @@ const GroupDetailPage = () => {
           <TabsList className="w-full justify-start bg-card border overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <TabsTrigger value="about">About</TabsTrigger>
             <TabsTrigger value="discussion">Discussion</TabsTrigger>
-            <TabsTrigger value="people">People</TabsTrigger>
+            <TabsTrigger value="members">Members</TabsTrigger>
             <TabsTrigger value="media">Media/Files</TabsTrigger>
           </TabsList>
 
@@ -807,51 +808,17 @@ const GroupDetailPage = () => {
             />
           </TabsContent>
 
-          {/* People Tab */}
-          <TabsContent value="people" className="mt-4 space-y-3">
-            <Card>
-              <CardContent className="p-4">
-                <h3 className="font-semibold mb-4">Members · {members.length}</h3>
-                <div className="space-y-3">
-                  {members.map((member) => (
-                    <div
-                      key={member.user_id}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors cursor-pointer"
-                      onClick={() => navigate(`/profile/${member.profiles?.username || member.user_id}`)}
-                    >
-                      <Avatar className="h-10 w-10">
-                        {member.profiles?.profile_pic ? (
-                          <img src={member.profiles.profile_pic} alt="" className="object-cover" />
-                        ) : (
-                          <AvatarFallback className="bg-primary/10 text-primary">
-                            {(member.profiles?.display_name || '?')[0]}
-                          </AvatarFallback>
-                        )}
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">
-                          {member.profiles?.display_name || 'Unknown User'}
-                        </p>
-                        {member.profiles?.username && (
-                          <p className="text-sm text-muted-foreground truncate">
-                            @{member.profiles.username}
-                          </p>
-                        )}
-                      </div>
-                      {member.role === 'admin' && (
-                        <Badge variant="secondary" className="text-xs">Admin</Badge>
-                      )}
-                      {member.role === 'moderator' && (
-                        <Badge variant="outline" className="text-xs">Mod</Badge>
-                      )}
-                    </div>
-                  ))}
-                  {members.length === 0 && (
-                    <p className="text-center text-muted-foreground py-8">No members yet</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+          {/* Members Tab */}
+          <TabsContent value="members" className="mt-4">
+            {groupId && (
+              <GroupMembersTab
+                groupId={groupId}
+                groupName={group.name}
+                groupCreatedBy={group.created_by}
+                rulesEnabled={!!group.rules_enabled}
+                onChanged={fetchGroupDetail}
+              />
+            )}
           </TabsContent>
 
           {/* Media/Files Tab */}
