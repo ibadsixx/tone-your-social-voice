@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
-import { Calendar, Clock, Edit3, Trash2, Eye } from 'lucide-react';
+import { Calendar, Clock, Edit3, Trash2, Eye, Lock } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { gateway } from '@/lib/gateway';
+import { getScheduledPosts } from '@/api/posts';
 import SchedulePostModal from './SchedulePostModal';
 import {
   AlertDialog,
@@ -36,7 +37,7 @@ interface ScheduledPost {
   };
 }
 
-const ScheduledPostsTab = () => {
+const ScheduledPostsTab = ({ profileId }: { profileId?: string }) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([]);
@@ -45,28 +46,26 @@ const ScheduledPostsTab = () => {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [deletingPost, setDeletingPost] = useState<ScheduledPost | null>(null);
 
+  // Scheduled posts load only when the authenticated user owns the profile
+  // being viewed. Failing closed (no profileId -> denied) keeps the check at
+  // the content boundary, independent of the UI hiding the tab.
+  const accessAllowed = Boolean(profileId && user && user.id === profileId);
+
   const fetchScheduledPosts = async () => {
     if (!user) return;
+    if (!accessAllowed) {
+      setScheduledPosts([]);
+      setLoading(false);
+      return;
+    }
 
     try {
       setLoading(true);
-      const { data, error } = await gateway
-        .from('posts')
-        .select(`
-          *,
-          profiles!posts_user_id_fkey (
-            username,
-            display_name,
-            profile_pic
-          )
-        `)
-        .eq('user_id', user.id)
-        .eq('status', 'scheduled')
-        .order('scheduled_at', { ascending: true });
+      const { data, error } = await getScheduledPosts(user.id);
 
       if (error) throw error;
 
-      setScheduledPosts(data || []);
+      setScheduledPosts((data as ScheduledPost[]) || []);
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -162,7 +161,21 @@ const ScheduledPostsTab = () => {
 
   useEffect(() => {
     fetchScheduledPosts();
-  }, [user]);
+  }, [user, profileId, accessAllowed]);
+
+  if (!accessAllowed) {
+    return (
+      <div data-testid="scheduled-private" className="text-center py-12">
+        <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center mb-4">
+          <Lock className="w-8 h-8 text-primary" />
+        </div>
+        <h3 className="text-lg font-semibold text-foreground mb-2">Scheduled Posts</h3>
+        <p className="text-muted-foreground">
+          This content is private. Only the profile owner can see it.
+        </p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

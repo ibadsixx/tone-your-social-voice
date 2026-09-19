@@ -184,6 +184,24 @@ describe('Profile tab-section URL navigation', () => {
 
     await waitForPath('/profile/test');
     expect(screen.queryByTestId('scheduled-section')).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Scheduled' })).toBeNull();
+    expect(getProfileByUsername).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not show the Scheduled tab when viewing another user\u2019s profile', async () => {
+    renderProfile('/profile/test');
+
+    await screen.findByTestId('profile-header');
+    expect(screen.queryByRole('tab', { name: 'Scheduled' })).toBeNull();
+    expect(getProfileByUsername).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the Scheduled tab on the owner\u2019s own profile', async () => {
+    getProfileByUsername.mockResolvedValue({ data: ownProfile, error: null });
+    renderProfile('/profile/test');
+
+    await screen.findByTestId('profile-header');
+    expect(screen.getByRole('tab', { name: 'Scheduled' })).toBeTruthy();
     expect(getProfileByUsername).toHaveBeenCalledTimes(1);
   });
 
@@ -193,6 +211,7 @@ describe('Profile tab-section URL navigation', () => {
 
     await screen.findByTestId('scheduled-section');
     expect(screen.getByTestId('path').textContent).toBe('/profile/test/scheduled');
+    expect(screen.getByRole('tab', { name: 'Scheduled' })).toBeTruthy();
     expect(getProfileByUsername).toHaveBeenCalledTimes(1);
   });
 });

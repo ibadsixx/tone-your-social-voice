@@ -84,7 +84,7 @@ const ProfileTabs = ({
       
       {isOwnProfile && (
         <TabsContent value="scheduled" className="mt-6">
-          <ScheduledPostsTab />
+          <ScheduledPostsTab profileId={profileId} />
         </TabsContent>
       )}
 
