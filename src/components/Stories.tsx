@@ -19,6 +19,7 @@ const Stories = () => {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [selectedUserStories, setSelectedUserStories] = useState<any>(null);
   const [imgError, setImgError] = useState(false);
+  const [mediaErrors, setMediaErrors] = useState<Record<string, boolean>>({});
   const [showStories, setShowStories] = useState(true);
   const isMobile = useIsMobile();
   const navigate = useNavigate();
@@ -102,7 +103,7 @@ const Stories = () => {
         (() => {
           const latest = userStories.stories[userStories.stories.length - 1];
           const thumb = latest
-            ? (latest.media_type === 'video' ? (latest.thumbnail_url || latest.media_url) : latest.media_url)
+            ? latest.media_url
             : userStories.profile_pic;
 
           return (
@@ -116,19 +117,32 @@ const Stories = () => {
                 onClick={() => handleStoryClick(userStories)}
                 className="relative w-[80px] sm:w-[110px] h-[140px] sm:h-[190px] cursor-pointer overflow-hidden border-border/50 hover:shadow-lg transition-shadow group"
               >
-                {thumb ? (
-                  <img
-                    src={thumb}
-                    alt={userStories.display_name}
+                {latest?.media_type === 'video' && latest.media_url ? (
+                  <video
+                    src={latest.media_url}
+                    muted
+                    playsInline
+                    preload="metadata"
                     className="absolute inset-0 w-full h-full object-cover"
-                    loading="lazy"
                   />
                 ) : (
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/40 flex items-center justify-center">
-                    <span className="text-4xl sm:text-6xl font-bold text-primary/60">
-                      {userStories.display_name?.[0]?.toUpperCase() || '?'}
-                    </span>
-                  </div>
+                  thumb && !mediaErrors[userStories.user_id] ? (
+                    <img
+                      src={thumb}
+                      alt={userStories.display_name}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      loading="lazy"
+                      onError={() =>
+                        setMediaErrors(prev => ({ ...prev, [userStories.user_id]: true }))
+                      }
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/40 flex items-center justify-center">
+                      <span className="text-4xl sm:text-6xl font-bold text-primary/60">
+                        {userStories.display_name?.[0]?.toUpperCase() || '?'}
+                      </span>
+                    </div>
+                  )
                 )}
 
                 {/* Gradient Overlay */}
