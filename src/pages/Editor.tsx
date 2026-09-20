@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { EditorCanvas, EditorCanvasRef } from '@/components/editor/EditorCanvas';
 import { EditorSidebar } from '@/components/editor/EditorSidebar';
+import MobileReelEditor from '@/components/editor/MobileReelEditor';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { VideoTimeline } from '@/components/editor/timeline/VideoTimeline';
 import { PlaybackControls } from '@/components/editor/panels/PlaybackControls';
 import { useEditorProject, EditorProject } from '@/hooks/useEditorProject';
@@ -38,6 +40,7 @@ export default function Editor() {
   
   // Single project hook - loads by projectId
   const { project, saveProject, isLoading, updateProjectData } = useEditorProject(projectId);
+  const isMobile = useIsMobile();
   const canvasRef = useRef<EditorCanvasRef>(null);
   const playerRef = useRef<VideoPlayer | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
