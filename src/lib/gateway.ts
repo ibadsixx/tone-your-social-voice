@@ -800,15 +800,55 @@ class GatewayStorageBucket {
     file: File | Blob,
     options?: { contentType?: string; upsert?: boolean }
   ): Promise<{ data: { path: string; url?: string } | null; error: { message: string } | null }> {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    // Signed direct upload: the gateway issues a Cloudinary signed-upload URL
+    // (it stays the auth + signing choke point) and the browser POSTs the file
+    // bytes straight to Cloudinary. Vercel caps serverless request bodies at
+    // ~4.5MB, so proxying a full video through the gateway aborts mid-stream
+    // and shows as TypeError: Failed to fetch. Falls back to the proxied
+    // multipart POST below if signing or the direct upload fails.
+    try {
+      const signRes = await fetch(`${this._baseUrl}/api/storage/sign`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bucket: this._bucket, path }),
+      });
+      if (signRes.ok) {
+        const sign = await signRes.json();
+        if (sign?.uploadUrl && sign?.apiKey && sign?.timestamp && sign?.folder && sign?.signature) {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('api_key', sign.apiKey);
+          formData.append('timestamp', sign.timestamp);
+          formData.append('folder', sign.folder);
+          formData.append('public_id', sign.publicId || path);
+          formData.append('signature', sign.signature);
+          if (options?.upsert) formData.append('overwrite', 'true');
+
+          const upRes = await fetch(sign.uploadUrl, { method: 'POST', body: formData });
+          const upJson = await upRes.json().catch(() => ({}));
+          if (upRes.ok && typeof upJson?.secure_url === 'string') {
+            const url = upJson.secure_url;
+            storageUrlCache.set(`${this._bucket}/${path}`, url);
+            return { data: { path, url }, error: null };
+          }
+          console.warn('[Gateway] Direct upload to Cloudinary failed, falling back to proxy:', upJson?.error?.message || upRes.statusText);
+        }
+      }
+    } catch (err) {
+      console.warn('[Gateway] Signed upload unavailable, falling back to proxy:', err);
+    }
+
+    // Fallback: proxied multipart POST through the gateway (small files,
+    // payloads under the Vercel body limit, or before the sign endpoint exists).
     try {
       const formData = new FormData();
       formData.append('file', file);
       if (options?.contentType) formData.append('contentType', options.contentType);
       if (options?.upsert) formData.append('upsert', 'true');
-
-      const token = getToken();
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const res = await fetch(`${this._baseUrl}/api/storage/${this._bucket}/${path}`, {
         method: 'POST',
