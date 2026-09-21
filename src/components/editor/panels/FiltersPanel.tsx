@@ -11,7 +11,7 @@ interface FiltersPanelProps {
 }
 
 // City-inspired filter presets with distinct visual identities
-const cityFilterPresets: { id: string; name: string; filter: VideoFilter }[] = [
+export const cityFilterPresets: { id: string; name: string; filter: VideoFilter }[] = [
   {
     id: 'paris',
     name: 'Paris',
@@ -171,7 +171,7 @@ const cityFilterPresets: { id: string; name: string; filter: VideoFilter }[] = [
 ];
 
 // Basic filter presets (existing)
-const basicFilterPresets: { id: string; name: string; filter: VideoFilter }[] = [
+export const basicFilterPresets: { id: string; name: string; filter: VideoFilter }[] = [
   {
     id: 'bw',
     name: 'B&W',

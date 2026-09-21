@@ -34,13 +34,24 @@ const MIN_SIDEBAR_WIDTH = 240;
 const MAX_SIDEBAR_WIDTH = 480;
 
 export default function Editor() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('projectId') || undefined;
+  const isMobile = useIsMobile();
+
+  // Phone-first editing experience. Rendered as a full-screen overlay so it
+  // covers the normal feed navigation, header and sidebar on mobile.
+  if (isMobile) {
+    return <MobileReelEditor projectId={projectId} />;
+  }
+
+  return <DesktopEditor projectId={projectId} />;
+}
+
+function DesktopEditor({ projectId }: { projectId?: string }) {
+  const navigate = useNavigate();
   
   // Single project hook - loads by projectId
   const { project, saveProject, isLoading, updateProjectData } = useEditorProject(projectId);
-  const isMobile = useIsMobile();
   const canvasRef = useRef<EditorCanvasRef>(null);
   const playerRef = useRef<VideoPlayer | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
