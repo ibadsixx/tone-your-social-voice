@@ -48,6 +48,7 @@ import { cn } from '@/lib/utils';
 import { gateway } from '@/lib/gateway';
 import { mediaAppUrl } from '@/lib/mediaUrl';
 import { MessageLinkPreview } from './MessageLinkPreview';
+import { voicePlaybackUrl } from '@/lib/audioPlayback';
 
 
 export interface Message {
@@ -214,12 +215,27 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       setIsPlaying(false);
       setCurrentTime(0);
     };
+    // A load/decode failure (404, resource-type mismatch, or a codec the
+    // browser cannot decode) surfaces on the element BEFORE play() is
+    // attempted. audio.error.code pinpoints which it was, so the message the
+    // user sees matches the actual cause instead of a generic play failure.
+    const handleError = () => {
+      const code = audio.error?.code;
+      const label =
+        code === 4 ? 'not supported' :
+        code === 2 ? 'network' :
+        code === 3 ? 'decode' :
+        'unknown';
+      setIsPlaying(false);
+      setAudioError(`Failed to load audio (${label})`);
+    };
 
     audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('loadedmetadata', updateDuration);
     audio.addEventListener('play', handlePlay);
     audio.addEventListener('pause', handlePause);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
 
     return () => {
       audio.removeEventListener('timeupdate', updateTime);
@@ -227,6 +243,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       audio.removeEventListener('play', handlePlay);
       audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('error', handleError);
     };
   }, [audioUrl]);
 
@@ -246,11 +263,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     // /api/storage/message_audios/* URL that the gateway's existing GET route
     // 302-redirects to the reconstructed Cloudinary asset. That covers the
     // sender, receivers, refreshes and legacy rows that have no audio_url.
+    // voicePlaybackUrl additionally asks Cloudinary for an MP3 conversion of
+    // the same asset when this browser cannot play the recorded container
+    // (e.g. WebM/Opus in Safari/iOS), so play() works instead of rejecting
+    // with NotSupportedError.
     try {
       const { data } = gateway.storage
         .from('message_audios')
         .getPublicUrl(message.audio_path);
-      setAudioUrl(message.audio_url || data.publicUrl);
+      setAudioUrl(voicePlaybackUrl(message.audio_url || data.publicUrl, message.audio_mime));
     } catch (error) {
       console.error('Error loading audio:', error);
       setAudioError('Failed to load audio');
@@ -267,7 +288,24 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     } else {
       audioRef.current.play().catch((error) => {
         console.error('Error playing audio:', error);
-        setAudioError('Failed to play audio');
+        const name =
+          typeof error === 'object' && error !== null
+            ? ((error as { name?: unknown }).name ?? '')
+            : '';
+        if (name === 'NotSupportedError') {
+          // The URL resolved but the browser's <audio> cannot decode the
+          // source: a codec it doesn't support (WebM/Opus in Safari/iOS) or a
+          // URL that points at something that isn't playable audio.
+          setAudioError(
+            `This audio format cannot be played in this browser${
+              message.audio_mime ? ` (${message.audio_mime})` : ''
+            }`
+          );
+        } else if (name === 'NotAllowedError') {
+          setAudioError('Playback was blocked by the browser');
+        } else {
+          setAudioError('Failed to play audio');
+        }
       });
     }
   };
