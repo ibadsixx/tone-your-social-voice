@@ -19,6 +19,8 @@ import { AudioRecording } from '@/hooks/useAudioRecorder';
 import { useToast } from '@/hooks/use-toast';
 import { gateway } from '@/lib/gateway';
 import { v4 as uuidv4 } from 'uuid';
+import { voiceFileExtension } from '@/lib/audioPlayback';
+import { logVoiceUpload } from '@/lib/voiceDiagnostics';
 
 export interface ReplyToMessage {
   id: string;
@@ -211,9 +213,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 
     setUploadingAudio(true);
     try {
-      // Generate unique file path
-      const fileExtension = recording.blob.type.includes('webm') ? 'webm' : 
-                           recording.blob.type.includes('ogg') ? 'ogg' : 'mp3';
+      // Generate unique file path. The extension mirrors the recorded MIME
+      // (webm/opus on Chrome/Edge/Firefox, mp4 on Safari, mpeg elsewhere) so
+      // Cloudinary's auto-detection classifies the asset correctly — putting a
+      // Safari 'audio/mp4' blob behind a '.mp3' name breaks that and can leave
+      // playback undecodable in every browser.
+      const fileExtension = voiceFileExtension(recording.blob.type);
       const fileName = `${uuidv4()}.${fileExtension}`;
       const filePath = `message_audios/${conversationId}/${fileName}`;
 
@@ -230,6 +235,15 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       if (uploadError) {
         throw uploadError;
       }
+
+      logVoiceUpload({
+        mime: recording.blob.type,
+        size: recording.blob.size,
+        duration: recording.duration,
+        extension: fileExtension,
+        path: filePath,
+        audioUrl: uploadData?.url,
+      });
 
       // Create the voice message. The handler returns false (rather than
       // throwing) when the message-could-not-be-created failure happens in a

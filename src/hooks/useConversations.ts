@@ -17,6 +17,7 @@ import { parseCallLog, callLogLabel, formatCallDuration } from '@/lib/callLog';
 import { subscribeToMessages, getMessageRealtime } from '@/lib/messageRealtime';
 import { ensureMessageRequest, hasAcceptedFriendship } from '@/lib/messageRequests';
 import { isOnline } from '@/hooks/usePresence';
+import { logVoiceInsert } from '@/lib/voiceDiagnostics';
 
 // Call-log messages store a JSON envelope in `content`; show a readable label
 // ("Malak missed your voice call") in conversation-list previews, phrased from
@@ -129,6 +130,14 @@ export async function insertVoiceMessageRow(params: {
     .insert(insertPayload)
     .select(VOICE_MESSAGE_SELECT)
     .single();
+
+  logVoiceInsert({
+    audioPath,
+    audioUrl,
+    mime: mimeType,
+    duration,
+    fileSize,
+  });
 
   return { data: (result.data as Record<string, unknown>) ?? null, error: result.error };
 }

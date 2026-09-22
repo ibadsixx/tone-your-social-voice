@@ -820,7 +820,13 @@ class GatewayStorageBucket {
         const sign = await signRes.json();
         if (sign?.uploadUrl && sign?.apiKey && sign?.timestamp && sign?.folder && sign?.signature) {
           const formData = new FormData();
-          formData.append('file', file);
+          // Engineered the same way the gateway's own proxied path does it:
+          // the file part carries a real filename (<...>/<uuid>.webm) so
+          // Cloudinary's auto-detection classifies the resource type — a bare
+          // Blob (filename "blob") can be stored with the wrong resource_type,
+          // which makes the delivery URL undecodable in browsers that DO
+          // support WebM/Opus (Chrome/Brave).
+          formData.append('file', file, path.split('/').pop() || 'upload');
           formData.append('api_key', sign.apiKey);
           formData.append('timestamp', sign.timestamp);
           formData.append('folder', sign.folder);

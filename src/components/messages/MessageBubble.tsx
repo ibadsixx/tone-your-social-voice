@@ -48,7 +48,13 @@ import { cn } from '@/lib/utils';
 import { gateway } from '@/lib/gateway';
 import { mediaAppUrl } from '@/lib/mediaUrl';
 import { MessageLinkPreview } from './MessageLinkPreview';
-import { voicePlaybackUrl } from '@/lib/audioPlayback';
+import { voicePlaybackUrl, toConvertedUrl, audioCanPlay } from '@/lib/audioPlayback';
+import {
+  logVoicePlayback,
+  logVoicePlaybackError,
+  logVoicePlaybackRetry,
+  probeAudioUrl,
+} from '@/lib/voiceDiagnostics';
 
 
 export interface Message {
@@ -194,6 +200,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [audioError, setAudioError] = useState<string | null>(null);
   const [showActions, setShowActions] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  // One automatic retry per message: if play() rejects with NotSupportedError
+  // even though the browser claims WebM/Opus support (Chrome/Brave), re-point
+  // the same asset at Cloudinary's f_mp3 conversion and try again.
+  const retriedConvertedRef = useRef(false);
 
   // Load audio URL when component mounts
   useEffect(() => {
@@ -226,6 +236,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         code === 2 ? 'network' :
         code === 3 ? 'decode' :
         'unknown';
+      logVoicePlaybackError({
+        phase: 'load',
+        audioUrl: audioUrl || '',
+        errorCode: code,
+        errorName: label,
+        mime: message.audio_mime,
+      });
       setIsPlaying(false);
       setAudioError(`Failed to load audio (${label})`);
     };
@@ -245,13 +262,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('error', handleError);
     };
-  }, [audioUrl]);
+  }, [audioUrl, message.audio_mime]);
 
   const loadAudioUrl = () => {
     if (!message.audio_path) return;
 
     setLoadingAudio(true);
     setAudioError(null);
+    retriedConvertedRef.current = false;
 
     // The gateway uploads media to Cloudinary and its client exposes NO
     // createSignedUrl (that API is Supabase-storage-only), so the previous call
@@ -273,7 +291,30 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       const { data } = gateway.storage
         .from('message_audios')
         .getPublicUrl(message.audio_path);
-      setAudioUrl(voicePlaybackUrl(message.audio_url || data.publicUrl, message.audio_mime));
+      const sourceUrl = message.audio_url || data.publicUrl;
+      const finalUrl = voicePlaybackUrl(sourceUrl, message.audio_mime);
+      setAudioUrl(finalUrl);
+      logVoicePlayback({
+        sourceUrl,
+        finalUrl,
+        mime: message.audio_mime,
+        canPlayRecordedMime: audioCanPlay(message.audio_mime),
+      });
+      // First-byte probe of the final URL: status + Content-Type are the two
+      // facts that prove whether the URL serves the audio or an error response.
+      probeAudioUrl(finalUrl).then((probe) => {
+        if (probe.status >= 400) {
+          logVoicePlayback({
+            sourceUrl,
+            finalUrl,
+            mime: message.audio_mime,
+            canPlayRecordedMime: audioCanPlay(message.audio_mime),
+            probe: true,
+            httpStatus: probe.status,
+            httpContentType: probe.contentType,
+          });
+        }
+      });
     } catch (error) {
       console.error('Error loading audio:', error);
       setAudioError('Failed to load audio');
@@ -294,10 +335,61 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           typeof error === 'object' && error !== null
             ? ((error as { name?: unknown }).name ?? '')
             : '';
+        logVoicePlaybackError({
+          phase: 'play',
+          audioUrl: audioUrl || '',
+          errorName: name || undefined,
+          mime: message.audio_mime,
+        });
         if (name === 'NotSupportedError') {
           // The URL resolved but the browser's <audio> cannot decode the
-          // source: a codec it doesn't support (WebM/Opus in Safari/iOS) or a
-          // URL that points at something that isn't playable audio.
+          // source. When the browser CLAIMS WebM/Opus support (Chrome/Brave)
+          // yet still fails, the stored asset/delivery is off — retry once
+          // against Cloudinary's f_mp3 conversion of the SAME asset instead of
+          // showing the error immediately. MP3 decodes everywhere, so this also
+          // covers Safari/iOS. If the conversion also fails, show the cause.
+          if (audioUrl && !retriedConvertedRef.current) {
+            const converted = toConvertedUrl(audioUrl);
+            if (converted !== audioUrl) {
+              retriedConvertedRef.current = true;
+              const audio = audioRef.current;
+              if (audio) {
+                setAudioUrl(converted);
+                audio.src = converted;
+                audio.load();
+                audio
+                  .play()
+                  .then(() => {
+                    logVoicePlaybackRetry({
+                      fromUrl: audioUrl,
+                      toUrl: converted,
+                      mime: message.audio_mime,
+                      result: 'ok',
+                    });
+                    setIsPlaying(true);
+                  })
+                  .catch((retryError) => {
+                    logVoicePlaybackRetry({
+                      fromUrl: audioUrl,
+                      toUrl: converted,
+                      mime: message.audio_mime,
+                      result: 'still-failed',
+                    });
+                    // A load-stage failure (e.g. the conversion 404s) is
+                    // already reported by the error listener; don't overwrite
+                    // it with a misleading decode message.
+                    if (audio.error?.code !== 4) {
+                      setAudioError(
+                        `This audio format cannot be played in this browser${
+                          message.audio_mime ? ` (${message.audio_mime})` : ''
+                        }`
+                      );
+                    }
+                  });
+                return;
+              }
+            }
+          }
           setAudioError(
             `This audio format cannot be played in this browser${
               message.audio_mime ? ` (${message.audio_mime})` : ''

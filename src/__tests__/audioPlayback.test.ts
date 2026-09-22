@@ -1,5 +1,10 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { audioCanPlay, voicePlaybackUrl } from '@/lib/audioPlayback';
+import {
+  audioCanPlay,
+  voicePlaybackUrl,
+  toConvertedUrl,
+  voiceFileExtension,
+} from '@/lib/audioPlayback';
 
 const CLOUD_URL =
   'https://res.cloudinary.com/tone/video/upload/v1/tone/message_audios/conv-1/msg-1.webm';
@@ -99,5 +104,39 @@ describe('voicePlaybackUrl', () => {
     const gateway =
       'http://mock.test/api/storage/message_audios/a.webm?format=mp3';
     expect(voicePlaybackUrl(gateway, 'audio/webm;codecs=opus')).toBe(gateway);
+  });
+});
+
+describe('toConvertedUrl (runtime retry path)', () => {
+  it('converts a Cloudinary delivery URL to f_mp3 unconditionally', () => {
+    expect(toConvertedUrl(CLOUD_URL)).toBe(
+      'https://res.cloudinary.com/tone/video/upload/f_mp3/v1/tone/message_audios/conv-1/msg-1.webm'
+    );
+  });
+
+  it('converts a gateway fallback URL via format=mp3', () => {
+    const gateway =
+      'http://mock.test/api/storage/message_audios/message_audios/conv-1/msg-1.webm';
+    expect(toConvertedUrl(gateway)).toBe(
+      'http://mock.test/api/storage/message_audios/message_audios/conv-1/msg-1.webm?format=mp3'
+    );
+  });
+
+  it('leaves an already-converted URL untouched', () => {
+    const converted =
+      'https://res.cloudinary.com/tone/video/upload/f_mp3/v1/tone/message_audios/msg.webm';
+    expect(toConvertedUrl(converted)).toBe(converted);
+  });
+});
+
+describe('voiceFileExtension', () => {
+  it('maps the recorded MIME to the extension Cloudinary should see', () => {
+    expect(voiceFileExtension('audio/webm;codecs=opus')).toBe('webm');
+    expect(voiceFileExtension('audio/webm')).toBe('webm');
+    expect(voiceFileExtension('audio/ogg;codecs=opus')).toBe('ogg');
+    expect(voiceFileExtension('audio/mp4')).toBe('mp4');
+    expect(voiceFileExtension('audio/mp4; codecs=mp4a.40.2')).toBe('mp4');
+    expect(voiceFileExtension('audio/mpeg')).toBe('mp3');
+    expect(voiceFileExtension('unknown/x')).toBe('webm');
   });
 });
