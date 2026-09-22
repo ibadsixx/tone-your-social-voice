@@ -35,25 +35,45 @@ export function audioCanPlay(mime: string | null | undefined): boolean {
 const CLOUDINARY_DELIVERY_RE =
   /^(https:\/\/res\.cloudinary\.com\/[^/]+\/[^/]+\/upload\/)((?:v\d+\/)?tone\/.+)$/;
 
+// Legacy voice-message rows (sent before audio_url was persisted) and any row
+// whose CDN URL is missing resolve through the gateway fallback form below.
+// The gateway's GET /storage/:bucket/* redirects that URL to the reconstructed
+// Cloudinary asset; appending ?format=mp3 makes it redirect to an f_mp3
+// conversion of the SAME asset instead.
+function isGatewayStorageUrl(url: string): boolean {
+  return url.includes('/api/storage/');
+}
+
+function alreadyConverted(url: string): boolean {
+  return url.includes('f_mp3') || /[?&]format=/.test(url);
+}
+
 /**
- * Resolve the URL used for <audio> playback. Direct Cloudinary delivery URLs
- * are rewritten to request an MP3 conversion when the recorded mime is not
- * playable in this browser (e.g. WebM/Opus in Safari). Every other URL — the
- * gateway /api/storage/* redirect fallback, or a URL whose mime the browser can
- * already play — is returned unchanged. Already-converted URLs are never
- * rewritten a second time.
+ * Resolve the URL used for <audio> playback. When the recorded mime is not
+ * playable in this browser (e.g. WebM/Opus in Safari):
+ *  - direct Cloudinary delivery URLs are rewritten to request an MP3
+ *    conversion of the same asset (f_mp3), and
+ *  - gateway /api/storage/* fallback URLs get ?format=mp3 appended, so the
+ *    gateway's existing redirect serves the converted MP3 too.
+ * URLs whose mime the browser can already play, and already-converted URLs,
+ * are never touched.
  */
 export function voicePlaybackUrl(
   url: string,
   recordedMime: string | null | undefined
 ): string {
   if (audioCanPlay(recordedMime)) return url;
+  if (alreadyConverted(url)) return url;
 
   const match = url.match(CLOUDINARY_DELIVERY_RE);
   if (match) {
     // Insert the f_mp3 transformation between '/upload/' and the version:
     //   .../upload/f_mp3/<v<version>/]tone/<path>
     return `${match[1]}f_mp3/${match[2]}`;
+  }
+  if (isGatewayStorageUrl(url)) {
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}format=mp3`;
   }
   return url;
 }

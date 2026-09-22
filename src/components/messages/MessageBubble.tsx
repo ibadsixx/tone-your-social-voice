@@ -263,10 +263,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     // /api/storage/message_audios/* URL that the gateway's existing GET route
     // 302-redirects to the reconstructed Cloudinary asset. That covers the
     // sender, receivers, refreshes and legacy rows that have no audio_url.
-    // voicePlaybackUrl additionally asks Cloudinary for an MP3 conversion of
-    // the same asset when this browser cannot play the recorded container
-    // (e.g. WebM/Opus in Safari/iOS), so play() works instead of rejecting
-    // with NotSupportedError.
+    // voicePlaybackUrl additionally asks for an MP3 conversion of the same
+    // asset when this browser cannot play the recorded container (e.g.
+    // WebM/Opus in Safari/iOS): it rewrites direct Cloudinary URLs to an
+    // f_mp3 delivery, and appends ?format=mp3 to gateway fallback URLs so the
+    // gateway redirects to the converted asset too — so play() works instead
+    // of rejecting with NotSupportedError.
     try {
       const { data } = gateway.storage
         .from('message_audios')
