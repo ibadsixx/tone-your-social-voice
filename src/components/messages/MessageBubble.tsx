@@ -48,7 +48,7 @@ import { cn } from '@/lib/utils';
 import { gateway } from '@/lib/gateway';
 import { mediaAppUrl } from '@/lib/mediaUrl';
 import { MessageLinkPreview } from './MessageLinkPreview';
-import { voicePlaybackUrl, toConvertedUrl, audioCanPlay } from '@/lib/audioPlayback';
+import { voicePlaybackUrl, toConvertedUrl, audioCanPlay, formatAudioTime } from '@/lib/audioPlayback';
 import {
   logVoicePlayback,
   logVoicePlaybackError,
@@ -217,8 +217,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     const audio = audioRef.current;
     if (!audio) return;
 
-    const updateTime = () => setCurrentTime(audio.currentTime);
-    const updateDuration = () => setDuration(audio.duration);
+    // Guard the values that feed the time readout: audio.currentTime can be NaN
+    // in edge states, and audio.duration is NaN until metadata loads and
+    // Infinity while the browser still considers the duration unknown (Chrome
+    // does this for WebM until it has fully resolved it). Only finite, valid
+    // numbers are ever stored, so NaN/Infinity can never reach formatAudioTime.
+    const updateTime = () => {
+      const t = audio.currentTime;
+      if (Number.isFinite(t) && t >= 0) setCurrentTime(t);
+    };
+    const updateDuration = () => {
+      const d = audio.duration;
+      // 0 is reported for streams with no known duration; keep the last valid
+      // value (0 initially) rather than storing NaN/Infinity/-Infinity. The
+      // readout falls back to the recorded message.audio_duration meanwhile.
+      if (Number.isFinite(d) && d >= 0) setDuration(d);
+    };
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
     const handleEnded = () => {
@@ -249,6 +263,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
     audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('loadedmetadata', updateDuration);
+    // Chrome reports Infinity for WebM/Opus until the duration is resolved, then
+    // fires durationchange when the real value (or 0) becomes known — without
+    // this the readout would stay 0:00/recorded-duration for such messages.
+    audio.addEventListener('durationchange', updateDuration);
     audio.addEventListener('play', handlePlay);
     audio.addEventListener('pause', handlePause);
     audio.addEventListener('ended', handleEnded);
@@ -257,6 +275,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     return () => {
       audio.removeEventListener('timeupdate', updateTime);
       audio.removeEventListener('loadedmetadata', updateDuration);
+      audio.removeEventListener('durationchange', updateDuration);
       audio.removeEventListener('play', handlePlay);
       audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('ended', handleEnded);
@@ -405,16 +424,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   };
 
   const handleSeek = (newTime: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-    }
-  };
-
-  const formatAudioTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    if (!audioRef.current) return;
+    // The click handler derives newTime from the bar width times `duration`;
+    // guard it the same way as the event handlers so an invalid duration can
+    // never propagate a NaN/Infinity seek position into currentTime.
+    const t = Number.isFinite(newTime) && newTime >= 0 ? newTime : 0;
+    audioRef.current.currentTime = t;
+    setCurrentTime(t);
   };
 
   const handleCopyMessage = () => {

@@ -4,6 +4,7 @@ import {
   voicePlaybackUrl,
   toConvertedUrl,
   voiceFileExtension,
+  formatAudioTime,
 } from '@/lib/audioPlayback';
 
 const CLOUD_URL =
@@ -138,5 +139,33 @@ describe('voiceFileExtension', () => {
     expect(voiceFileExtension('audio/mp4; codecs=mp4a.40.2')).toBe('mp4');
     expect(voiceFileExtension('audio/mpeg')).toBe('mp3');
     expect(voiceFileExtension('unknown/x')).toBe('webm');
+  });
+});
+
+describe('formatAudioTime (duration readout)', () => {
+  it('formats do.md spec examples exactly', () => {
+    expect(formatAudioTime(0)).toBe('0:00');
+    expect(formatAudioTime(5)).toBe('0:05');
+    expect(formatAudioTime(65)).toBe('1:05');
+    expect(formatAudioTime(125.5)).toBe('2:05');
+    expect(formatAudioTime(125.8)).toBe('2:05');
+  });
+
+  it('formats longer durations with minute-padded seconds', () => {
+    expect(formatAudioTime(3600)).toBe('60:00');
+    expect(formatAudioTime(3599.7)).toBe('59:59');
+  });
+
+  it('never emits Infinity/NaN for the values HTMLMediaElement can report', () => {
+    // audio.duration is NaN before metadata loads and Infinity for streams
+    // whose duration is still unknown — the exact inputs that produced
+    // 'Infinity:NaN' in the UI.
+    expect(formatAudioTime(NaN)).toBe('0:00');
+    expect(formatAudioTime(Infinity)).toBe('0:00');
+    expect(formatAudioTime(-Infinity)).toBe('0:00');
+    expect(formatAudioTime(-5)).toBe('0:00');
+    expect(formatAudioTime(Number.POSITIVE_INFINITY)).toBe('0:00');
+    const result = formatAudioTime(Infinity);
+    expect(result).not.toMatch(/Infinity|NaN/);
   });
 });

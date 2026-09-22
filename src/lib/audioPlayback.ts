@@ -28,6 +28,23 @@ export function audioCanPlay(mime: string | null | undefined): boolean {
   }
 }
 
+/**
+ * Format a seconds value as `m:ss` for the voice-message progress readout.
+ *
+ * Never lets an invalid duration reach the formatter: HTMLMediaElement reports
+ * `audio.duration` as `NaN` until metadata has loaded and as `Infinity` for
+ * media whose duration is unknown (e.g. WebM before Chrome has fully resolved
+ * it), and `Infinity % 60 === NaN` — which is what produced the
+ * `Infinity:NaN` readout. Anything that isn't a finite number >= 0 formats as
+ * `0:00`; fractional seconds are floored (125.8 → 2:05).
+ */
+export function formatAudioTime(seconds: number): string {
+  const safe = Number.isFinite(seconds) && seconds >= 0 ? seconds : 0;
+  const mins = Math.floor(safe / 60);
+  const secs = Math.floor(safe % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 // Direct Cloudinary delivery URLs look like:
 //   https://res.cloudinary.com/<cloud>/<type>/upload/[v<version>/]tone/<path>
 // Group 1 = everything up to and including '/upload/'; group 2 = the rest,
