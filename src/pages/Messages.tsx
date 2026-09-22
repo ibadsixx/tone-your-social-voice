@@ -426,7 +426,8 @@ const Messages = () => {
     audioPath: string,
     duration: number,
     mimeType: string,
-    fileSize: number
+    fileSize: number,
+    audioUrl?: string
   ): Promise<boolean> => {
     if (!activeConversationId || !currentUserId) return false;
     return sendAudioMessage({
@@ -435,6 +436,7 @@ const Messages = () => {
       duration,
       mimeType,
       fileSize,
+      audioUrl,
     });
   };
 

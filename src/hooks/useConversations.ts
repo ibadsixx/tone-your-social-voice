@@ -91,7 +91,9 @@ export const VOICE_MESSAGE_SELECT = `
 // (42P01) — the same class of monolith-era chat RPC that can no longer run
 // against the split conversation/message database. Inserting with a
 // `.select()` returns the created row in one round trip, so no separate reload
-// is needed.
+// is needed. The optional audioUrl is the Cloudinary CDN URL returned by the
+// upload response; persisting it (audio_url) makes playback work for both
+// sides without re-resolving the storage path.
 export async function insertVoiceMessageRow(params: {
   conversationId: string;
   senderId: string;
@@ -100,8 +102,9 @@ export async function insertVoiceMessageRow(params: {
   duration: number;
   mimeType: string;
   fileSize: number;
+  audioUrl?: string;
 }): Promise<{ data: Record<string, unknown> | null; error: unknown }> {
-  const { conversationId, senderId, receiverId, audioPath, duration, mimeType, fileSize } = params;
+  const { conversationId, senderId, receiverId, audioPath, duration, mimeType, fileSize, audioUrl } = params;
 
   const insertPayload = {
     conversation_id: conversationId,
@@ -112,6 +115,9 @@ export async function insertVoiceMessageRow(params: {
     content: null,
     attachment_url: null,
     audio_path: audioPath,
+    // Cloudinary CDN URL from the upload response: persisted on the row so
+    // playback works without re-resolving the path (MessageBubble prefers it).
+    audio_url: audioUrl ?? null,
     audio_duration: duration,
     audio_mime: mimeType,
     audio_size: fileSize,
@@ -1310,8 +1316,9 @@ export const useConversations = (currentUserId?: string) => {
     duration: number;
     mimeType: string;
     fileSize: number;
+    audioUrl?: string;
   }): Promise<boolean> => {
-    const { conversationId, audioPath, duration, mimeType, fileSize } = params;
+    const { conversationId, audioPath, duration, mimeType, fileSize, audioUrl } = params;
     if (!currentUserId || !conversationId || !audioPath) return false;
 
     // Same single choke point as text sends: a still-pending INCOMING message
@@ -1376,6 +1383,7 @@ export const useConversations = (currentUserId?: string) => {
         duration,
         mimeType,
         fileSize,
+        audioUrl,
       });
 
       if (created.error || !created.data) {

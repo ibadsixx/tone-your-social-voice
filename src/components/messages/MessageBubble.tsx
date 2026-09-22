@@ -230,20 +230,27 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     };
   }, [audioUrl]);
 
-  const loadAudioUrl = async () => {
+  const loadAudioUrl = () => {
     if (!message.audio_path) return;
-    
+
     setLoadingAudio(true);
     setAudioError(null);
-    
+
+    // The gateway uploads media to Cloudinary and its client exposes NO
+    // createSignedUrl (that API is Supabase-storage-only), so the previous call
+    // threw TypeError and playback always surfaced "Failed to load audio". Use
+    // the same resolution every other upload in the app uses (getPublicUrl):
+    // prefer the Cloudinary CDN URL persisted on the row at send time
+    // (audio_url), otherwise getPublicUrl() — which returns the exact CDN URL
+    // cached from this session's own upload, or the gateway
+    // /api/storage/message_audios/* URL that the gateway's existing GET route
+    // 302-redirects to the reconstructed Cloudinary asset. That covers the
+    // sender, receivers, refreshes and legacy rows that have no audio_url.
     try {
-      const { data, error } = await gateway.storage
+      const { data } = gateway.storage
         .from('message_audios')
-        .createSignedUrl(message.audio_path, 3600); // 1 hour expiry
-      
-      if (error) throw error;
-      
-      setAudioUrl(data.signedUrl);
+        .getPublicUrl(message.audio_path);
+      setAudioUrl(message.audio_url || data.publicUrl);
     } catch (error) {
       console.error('Error loading audio:', error);
       setAudioError('Failed to load audio');

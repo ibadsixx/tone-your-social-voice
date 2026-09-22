@@ -12,7 +12,8 @@
 // the real `conversation_participants` relation server-side.
 //
 // These tests pin the regression: the row must be inserted via
-// `gateway.from('messages').insert(...)` with the full voice payload, the
+// `gateway.from('messages').insert(...)` with the full voice payload (including
+// the Cloudinary audio_url captured at upload time), the
 // `create_message_with_audio` RPC must never be invoked, and the created row
 // (audio fields + sender profile) must come back in the same round trip.
 
@@ -111,6 +112,7 @@ describe('insertVoiceMessageRow (voice-message creation, gateway table path)', (
     duration: 45,
     mimeType: 'audio/webm',
     fileSize: 12345,
+    audioUrl: 'https://res.cloudinary.com/demo/video/upload/v1/tone/message_audios/conv-1/audio.webm',
   };
 
   it('inserts the voice row into the messages table with the full audio payload', async () => {
@@ -125,6 +127,7 @@ describe('insertVoiceMessageRow (voice-message creation, gateway table path)', (
       content: null,
       attachment_url: null,
       audio_path: 'message_audios/conv-1/audio.webm',
+      audio_url: 'https://res.cloudinary.com/demo/video/upload/v1/tone/message_audios/conv-1/audio.webm',
       audio_duration: 45,
       audio_mime: 'audio/webm',
       audio_size: 12345,
@@ -132,6 +135,26 @@ describe('insertVoiceMessageRow (voice-message creation, gateway table path)', (
     });
     expect(result.data?.id).toBe('msg-1');
     expect(result.error).toBeNull();
+  });
+
+  it('persists the Cloudinary CDN URL from the upload response on the row (audio_url)', async () => {
+    await insertVoiceMessageRow(baseParams);
+    expect(hoisted.calls.inserts[0].audio_url).toBe(
+      'https://res.cloudinary.com/demo/video/upload/v1/tone/message_audios/conv-1/audio.webm'
+    );
+  });
+
+  it('stores audio_url as null when the upload response carried no URL', async () => {
+    await insertVoiceMessageRow({
+      conversationId: 'conv-1',
+      senderId: 'me-1',
+      receiverId: 'alice-1',
+      audioPath: 'message_audios/conv-1/audio.webm',
+      duration: 45,
+      mimeType: 'audio/webm',
+      fileSize: 12345,
+    });
+    expect(hoisted.calls.inserts[0].audio_url).toBeNull();
   });
 
   it('NEVER invokes the broken create_message_with_audio RPC', async () => {

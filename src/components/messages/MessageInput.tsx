@@ -30,7 +30,7 @@ export interface ReplyToMessage {
 
 interface MessageInputProps {
   onSendMessage: (content?: string, mediaUrl?: string, replyToId?: string) => void;
-  onSendAudioMessage?: (audioPath: string, duration: number, mimeType: string, fileSize: number) => boolean | Promise<boolean>;
+  onSendAudioMessage?: (audioPath: string, duration: number, mimeType: string, fileSize: number, audioUrl?: string) => boolean | Promise<boolean>;
   onSendGif?: (gif: GifItem) => void;
   conversationId?: string;
   disabled?: boolean;
@@ -217,8 +217,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       const fileName = `${uuidv4()}.${fileExtension}`;
       const filePath = `message_audios/${conversationId}/${fileName}`;
 
-      // Upload to Supabase Storage (through the Gateway)
-      const { error: uploadError } = await gateway.storage
+      // Upload to Supabase Storage (through the Gateway); the response carries
+      // the Cloudinary CDN URL (data.url) which is persisted on the message row
+      // (audio_url) so playback works for the recipient too.
+      const { data: uploadData, error: uploadError } = await gateway.storage
         .from('message_audios')
         .upload(filePath, recording.blob, {
           cacheControl: '3600',
@@ -238,7 +240,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         filePath,
         recording.duration,
         recording.blob.type,
-        recording.blob.size
+        recording.blob.size,
+        uploadData?.url
       );
       if (sent === false) return;
 
