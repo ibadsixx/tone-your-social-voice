@@ -7,7 +7,7 @@ export interface AudioRecording {
   url: string;
 }
 
-export const useAudioRecorder = () => {
+export const useAudioRecorder = (options?: { maxDurationSeconds?: number }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -21,7 +21,12 @@ export const useAudioRecorder = () => {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const { toast } = useToast();
 
-  const MAX_DURATION = 60; // 60 seconds
+  // Optional time-based auto-stop. `0` (used by the message voice composer)
+  // means "no time limit" — the user can record as long as the mic hardware
+  // and the storage size limit allow. The editor voice-over recorder keeps the
+  // original 60s cap by not passing any option. Read through a ref so the
+  // timer callbacks stay stable (as they were when the cap was a literal).
+  const maxDurationRef = useRef(options?.maxDurationSeconds ?? 60);
   const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 
   const startRecording = useCallback(async (): Promise<boolean> => {
@@ -114,8 +119,8 @@ export const useAudioRecorder = () => {
         const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
         setRecordingTime(elapsed);
         
-        // Auto-stop at max duration
-        if (elapsed >= MAX_DURATION) {
+        // Auto-stop at max duration (only when a time limit is configured)
+        if (maxDurationRef.current > 0 && elapsed >= maxDurationRef.current) {
           stopRecording();
         }
       }, 100);
@@ -165,7 +170,7 @@ export const useAudioRecorder = () => {
         const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
         setRecordingTime(elapsed);
         
-        if (elapsed >= MAX_DURATION) {
+        if (maxDurationRef.current > 0 && elapsed >= maxDurationRef.current) {
           stopRecording();
         }
       }, 100);
@@ -280,7 +285,7 @@ export const useAudioRecorder = () => {
     cancelRecording,
     cleanup,
     formatTime,
-    maxDuration: MAX_DURATION,
+    maxDuration: maxDurationRef.current,
     maxSize: MAX_SIZE
   };
 };
