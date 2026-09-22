@@ -252,6 +252,7 @@ const Messages = () => {
     setActiveConversationId,
     fetchMessages,
     sendMessage,
+    sendAudioMessage,
     getOrCreateDM,
     refetchConversations
   } = useConversations(currentUserId || undefined);
@@ -413,6 +414,27 @@ const Messages = () => {
       // Message will be added via real-time subscription
       notifyChannelFollowers();
     }
+  };
+
+  // Voice messages: the audio blob is uploaded by MessageInput, then the
+  // message itself is created here through the existing `sendAudioMessage`
+  // pipeline (create_message_with_audio RPC + realtime announce). The boolean
+  // return tells MessageInput whether to keep the recording preview (failure)
+  // or dismiss it (success).
+  const handleSendAudio = async (
+    audioPath: string,
+    duration: number,
+    mimeType: string,
+    fileSize: number
+  ): Promise<boolean> => {
+    if (!activeConversationId || !currentUserId) return false;
+    return sendAudioMessage({
+      conversationId: activeConversationId,
+      audioPath,
+      duration,
+      mimeType,
+      fileSize,
+    });
   };
 
   // When an admin publishes a channel post, followers receive activity through
@@ -1147,6 +1169,7 @@ const Messages = () => {
           currentUserId={currentUserId}
           conversationId={activeConversationId || undefined}
           onSendMessage={handleSendMessage}
+          onSendAudioMessage={handleSendAudio}
           onLoadMore={() => {
             if (!activeConversationId) return;
             setActivePage((prev) => {

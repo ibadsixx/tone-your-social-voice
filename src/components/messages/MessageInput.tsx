@@ -16,6 +16,7 @@ import { StickerPicker } from './StickerPicker';
 import { GifPicker } from './GifPicker';
 import { GifItem } from '@/hooks/useGifSearch';
 import { AudioRecording } from '@/hooks/useAudioRecorder';
+import { useToast } from '@/hooks/use-toast';
 import { gateway } from '@/lib/gateway';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -29,7 +30,7 @@ export interface ReplyToMessage {
 
 interface MessageInputProps {
   onSendMessage: (content?: string, mediaUrl?: string, replyToId?: string) => void;
-  onSendAudioMessage?: (audioPath: string, duration: number, mimeType: string, fileSize: number) => void;
+  onSendAudioMessage?: (audioPath: string, duration: number, mimeType: string, fileSize: number) => boolean | Promise<boolean>;
   onSendGif?: (gif: GifItem) => void;
   conversationId?: string;
   disabled?: boolean;
@@ -71,6 +72,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const { uploadFile, uploading } = useFileUpload();
   const { upload: autoUpload } = useAutoUpload();
   const { disableAutoUploads } = useStatusVisibility();
+  const { toast } = useToast();
 
   // Close pickers when clicking outside
   useEffect(() => {
@@ -199,6 +201,11 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const handleSendAudio = async (recording: AudioRecording) => {
     if (!onSendAudioMessage || !conversationId) {
       console.error('Missing audio message handler or conversation ID');
+      toast({
+        title: 'Voice message could not be sent',
+        description: 'The voice message composer is unavailable in this conversation.',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -210,7 +217,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       const fileName = `${uuidv4()}.${fileExtension}`;
       const filePath = `message_audios/${conversationId}/${fileName}`;
 
-      // Upload to Supabase Storage
+      // Upload to Supabase Storage (through the Gateway)
       const { error: uploadError } = await gateway.storage
         .from('message_audios')
         .upload(filePath, recording.blob, {
@@ -222,19 +229,35 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         throw uploadError;
       }
 
-      // Send audio message
-      await onSendAudioMessage(
+      // Create the voice message. The handler returns false (rather than
+      // throwing) when the message-could-not-be-created failure happens in a
+      // controlled path (e.g. a channel or a stale conversation) — surface a
+      // useful error and KEEP the recording preview so the user can retry or
+      // cancel instead of silently pretending the send succeeded.
+      const sent = await onSendAudioMessage(
         filePath,
         recording.duration,
         recording.blob.type,
         recording.blob.size
       );
+      if (sent === false) return;
 
       // Clean up
       URL.revokeObjectURL(recording.url);
       setShowVoiceRecorder(false);
     } catch (error) {
       console.error('Error sending audio message:', error);
+      // Gateway upload errors are plain `{ message }` objects, not Error
+      // instances — always surface a useful message, never fail silently.
+      const detail =
+        (error as { message?: string } | null)?.message ||
+        (error instanceof Error ? error.message : '') ||
+        'Upload failed, please try again';
+      toast({
+        title: 'Voice message could not be sent',
+        description: detail,
+        variant: 'destructive',
+      });
     } finally {
       setUploadingAudio(false);
     }

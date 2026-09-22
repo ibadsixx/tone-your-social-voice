@@ -51,7 +51,7 @@ interface ChatWindowProps {
   conversationId?: string;
   onSendMessage: (content?: string, mediaUrl?: string, replyToId?: string) => void;
   onSendGif?: (gif: GifItem) => void;
-  onSendAudioMessage?: (audioPath: string, duration: number, mimeType: string, fileSize: number) => void;
+  onSendAudioMessage?: (audioPath: string, duration: number, mimeType: string, fileSize: number) => boolean | Promise<boolean>;
   onLoadMore?: () => void;
   onClearHistory?: () => void;
   onLeaveGroup?: () => void;

@@ -30,6 +30,19 @@ function previewContent(content: string | null | undefined, viewerId?: string): 
     : base;
 }
 
+// Conversation-list preview for a message row: voice messages show the same
+// mic label PinnedMessagesBanner uses, so an audio-only message is never
+// previewed as an empty string; everything else goes through the text/call-log
+// preview.
+function previewMessageRow(
+  msg: { content?: string | null; audio_path?: string | null } | undefined,
+  viewerId?: string
+): string {
+  if (!msg) return '';
+  if (msg.audio_path) return '🎤 Voice message';
+  return previewContent(msg.content, viewerId);
+}
+
 async function tryDecryptMessage(msg: Message, convId: string): Promise<Message> {
   if (msg.encrypted_content && msg.encryption_iv) {
     const decrypted = await decryptContent(convId, msg.encrypted_content, msg.encryption_iv);
@@ -424,12 +437,12 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
 
   const { data: allMessages } = await gateway
     .from('messages')
-    .select('conversation_id, content, created_at')
+    .select('conversation_id, content, audio_path, created_at')
     .in('conversation_id', convIds2)
     .order('created_at', { ascending: false })
     .limit(200);
 
-  const lastMsgMap = new Map<string, { content: string; created_at: string }>();
+  const lastMsgMap = new Map<string, { content: string; audio_path?: string | null; created_at: string }>();
   (allMessages || []).forEach(msg => {
     if (!lastMsgMap.has(msg.conversation_id)) {
       lastMsgMap.set(msg.conversation_id, msg);
@@ -471,7 +484,7 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
       } : undefined,
       online_count: conv.type === 'group' ? (groupOnlineCounts.get(conv.id) || 0) : undefined,
       last_message: lastMsg ? {
-        content: previewContent(lastMsg.content, userId),
+        content: previewMessageRow(lastMsg, userId),
         created_at: lastMsg.created_at,
       } : undefined,
       unread_count: unreadMap.get(conv.id) || 0,
@@ -520,12 +533,12 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
 
   const { data: allMessages } = await gateway
     .from('messages')
-    .select('conversation_id, content, created_at')
+    .select('conversation_id, content, audio_path, created_at')
     .in('conversation_id', convIds2)
     .order('created_at', { ascending: false })
     .limit(200);
 
-  const lastMsgMap = new Map<string, { content: string; created_at: string }>();
+  const lastMsgMap = new Map<string, { content: string; audio_path?: string | null; created_at: string }>();
   (allMessages || []).forEach(msg => {
     if (!lastMsgMap.has(msg.conversation_id)) {
       lastMsgMap.set(msg.conversation_id, msg);
@@ -556,7 +569,7 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
         last_seen_at: otherProfile.last_seen_at,
       } : undefined,
       last_message: lastMsg ? {
-        content: previewContent(lastMsg.content, userId),
+        content: previewMessageRow(lastMsg, userId),
         created_at: lastMsg.created_at,
       } : undefined,
       unread_count: unreadMap.get(conv.id) || 0,
@@ -1209,6 +1222,211 @@ export const useConversations = (currentUserId?: string) => {
     }
   };
 
+  // Send a voice message. Mirrors the text/image/video send path exactly —
+  // same message-request guard, same receiver/conversation-type resolution,
+  // same optimistic append + Chats-list bump, same realtime announce, same
+  // non-friend message-request registration — but the row is created through
+  // the schema's existing `create_message_with_audio` RPC (the voice-message
+  // creator that already exists in the DB), never a raw hand-rolled insert.
+  const sendAudioMessage = async (params: {
+    conversationId: string;
+    audioPath: string;
+    duration: number;
+    mimeType: string;
+    fileSize: number;
+  }): Promise<boolean> => {
+    const { conversationId, audioPath, duration, mimeType, fileSize } = params;
+    if (!currentUserId || !conversationId || !audioPath) return false;
+
+    // Same single choke point as text sends: a still-pending INCOMING message
+    // request keeps the conversation read-only until the recipient accepts it.
+    if (!(await assertCanSendMessage(conversationId, currentUserId))) {
+      toast({
+        title: 'Message request pending',
+        description: 'Accept the message request before replying.',
+        variant: 'destructive',
+      });
+      return false;
+    }
+
+    // Resolve the conversation type once, exactly like sendMessage. Falls back
+    // to the DB when the conversation was just created and isn't in the inbox.
+    let convType: string | undefined = conversationsDataRef.current.find(
+      c => c.conversation_id === conversationId
+    )?.type;
+    if (!convType) {
+      const { data: convRow } = await gateway
+        .from('conversations')
+        .select('type')
+        .eq('id', conversationId)
+        .maybeSingle();
+      convType = (convRow as { type?: string } | null)?.type ?? undefined;
+    }
+    const isGroupSend = convType === 'group';
+    const resolvedReceiverId = await resolveDmReceiver({
+      conversationId,
+      currentUserId,
+      conversationsDataRef,
+    });
+
+    try {
+      // Channels are broadcast posts whose authorization is enforced by the
+      // Gateway's publish endpoint and publishChannelPost carries no audio
+      // payload — so voice is refused here instead of bypassing that
+      // enforcement. DM and group voice messages are the supported types.
+      if (convType === 'channel') {
+        toast({
+          title: 'Voice message could not be sent',
+          description: 'Voice messages are not supported in channels.',
+          variant: 'destructive',
+        });
+        return false;
+      }
+
+      const messageIdResult = await gateway.rpc('create_message_with_audio', {
+        p_conversation_id: conversationId,
+        p_sender_id: currentUserId,
+        p_audio_path: audioPath,
+        p_audio_duration: duration,
+        p_audio_mime: mimeType,
+        p_audio_size: fileSize,
+      });
+
+      if (messageIdResult.error || !messageIdResult.data) {
+        console.error('[useConversations] Voice message creation error:', messageIdResult.error);
+        toast({
+          title: 'Voice message could not be sent',
+          description: messageIdResult.error?.message || 'Failed to create the voice message',
+          variant: 'destructive',
+        });
+        return false;
+      }
+
+      // Fetch the created row (audio fields + sender profile) so the sender's
+      // own chat renders the voice bubble immediately with the same shape the
+      // receive path produces.
+      const VOICE_MESSAGE_SELECT = `
+        id,
+        conversation_id,
+        sender_id,
+        content,
+        encrypted_content,
+        encryption_iv,
+        attachment_url,
+        image_url,
+        media_url,
+        is_image,
+        message_type,
+        audio_url,
+        audio_duration,
+        audio_mime,
+        audio_size,
+        audio_path,
+        reply_to_id,
+        created_at,
+        sender_profile:profiles!messages_sender_id_fkey(username, display_name, profile_pic)
+      `;
+      const created = await gateway
+        .from('messages')
+        .select(VOICE_MESSAGE_SELECT)
+        .eq('id', messageIdResult.data as string)
+        .single();
+
+      if (created.error || !created.data) {
+        // The message row exists but couldn't be reloaded — never claim success
+        // and never append a half-parsed bubble; the next refetch recovers it.
+        console.error('[useConversations] Voice message reload error:', created.error);
+        toast({
+          title: 'Voice message could not be sent',
+          description: 'The voice message was created but could not be loaded. Refresh the chat to see it.',
+          variant: 'destructive',
+        });
+        return false;
+      }
+
+      setMessages(prev => [
+        ...prev,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { ...(created.data as any), reply_to: null, seen: false, delivered: false },
+      ]);
+
+      // Move this chat to the TOP of the Chats list immediately — same as a
+      // text send — with the mic preview (previewMessageRow renders it on
+      // refetch, this patch covers the sender's view before any refetch).
+      const sentAt = (created.data.created_at as string) || new Date().toISOString();
+      upsertConversationActivity(conversationId, {
+        lastMessage: { content: '🎤 Voice message', created_at: sentAt },
+        createdAt: sentAt,
+      });
+
+      // Announce over the gateway's SSE hub exactly like a text send: a
+      // DM/channel targets its single other participant, a GROUP fans out to
+      // EVERY other member, so receivers show the message live. Best-effort: a
+      // publish failure never fails the send.
+      try {
+        const messageCreatedEvent = {
+          type: 'message.created',
+          conversationId,
+          messageId: messageIdResult.data as string,
+        };
+
+        if (isGroupSend) {
+          const { data: memberRows } = await gateway
+            .from('conversation_participants')
+            .select('user_id')
+            .eq('conversation_id', conversationId)
+            .neq('user_id', currentUserId);
+          const memberIds = (memberRows || [])
+            .map(r => r.user_id)
+            .filter(Boolean);
+          const channel = getMessageRealtime(currentUserId);
+          for (const memberId of memberIds) {
+            if (memberId !== currentUserId) {
+              channel?.publish('message.created', messageCreatedEvent, memberId as string);
+            }
+          }
+        } else if (resolvedReceiverId && resolvedReceiverId !== currentUserId) {
+          getMessageRealtime(currentUserId)?.publish(
+            'message.created',
+            messageCreatedEvent,
+            resolvedReceiverId
+          );
+        }
+      } catch (error) {
+        console.warn('[useConversations] Voice message realtime announce failed:', error);
+      }
+
+      // Non-friend DM: register the pending message request exactly like a
+      // text send so the recipient still gets the Accept/Reject/Block UX.
+      // DM-only (a group send must never mint a request against a single
+      // member), best-effort, logged rather than swallowed.
+      if (convType === 'dm' && resolvedReceiverId && resolvedReceiverId !== currentUserId) {
+        try {
+          const areFriends = await checkFriendship(resolvedReceiverId);
+          if (!areFriends) {
+            await ensureMessageRequest({
+              senderId: currentUserId,
+              receiverId: resolvedReceiverId,
+              conversationId,
+            });
+          }
+        } catch (error) {
+          console.warn('[useConversations] Voice message request registration failed:', error);
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error('[useConversations] Error sending voice message:', error);
+      toast({
+        title: 'Voice message could not be sent',
+        description: error instanceof Error ? error.message : 'Failed to send the voice message',
+        variant: 'destructive',
+      });
+      return false;
+    }
+  };
+
   // Mark messages as read
   const markMessagesAsRead = async (conversationId: string) => {
     if (!currentUserId) return;
@@ -1646,6 +1864,7 @@ export const useConversations = (currentUserId?: string) => {
     setActiveConversationId,
     fetchMessages,
     sendMessage,
+    sendAudioMessage,
     markMessagesAsRead,
     getOrCreateDM,
     refetchConversations: fetchConversations

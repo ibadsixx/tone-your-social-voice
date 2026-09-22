@@ -56,6 +56,7 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
     messages,
     fetchMessages,
     sendMessage,
+    sendAudioMessage,
     getOrCreateDM,
     setActiveConversationId,
   } = useConversations(currentUserId);
@@ -274,6 +275,11 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
             if (conversationId) sendMessage(conversationId, content, mediaUrl, replyToId, user.id);
           }}
           onSendGif={handleSendGif}
+          onSendAudioMessage={(audioPath, duration, mimeType, fileSize) => {
+            if (conversationId)
+              return sendAudioMessage({ conversationId, audioPath, duration, mimeType, fileSize });
+            return false;
+          }}
           conversationId={conversationId || undefined}
           placeholder="Aa"
         />
