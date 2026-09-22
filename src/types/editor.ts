@@ -288,7 +288,7 @@ export interface ProductDetails {
   url: string;
 }
 
-export type AudienceType = 'public' | 'followers';
+export type AudienceType = 'public' | 'friends' | 'only_me';
 
 export interface PublishSettings {
   taggedPeople: TaggedPerson[];

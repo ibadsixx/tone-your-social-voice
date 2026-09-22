@@ -66,6 +66,17 @@ const formatPublishError = (err: unknown) => {
   return typeof err === 'string' ? err : 'Unknown error';
 };
 
+// Normalize a stored/legacy audience value to the current three-audience set.
+// Legacy drafts saved under the old "Followers" option were stored in the DB as
+// 'friends', so 'followers' is normalized to 'friends' for backward compatibility.
+export const normalizeAudience = (value: unknown): AudienceType => {
+  if (value === 'public') return 'public';
+  if (value === 'friends') return 'friends';
+  if (value === 'only_me') return 'only_me';
+  if (value === 'followers') return 'friends'; // legacy value → friends
+  return 'public';
+};
+
 export default function EditorPublish() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -135,7 +146,7 @@ export default function EditorPublish() {
             altText: draftPost.alt_text || '',
             aiLabel: draftPost.ai_label ?? false,
             // Prefer DB audience_type; fallback to legacy visibility
-            audience: draftPost.audience_type === 'friends' || draftPost.visibility === 'friends' ? 'followers' : 'public',
+            audience: normalizeAudience(draftPost.audience_type ?? draftPost.visibility),
             commentsEnabled: draftPost.comments_enabled ?? true,
             hideLikeCount: draftPost.hide_like_count ?? false,
             hideShareCount: draftPost.hide_share_count ?? false,
@@ -160,7 +171,8 @@ export default function EditorPublish() {
       
       // Fallback: restore from project json publishSettings
       if (projectJson?.publishSettings) {
-        setSettings({ ...defaultPublishSettings, ...projectJson.publishSettings });
+        const restored = { ...defaultPublishSettings, ...projectJson.publishSettings };
+        setSettings({ ...restored, audience: normalizeAudience(restored.audience) });
         console.log('[EditorPublish] Restored settings from project JSON');
       } else {
         setSettings({ ...defaultPublishSettings, caption: data.title || '' });
@@ -258,7 +270,8 @@ export default function EditorPublish() {
       // Map audience to DB audience_type (used by RLS) + legacy visibility
       const audienceTypeMap: Record<AudienceType, string> = {
         public: 'public',
-        followers: 'friends',
+        friends: 'friends',
+        only_me: 'only_me',
       };
 
       // Build draft post data with ALL settings
@@ -380,7 +393,8 @@ export default function EditorPublish() {
       // Map audience to DB audience_type (used by RLS) + legacy visibility
       const audienceTypeMap: Record<AudienceType, string> = {
         public: 'public',
-        followers: 'friends',
+        friends: 'friends',
+        only_me: 'only_me',
       };
 
       // Determine status based on schedule
@@ -467,7 +481,7 @@ export default function EditorPublish() {
             media_type: 'video',
             caption: settings.caption,
             duration: storyDuration,
-            privacy: settings.audience === 'followers' ? 'friends' : 'public',
+            privacy: settings.audience === 'only_me' ? 'private' : settings.audience,
           },
         ]);
         console.log('[EditorPublish] Story created with duration:', storyDuration, 's');
@@ -569,8 +583,9 @@ export default function EditorPublish() {
   };
 
   const audienceOptions: { value: AudienceType; label: string; icon: any; description: string }[] = [
-    { value: 'public', label: 'Public', icon: Globe, description: 'Anyone can see' },
-    { value: 'followers', label: 'Followers', icon: Users, description: 'Your followers' },
+    { value: 'public', label: 'Public', icon: Globe, description: 'Anyone can see your Reel' },
+    { value: 'friends', label: 'Friends', icon: Users, description: 'Only your friends can see your Reel' },
+    { value: 'only_me', label: 'Only you', icon: Lock, description: 'Only you can see your Reel' },
   ];
 
   if (isLoading) {
