@@ -1049,11 +1049,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                               />
                             </div>
                             <div className={cn(
-                              "flex justify-between text-xs",
+                              "text-xs",
                               isOwn ? "text-primary-foreground/70" : "text-muted-foreground"
                             )}>
-                              <span>{formatAudioTime(currentTime)}</span>
-                              <span>{formatAudioTime(duration || message.audio_duration || 0)}</span>
+                              <span className="tabular-nums">
+                                {formatAudioTime(currentTime)} / {formatAudioTime(duration || message.audio_duration || 0)}
+                              </span>
                             </div>
                           </>
                         )}
