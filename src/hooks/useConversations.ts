@@ -53,6 +53,80 @@ async function tryDecryptMessage(msg: Message, convId: string): Promise<Message>
   return msg;
 }
 
+// Select shape for voice-message rows: audio fields + sender profile, matching
+// what the receive path produces so a freshly created voice message renders the
+// audio bubble immediately on the sender's own screen.
+export const VOICE_MESSAGE_SELECT = `
+  id,
+  conversation_id,
+  sender_id,
+  content,
+  encrypted_content,
+  encryption_iv,
+  attachment_url,
+  image_url,
+  media_url,
+  is_image,
+  message_type,
+  audio_url,
+  audio_duration,
+  audio_mime,
+  audio_size,
+  audio_path,
+  reply_to_id,
+  created_at,
+  sender_profile:profiles!messages_sender_id_fkey(username, display_name, profile_pic)
+`;
+
+// Create the voice-message row through the SAME gateway table-based path the
+// text/image/video send flow uses (`gateway.from('messages').insert(...)`).
+// The `messages` RLS policy (`participants_can_insert_messages`) enforces
+// sender identity, participant membership and block checks against the real
+// `conversation_participants` relation server-side, and the DB trigger
+// `set_message_type()` derives `message_type = 'audio'` from audio_path.
+//
+// This intentionally does NOT call the legacy `create_message_with_audio` RPC:
+// its deployed body references a misspelled `convesation_participants`
+// relation and fails with `relation "convesation_participants" does not exist`
+// (42P01) — the same class of monolith-era chat RPC that can no longer run
+// against the split conversation/message database. Inserting with a
+// `.select()` returns the created row in one round trip, so no separate reload
+// is needed.
+export async function insertVoiceMessageRow(params: {
+  conversationId: string;
+  senderId: string;
+  receiverId: string | null;
+  audioPath: string;
+  duration: number;
+  mimeType: string;
+  fileSize: number;
+}): Promise<{ data: Record<string, unknown> | null; error: unknown }> {
+  const { conversationId, senderId, receiverId, audioPath, duration, mimeType, fileSize } = params;
+
+  const insertPayload = {
+    conversation_id: conversationId,
+    sender_id: senderId,
+    // Group messages are addressed to the whole conversation, never a single
+    // member — the same DM-only receiver_id rule as the text send path.
+    receiver_id: receiverId,
+    content: null,
+    attachment_url: null,
+    audio_path: audioPath,
+    audio_duration: duration,
+    audio_mime: mimeType,
+    audio_size: fileSize,
+    reply_to_id: null,
+  } as Record<string, unknown>;
+
+  const result = await gateway
+    .from('messages')
+    .insert(insertPayload)
+    .select(VOICE_MESSAGE_SELECT)
+    .single();
+
+  return { data: (result.data as Record<string, unknown>) ?? null, error: result.error };
+}
+
 // Returns the set of user IDs whose DM is a normal Chats conversation for
 // `userId` — i.e. the other participant is an accepted friend OR has an
 // accepted message request with `userId`. Everyone else (a first DM from a
@@ -1225,9 +1299,11 @@ export const useConversations = (currentUserId?: string) => {
   // Send a voice message. Mirrors the text/image/video send path exactly —
   // same message-request guard, same receiver/conversation-type resolution,
   // same optimistic append + Chats-list bump, same realtime announce, same
-  // non-friend message-request registration — but the row is created through
-  // the schema's existing `create_message_with_audio` RPC (the voice-message
-  // creator that already exists in the DB), never a raw hand-rolled insert.
+  // non-friend message-request registration — and the row is created through
+  // the same gateway table-based `messages` insert the text path uses
+  // (insertVoiceMessageRow), never a raw hand-rolled insert and never the
+  // legacy `create_message_with_audio` RPC (its deployed body references a
+  // misspelled `convesation_participants` relation and fails with 42P01).
   const sendAudioMessage = async (params: {
     conversationId: string;
     audioPath: string;
@@ -1283,62 +1359,36 @@ export const useConversations = (currentUserId?: string) => {
         return false;
       }
 
-      const messageIdResult = await gateway.rpc('create_message_with_audio', {
-        p_conversation_id: conversationId,
-        p_sender_id: currentUserId,
-        p_audio_path: audioPath,
-        p_audio_duration: duration,
-        p_audio_mime: mimeType,
-        p_audio_size: fileSize,
+      // Create the message row through the same gateway table-based path
+      // text messages use. RLS (participants_can_insert_messages) enforces
+      // sender identity + participant membership + block checks against the
+      // real `conversation_participants` relation server-side, and the DB's
+      // set_message_type() trigger derives message_type='audio' from
+      // audio_path — so this must never go through the legacy
+      // `create_message_with_audio` RPC, whose deployed body references a
+      // misspelled `convesation_participants` relation and fails with
+      // `relation "convesation_participants" does not exist` (42P01).
+      const created = await insertVoiceMessageRow({
+        conversationId,
+        senderId: currentUserId,
+        receiverId: isGroupSend ? null : (resolvedReceiverId || null),
+        audioPath,
+        duration,
+        mimeType,
+        fileSize,
       });
 
-      if (messageIdResult.error || !messageIdResult.data) {
-        console.error('[useConversations] Voice message creation error:', messageIdResult.error);
-        toast({
-          title: 'Voice message could not be sent',
-          description: messageIdResult.error?.message || 'Failed to create the voice message',
-          variant: 'destructive',
-        });
-        return false;
-      }
-
-      // Fetch the created row (audio fields + sender profile) so the sender's
-      // own chat renders the voice bubble immediately with the same shape the
-      // receive path produces.
-      const VOICE_MESSAGE_SELECT = `
-        id,
-        conversation_id,
-        sender_id,
-        content,
-        encrypted_content,
-        encryption_iv,
-        attachment_url,
-        image_url,
-        media_url,
-        is_image,
-        message_type,
-        audio_url,
-        audio_duration,
-        audio_mime,
-        audio_size,
-        audio_path,
-        reply_to_id,
-        created_at,
-        sender_profile:profiles!messages_sender_id_fkey(username, display_name, profile_pic)
-      `;
-      const created = await gateway
-        .from('messages')
-        .select(VOICE_MESSAGE_SELECT)
-        .eq('id', messageIdResult.data as string)
-        .single();
-
       if (created.error || !created.data) {
-        // The message row exists but couldn't be reloaded — never claim success
-        // and never append a half-parsed bubble; the next refetch recovers it.
-        console.error('[useConversations] Voice message reload error:', created.error);
+        console.error('[useConversations] Voice message creation error:', created.error);
+        const raw = (created.error as { message?: string } | null)?.message || '';
+        const errorMessage = raw.includes('RLS')
+          ? 'You do not have permission to send messages to this conversation'
+          : raw.includes('blocked')
+          ? 'You cannot send messages to this user'
+          : raw || 'Failed to send the voice message';
         toast({
           title: 'Voice message could not be sent',
-          description: 'The voice message was created but could not be loaded. Refresh the chat to see it.',
+          description: errorMessage,
           variant: 'destructive',
         });
         return false;
@@ -1367,7 +1417,7 @@ export const useConversations = (currentUserId?: string) => {
         const messageCreatedEvent = {
           type: 'message.created',
           conversationId,
-          messageId: messageIdResult.data as string,
+          messageId: created.data.id as string,
         };
 
         if (isGroupSend) {

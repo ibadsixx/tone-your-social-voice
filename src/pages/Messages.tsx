@@ -418,9 +418,10 @@ const Messages = () => {
 
   // Voice messages: the audio blob is uploaded by MessageInput, then the
   // message itself is created here through the existing `sendAudioMessage`
-  // pipeline (create_message_with_audio RPC + realtime announce). The boolean
-  // return tells MessageInput whether to keep the recording preview (failure)
-  // or dismiss it (success).
+  // pipeline (gateway `messages` table insert + realtime announce — the same
+  // table path text messages use, never the legacy `create_message_with_audio`
+  // RPC). The boolean return tells MessageInput whether to keep the recording
+  // preview (failure) or dismiss it (success).
   const handleSendAudio = async (
     audioPath: string,
     duration: number,
