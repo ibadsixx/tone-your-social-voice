@@ -24,6 +24,8 @@ export const SharePostModal = ({ isOpen, onClose, postId, postContent }: SharePo
   const [sharing, setSharing] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
 
+  const isGuest = !user;
+
   const { getJoinedGroups, getManagedGroups } = useGroups();
 
   const shareToProfile = async (customContent?: string) => {
@@ -182,6 +184,13 @@ export const SharePostModal = ({ isOpen, onClose, postId, postContent }: SharePo
     }
   ];
 
+  // Guests (do.md): Quick Share is Copy link ONLY — no internal Tone
+  // destinations (profile / story / message are authenticated actions). The
+  // full Share Externally section below stays available to everyone.
+  const quickShareOptions = isGuest
+    ? shareOptions.filter((option) => option.id === 'copy')
+    : shareOptions;
+
   const externalOptions = [
     {
       id: 'twitter',
@@ -215,7 +224,7 @@ export const SharePostModal = ({ isOpen, onClose, postId, postContent }: SharePo
             {/* Quick Share Options */}
             <div className="space-y-2">
               <h4 className="font-medium text-sm">Quick Share</h4>
-              {shareOptions.map((option) => (
+              {quickShareOptions.map((option) => (
                 <motion.button
                   key={option.id}
                   initial={{ opacity: 0, x: -10 }}
@@ -230,8 +239,8 @@ export const SharePostModal = ({ isOpen, onClose, postId, postContent }: SharePo
               ))}
             </div>
 
-            {/* Share to Groups */}
-            {(() => {
+            {/* Share to Groups — authenticated users only (guests get no internal destinations) */}
+            {user && (() => {
               const joinedGroups = getJoinedGroups();
               return joinedGroups.length > 0 && (
                 <div className="space-y-2">
@@ -257,8 +266,8 @@ export const SharePostModal = ({ isOpen, onClose, postId, postContent }: SharePo
               );
             })()}
 
-            {/* Share to Pages */}
-            {(() => {
+            {/* Share to Pages — authenticated users only (guests get no internal destinations) */}
+            {user && (() => {
               const managedGroups = getManagedGroups();
               return managedGroups.length > 0 && (
                 <div className="space-y-2">

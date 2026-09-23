@@ -615,38 +615,45 @@ const Post = ({
             </div>
           )}
           
-          {/* Action Buttons Row */}
+          {/* Action Buttons Row — guests see Share only (do.md): Like, Comment
+              and Send are simply not rendered for an unauthenticated visitor
+              (no disabled stand-ins). Authenticated users keep the full row
+              unchanged. */}
           <div className="flex items-center justify-between py-1 border-t border-border/50 -mx-1 sm:mx-0">
-            <ReactionPicker
-              isLiked={!!userReaction}
-              selectedReaction={userReaction}
-              likesCount={0}
-              onReact={(reactionKey) => togglePostReaction(reactionKey)}
-              onLike={() => togglePostReaction('ok')}
-            />
-            
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className={`flex items-center gap-1 sm:gap-2 transition-colors px-1 sm:px-3 ${
-                showComments ? 'text-primary hover:text-primary/80' : 'text-muted-foreground hover:text-foreground'
-              }`}
-              onClick={toggleComments}
-            >
-              <MessageCircle className="h-4 w-4" />
-              <span className="hidden sm:inline text-xs">Comment</span>
-            </Button>
-            
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="flex items-center gap-1 sm:gap-2 text-muted-foreground hover:text-foreground px-1 sm:px-3"
-              onClick={() => setShowSendModal(true)}
-            >
-              <Send className="h-4 w-4" />
-              <span className="hidden sm:inline text-xs">Send</span>
-            </Button>
-            
+            {user && (
+              <>
+                <ReactionPicker
+                  isLiked={!!userReaction}
+                  selectedReaction={userReaction}
+                  likesCount={0}
+                  onReact={(reactionKey) => togglePostReaction(reactionKey)}
+                  onLike={() => togglePostReaction('ok')}
+                />
+
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className={`flex items-center gap-1 sm:gap-2 transition-colors px-1 sm:px-3 ${
+                    showComments ? 'text-primary hover:text-primary/80' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  onClick={toggleComments}
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Comment</span>
+                </Button>
+
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="flex items-center gap-1 sm:gap-2 text-muted-foreground hover:text-foreground px-1 sm:px-3"
+                  onClick={() => setShowSendModal(true)}
+                >
+                  <Send className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Send</span>
+                </Button>
+              </>
+            )}
+
             <Button 
               variant="ghost" 
               size="sm" 
