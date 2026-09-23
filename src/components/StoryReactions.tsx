@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useStoryReactions } from '@/hooks/useStoryReactions';
 import { motion, AnimatePresence } from 'framer-motion';
-import { REACTIONS_LIST, STATIC_REACTION_ICONS, type ReactionKey } from '@/lib/reactions';
+import { REACTIONS_LIST, STATIC_REACTION_ICONS, getReactionConfig, type ReactionKey } from '@/lib/reactions';
 import AnimatedWebP from '@/components/AnimatedWebP';
 import StaticReactionIcon from '@/components/StaticReactionIcon';
 
@@ -18,6 +18,11 @@ const StoryReactions = ({ storyId }: StoryReactionsProps) => {
   
   const reactionCounts = getReactionCounts();
   const userReactions = getUserReactions();
+  // Mirror the Post ReactionPicker trigger: the button's visual state depends on
+  // whether THIS viewer has a stored reaction for this story.
+  const hasStoryReaction = userReactions.length > 0;
+  const currentStoryReaction = userReactions[0]?.emoji || '';
+  const activeReactionColor = getReactionConfig(currentStoryReaction)?.color || 'text-primary';
 
   const handleReaction = (reactionKey: ReactionKey) => {
     toggleReaction(reactionKey);
@@ -51,14 +56,20 @@ const StoryReactions = ({ storyId }: StoryReactionsProps) => {
         })}
       </div>
 
-      {/* Post-style reaction trigger (ok-hand, same visual as Posts) — hover/click opens
-          the animated picker, clicking the trigger quick-likes with the 'ok' reaction. */}
+      {/* Post-style reaction trigger — same visual state logic as Posts:
+          gray/inactive ok-hand before reacting, active/colored reaction (the
+          viewer's stored reaction) after reacting. Hover/click opens the
+          animated picker; clicking the trigger quick-likes with 'ok'. */}
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
           <Button
             variant="ghost"
             size="sm"
-            className="flex items-center space-x-2 text-white hover:bg-white/20 transition-colors"
+            className={`flex items-center space-x-2 transition-colors ${
+              hasStoryReaction
+                ? activeReactionColor + ' hover:opacity-80'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
             onClick={() => {
               if (!isOpen) {
                 toggleReaction('ok');
@@ -68,11 +79,10 @@ const StoryReactions = ({ storyId }: StoryReactionsProps) => {
             title="React to story"
           >
             <StaticReactionIcon
-              reactionKey={(userReactions[0]?.emoji as ReactionKey) || null}
+              reactionKey={currentStoryReaction || null}
               size="sm"
               count={reactions.length}
-              isActive={userReactions.length > 0}
-              onDark
+              isActive={hasStoryReaction}
             />
           </Button>
         </PopoverTrigger>

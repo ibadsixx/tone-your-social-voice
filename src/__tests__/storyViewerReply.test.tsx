@@ -30,9 +30,19 @@ const auth = vi.hoisted(() => ({
   userId: 'viewer-1',
 }));
 
-// Spy for the story reaction hook's toggleReaction.
+// State + spy for the story reaction hook (lets tests simulate a stored
+// reaction for the current viewer, exactly like the DB-backed hook would).
+interface StoryReactionRow {
+  id: string;
+  story_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: string;
+}
+
 const storyReactions = vi.hoisted(() => ({
   toggleReaction: vi.fn(),
+  data: { reactions: [] as StoryReactionRow[] },
 }));
 
 vi.mock('@/hooks/useAuth', () => ({
@@ -57,11 +67,17 @@ vi.mock('@/hooks/useStoryQuestions', () => ({
 
 vi.mock('@/hooks/useStoryReactions', () => ({
   useStoryReactions: () => ({
-    reactions: [],
+    reactions: storyReactions.data.reactions,
     loading: false,
     toggleReaction: storyReactions.toggleReaction,
-    getReactionCounts: () => ({}),
-    getUserReactions: () => [],
+    getReactionCounts: () => {
+      const counts: Record<string, number> = {};
+      for (const r of storyReactions.data.reactions) {
+        counts[r.emoji] = (counts[r.emoji] || 0) + 1;
+      }
+      return counts;
+    },
+    getUserReactions: () => storyReactions.data.reactions,
   }),
 }));
 
@@ -142,6 +158,21 @@ const renderViewer = () =>
     />
   );
 
+// Simulate the viewer having (or not having) a stored reaction for the story.
+const setStoredReaction = (emoji: string | null) => {
+  storyReactions.data.reactions = emoji
+    ? [
+        {
+          id: 'rr-1',
+          story_id: 'story-1',
+          user_id: 'viewer-1',
+          emoji,
+          created_at: '2026-09-22T00:00:00Z',
+        },
+      ]
+    : [];
+};
+
 const replyInput = () => screen.getByPlaceholderText('Write a reply...');
 const replyInputQuery = () => screen.queryByPlaceholderText('Write a reply...');
 const sendButton = () => screen.getByRole('button', { name: 'Send reply' });
@@ -151,6 +182,7 @@ describe('StoryViewer reply input (viewer only)', () => {
   beforeEach(() => {
     Object.assign(globalThis, { ResizeObserver: ResizeObserverStub });
     auth.userId = 'viewer-1';
+    storyReactions.data.reactions = [];
     vi.clearAllMocks();
   });
 
@@ -216,6 +248,56 @@ describe('StoryViewer reply input (viewer only)', () => {
 
     fireEvent.click(trigger);
     expect(storyReactions.toggleReaction).toHaveBeenCalledWith('ok');
+  });
+
+  it('shows the gray/inactive ok-hand (Post style) before the viewer reacts', () => {
+    renderViewer();
+
+    const trigger = screen.getByTitle('React to story');
+    const img = trigger.querySelector('img');
+
+    expect(img?.getAttribute('src')).toBe('/emoji/1f44c.png');
+    const imgClass = img?.getAttribute('class') || '';
+    expect(imgClass).toContain('grayscale');
+    expect(imgClass).toContain('opacity-60');
+    // Button text state mirrors the Post inactive state.
+    expect(trigger.className).toContain('text-muted-foreground');
+    expect(trigger.className).not.toContain('text-primary');
+  });
+
+  it('shows the active/colored state reflecting the viewer\'s stored reaction', () => {
+    setStoredReaction('red_heart');
+    renderViewer();
+
+    const trigger = screen.getByTitle('React to story');
+    const img = trigger.querySelector('img');
+
+    // Active state matches the Post active state (text-primary + hover:opacity-80).
+    expect(trigger.className).toContain('text-primary');
+    expect(trigger.className).toContain('hover:opacity-80');
+    // Icon reflects the stored reaction, not a hard-coded ok-hand.
+    expect(img?.getAttribute('src')).toBe('/emoji/2764.png');
+    const imgClass = img?.getAttribute('class') || '';
+    expect(imgClass).not.toContain('grayscale');
+    // Total reaction count is shown in the trigger.
+    expect(trigger.textContent).toContain('1');
+  });
+
+  it('returns to the gray ok-hand when the viewer removes their reaction', () => {
+    setStoredReaction('ok');
+    renderViewer();
+    expect(
+      screen.getByTitle('React to story').querySelector('img')?.getAttribute('class')
+    ).not.toContain('grayscale');
+
+    cleanup();
+    setStoredReaction(null);
+    renderViewer();
+
+    const img = screen.getByTitle('React to story').querySelector('img');
+    expect(img?.getAttribute('src')).toBe('/emoji/1f44c.png');
+    expect((img?.getAttribute('class') || '')).toContain('grayscale');
+    expect(screen.getByTitle('React to story').className).toContain('text-muted-foreground');
   });
 
   it('does NOT show the reply input to the story owner', () => {
