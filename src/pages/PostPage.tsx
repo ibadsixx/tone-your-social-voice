@@ -43,11 +43,20 @@ const PostPage = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-4">
-          <h1 className="text-4xl font-bold text-foreground">Post Not Found</h1>
+          <h1 className="text-4xl font-bold text-foreground">
+            {user ? 'Post Not Found' : "This post isn't available"}
+          </h1>
           <p className="text-muted-foreground">
-            This post doesn't exist or has been removed.
+            {user
+              ? "This post doesn't exist or has been removed."
+              : "This post is private or doesn't exist. Sign in to explore more of the community."}
           </p>
-          <Button onClick={() => navigate('/')} className="mt-4">
+          {!user && (
+            <Button onClick={() => navigate('/auth')} className="mt-4">
+              Sign in
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => navigate('/')} className="mt-4 ml-2">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Feed
           </Button>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,8 @@ import PageContainer from '@/components/PageContainer';
 const Home = () => {
   const { user } = useAuth();
   const { posts, loading, hasMore, loadMore, createPost, toggleLike } = useHomeFeed();
+  const navigate = useNavigate();
+  const isGuest = !user;
 
   const handleCreatePost = async (content: string, media?: File[], taggedUsers?: any[], audience?: any, feeling?: any, scheduledAt?: Date, location?: any, preUploadedMedia?: { url: string; mediaType: 'image' | 'video' }[]) => {
     if (!content.trim() && !media?.length && !preUploadedMedia?.length) return;
@@ -44,34 +47,10 @@ const Home = () => {
     );
   }
 
-  if (!user) {
-    return (
-      <PageContainer size="sm" className="space-y-6">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="text-center py-12"
-        >
-          <h1 className="text-4xl font-bold bg-tone-gradient bg-clip-text text-transparent mb-4">
-            Welcome to Tone
-          </h1>
-          <p className="text-muted-foreground mb-8">Share your thoughts with the perfect tone</p>
-          <Button 
-            onClick={() => window.location.href = '/auth'}
-            className="bg-tone-gradient text-white border-0 shadow-tone-glow hover:shadow-tone px-8 py-3"
-          >
-            Get Started
-          </Button>
-        </motion.div>
-      </PageContainer>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
-      {/* Stories Section */}
-      <Stories />
+      {/* Stories Section — authenticated users only */}
+      {user && <Stories />}
 
       {/* Main Content */}
       <PageContainer>
@@ -84,9 +63,25 @@ const Home = () => {
               transition={{ duration: 0.5 }}
               className="space-y-6"
             >
-              <Card className="hidden md:block p-6 bg-card/80 backdrop-blur-sm border-border/50 shadow-tone">
-                <NewPost onCreatePost={handleCreatePost} />
-              </Card>
+              {user ? (
+                <Card className="hidden md:block p-6 bg-card/80 backdrop-blur-sm border-border/50 shadow-tone">
+                  <NewPost onCreatePost={handleCreatePost} />
+                </Card>
+              ) : (
+                <Card className="p-6 bg-card/80 backdrop-blur-sm border-border/50 shadow-tone">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <h2 className="text-lg font-semibold text-foreground">Welcome to Tone</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Browse public posts from the community. Sign in to react, comment and share.
+                      </p>
+                    </div>
+                    <Button onClick={() => navigate('/auth')} className="bg-tone-gradient text-white border-0 shadow-tone-glow hover:shadow-tone">
+                      Sign in
+                    </Button>
+                  </div>
+                </Card>
+              )}
 
               <AnimatePresence>
                 {posts.length === 0 && !loading ? (
@@ -101,11 +96,13 @@ const Home = () => {
                         <Sparkles className="w-8 h-8 text-tone-purple" />
                       </div>
                       <h3 className="text-lg font-semibold text-foreground mb-2">Welcome to Tone!</h3>
-                      <p className="text-muted-foreground">No posts yet. Be the first to share something amazing!</p>
+                      <p className="text-muted-foreground">
+                        {user ? 'No posts yet. Be the first to share something amazing!' : 'No public posts yet — check back soon!'}
+                      </p>
                     </Card>
 
-                      {/* Still show discovery even when the feed is empty */}
-                      <PeopleYouMayKnow />
+                      {/* Still show discovery even when the feed is empty (auth only) */}
+                      {user && <PeopleYouMayKnow />}
                   </motion.div>
                 ) : (
                   <div className="space-y-6">
@@ -125,8 +122,8 @@ const Home = () => {
                             commentsCount={post.comments?.length || 0}
                           />
                         </motion.div>
-                        {/* Show People You May Know after 3 posts */}
-                        {index === 2 && (
+                        {/* Show People You May Know after 3 posts (auth only) */}
+                        {user && index === 2 && (
                           <motion.div
                             key="people-you-may-know"
                             initial={{ opacity: 0, y: 20 }}
@@ -152,8 +149,8 @@ const Home = () => {
                       </>
                     ))}
 
-                      {/* If there are fewer than 3 posts, the inline slot above never renders */}
-                      {posts.length > 0 && posts.length < 3 && (
+                      {/* If there are fewer than 3 posts, the inline slot above never renders (auth only) */}
+                      {user && posts.length > 0 && posts.length < 3 && (
                         <motion.div
                           key="people-you-may-know-fallback"
                           initial={{ opacity: 0, y: 20 }}

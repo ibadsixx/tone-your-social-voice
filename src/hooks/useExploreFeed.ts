@@ -55,7 +55,7 @@ export const useExploreFeed = (options: UseExploreFeedOptions = {}) => {
     });
   }, [user]);
 
-  const ready = !loading && !filtersLoading && friendsLoaded && !!user;
+  const ready = !loading && !filtersLoading && friendsLoaded;
 
   const rankingContext: ExploreRankingContext = useMemo(
     () => ({ viewerId: user?.id, friendIds }),

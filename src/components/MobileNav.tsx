@@ -10,6 +10,7 @@ import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 
 interface MobileNavProps {
+  guest?: boolean;
   profilePic?: string | null;
   displayName?: string | null;
   email?: string | null;
@@ -24,13 +25,16 @@ const mainNav = [
   { icon: MessageCircle, label: 'Messages', href: '/messages' },
 ];
 
-const MobileNav = ({ profilePic, displayName, email, actingPageName, actingPagePic, avatarMenu }: MobileNavProps) => {
+const MobileNav = ({ guest, profilePic, displayName, email, actingPageName, actingPagePic, avatarMenu }: MobileNavProps) => {
   const location = useLocation();
+  // Logged-out visitors get Home + Search only; the Messages entry and the
+  // account sheet are replaced with a Sign in link.
+  const items = guest ? mainNav.filter((item) => item.href !== '/messages') : mainNav;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-card/80 backdrop-blur-lg supports-[backdrop-filter]:bg-card/60 md:hidden safe-area-bottom">
       <div className="flex items-center justify-around h-10 px-2">
-        {mainNav.map((item) => {
+        {items.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.href ||
             (item.href !== '/' && location.pathname.startsWith(item.href));
@@ -49,29 +53,38 @@ const MobileNav = ({ profilePic, displayName, email, actingPageName, actingPageP
             </Link>
           );
         })}
-        <Sheet>
-          <SheetTrigger asChild>
-            <button
-              className={cn(
-                'flex flex-col items-center justify-center gap-0 w-10 h-full rounded-lg transition-colors',
-                'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <Avatar className="h-5 w-5 border-2 border-tone-purple/20">
-                <AvatarImage src={actingPagePic || profilePic || '/default-avatar.png'} className="object-cover" />
-                <AvatarFallback className="bg-tone-gradient text-white text-[8px]">
-                  {(actingPageName || displayName || email || '?').charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-            </button>
-          </SheetTrigger>
-          <SheetContent side="bottom" className="p-0 max-h-[70vh] overflow-y-auto rounded-t-xl">
-            <div className="px-4 pt-2 pb-1 text-center text-[10px] text-muted-foreground border-b">
-              Account
-            </div>
-            {avatarMenu}
-          </SheetContent>
-        </Sheet>
+        {guest ? (
+          <Link
+            to="/auth"
+            className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground"
+          >
+            Sign in
+          </Link>
+        ) : (
+          <Sheet>
+            <SheetTrigger asChild>
+              <button
+                className={cn(
+                  'flex flex-col items-center justify-center gap-0 w-10 h-full rounded-lg transition-colors',
+                  'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Avatar className="h-5 w-5 border-2 border-tone-purple/20">
+                  <AvatarImage src={actingPagePic || profilePic || '/default-avatar.png'} className="object-cover" />
+                  <AvatarFallback className="bg-tone-gradient text-white text-[8px]">
+                    {(actingPageName || displayName || email || '?').charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="p-0 max-h-[70vh] overflow-y-auto rounded-t-xl">
+              <div className="px-4 pt-2 pb-1 text-center text-[10px] text-muted-foreground border-b">
+                Account
+              </div>
+              {avatarMenu}
+            </SheetContent>
+          </Sheet>
+        )}
       </div>
     </nav>
   );

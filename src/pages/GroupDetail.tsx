@@ -700,9 +700,15 @@ const GroupDetailPage = () => {
           {/* Action Buttons */}
           <div className="flex items-center gap-2 mt-4 flex-wrap">
             {!isMember ? (
-              <Button onClick={handleJoin}>
-                <UserPlus className="h-4 w-4 mr-2" /> Join Group
-              </Button>
+              !user ? (
+                <Button onClick={() => navigate('/auth')}>
+                  <UserPlus className="h-4 w-4 mr-2" /> Sign in to join
+                </Button>
+              ) : (
+                <Button onClick={handleJoin}>
+                  <UserPlus className="h-4 w-4 mr-2" /> Join Group
+                </Button>
+              )
             ) : (
               <>
                 <Button variant="outline" onClick={() => setInviteOpen(true)}>

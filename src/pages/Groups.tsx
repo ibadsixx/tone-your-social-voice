@@ -6,10 +6,13 @@ import { useGroups } from '@/hooks/useGroups';
 import { GroupCard } from '@/components/groups/GroupCard';
 import { CreateGroupDialog } from '@/components/groups/CreateGroupDialog';
 import { useAuth } from '@/hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 import PageContainer from '@/components/PageContainer';
 
 const Groups = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const {
     loading,
     joinGroup,
@@ -32,24 +35,13 @@ const Groups = () => {
     );
   }
 
-  if (!user) {
-    return (
-      <PageContainer size="xl">
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p className="text-muted-foreground">Please sign in to view and join groups</p>
-          </CardContent>
-        </Card>
-      </PageContainer>
-    );
-  }
-
   const suggestedGroups = getSuggestedGroups();
   const newGroups = getNewGroups();
   const activeGroups = getMostActiveGroups();
   const joinedGroups = getJoinedGroups();
   const managedGroups = getManagedGroups();
+  const isGuest = !user;
+  const handleJoin = isGuest ? () => navigate('/auth') : joinGroup;
 
   return (
     <PageContainer size="xl" className="space-y-6">
@@ -65,7 +57,11 @@ const Groups = () => {
             <p className="text-muted-foreground">Connect with like-minded people</p>
           </div>
         </div>
-        <CreateGroupDialog onCreateGroup={createGroup} />
+        {user ? (
+          <CreateGroupDialog onCreateGroup={createGroup} />
+        ) : (
+          <Button onClick={() => navigate('/auth')}>Sign in to create a group</Button>
+        )}
       </motion.div>
 
       <Tabs defaultValue="suggested" className="w-full">
@@ -84,11 +80,11 @@ const Groups = () => {
           </TabsTrigger>
           <TabsTrigger value="joined" className="flex items-center gap-2">
             <UserCheck className="h-4 w-4" />
-            Joined ({joinedGroups.length})
+            {isGuest ? 'Sign in to see joined' : `Joined (${joinedGroups.length})`}
           </TabsTrigger>
           <TabsTrigger value="managed" className="flex items-center gap-2">
             <Crown className="h-4 w-4" />
-            Your Groups ({managedGroups.length})
+            {isGuest ? 'Sign in to see your groups' : `Your Groups (${managedGroups.length})`}
           </TabsTrigger>
         </TabsList>
 
@@ -108,7 +104,7 @@ const Groups = () => {
                 >
                   <GroupCard
                     group={group}
-                    onJoin={joinGroup}
+                    onJoin={handleJoin}
                   />
                 </motion.div>
               ))}
@@ -139,7 +135,7 @@ const Groups = () => {
                 >
                   <GroupCard
                     group={group}
-                    onJoin={joinGroup}
+                    onJoin={handleJoin}
                   />
                 </motion.div>
               ))}
@@ -170,7 +166,7 @@ const Groups = () => {
                 >
                   <GroupCard
                     group={group}
-                    onJoin={joinGroup}
+                    onJoin={handleJoin}
                   />
                 </motion.div>
               ))}

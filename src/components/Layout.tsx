@@ -47,6 +47,26 @@ import {
   Clapperboard,
 } from 'lucide-react';
 
+// Public routes a logged-out visitor may open (do.md §1). The app already uses
+// /profile/:username for `/:username`, /search for the Explore surface, and
+// /explore/hashtags for the hashtag explorer — those paths are preserved, not
+// duplicated. Owner/management surfaces under /pages/:id/* (status, archive,
+// activity-log, manage) and /hashtag/:tag/analytics stay protected.
+const PUBLIC_EXACT = new Set(['/', '/search', '/groups', '/pages', '/profile', '/explore/hashtags']);
+const PUBLIC_PREFIXES = ['/profile/', '/post/', '/groups/', '/pages/', '/hashtag/'];
+const PROTECTED_SUFFIXES = ['/status', '/archive', '/activity-log', '/manage', '/analytics'];
+
+function isPublicPath(pathname: string): boolean {
+  if (PUBLIC_EXACT.has(pathname)) return true;
+  for (const prefix of PUBLIC_PREFIXES) {
+    if (!pathname.startsWith(prefix)) continue;
+    const rest = pathname.slice(prefix.length);
+    if (PROTECTED_SUFFIXES.some((suffix) => rest.endsWith(suffix))) return false;
+    return true;
+  }
+  return false;
+}
+
 const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; onSignOut: () => void }) => {
   const { menu } = useHeaderAvatarMenu();
   const { signOut } = useAuth();
@@ -288,17 +308,27 @@ const Layout = () => {
   const isMobile = useIsMobile();
   const [reelDialogOpen, setReelDialogOpen] = useState(false);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-lg">Loading...</div>
-      </div>
-    );
-  }
+  // Guest/public access (do.md): the app keeps a single Layout shell, so route
+  // protection is decided here. Public routes render immediately (even before
+  // auth resolves — getSession is instant when a token exists and can take up
+  // to 4s for a logged-out visitor, so guests must never wait on it). Protected
+  // routes keep the old behavior: block on auth state, then redirect to login.
+  const isGuest = !user;
+  const isPublic = isPublicPath(location.pathname);
 
-  if (!user) {
-    // Preserve the intended destination so we can send the user back after login
-    return <Navigate to="/auth" replace state={{ from: location }} />;
+  if (!isPublic) {
+    if (loading) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="text-lg">Loading...</div>
+        </div>
+      );
+    }
+
+    if (!user) {
+      // Preserve the intended destination so we can send the user back after login
+      return <Navigate to="/auth" replace state={{ from: location }} />;
+    }
   }
 
   const navigation = [
@@ -311,6 +341,10 @@ const Layout = () => {
     { name: 'Groups', href: '/groups', icon: Users },
     { name: 'Pages', href: '/pages', icon: FileText },
   ];
+
+  // Guests only see the public sections of the sidebar.
+  const guestHidden = new Set(['Messages', 'Profile', 'Following Hashtags', 'Saved']);
+  const visibleNavigation = isGuest ? navigation.filter((item) => !guestHidden.has(item.name)) : navigation;
 
   const handleSignOut = async () => {
     await signOut();
@@ -327,85 +361,93 @@ const Layout = () => {
           </Link>
           
           <div className="flex items-center gap-3">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:hidden h-9 w-9 rounded-full">
-                  <Plus className="h-5 w-5" />
+            {user ? (
+              <>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" className="md:hidden h-9 w-9 rounded-full">
+                      <Plus className="h-5 w-5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-40 p-1">
+                    <button
+                      type="button"
+                      onClick={() => navigate('/create/post')}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm text-left"
+                    >
+                      <Image className="h-4 w-4" /> Post
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/story/create')}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm text-left"
+                    >
+                      <Video className="h-4 w-4" /> Story
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReelDialogOpen(true)}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm text-left"
+                    >
+                      <Clapperboard className="h-4 w-4" /> Reel
+                    </button>
+                  </PopoverContent>
+                </Popover>
+
+                {isMobile ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/notifications')}
+                    className="relative hover:bg-tone-purple/10 hover:text-tone-purple transition-colors h-9 w-9 rounded-full flex items-center justify-center"
+                  >
+                    <Bell className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <NotificationsDropdown />
+                )}
+
+                {isMobile ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/friends/requests')}
+                    className="relative hover:bg-tone-purple/10 hover:text-tone-purple transition-colors h-9 w-9 rounded-full flex items-center justify-center"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <FriendRequestsDropdown />
+                )}
+
+                <div className="hidden md:flex">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Avatar className="h-8 w-8 border-2 border-tone-purple/20 ring-2 ring-transparent hover:ring-tone-purple/30 transition-all cursor-pointer">
+                        <AvatarImage src={actingPage?.profile_pic || profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
+                        <AvatarFallback className="bg-tone-gradient text-white">
+                          {actingPage ? actingPage.name.charAt(0).toUpperCase() : profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-72 p-0 max-h-[80vh] overflow-y-auto">
+                      <HeaderAvatar profile={profile} user={user} onSignOut={handleSignOut} />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <Button variant="ghost" size="sm" onClick={handleSignOut} className="hidden md:flex text-muted-foreground hover:text-destructive transition-colors">
+                  <LogOut className="h-4 w-4" />
                 </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-40 p-1">
-                <button
-                  type="button"
-                  onClick={() => navigate('/create/post')}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm text-left"
-                >
-                  <Image className="h-4 w-4" /> Post
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('/story/create')}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm text-left"
-                >
-                  <Video className="h-4 w-4" /> Story
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setReelDialogOpen(true)}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-sm text-left"
-                >
-                  <Clapperboard className="h-4 w-4" /> Reel
-                </button>
-              </PopoverContent>
-            </Popover>
-
-            {isMobile ? (
-              <button
-                type="button"
-                onClick={() => navigate('/notifications')}
-                className="relative hover:bg-tone-purple/10 hover:text-tone-purple transition-colors h-9 w-9 rounded-full flex items-center justify-center"
-              >
-                <Bell className="h-4 w-4" />
-              </button>
+              </>
             ) : (
-              <NotificationsDropdown />
+              <Button variant="ghost" size="sm" onClick={() => navigate('/auth')}>
+                Sign in
+              </Button>
             )}
-            
-            {isMobile ? (
-              <button
-                type="button"
-                onClick={() => navigate('/friends/requests')}
-                className="relative hover:bg-tone-purple/10 hover:text-tone-purple transition-colors h-9 w-9 rounded-full flex items-center justify-center"
-              >
-                <UserPlus className="h-4 w-4" />
-              </button>
-            ) : (
-              <FriendRequestsDropdown />
-            )}
-
-            <div className="hidden md:flex">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Avatar className="h-8 w-8 border-2 border-tone-purple/20 ring-2 ring-transparent hover:ring-tone-purple/30 transition-all cursor-pointer">
-                    <AvatarImage src={actingPage?.profile_pic || profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
-                    <AvatarFallback className="bg-tone-gradient text-white">
-                      {actingPage ? actingPage.name.charAt(0).toUpperCase() : profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-72 p-0 max-h-[80vh] overflow-y-auto">
-                  <HeaderAvatar profile={profile} user={user} onSignOut={handleSignOut} />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <Button variant="ghost" size="sm" onClick={handleSignOut} className="hidden md:flex text-muted-foreground hover:text-destructive transition-colors">
-              <LogOut className="h-4 w-4" />
-            </Button>
           </div>
         </div>
       </header>
 
-      {actingPage && (
+      {user && actingPage && (
         <div className="border-b border-primary/10 bg-primary/5">
           <div className="container mx-auto px-6 py-2 flex items-center justify-between">
             <p className="text-sm text-foreground">
@@ -431,7 +473,7 @@ const Layout = () => {
         {!location.pathname.startsWith('/settings') && (
           <aside className="hidden md:block w-16 h-[calc(100vh-4rem)] border-r border-border/50 bg-card/50 sticky top-16">
             <nav className="flex flex-col items-center gap-1 py-4">
-              {navigation.map((item) => {
+              {visibleNavigation.map((item) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.href;
                 
@@ -468,20 +510,23 @@ const Layout = () => {
 
       {/* Bottom navigation — mobile only */}
       <MobileNav
+        guest={isGuest}
         profilePic={profile?.profile_pic}
         displayName={profile?.display_name}
         email={user?.email}
         actingPageName={actingPage?.name}
         actingPagePic={actingPage?.profile_pic}
-        avatarMenu={<HeaderAvatar profile={profile} user={user} onSignOut={handleSignOut} />}
+        avatarMenu={isGuest ? undefined : <HeaderAvatar profile={profile} user={user} onSignOut={handleSignOut} />}
       />
 
-      <CreateReelDialog open={reelDialogOpen} onOpenChange={setReelDialogOpen} />
+      {user && <CreateReelDialog open={reelDialogOpen} onOpenChange={setReelDialogOpen} />}
 
       {/* Chat windows — hidden on mobile, visible on desktop */}
-      <div className="hidden md:block">
-        <ChatWindowManager />
-      </div>
+      {user && (
+        <div className="hidden md:block">
+          <ChatWindowManager />
+        </div>
+      )}
 
     </div>
     </HeaderAvatarMenuProvider>
