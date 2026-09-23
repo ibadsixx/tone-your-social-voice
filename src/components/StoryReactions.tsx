@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useStoryReactions } from '@/hooks/useStoryReactions';
-import { Smile } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { REACTIONS_LIST, STATIC_REACTION_ICONS, type ReactionKey } from '@/lib/reactions';
 import AnimatedWebP from '@/components/AnimatedWebP';
+import StaticReactionIcon from '@/components/StaticReactionIcon';
 
 interface StoryReactionsProps {
   storyId: string;
@@ -51,11 +51,29 @@ const StoryReactions = ({ storyId }: StoryReactionsProps) => {
         })}
       </div>
 
-      {/* Animated WebP Reaction Picker */}
+      {/* Post-style reaction trigger (ok-hand, same visual as Posts) — hover/click opens
+          the animated picker, clicking the trigger quick-likes with the 'ok' reaction. */}
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-            <Smile className="h-4 w-4" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex items-center space-x-2 text-white hover:bg-white/20 transition-colors"
+            onClick={() => {
+              if (!isOpen) {
+                toggleReaction('ok');
+              }
+            }}
+            onMouseEnter={() => setIsOpen(true)}
+            title="React to story"
+          >
+            <StaticReactionIcon
+              reactionKey={(userReactions[0]?.emoji as ReactionKey) || null}
+              size="sm"
+              count={reactions.length}
+              isActive={userReactions.length > 0}
+              onDark
+            />
           </Button>
         </PopoverTrigger>
         <PopoverContent 

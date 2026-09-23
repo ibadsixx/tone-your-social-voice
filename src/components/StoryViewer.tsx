@@ -101,7 +101,6 @@ const StoryViewer = ({
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [highlightDialogOpen, setHighlightDialogOpen] = useState(false);
   const [replyText, setReplyText] = useState('');
-  const [showReplyInput, setShowReplyInput] = useState(false);
   const [showMentions, setShowMentions] = useState(false);
   const [audioReady, setAudioReady] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -223,6 +222,7 @@ const StoryViewer = ({
     setIsPaused(false);
     setIsHolding(false);
     setProgress(0);
+    setReplyText(''); // Keep replies bound to the story currently being viewed
   }, [currentStoryId, currentStoryMusicUrl]);
 
   // Auto-progress timer (using stable primitive dependencies)
@@ -321,7 +321,6 @@ const StoryViewer = ({
       });
 
       setReplyText('');
-      setShowReplyInput(false);
     } catch (error: any) {
       console.error('Error sending reply:', error);
       toast({
@@ -793,29 +792,29 @@ const StoryViewer = ({
           
           {!isOwner && (
             <div className="p-4">
-              {!showReplyInput ? (
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Write a reply..."
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && replyText.trim()) {
+                      e.preventDefault();
+                      handleReply();
+                    }
+                  }}
+                  className="flex-1 bg-white/10 border-white/20 text-white placeholder:text-white/50"
+                />
                 <Button
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => setShowReplyInput(true)}
+                  onClick={handleReply}
+                  size="icon"
+                  disabled={!replyText.trim()}
+                  aria-label="Send reply"
+                  title="Send reply"
                 >
-                  <Send className="w-4 h-4 mr-2" />
-                  Send Message
+                  <Send className="w-4 h-4" />
                 </Button>
-              ) : (
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Send a message..."
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleReply()}
-                    className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
-                  />
-                  <Button onClick={handleReply} size="icon">
-                    <Send className="w-4 h-4" />
-                  </Button>
-                </div>
-              )}
+              </div>
             </div>
           )}
         </div>
