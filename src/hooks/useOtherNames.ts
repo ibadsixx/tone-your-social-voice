@@ -20,12 +20,13 @@ export const useOtherNames = (userId?: string) => {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // `other_names` is not a guest-readable domain (gateway allowlist), so an
-  // unauthenticated visitor must never fire this request — it would 403 and
-  // surface a destructive "Failed to load other names" toast. Guests simply
-  // get an empty list; authenticated behavior is unchanged.
+  // Other Names on a profile are fetched for everyone, including guests: the
+  // gateway serves only rows the owner marked visibility='public' to a
+  // logged-out visitor (do.md: guests see ALL public profile info), so the
+  // fetch is safe and no longer 403s. The realtime subscription below stays
+  // authenticated-only — live edits are pointless for a guest viewer.
   const fetchOtherNames = async () => {
-    if (!userId || !user) return;
+    if (!userId) return;
     
     try {
       const { data, error } = await gateway
@@ -126,13 +127,13 @@ export const useOtherNames = (userId?: string) => {
   };
 
   useEffect(() => {
-    if (!user || !userId) {
+    if (!userId) {
       setOtherNames([]);
       setLoading(false);
       return;
     }
     fetchOtherNames();
-  }, [userId, user]);
+  }, [userId]);
 
   // Set up real-time subscription
   useEffect(() => {
