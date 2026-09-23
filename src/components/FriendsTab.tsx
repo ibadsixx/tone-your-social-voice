@@ -38,6 +38,7 @@ const FriendsTab = ({ profileId, isOwnProfile }: FriendsTabProps) => {
     checkIfFollowing,
     canViewFriends,
     canViewFollowing,
+    canViewFollowers,
     friendsVisibility,
     followingVisibility,
     refetch
@@ -301,9 +302,11 @@ const FriendsTab = ({ profileId, isOwnProfile }: FriendsTabProps) => {
                   Following ({followingCount})
                 </TabsTrigger>
               )}
-              <TabsTrigger value="followers" className="rounded-none">
-                Followers ({followersCount})
-              </TabsTrigger>
+              {(canViewFollowers || isOwnProfile) && (
+                <TabsTrigger value="followers" className="rounded-none">
+                  Followers ({followersCount})
+                </TabsTrigger>
+              )}
             </TabsList>
             
             <TabsContent value="friends" className="mt-0">
@@ -340,17 +343,19 @@ const FriendsTab = ({ profileId, isOwnProfile }: FriendsTabProps) => {
               </TabsContent>
             )}
             
-            <TabsContent value="followers" className="mt-0">
-              {followers.length > 0 ? (
-                <div>
-                  {followers.map((friend) => (
-                    <FriendCard key={friend.id} friend={friend} type="follower" />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState type="followers" icon={Heart} />
-              )}
-            </TabsContent>
+            {(canViewFollowers || isOwnProfile) && (
+              <TabsContent value="followers" className="mt-0">
+                {followers.length > 0 ? (
+                  <div>
+                    {followers.map((friend) => (
+                      <FriendCard key={friend.id} friend={friend} type="follower" />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState type="followers" icon={Heart} />
+                )}
+              </TabsContent>
+            )}
           </Tabs>
         </CardContent>
       </Card>

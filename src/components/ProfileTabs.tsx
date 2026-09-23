@@ -8,6 +8,7 @@ import ScheduledPostsTab from './ScheduledPostsTab';
 import FilteredPostsLayout from './FilteredPostsLayout';
 import FriendsTab from './FriendsTab';
 import Mentions from '@/pages/Mentions';
+import { useAuth } from '@/hooks/useAuth';
 import type { ProfileSectionFilter } from '@/lib/profileSections';
 import type { AboutSectionId } from '@/lib/profileAbout';
 
@@ -44,11 +45,12 @@ const ProfileTabs = ({
     setInternalTab(tab);
     onTabChange?.(tab);
   };
+  const { user } = useAuth();
   const { posts, loading: postsLoading } = useUserPosts(profileId);
 
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="mt-6">
-      <TabsList className={`w-full grid h-9 md:h-10 ${isOwnProfile ? 'grid-cols-5' : 'grid-cols-4'}`}>
+      <TabsList className={`w-full grid h-9 md:h-10 ${isOwnProfile ? 'grid-cols-5' : user ? 'grid-cols-4' : 'grid-cols-3'}`}>
         <TabsTrigger value="posts" className="px-1 md:px-3" aria-label="Posts">
           <span className="md:hidden">P</span>
           <span className="hidden md:inline text-sm">Posts</span>
@@ -57,10 +59,10 @@ const ProfileTabs = ({
           <span className="md:hidden">S</span>
           <span className="hidden md:inline text-sm">Scheduled</span>
         </TabsTrigger>}
-        <TabsTrigger value="mentions" className="px-1 md:px-3" aria-label="Mentions">
+        {user && <TabsTrigger value="mentions" className="px-1 md:px-3" aria-label="Mentions">
           <span className="md:hidden">@</span>
           <span className="hidden md:inline text-sm">Mentions</span>
-        </TabsTrigger>
+        </TabsTrigger>}
         <TabsTrigger value="about" className="px-1 md:px-3" aria-label="About">
           <span className="md:hidden">A</span>
           <span className="hidden md:inline text-sm">About</span>
@@ -88,9 +90,11 @@ const ProfileTabs = ({
         </TabsContent>
       )}
 
-      <TabsContent value="mentions" className="mt-6">
-        <Mentions targetUserId={profileId} />
-      </TabsContent>
+      {user && (
+        <TabsContent value="mentions" className="mt-6">
+          <Mentions targetUserId={profileId} />
+        </TabsContent>
+      )}
       
       <TabsContent value="about" className="mt-6">
         <AboutSection

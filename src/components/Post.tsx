@@ -433,26 +433,30 @@ const Post = ({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem onClick={toggleSave} disabled={isSaveLoading}>
-                  <Bookmark className="mr-2 h-4 w-4" />
-                  <span>{isSaved ? 'Unsave post' : 'Save post'}</span>
-                </DropdownMenuItem>
+                {user && (
+                  <DropdownMenuItem onClick={toggleSave} disabled={isSaveLoading}>
+                    <Bookmark className="mr-2 h-4 w-4" />
+                    <span>{isSaved ? 'Unsave post' : 'Save post'}</span>
+                  </DropdownMenuItem>
+                )}
                 
                 <DropdownMenuItem onClick={handleCopyLink}>
                   <Link2 className="mr-2 h-4 w-4" />
                   <span>Copy link</span>
                 </DropdownMenuItem>
 
-                <DropdownMenuItem onClick={toggleNotifications} disabled={isNotifLoading}>
-                  {notificationsEnabled ? (
-                    <BellOff className="mr-2 h-4 w-4" />
-                  ) : (
-                    <BellRing className="mr-2 h-4 w-4" />
-                  )}
-                  <span>
-                    {notificationsEnabled ? 'Turn off notifications' : 'Turn on notifications'}
-                  </span>
-                </DropdownMenuItem>
+                {user && (
+                  <DropdownMenuItem onClick={toggleNotifications} disabled={isNotifLoading}>
+                    {notificationsEnabled ? (
+                      <BellOff className="mr-2 h-4 w-4" />
+                    ) : (
+                      <BellRing className="mr-2 h-4 w-4" />
+                    )}
+                    <span>
+                      {notificationsEnabled ? 'Turn off notifications' : 'Turn on notifications'}
+                    </span>
+                  </DropdownMenuItem>
+                )}
 
                 {isOwner && (
                   <>
@@ -472,7 +476,7 @@ const Post = ({
                   </>
                 )}
 
-                {!isOwner && (
+                {!isOwner && user && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={toggleMute} disabled={isMuteLoading}>

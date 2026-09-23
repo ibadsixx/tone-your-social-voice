@@ -106,6 +106,15 @@ const ProfilePage = () => {
     navigate(profileSectionPath(profile.username, 'all'), { replace: true });
   }, [section, profile, isOwnProfile, navigate]);
 
+  // Mentions are never exposed to logged-out guests (do.md). A guest reaching
+  // /profile/:username/mentions directly is sent back to the Posts feed,
+  // mirroring the scheduled-section redirect. Authenticated viewers keep the
+  // existing Mentions behavior.
+  useEffect(() => {
+    if (!profile || section !== 'mentions' || user) return;
+    navigate(profileSectionPath(profile.username, 'all'), { replace: true });
+  }, [section, profile, user, navigate]);
+
   const handleFilterChange = (filter: ProfileSectionFilter) => {
     if (!profile) return;
     navigate(profileSectionPath(profile.username, filter));

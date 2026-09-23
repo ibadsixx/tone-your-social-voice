@@ -48,6 +48,12 @@ export const useMentionsFeed = (targetUserId?: string) => {
 
   const fetchMentions = async () => {
     if (!effectiveUserId) return;
+    // Mentions are never fetched for a logged-out guest (do.md), even when the
+    // profile Mentions section passes a viewed profile id. The API refuses the
+    // mentions domain for guests (403) regardless; this guard stops the
+    // prefetch of post_tags/posts that would otherwise enrich partial mention
+    // content before the route redirect hides it.
+    if (!isSelf && !user) return;
 
     try {
       setLoading(true);
