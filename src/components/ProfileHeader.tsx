@@ -253,9 +253,11 @@ const ProfileHeader = ({
             )}
           </div>
 
-          {/* Action Buttons */}
+          {/* Action Buttons — guests see public profile content only (do.md):
+              no Add Friend / Follow / Message / Report / more-menu for an
+              unauthenticated visitor; buttons are simply not rendered. */}
           <div className="flex flex-wrap gap-2">
-            {!isOwnProfile && (
+            {!isOwnProfile && user && (
               <>
                 {/* Friendship Button */}
                 {renderFriendshipButton()}
