@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { gateway } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 export interface OtherName {
   id: string;
@@ -17,9 +18,14 @@ export const useOtherNames = (userId?: string) => {
   const [otherNames, setOtherNames] = useState<OtherName[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user } = useAuth();
 
+  // `other_names` is not a guest-readable domain (gateway allowlist), so an
+  // unauthenticated visitor must never fire this request — it would 403 and
+  // surface a destructive "Failed to load other names" toast. Guests simply
+  // get an empty list; authenticated behavior is unchanged.
   const fetchOtherNames = async () => {
-    if (!userId) return;
+    if (!userId || !user) return;
     
     try {
       const { data, error } = await gateway
@@ -120,14 +126,17 @@ export const useOtherNames = (userId?: string) => {
   };
 
   useEffect(() => {
-    if (userId) {
-      fetchOtherNames();
+    if (!user || !userId) {
+      setOtherNames([]);
+      setLoading(false);
+      return;
     }
-  }, [userId]);
+    fetchOtherNames();
+  }, [userId, user]);
 
   // Set up real-time subscription
   useEffect(() => {
-    if (!userId) return;
+    if (!user || !userId) return;
 
     const channel = gateway
       .channel('other-names-changes')
@@ -148,7 +157,7 @@ export const useOtherNames = (userId?: string) => {
     return () => {
       gateway.removeChannel(channel);
     };
-  }, [userId]);
+  }, [userId, user]);
 
   return {
     otherNames,
