@@ -20,7 +20,6 @@ export interface FriendsData {
   followersCount: number;
   canViewFriends: boolean;
   canViewFollowing: boolean;
-  canViewFollowers: boolean;
   friendsVisibility: string;
   followingVisibility: boolean;
 }
@@ -35,7 +34,6 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     followersCount: 0,
     canViewFriends: false,
     canViewFollowing: false,
-    canViewFollowers: false,
     friendsVisibility: 'public',
     followingVisibility: true,
   });
@@ -218,20 +216,18 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
         }
       }
 
-      // Determine if current user can view following list
+      // Determine if current user can view following list.
+      // The Following list keeps its existing visibility setting: the owner
+      // ALWAYS sees their own list (isOwnProfile bypass), authenticated
+      // visitors are controlled by the owner's following_visibility, and a
+      // guest sees it only when following_visibility is public. The Followers
+      // list has NO visibility coupling: it stays visible to guests,
+      // authenticated visitors and the owner alike (do.md).
       const canViewFollowing = isOwnProfile || followingVisibility;
-
-      // The app has no separate followers visibility setting: authenticated
-      // viewers and the profile owner keep the current always-visible behavior,
-      // and a logged-out guest sees the list only when the owner's follow-graph
-      // visibility (following_visibility) is public — matching the Gateway rule
-      // for guest reads of the followers domain.
-      const canViewFollowers = isOwnProfile || !!user || followingVisibility;
 
       return {
         canViewFriends,
         canViewFollowing,
-        canViewFollowers,
         friendsVisibility,
         followingVisibility
       };
@@ -240,7 +236,6 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
       return {
         canViewFriends: isOwnProfile,
         canViewFollowing: isOwnProfile,
-        canViewFollowers: isOwnProfile,
         friendsVisibility: 'public',
         followingVisibility: true
       };
@@ -263,7 +258,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
       const [friends, following, followers] = await Promise.all([
         privacySettings.canViewFriends ? fetchFriends() : [],
         privacySettings.canViewFollowing ? fetchFollowing() : [],
-        privacySettings.canViewFollowers ? fetchFollowers() : []
+        fetchFollowers() // Followers are always visible (do.md: guest/auth/owner all see it)
       ]);
 
       console.log('Fetched data:', { 
@@ -281,7 +276,6 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
         followersCount: followers.length,
         canViewFriends: privacySettings.canViewFriends,
         canViewFollowing: privacySettings.canViewFollowing,
-        canViewFollowers: privacySettings.canViewFollowers,
         friendsVisibility: privacySettings.friendsVisibility,
         followingVisibility: privacySettings.followingVisibility,
       });
