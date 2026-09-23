@@ -340,4 +340,17 @@ describe('StoryViewer reply input (viewer only)', () => {
     expect(trigger.textContent?.trim()).toBe('');
     expect(screen.queryByText(/reactions?/i)).toBeNull();
   });
+
+  it('shows Add to Highlight to the Story owner only', () => {
+    // Owner viewing their own Story: the Add to Highlight action is visible.
+    auth.userId = 'owner-1';
+    renderViewer();
+    expect(screen.getByTitle('Add to highlight')).toBeTruthy();
+    cleanup();
+
+    // Viewer of another user's Story: completely hidden from the Story Viewer.
+    auth.userId = 'viewer-1';
+    renderViewer();
+    expect(screen.queryByTitle('Add to highlight')).toBeNull();
+  });
 });

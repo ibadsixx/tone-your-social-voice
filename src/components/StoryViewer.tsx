@@ -487,6 +487,18 @@ const StoryViewer = ({
                 >
                   <Eye className="w-5 h-5" />
                 </Button>
+                {/* Add to Highlight is owner-only (do.md): the Story owner can
+                    add their own Story to their Highlight; viewers never see
+                    this action anywhere in the Story Viewer. */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-white/20"
+                  onClick={() => setHighlightDialogOpen(true)}
+                  title="Add to highlight"
+                >
+                  <Bookmark className="w-5 h-5" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -497,17 +509,7 @@ const StoryViewer = ({
                   <Trash2 className="w-5 h-5" />
                 </Button>
               </>
-            ) : (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-white hover:bg-white/20"
-                onClick={() => setHighlightDialogOpen(true)}
-                title="Add to highlight"
-              >
-                <Bookmark className="w-5 h-5" />
-              </Button>
-            )}
+            ) : null}
             <Button
               variant="ghost"
               size="icon"
