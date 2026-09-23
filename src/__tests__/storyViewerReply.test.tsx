@@ -77,7 +77,11 @@ vi.mock('@/hooks/useStoryReactions', () => ({
       }
       return counts;
     },
-    getUserReactions: () => storyReactions.data.reactions,
+    // The real hook (and the Gateway) scopes reactions to the current viewer,
+    // so the mock filters the same way: other users' reactions never reach the
+    // component.
+    getUserReactions: () =>
+      storyReactions.data.reactions.filter((r) => r.user_id === auth.userId),
   }),
 }));
 
@@ -279,8 +283,9 @@ describe('StoryViewer reply input (viewer only)', () => {
     expect(img?.getAttribute('src')).toBe('/emoji/2764.png');
     const imgClass = img?.getAttribute('class') || '';
     expect(imgClass).not.toContain('grayscale');
-    // Total reaction count is shown in the trigger.
-    expect(trigger.textContent).toContain('1');
+    // No reaction count is shown — the viewer only sees their own selection
+    // (do.md: no total reaction count for viewers).
+    expect(trigger.textContent?.trim()).toBe('');
   });
 
   it('returns to the gray ok-hand when the viewer removes their reaction', () => {
@@ -306,5 +311,33 @@ describe('StoryViewer reply input (viewer only)', () => {
 
     expect(replyInputQuery()).toBeNull();
     expect(screen.queryByText('Send Message')).toBeNull();
+    // The owner also sees no interactive reaction control (do.md section 2/10).
+    expect(screen.queryByTitle('React to story')).toBeNull();
+  });
+
+  it('hides other users\' reactions and all counts from a viewer (privacy)', () => {
+    // Another user reacted to the story with a heart; the current viewer never
+    // reacted. The viewer must NOT see that reaction, any count, or any list.
+    storyReactions.data.reactions = [
+      {
+        id: 'other-1',
+        story_id: 'story-1',
+        user_id: 'other-user',
+        emoji: 'red_heart',
+        created_at: '2026-09-22T00:00:00Z',
+      },
+    ];
+    renderViewer();
+
+    // The viewer's own state remains the gray/inactive ok-hand.
+    const trigger = screen.getByTitle('React to story');
+    const img = trigger.querySelector('img');
+    expect(img?.getAttribute('src')).toBe('/emoji/1f44c.png');
+    expect((img?.getAttribute('class') || '')).toContain('grayscale');
+    expect(trigger.className).toContain('text-muted-foreground');
+
+    // No reaction counts, no chips, and no other people's reactions are shown.
+    expect(trigger.textContent?.trim()).toBe('');
+    expect(screen.queryByText(/reactions?/i)).toBeNull();
   });
 });

@@ -292,6 +292,9 @@ const StoryViewer = ({
   };
 
   const handleReply = async () => {
+    // The Story owner can never send a Story reply to their own Story (do.md
+    // section 3) — guarded here in the UI and enforced by the Gateway.
+    if (isOwner) return;
     if (!replyText.trim() || !currentStory || !user) return;
 
     try {
@@ -774,11 +777,16 @@ const StoryViewer = ({
             
             {/* Caption — used as structured data for overlays, not display text */}
 
-            {/* Reactions and Archive */}
+            {/* Reactions (viewer-only) and Archive (owner-only) — the Story
+                owner must NOT see an interactive reaction control (do.md
+                sections 2/10); the owner's analytics entry point is the Eye
+                button in the header. */}
             <div className="flex items-center justify-between gap-2">
-              <div className="flex-1">
-                <StoryReactions storyId={currentStory.id} />
-              </div>
+              {!isOwner && (
+                <div className="flex-1">
+                  <StoryReactions storyId={currentStory.id} />
+                </div>
+              )}
               {isOwner && (
                 <StoryArchiveButton 
                   storyId={currentStory.id}

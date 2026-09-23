@@ -21,6 +21,9 @@ export const useStoryReactions = (storyId: string) => {
     if (!storyId) return;
     fetchReactions();
 
+    // A viewer only ever sees their OWN reaction state (do.md). The gateway
+    // enforces the same restriction server-side; the channel filter is scoped
+    // to the current user's rows too.
     const channel = gateway
       .channel(`story-reactions-${storyId}`)
       .on(
@@ -29,7 +32,7 @@ export const useStoryReactions = (storyId: string) => {
           event: '*',
           schema: 'public',
           table: 'story_reactions',
-          filter: `story_id=eq.${storyId}`,
+          filter: `story_id=eq.${storyId},user_id=eq.${user?.id ?? ''}`,
         },
         () => {
           fetchReactions();
@@ -44,10 +47,14 @@ export const useStoryReactions = (storyId: string) => {
 
   const fetchReactions = async () => {
     try {
-      const { data, error } = await gateway
-        .from('story_reactions')
-        .select('*')
-        .eq('story_id', storyId);
+      // Only the current viewer's reactions are fetched (do.md: a viewer must
+      // not receive other users' reactions or counts; the Gateway additionally
+      // redacts non-owner rows server-side).
+      let query = gateway.from('story_reactions').select('*').eq('story_id', storyId);
+      if (user?.id) {
+        query = query.eq('user_id', user.id);
+      }
+      const { data, error } = await query;
 
       if (error) throw error;
       setReactions(data || []);

@@ -201,7 +201,10 @@ export const useStories = () => {
     if (!user) return;
 
     try {
-      // Insert into story_views table (will be unique per user per story)
+      // Record the view in the existing story_views tracking (a view counts
+      // even when the viewer never reacts — do.md sections 5/6). The Gateway
+      // recounts story_views and stores the total on stories.views itself, so
+      // no viewer ever has to read another user's view rows/counts (section 8).
       const { error } = await gateway
         .from('story_views')
         .insert({
@@ -213,28 +216,9 @@ export const useStories = () => {
       if (error && !error.message.includes('duplicate key')) {
         throw error;
       }
-
-      // Update story views count
-      const { error: updateError } = await gateway
-        .from('stories')
-        .update({
-          views: await getViewCount(storyId)
-        })
-        .eq('id', storyId);
-
-      if (updateError) throw updateError;
     } catch (error: any) {
       console.error('Error marking story as viewed:', error);
     }
-  };
-
-  const getViewCount = async (storyId: string): Promise<number> => {
-    const { count } = await gateway
-      .from('story_views')
-      .select('*', { count: 'exact', head: true })
-      .eq('story_id', storyId);
-    
-    return count || 0;
   };
 
   const deleteStory = async (storyId: string) => {

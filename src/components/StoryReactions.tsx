@@ -12,14 +12,14 @@ interface StoryReactionsProps {
 }
 
 const StoryReactions = ({ storyId }: StoryReactionsProps) => {
-  const { reactions, loading, toggleReaction, getReactionCounts, getUserReactions } = useStoryReactions(storyId);
+  const { loading, toggleReaction, getUserReactions } = useStoryReactions(storyId);
   const [isOpen, setIsOpen] = useState(false);
   const [hoveredReaction, setHoveredReaction] = useState<ReactionKey | null>(null);
-  
-  const reactionCounts = getReactionCounts();
+
+  // The viewer only sees THEIR OWN reaction state (do.md): gray/inactive
+  // ok-hand before reacting, active/colored reaction after. No counts, no
+  // other users' reactions, no analytics are rendered.
   const userReactions = getUserReactions();
-  // Mirror the Post ReactionPicker trigger: the button's visual state depends on
-  // whether THIS viewer has a stored reaction for this story.
   const hasStoryReaction = userReactions.length > 0;
   const currentStoryReaction = userReactions[0]?.emoji || '';
   const activeReactionColor = getReactionConfig(currentStoryReaction)?.color || 'text-primary';
@@ -31,31 +31,6 @@ const StoryReactions = ({ storyId }: StoryReactionsProps) => {
 
   return (
     <div className="flex items-center gap-2">
-      {/* Display reaction counts with static icons */}
-      <div className="flex items-center gap-1 flex-wrap">
-        {Object.entries(reactionCounts).slice(0, 3).map(([reactionKey, count]) => {
-          const isUserReaction = userReactions.some(r => r.emoji === reactionKey);
-          const iconPath = STATIC_REACTION_ICONS[reactionKey as ReactionKey];
-          return (
-            <Button
-              key={reactionKey}
-              variant={isUserReaction ? 'default' : 'secondary'}
-              size="sm"
-              className="h-8 px-2 text-sm"
-              onClick={() => toggleReaction(reactionKey)}
-              disabled={loading}
-            >
-              {iconPath ? (
-                <img src={iconPath} alt="" className="w-4 h-4 mr-1 object-contain" />
-              ) : (
-                <span className="mr-1">{reactionKey}</span>
-              )}
-              <span className="text-xs">{count}</span>
-            </Button>
-          );
-        })}
-      </div>
-
       {/* Post-style reaction trigger — same visual state logic as Posts:
           gray/inactive ok-hand before reacting, active/colored reaction (the
           viewer's stored reaction) after reacting. Hover/click opens the
@@ -81,7 +56,6 @@ const StoryReactions = ({ storyId }: StoryReactionsProps) => {
             <StaticReactionIcon
               reactionKey={currentStoryReaction || null}
               size="sm"
-              count={reactions.length}
               isActive={hasStoryReaction}
             />
           </Button>
@@ -142,12 +116,6 @@ const StoryReactions = ({ storyId }: StoryReactionsProps) => {
               })}
             </AnimatePresence>
           </div>
-          
-          {reactions.length > 0 && (
-            <div className="mt-2 pt-2 border-t text-xs text-muted-foreground text-center">
-              {reactions.length} reaction{reactions.length !== 1 ? 's' : ''}
-            </div>
-          )}
         </PopoverContent>
       </Popover>
     </div>
