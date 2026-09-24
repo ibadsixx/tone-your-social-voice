@@ -5,6 +5,7 @@ import { X, MessageCircle, Play } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import ReactionPicker from '@/components/ReactionPicker';
 import { useReactions } from '@/hooks/useReactions';
+import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import { resolveMediaSrc } from '@/lib/mediaUrl';
 import { getMediaThumbnail, getVideoPoster } from '@/lib/mediaThumbnail';
@@ -32,6 +33,7 @@ export const ExploreViewer = ({ open, posts, index, onClose, onNavigate }: Explo
   const mediaType = current ? exploreMediaType(current) : 'photo';
   const src = current ? resolveMediaSrc(current.media_url) : '';
   const reactions = useReactions(current?.id ?? '', current?.user_id);
+  const { user } = useAuth();
 
   const goTo = useCallback(
     (next: number) => {
@@ -209,6 +211,7 @@ export const ExploreViewer = ({ open, posts, index, onClose, onNavigate }: Explo
                 </p>
               ) : null}
               <div className="mt-3 flex items-center gap-5 text-white">
+                {user && (
                 <div className="pointer-events-auto">
                   <ReactionPicker
                     isLiked={!!reactions.userReaction}
@@ -219,6 +222,7 @@ export const ExploreViewer = ({ open, posts, index, onClose, onNavigate }: Explo
                     onLike={() => reactions.toggleReaction('ok')}
                   />
                 </div>
+                )}
                 <span className="flex items-center gap-1.5 text-sm font-semibold">
                   <MessageCircle className="h-5 w-5 fill-current" />
                   {formatCount(current.comments?.[0]?.count ?? current.comments_count ?? 0)}
