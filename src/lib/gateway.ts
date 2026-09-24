@@ -1255,6 +1255,41 @@ class GatewayClient {
       .catch((err) => ({ data: null, error: { message: String(err) } }));
   }
 
+  /**
+   * Aggregate reaction counts for a post (do.md "Guest users — reaction
+   * visibility"): guests see the total + summary icons for public posts even
+   * though they cannot read the reactions list (reactor identities) or react.
+   * The count is computed server-side, independent of any filtered list, and
+   * never ships reaction rows.
+   */
+  postReactionCount(
+    postId: string
+  ): Promise<{
+    data: { reaction_count: number; reaction_types: Record<string, number> } | null;
+    error: { message: string; code?: string } | null;
+  }> {
+    if (!this._baseUrl) {
+      return Promise.resolve({ data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } });
+    }
+    const token = getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    return fetch(`${this._baseUrl}/api/posts/${encodeURIComponent(postId)}/reaction-count`, {
+      method: 'GET',
+      headers,
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({ message: res.statusText }));
+          return { data: null, error: { message: errBody.message || errBody.error || res.statusText, code: String(res.status) } };
+        }
+        const json = await res.json();
+        return { data: json, error: null };
+      })
+      .catch((err) => ({ data: null, error: { message: String(err) } }));
+  }
+
   get storage(): GatewayStorage {
     return new GatewayStorage(this._baseUrl);
   }
