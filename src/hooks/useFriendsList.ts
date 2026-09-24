@@ -242,6 +242,27 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     }
   };
 
+  // Real relationship totals straight from the gateway. The friends /
+  // following / followers COUNT is public profile metadata (do.md): it is
+  // returned even when the corresponding list is hidden, so these numbers are
+  // fetched independently of `canViewFriends` / `canViewFollowing` and are
+  // NOT derived from the visible list lengths. A -1 sentinel means the count
+  // request failed and the caller should fall back to the list lengths.
+  const fetchCounts = async (): Promise<{ friends: number; following: number; followers: number }> => {
+    try {
+      const { data, error } = await gateway.relationshipCounts(profileId);
+      if (error || !data) throw error || new Error('Relationship counts unavailable');
+      return {
+        friends: typeof data.friends_count === 'number' ? data.friends_count : -1,
+        following: typeof data.following_count === 'number' ? data.following_count : -1,
+        followers: typeof data.followers_count === 'number' ? data.followers_count : -1,
+      };
+    } catch (err) {
+      console.error('Error fetching relationship counts:', err);
+      return { friends: -1, following: -1, followers: -1 };
+    }
+  };
+
   const fetchAllData = async () => {
     if (!profileId) {
       console.log('No profileId provided');
@@ -255,10 +276,11 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
       
       const privacySettings = await checkPrivacySettings();
       
-      const [friends, following, followers] = await Promise.all([
+      const [friends, following, followers, counts] = await Promise.all([
         privacySettings.canViewFriends ? fetchFriends() : [],
         privacySettings.canViewFollowing ? fetchFollowing() : [],
-        fetchFollowers() // Followers are always visible (do.md: guest/auth/owner all see it)
+        fetchFollowers(), // Followers are always visible (do.md: guest/auth/owner all see it)
+        fetchCounts() // Real totals from the gateway, independent of list visibility
       ]);
 
       console.log('Fetched data:', { 
@@ -267,13 +289,15 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
         followers: followers.length 
       });
 
+      // The count is public metadata: prefer the gateway's real totals, fall
+      // back to the visible list lengths only if the counts request failed.
       setData({
         friends,
         following,
         followers,
-        friendsCount: friends.length,
-        followingCount: following.length,
-        followersCount: followers.length,
+        friendsCount: counts.friends >= 0 ? counts.friends : friends.length,
+        followingCount: counts.following >= 0 ? counts.following : following.length,
+        followersCount: counts.followers >= 0 ? counts.followers : followers.length,
         canViewFriends: privacySettings.canViewFriends,
         canViewFollowing: privacySettings.canViewFollowing,
         friendsVisibility: privacySettings.friendsVisibility,

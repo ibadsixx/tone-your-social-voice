@@ -1220,6 +1220,41 @@ class GatewayClient {
       .catch((err) => ({ data: null, error: { message: String(err) } }));
   }
 
+  /**
+   * Real server-side totals for a profile's relationships. The friends /
+   * following / followers COUNT is public profile metadata (do.md): the
+   * gateway returns the actual totals even when the underlying list is not
+   * accessible to the viewer, and never ships the individual relationship
+   * rows. Counts come from the gateway, NOT from the filtered list arrays.
+   */
+  relationshipCounts(
+    profileId: string
+  ): Promise<{
+    data: { friends_count: number; following_count: number; followers_count: number } | null;
+    error: { message: string; code?: string } | null;
+  }> {
+    if (!this._baseUrl) {
+      return Promise.resolve({ data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } });
+    }
+    const token = getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    return fetch(`${this._baseUrl}/api/profiles/${encodeURIComponent(profileId)}/relationship-counts`, {
+      method: 'GET',
+      headers,
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({ message: res.statusText }));
+          return { data: null, error: { message: errBody.message || errBody.error || res.statusText, code: String(res.status) } };
+        }
+        const json = await res.json();
+        return { data: json, error: null };
+      })
+      .catch((err) => ({ data: null, error: { message: String(err) } }));
+  }
+
   get storage(): GatewayStorage {
     return new GatewayStorage(this._baseUrl);
   }
