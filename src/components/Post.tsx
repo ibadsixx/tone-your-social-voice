@@ -113,6 +113,7 @@ interface PostProps {
   } | null;
   likes?: { id: string; user_id: string }[];
   comments?: { id: string; content: string; profiles: { display_name: string } }[];
+  comments_enabled?: boolean | null;
   onLike?: (postId: string) => void;
   isLiked?: boolean;
   likesCount?: number;
@@ -158,6 +159,7 @@ const Post = ({
   shared_post,
   likes,
   comments,
+  comments_enabled: commentsEnabled,
   onLike,
   isLiked,
   likesCount,
@@ -619,12 +621,12 @@ const Post = ({
             </div>
           )}
           
-          {/* Action Buttons Row — guests see Share only (do.md): Like, Comment
-              and Send are simply not rendered for an unauthenticated visitor
-              (no disabled stand-ins). Authenticated users keep the full row
-              unchanged. */}
+          {/* Action Buttons Row — guests see Comment (when the owner has
+              comments enabled) + Share only (do.md): Like and Send are simply
+              not rendered for an unauthenticated visitor (no disabled
+              stand-ins). Authenticated users keep the full row unchanged. */}
           <div className="flex items-center justify-between py-1 border-t border-border/50 -mx-1 sm:mx-0">
-            {user && (
+            {user ? (
               <>
                 <ReactionPicker
                   isLiked={!!userReaction}
@@ -656,6 +658,20 @@ const Post = ({
                   <span className="hidden sm:inline text-xs">Send</span>
                 </Button>
               </>
+            ) : (
+              commentsEnabled !== false && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className={`flex items-center gap-1 sm:gap-2 transition-colors px-1 sm:px-3 ${
+                    showComments ? 'text-primary hover:text-primary/80' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  onClick={toggleComments}
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Comment</span>
+                </Button>
+              )
             )}
 
             <Button 
@@ -691,7 +707,7 @@ const Post = ({
                       animate={{ opacity: 1 }}
                       className="text-center py-4 text-muted-foreground text-sm"
                     >
-                      No comments yet. Be the first to comment!
+                      {user ? 'No comments yet. Be the first to comment!' : 'No comments yet.'}
                     </motion.div>
                   ) : (
                     getTopLevelComments().map((comment, index) => (

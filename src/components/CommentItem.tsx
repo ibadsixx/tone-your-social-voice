@@ -231,12 +231,14 @@ export const CommentItem = ({
             )}
             {!isReply && onReply && (
               <>
-                <button
-                  onClick={() => setIsReplying(!isReplying)}
-                  className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Reply
-                </button>
+                {user && (
+                  <button
+                    onClick={() => setIsReplying(!isReplying)}
+                    className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Reply
+                  </button>
+                )}
                 {replyCount > 0 && (
                   <button
                     onClick={() => setShowReplies(!showReplies)}
@@ -289,11 +291,13 @@ export const CommentItem = ({
           <CommentReactionsCounter reactions={comment.reactions} />
         </div>
 
-        <CommentReactionPicker
-          commentId={comment.id}
-          reactions={comment.reactions}
-          onToggleReaction={onToggleReaction}
-        />
+        {user && (
+          <CommentReactionPicker
+            commentId={comment.id}
+            reactions={comment.reactions}
+            onToggleReaction={onToggleReaction}
+          />
+        )}
 
         {/* Reply Input */}
         {isReplying && (
