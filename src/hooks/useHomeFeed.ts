@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { postsApi } from '@/api';
 import { gateway } from '@/lib/gateway';
 import { isPostVisibleToViewer, loadFriendIds } from '@/lib/postVisibility';
@@ -83,9 +83,21 @@ export interface HomeFeedPost {
   } | null;
 }
 
-// The gateway has no server push for table changes (postgres_changes listeners
-// never fire), so the feed polls for newer posts instead of waiting for a reload.
-const FEED_POLL_INTERVAL_MS = 60_000;
+// The gateway has no server push for table changes. `GatewayChannel`
+// (src/lib/gateway.ts) stores `postgres_changes` callbacks but never opens a
+// WebSocket and never invokes them, so every "realtime" subscription in the app
+// is inert and polling is the only way a viewer learns about content published
+// by somebody else.
+//
+// That made the interval the *entire* freshness guarantee for another user's
+// Friends-only post: with a 60s timer the row was already in the database and
+// already authorized, but an accepted friend looking at an open feed simply did
+// not see it for up to a minute — the "appears after a very long delay"
+// symptom. 20s bounds that window, and the focus/online listeners below close it
+// entirely for the moments a viewer actually notices (returning to the tab,
+// network reconnecting). `loadFriendIds` is deliberately still re-read on every
+// check so a just-accepted friendship is never served from a stale cache.
+const FEED_POLL_INTERVAL_MS = 20_000;
 
 // Window event dispatched after a post is successfully created anywhere in the
 // app, so already-mounted feed instances pick it up without waiting for the next poll.
@@ -192,10 +204,18 @@ export const useHomeFeed = () => {
     fetchPosts(true);
   }, [fetchPosts]);
 
+  // Single-flight guard. The timer, `visibilitychange`, `focus` and `online` can
+  // all fire close together (e.g. a laptop wakes from sleep and the network
+  // reconnects in the same tick); without this each would issue its own pair of
+  // requests and the later responses could land out of order.
+  const newPostsCheckInFlight = useRef(false);
+
   // Silent check for posts that appeared since the feed was loaded (e.g. by other
   // users or from another surface). New rows are prepended; existing rows and any
   // deeper pagination the user has already loaded are left untouched.
   const checkForNewPosts = useCallback(async () => {
+    if (newPostsCheckInFlight.current) return;
+    newPostsCheckInFlight.current = true;
     try {
       const [unfollowedGroupIds, friendIds] = await Promise.all([
         loadUnfollowedGroupIds(user?.id),
@@ -213,6 +233,8 @@ export const useHomeFeed = () => {
       });
     } catch {
       // Polling must never disrupt the UI — ignore transient failures.
+    } finally {
+      newPostsCheckInFlight.current = false;
     }
   }, [user]);
 
@@ -489,24 +511,42 @@ export const useHomeFeed = () => {
     fetchPosts(true);
   }, []);
 
-  // Poll for new posts, catch up instantly when the tab becomes visible again,
-  // and refresh immediately when any surface dispatches POST_CREATED_EVENT.
+  // Poll for new posts, catch up instantly when the tab becomes visible again or
+  // the network comes back, and refresh immediately when any surface dispatches
+  // POST_CREATED_EVENT.
+  //
+  // `focus` and `online` are what actually make another user's Friends post show
+  // up "immediately": the previous version relied on the timer alone, so a viewer
+  // who never switched tabs or reloaded waited out the full interval even though
+  // the post was already published and already authorized for them.
   useEffect(() => {
     if (!user) return;
 
     const onVisible = () => {
       if (!document.hidden) checkForNewPosts();
     };
+    // `focus` covers alt-tab back into an already-visible window, which never
+    // fires `visibilitychange`; it also fires on returning from a background tab.
+    const onFocus = () => {
+      if (!document.hidden) checkForNewPosts();
+    };
+    // A reconnect means anything missed while offline is now reachable, and a
+    // poll that failed during the outage would otherwise wait a full interval.
+    const onOnline = () => checkForNewPosts();
     const onPostCreated = () => checkForNewPosts();
     const interval = window.setInterval(() => {
       if (!document.hidden) checkForNewPosts();
     }, FEED_POLL_INTERVAL_MS);
 
     document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onOnline);
     window.addEventListener(POST_CREATED_EVENT, onPostCreated);
     return () => {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('online', onOnline);
       window.removeEventListener(POST_CREATED_EVENT, onPostCreated);
     };
   }, [user, checkForNewPosts]);
