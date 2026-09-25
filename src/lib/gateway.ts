@@ -576,6 +576,17 @@ class PostgrestFilterBuilder<T> {
           ? [json as Record<string, unknown>]
           : [];
 
+      // The Gateway ignores `select`/`limit`/`order`/filters, so this response is
+      // every row of `this._table`. Seed the join memo with it so a join back onto
+      // the same table — `shared_post:shared_post_id` in the feed select — reuses
+      // this response instead of re-reading the whole table. Deliberately
+      // unfiltered: a standalone `GET /api/<table>` would have been unfiltered
+      // too, so join resolution is unchanged. Scoped to this query, so it can
+      // only ever be reused for this caller's own session.
+      const joinFetchMemo = new Map<string, Promise<Record<string, unknown>[] | null>>([
+        [this._table, Promise.resolve([...results])],
+      ]);
+
       // Client-side filtering (gateway ignores query params)
       if (this._filters.length > 0) {
         results = applyFilters(results, this._filters);
@@ -602,7 +613,7 @@ class PostgrestFilterBuilder<T> {
       // Column selection (gateway returns all fields; pick only requested)
       if (this._selectCols && this._selectCols !== '*') {
         if (hasNestedJoins(this._selectCols)) {
-          results = await this._resolveJoins(results, headers);
+          results = await this._resolveJoins(results, headers, joinFetchMemo);
         } else {
           const cols = parseSelectColumns(this._selectCols);
           results = results.map(row => {
@@ -688,37 +699,85 @@ class PostgrestFilterBuilder<T> {
     }
   }
 
-  private async _resolveJoins(results: Record<string, unknown>[], headers: Record<string, string>): Promise<Record<string, unknown>[]> {
+  /**
+   * Resolve `select` joins client-side (the Gateway does not process them).
+   *
+   * Two properties matter for the Home feed's load time, and both were wrong
+   * before this change:
+   *
+   *  - **One request per table, not per join.** `fetchMemo` is created per query
+   *    and keyed by table name, so a table reached through several join specs —
+   *    or nested inside another join — is read once. The feed's select reaches
+   *    `posts` twice (the top-level read and `shared_post:shared_post_id`) and
+   *    `profiles` three times (author, comments' author, shared post's author);
+   *    that was three redundant full-table round trips per load.
+   *
+   *  - **Independent tables are read concurrently.** The loop used to `await`
+   *    each join in turn, so a five-join select cost five sequential round
+   *    trips. Each spec writes only to its own `resultKey`, so resolving them
+   *    concurrently is safe.
+   *
+   * `fetchMemo` carries this caller's `headers`, so a memoized row set can only
+   * ever be reused for the same authenticated session within the same query. It
+   * is created and discarded inside a single query and is never shared across
+   * requests, so it cannot leak one viewer's rows to another.
+   */
+  private async _resolveJoins(
+    results: Record<string, unknown>[],
+    headers: Record<string, string>,
+    fetchMemo?: Map<string, Promise<Record<string, unknown>[] | null>>
+  ): Promise<Record<string, unknown>[]> {
     if (!GATEWAY_URL || results.length === 0) return results;
+    const memo = fetchMemo ?? new Map<string, Promise<Record<string, unknown>[] | null>>();
 
-    const entries = parseTopLevelEntries(this._selectCols);
-    for (const entry of entries) {
-      const spec = parseJoinSpec(entry, this._table);
-      if (!spec) continue;
-
-      const keyValues = new Set<string>();
-      for (const row of results) {
-        const val = row[spec.localCol];
-        if (val != null) keyValues.add(String(val));
-      }
-      if (keyValues.size === 0) continue;
-
-      try {
-        const res = await fetch(`${GATEWAY_URL}/api/${spec.relatedTable}`, { headers });
-        if (!res.ok) {
-          console.warn(`[gateway] Join fetch failed for /api/${spec.relatedTable} (${res.status} ${res.statusText}) — rows will be missing the '${spec.resultKey}' field`);
-          continue;
+    /** `null` means the read failed; failure is reported once, at the call site. */
+    const fetchTable = (table: string): Promise<Record<string, unknown>[] | null> => {
+      const existing = memo.get(table);
+      if (existing) return existing;
+      const pending = (async (): Promise<Record<string, unknown>[] | null> => {
+        try {
+          const res = await fetch(`${GATEWAY_URL}/api/${table}`, { headers });
+          if (!res.ok) {
+            console.warn(`[gateway] Join fetch failed for /api/${table} (${res.status} ${res.statusText})`);
+            return null;
+          }
+          const json = await res.json();
+          return Array.isArray(json)
+            ? json as Record<string, unknown>[]
+            : json != null
+              ? [json as Record<string, unknown>]
+              : [];
+        } catch (err) {
+          console.warn(`[gateway] Join fetch threw for /api/${table}:`, err);
+          return null;
         }
-        const json = await res.json();
-        let relatedData: Record<string, unknown>[] = Array.isArray(json)
-          ? json as Record<string, unknown>[]
-          : json != null
-            ? [json as Record<string, unknown>]
-            : [];
+      })();
+      memo.set(table, pending);
+      return pending;
+    };
 
+    const specs = parseTopLevelEntries(this._selectCols)
+      .map((entry) => parseJoinSpec(entry, this._table))
+      .filter((spec): spec is NonNullable<typeof spec> => spec != null);
+
+    await Promise.all(
+      specs.map(async (spec) => {
+        const keyValues = new Set<string>();
+        for (const row of results) {
+          const val = row[spec.localCol];
+          if (val != null) keyValues.add(String(val));
+        }
+        // Nothing in this page references the related table, so skip the read.
+        if (keyValues.size === 0) return;
+
+        let relatedData = await fetchTable(spec.relatedTable);
+        if (relatedData == null) {
+          // The read already reported its own failure; leave the field unset.
+          return;
+        }
         if (relatedData.length === 0) {
           console.warn(`[gateway] Join /api/${spec.relatedTable} returned no rows for ${keyValues.size} key(s) — rows will be missing the '${spec.resultKey}' field`);
-          continue;
+          return;
         }
 
         const effectiveIsArray = spec.kind === 'many';
@@ -726,7 +785,8 @@ class PostgrestFilterBuilder<T> {
         if (hasNestedJoins(spec.columns)) {
           const nestedFetcher = new PostgrestFilterBuilder(GATEWAY_URL, spec.relatedTable, 'GET');
           (nestedFetcher as any)._selectCols = spec.columns;
-          relatedData = await nestedFetcher._resolveJoins(relatedData, headers);
+          // Share the memo so a table nested under two different joins is read once.
+          relatedData = await nestedFetcher._resolveJoins(relatedData, headers, memo);
         } else if (spec.columns && spec.columns !== '*') {
           const cols = parseSelectColumns(spec.columns);
           if (!cols.includes(spec.relatedCol)) cols.push(spec.relatedCol);
@@ -763,11 +823,8 @@ class PostgrestFilterBuilder<T> {
         if (unmatched > 0) {
           console.warn(`[gateway] Join /api/${spec.relatedTable} matched ${keyValues.size - unmatched}/${keyValues.size} key(s) — ${unmatched} row(s) have no '${spec.resultKey}' (${spec.localCol} has no matching ${spec.relatedCol} on ${spec.relatedTable})`);
         }
-      } catch (err) {
-        console.warn(`[gateway] Join fetch threw for /api/${spec.relatedTable}:`, err);
-        continue;
-      }
-    }
+      })
+    );
     return results;
   }
 }

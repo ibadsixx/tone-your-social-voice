@@ -6,7 +6,7 @@ const POST_SELECT_FULL = `
   *,
   profiles!posts_user_id_fkey (username, display_name, profile_pic),
   likes (id, user_id),
-  comments (id, content, profiles:user_id (display_name)),
+  comments (id),
   shared_post:shared_post_id (id, content, media_url, media_type, type, created_at, profiles!posts_user_id_fkey (username, display_name, profile_pic)),
   group_posts (group_id, groups:group_id (id, name))
 `;

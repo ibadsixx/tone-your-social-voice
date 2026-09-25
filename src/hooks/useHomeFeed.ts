@@ -151,6 +151,7 @@ async function loadUnfollowedGroupIds(userId?: string): Promise<string[]> {
 export const useHomeFeed = () => {
   const [posts, setPosts] = useState<HomeFeedPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
   const { toast } = useToast();
@@ -162,12 +163,24 @@ export const useHomeFeed = () => {
     try {
       setLoading(true);
       const currentOffset = resetPosts ? 0 : offset;
-      const [unfollowedGroupIds, friendIds] = await Promise.all([
-        loadUnfollowedGroupIds(user?.id),
-        loadFriendIds(user?.id)
-      ]);
 
-      const { data, error } = await postsApi.getFeedPosts(currentOffset, POSTS_PER_PAGE);
+      // The feed read and the two lookups that feed the client-side filter are
+      // independent, so they start together. They used to be awaited in sequence —
+      // group_follows, then friends, then posts — which put two full round trips
+      // in front of the feed on every load and every poll.
+      //
+      // This is not a privacy trade-off. The Gateway is the enforcing boundary
+      // (service-role reads bypass RLS) and already returns only rows this viewer
+      // may see, so `getFeedPosts` is correctly scoped whatever the lookups
+      // return. `mapFeedPosts` then applies the same matrix again before anything
+      // is put in state, so the client check stays defence-in-depth and no
+      // unfiltered row is ever rendered. The lookups are still re-read on every
+      // check, so a just-accepted friendship is never served from a stale set.
+      const [unfollowedGroupIds, friendIds, { data, error }] = await Promise.all([
+        loadUnfollowedGroupIds(user?.id),
+        loadFriendIds(user?.id),
+        postsApi.getFeedPosts(currentOffset, POSTS_PER_PAGE),
+      ]);
 
       if (error) throw error;
 
@@ -182,7 +195,9 @@ export const useHomeFeed = () => {
       }
       
       setHasMore(postsWithTypedMedia.length === POSTS_PER_PAGE);
+      setError(null);
     } catch (error: any) {
+      setError(error?.message || 'Failed to load posts');
       toast({
         title: 'Error',
         description: 'Failed to load posts',
@@ -217,12 +232,14 @@ export const useHomeFeed = () => {
     if (newPostsCheckInFlight.current) return;
     newPostsCheckInFlight.current = true;
     try {
-      const [unfollowedGroupIds, friendIds] = await Promise.all([
+      // Started together with the feed read for the same reason as `fetchPosts`:
+      // the two lookups are inputs to the client-side filter, not prerequisites
+      // for the request itself.
+      const [unfollowedGroupIds, friendIds, { data, error }] = await Promise.all([
         loadUnfollowedGroupIds(user?.id),
-        loadFriendIds(user?.id)
+        loadFriendIds(user?.id),
+        postsApi.getFeedPosts(0, POSTS_PER_PAGE),
       ]);
-
-      const { data, error } = await postsApi.getFeedPosts(0, POSTS_PER_PAGE);
       if (error || !data || data.length === 0) return;
 
       const latest = mapFeedPosts(data, unfollowedGroupIds, user?.id, friendIds);
@@ -554,6 +571,9 @@ export const useHomeFeed = () => {
   return {
     posts,
     loading,
+    // Feed-scoped error, so a failed feed can render its own error state without
+    // touching the state of any other Home section.
+    error,
     hasMore,
     loadMore,
     refresh,
