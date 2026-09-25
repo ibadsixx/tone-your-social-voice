@@ -24,6 +24,7 @@ import { SendPostModal } from '@/components/modals/SendPostModal';
 import { SharePostModal } from '@/components/modals/SharePostModal';
 import { EditPostDialog } from '@/components/EditPostDialog';
 import { ReportPostDialog } from '@/components/ReportPostDialog';
+import ReactionUsersModal from '@/components/ReactionUsersModal';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -176,6 +177,7 @@ const Post = ({
   const [showReportDialog, setShowReportDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showReactionUsers, setShowReactionUsers] = useState(false);
   const { 
     comments: fetchedComments, 
     addComment, 
@@ -607,6 +609,7 @@ const Post = ({
                 reactions={reactionCounts}
                 totalCount={reactionsCount}
                 maxIcons={3}
+                onClick={() => setShowReactionUsers(true)}
               />
               <div className="flex items-center gap-4 text-[13px] text-muted-foreground">
                 {(fetchedComments?.length || commentsCount || comments?.length || 0) > 0 && (
@@ -819,6 +822,16 @@ const Post = ({
         open={showReportDialog}
         onOpenChange={setShowReportDialog}
         postId={id}
+      />
+
+      {/* Reaction users — the count above is a separate permission from the
+          list of reactors, so the Gateway re-checks the owner's setting on
+          every open. */}
+      <ReactionUsersModal
+        contentType="post"
+        contentId={id}
+        open={showReactionUsers}
+        onOpenChange={setShowReactionUsers}
       />
     </motion.div>
   );

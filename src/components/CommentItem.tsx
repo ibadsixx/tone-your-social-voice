@@ -25,6 +25,7 @@ import { MentionHashtagText } from './MentionHashtagText';
 import { useMentions } from '@/hooks/useMentions';
 import MentionAutocomplete from './MentionAutocomplete';
 import CommentReactionsCounter from './CommentReactionsCounter';
+import ReactionUsersModal from './ReactionUsersModal';
 
 interface CommentItemProps {
   comment: Comment;
@@ -60,6 +61,7 @@ export const CommentItem = ({
   const [isSaving, setIsSaving] = useState(false);
   const [showReplies, setShowReplies] = useState(true);
   const [shareOpen, setShareOpen] = useState(false);
+  const [showReactionUsers, setShowReactionUsers] = useState(false);
 
   const isOwner = user?.id === comment.user_id;
   const isEdited = comment.updated_at && comment.updated_at !== comment.created_at;
@@ -287,8 +289,15 @@ export const CommentItem = ({
             </Popover>
           </div>
 
-          {/* Reactions counter on the right */}
-          <CommentReactionsCounter reactions={comment.reactions} />
+          {/* Reactions counter on the right. The aggregate comes from the
+              server, so the count is correct even when the viewer is not
+              allowed to see who reacted. */}
+          <CommentReactionsCounter
+            reactions={comment.reactions}
+            reactionCount={comment.reaction_count}
+            reactionTypes={comment.reaction_types}
+            onClick={() => setShowReactionUsers(true)}
+          />
         </div>
 
         {user && (
@@ -349,6 +358,15 @@ export const CommentItem = ({
           </div>
         )}
       </div>
+
+      {/* Reactor list is a separate permission from the count, so the Gateway
+          re-checks the comment owner's setting on every open. */}
+      <ReactionUsersModal
+        contentType="comment"
+        contentId={comment.id}
+        open={showReactionUsers}
+        onOpenChange={setShowReactionUsers}
+      />
     </motion.div>
   );
 };

@@ -55,11 +55,7 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
-
-  // Guests cannot read the reactions list (its rows carry reactor identities)
-  // and cannot react, so their count comes from the gateway's aggregate
-  // reaction-count endpoint instead of the (empty-for-guests) list.
-  const isGuest = !user;
+  const userId = user?.id;
 
   // Normalize reaction type from DB to ReactionKey
   const normalizeReactionType = (type: string): ReactionKey | null => {
@@ -82,19 +78,13 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
       .filter(r => r.count > 0);
   };
 
-  // Get user's current reaction
+  // Only the viewer's own row is kept in local state. Counts always come from
+  // the aggregate projection, never from the number of identities loaded.
   const userReaction = reactions.find(r => r.user_id === user?.id);
   const normalizedUserReaction = userReaction ? normalizeReactionType(userReaction.type) : null;
 
-  // Calculate reaction counts grouped by type
-  const reactionCounts: ReactionCount[] = Object.keys(REACTION_KEY_TO_DB).map(key => {
-    const reactionKey = key as ReactionKey;
-    const count = reactions.filter(r => normalizeReactionType(r.type) === reactionKey).length;
-    return { key: reactionKey, count };
-  }).filter(r => r.count > 0);
-
   // Server-side aggregate: { reaction_count, reaction_types } — used for
-  // guests (and available as the authoritative count for any viewer).
+  // guests and authenticated viewers alike.
   const fetchCounts = useCallback(async () => {
     if (!postId) return;
     try {
@@ -117,19 +107,46 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
     }
 
     try {
-      const { data, error } = await gateway
-        .from('reactions')
-        .select('*')
-        .eq('post_id', postId);
-
-      if (error) throw error;
-      setReactions(data || []);
+      // This mode never selects identity rows for other reactors. The Gateway
+      // returns aggregate counts plus only the authenticated viewer's own
+      // reaction state.
+      const { data, error } = await gateway.postReactionUsers(postId, { includeUsers: false });
+      if (error || !data) throw error || new Error('Reaction state unavailable');
+      setCounts({
+        count: typeof data.reaction_count === 'number' ? data.reaction_count : 0,
+        types: data.reaction_types && typeof data.reaction_types === 'object' ? data.reaction_types : {},
+      });
+      setReactions((data.viewer_reactions || []).map((reaction) => ({
+        id: reaction.id,
+        post_id: postId,
+        user_id: reaction.user_id,
+        type: reaction.reaction_type,
+        created_at: reaction.created_at || new Date().toISOString(),
+      })));
     } catch (error) {
-      console.error('Error fetching reactions:', error);
+      console.error('Error fetching reaction state:', error);
+      // Keep the count useful if a deployed Gateway has not yet registered the
+      // state endpoint yet; the generic read is constrained to the viewer's own
+      // row by the Gateway policy.
+      await fetchCounts();
+      if (userId) {
+        try {
+          const { data, error } = await gateway
+            .from('reactions')
+            .select('*')
+            .eq('post_id', postId)
+            .eq('user_id', userId);
+          if (!error && data) setReactions(data as unknown as Reaction[]);
+        } catch {
+          // Keep the empty state.
+        }
+      } else {
+        setReactions([]);
+      }
     } finally {
       setLoading(false);
     }
-  }, [postId]);
+  }, [postId, userId, fetchCounts]);
 
   useEffect(() => {
     if (!postId) {
@@ -137,14 +154,9 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
       return;
     }
 
-    // Guests fetch only the server-side aggregate — never the reaction list
-    // (it is denied for guests because its rows carry reactor identities).
-    if (isGuest) {
-      setReactions([]);
-      fetchCounts().finally(() => setLoading(false));
-    } else {
-      fetchReactions();
-    }
+    // Every viewer uses the aggregate/state endpoint. Guests receive no
+    // identity rows; authenticated viewers receive only their own state row.
+    fetchReactions();
 
     // Subscribe to realtime changes
     const channel = gateway
@@ -158,8 +170,7 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
           filter: `post_id=eq.${postId}`,
         },
         () => {
-          if (isGuest) fetchCounts();
-          else fetchReactions();
+          void fetchReactions();
         }
       )
       .subscribe();
@@ -167,7 +178,7 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
     return () => {
       gateway.removeChannel(channel);
     };
-  }, [postId, fetchReactions, fetchCounts, isGuest]);
+  }, [postId, fetchReactions]);
 
   const toggleReaction = useCallback(async (reactionKey: ReactionKey) => {
     if (!user) {
@@ -237,6 +248,8 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
           });
         }
       }
+      // Counts are server-owned; refresh them after every add/change/remove.
+      void fetchReactions();
     } catch (error: any) {
       console.error('Error toggling reaction:', error);
       toast({
@@ -262,6 +275,10 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
         .eq('id', existingReaction.id);
 
       setReactions(prev => prev.filter(r => r.id !== existingReaction.id));
+
+      // Counts are server-owned; a removal must refresh the aggregate too,
+      // otherwise the counter would keep showing the stale total.
+      void fetchReactions();
     } catch (error: any) {
       console.error('Error removing reaction:', error);
       toast({
@@ -276,8 +293,8 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
   return {
     reactions,
     userReaction: normalizedUserReaction,
-    reactionsCount: isGuest ? (counts?.count ?? 0) : reactions.length,
-    reactionCounts: isGuest ? reactionCountsFromTypes(counts?.types) : reactionCounts,
+    reactionsCount: counts?.count ?? 0,
+    reactionCounts: reactionCountsFromTypes(counts?.types),
     loading,
     toggleReaction,
     removeReaction,

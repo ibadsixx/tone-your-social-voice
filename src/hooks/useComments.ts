@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { gateway } from '@/lib/gateway';
+import type { ReactionViewerRow } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { createNotification } from '@/hooks/useNotifications';
@@ -10,7 +11,7 @@ interface CommentReaction {
   comment_id: string;
   user_id: string;
   emoji: string;
-  created_at: string;
+  created_at: string | null;
 }
 
 export interface Comment {
@@ -27,6 +28,19 @@ export interface Comment {
     profile_pic: string | null;
   };
   reactions?: CommentReaction[];
+  /** Aggregate values fetched without reading the full reactor list. */
+  reaction_count?: number;
+  reaction_types?: Record<string, number>;
+}
+
+/**
+ * Minimal shape of a Supabase realtime payload. The gateway's realtime shim
+ * types the payload as `unknown`, but the change events always carry `new` (and
+ * `old` on DELETE) row objects.
+ */
+interface RealtimeRowPayload {
+  new?: Record<string, unknown>;
+  old?: Record<string, unknown>;
 }
 
 export const useComments = (postId: string) => {
@@ -36,6 +50,53 @@ export const useComments = (postId: string) => {
   const { toast } = useToast();
   const { user } = useAuth();
   const { saveMentionsAndHashtags } = useMentions();
+
+  // Reaction identities are fetched only by the dedicated modal endpoint. The
+  // comments list uses this aggregate/state projection so a large comment does
+  // not pull the whole comment_reactions table into the browser.
+  const applySummary = (
+    comment: Comment,
+    summary?: {
+      reaction_count: number;
+      reaction_types: Record<string, number>;
+      viewer_reactions?: ReactionViewerRow[];
+    }
+  ): Comment => ({
+    ...comment,
+    // `reactions` deliberately holds ONLY the viewer's own rows; the counter
+    // reads the aggregate and the modal fetches the authorized reactor page.
+    reactions: (summary?.viewer_reactions || []).map((reaction) => ({
+      id: reaction.id,
+      comment_id: comment.id,
+      user_id: reaction.user_id,
+      emoji: reaction.reaction_type,
+      created_at: reaction.created_at,
+    })),
+    reaction_count: summary?.reaction_count ?? 0,
+    reaction_types: summary?.reaction_types ?? {},
+  });
+
+  const withCommentReactionSummaries = async (rows: Comment[]): Promise<Comment[]> => {
+    if (rows.length === 0) return rows;
+    const { data, error } = await gateway.commentReactionCounts(rows.map((comment) => comment.id));
+    const counts = error || !data?.counts ? {} : data.counts;
+    return rows.map((comment) => applySummary(comment, counts[comment.id]));
+  };
+
+  // Reads the authoritative aggregate for the given comments and patches them
+  // into state without capturing `comments` in its closure, so realtime
+  // handlers (registered once per post) always patch the current list.
+  const refreshCommentReactionSummaries = async (commentIds: string[]) => {
+    if (commentIds.length === 0) return;
+    const { data, error } = await gateway.commentReactionCounts(commentIds);
+    if (error || !data?.counts) return;
+    const requested = new Set(commentIds);
+    setComments((current) =>
+      current.map((comment) =>
+        requested.has(comment.id) ? applySummary(comment, data.counts[comment.id]) : comment
+      )
+    );
+  };
 
   const fetchComments = async () => {
     if (!postId) return;
@@ -50,20 +111,14 @@ export const useComments = (postId: string) => {
             username,
             display_name,
             profile_pic
-          ),
-          reactions:comment_reactions (
-            id,
-            comment_id,
-            user_id,
-            emoji,
-            created_at
           )
         `)
         .eq('post_id', postId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      setComments(data || []);
+      const commentRows = (data || []) as Comment[];
+      setComments(await withCommentReactionSummaries(commentRows));
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -101,8 +156,14 @@ export const useComments = (postId: string) => {
 
       if (error) throw error;
 
+      // A brand new comment has no reactions yet, but it still needs the
+      // aggregate fields so the counter renders consistently with older rows.
+      // `profiles` is attached by the client-side join resolver, so the insert
+      // result is not typed with it.
+      const newComment = applySummary(data as unknown as Comment);
+
       // Add the new comment to the local state
-      setComments(prev => [...prev, data]);
+      setComments(prev => [...prev, newComment]);
       
       // Save mentions and hashtags
       await saveMentionsAndHashtags('comment', data.id, content);
@@ -164,8 +225,11 @@ export const useComments = (postId: string) => {
 
       if (error) throw error;
 
+      // Keep the aggregate shape consistent with fetchComments().
+      const newReply = applySummary(data as unknown as Comment);
+
       // Add the new reply to the local state
-      setComments(prev => [...prev, data]);
+      setComments(prev => [...prev, newReply]);
       
       // Save mentions and hashtags
       await saveMentionsAndHashtags('comment', data.id, content);
@@ -286,6 +350,7 @@ export const useComments = (postId: string) => {
               }
             : comment
         ));
+        void refreshCommentReactionSummaries([commentId]);
       } else {
         // Add reaction
         const { data, error } = await gateway
@@ -309,6 +374,7 @@ export const useComments = (postId: string) => {
               }
             : comment
         ));
+        void refreshCommentReactionSummaries([commentId]);
       }
     } catch (error: any) {
       toast({
@@ -333,7 +399,10 @@ export const useComments = (postId: string) => {
           table: 'comments',
           filter: `post_id=eq.${postId}`
         },
-        async (payload) => {
+        async (payload: RealtimeRowPayload) => {
+          const newCommentId = payload.new?.id;
+          if (typeof newCommentId !== 'string') return;
+
           // Fetch the full comment with profile data
           const { data } = await gateway
             .from('comments')
@@ -343,21 +412,16 @@ export const useComments = (postId: string) => {
                 username,
                 display_name,
                 profile_pic
-              ),
-              reactions:comment_reactions (
-                id,
-                comment_id,
-                user_id,
-                emoji,
-                created_at
               )
             `)
-            .eq('id', payload.new.id)
+            .eq('id', newCommentId)
             .single();
 
           if (data && data.user_id !== user?.id) {
-            // Only add if it's not from the current user (to avoid duplicates)
-            setComments(prev => [...prev, data]);
+            // Only add if it's not from the current user (to avoid duplicates).
+            // Realtime rows carry no reaction aggregate, so start at zero and
+            // let the reaction-change handler keep the count current.
+            setComments(prev => [...prev, applySummary(data as unknown as Comment)]);
           }
         }
       )
@@ -368,16 +432,12 @@ export const useComments = (postId: string) => {
           schema: 'public',
           table: 'comment_reactions'
         },
-        (payload) => {
-          const reaction = payload.new as CommentReaction;
-          setComments(prev => prev.map(comment => 
-            comment.id === reaction.comment_id
-              ? {
-                  ...comment,
-                  reactions: [...(comment.reactions || []), reaction]
-                }
-              : comment
-          ));
+        (payload: RealtimeRowPayload) => {
+          const commentId = payload.new?.comment_id;
+          if (typeof commentId !== 'string') return;
+          // Do not put arbitrary realtime reactor identities in client state;
+          // refresh the aggregate + the viewer's own state instead.
+          void refreshCommentReactionSummaries([commentId]);
         }
       )
       .on(
@@ -387,16 +447,10 @@ export const useComments = (postId: string) => {
           schema: 'public',
           table: 'comment_reactions'
         },
-        (payload) => {
-          const reaction = payload.old as CommentReaction;
-          setComments(prev => prev.map(comment => 
-            comment.id === reaction.comment_id
-              ? {
-                  ...comment,
-                  reactions: comment.reactions?.filter(r => r.id !== reaction.id) || []
-                }
-              : comment
-          ));
+        (payload: RealtimeRowPayload) => {
+          const commentId = payload.old?.comment_id;
+          if (typeof commentId !== 'string') return;
+          void refreshCommentReactionSummaries([commentId]);
         }
       )
       .subscribe();

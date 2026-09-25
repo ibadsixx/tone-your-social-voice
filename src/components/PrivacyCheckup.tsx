@@ -66,6 +66,31 @@ const privacyOptions = [
   { value: 'only_me', label: 'Only Me' }
 ];
 
+// Reactor identity visibility is a separate control from audience reach. The
+// Gateway accepts exactly these three values; a missing or unrecognized stored
+// value falls back to 'public' server-side, so mirror that here so the UI never
+// shows a setting the Gateway will not honor.
+const REACTION_VISIBILITY_VALUES = ['public', 'friends', 'only_me'] as const;
+type ReactionVisibilityValue = (typeof REACTION_VISIBILITY_VALUES)[number];
+
+const reactionVisibilityOptions: Array<{ value: ReactionVisibilityValue; label: string }> = [
+  { value: 'public', label: 'Everyone' },
+  { value: 'friends', label: 'Allies' },
+  { value: 'only_me', label: 'Only Me' },
+];
+
+const normalizeReactionsVisibility = (val: string | null | undefined): ReactionVisibilityValue => {
+  const normalized = (val || '').trim().toLowerCase();
+  return (REACTION_VISIBILITY_VALUES as readonly string[]).includes(normalized)
+    ? (normalized as ReactionVisibilityValue)
+    : 'public';
+};
+
+const reactionVisibilityLabel = (val: string | null | undefined) => {
+  const found = reactionVisibilityOptions.find(o => o.value === normalizeReactionsVisibility(val));
+  return found?.label ?? 'Everyone';
+};
+
 const visibilityLabel = (val: string | null | undefined) => {
   if (!val) return 'Allies';
   const found = privacyOptions.find(o => o.value.toLowerCase() === val.toLowerCase());
@@ -419,6 +444,7 @@ const PrivacyCheckup = () => {
   const renderAudienceStep = () => {
     const futurePostsVal = privacySettings.future_posts_visibility || 'public';
     const storiesVal = privacySettings.stories_visibility || 'friends';
+    const reactionsVisibilityVal = normalizeReactionsVisibility(privacySettings.reactions_visibility);
 
     const handleLimitPastPosts = async () => {
       await updatePrivacySetting('past_posts_visibility', 'friends');
@@ -481,6 +507,47 @@ const PrivacyCheckup = () => {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          )}
+        </div>
+
+        <Separator />
+
+        {/* Reaction users. This is deliberately a separate control from the
+            post audience: how many reactions are shown is independent of who is
+            allowed to see who reacted. */}
+        <div className="relative">
+          <button
+            className="w-full flex items-center justify-between py-4 px-1 hover:bg-muted/50 rounded-lg transition-colors text-left"
+            onClick={() => setEditingField(editingField === 'reactions_visibility' ? null : 'reactions_visibility')}
+          >
+            <div>
+              <p className="text-sm font-semibold text-foreground">Who can see who reacted to your posts and comments?</p>
+              <p className="text-xs text-muted-foreground">
+                {reactionVisibilityLabel(reactionsVisibilityVal)}
+                <span className="block text-[11px]">Reaction totals stay visible either way.</span>
+              </p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </button>
+          {editingField === 'reactions_visibility' && (
+            <div className="pb-3 px-1 space-y-1">
+              <Select
+                value={reactionsVisibilityVal}
+                onValueChange={(v) => { updatePrivacySetting('reactions_visibility', v); setEditingField(null); }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {reactionVisibilityOptions.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground px-1">
+                You can always see who reacted to your own content.
+              </p>
             </div>
           )}
         </div>

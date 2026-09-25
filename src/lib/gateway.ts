@@ -9,6 +9,66 @@ const storageUrlCache = new Map<string, string>();
 
 type TableName = keyof Database['public']['Tables'];
 
+/** The two content types that expose paginated reaction-user lists. */
+export type ReactionContentType = 'post' | 'comment';
+
+/** Options shared by the dedicated post/comment reaction-user endpoints. */
+export interface ReactionUsersOptions {
+  /** Ask the gateway for the authorized public profile projection as well as counts. */
+  includeUsers?: boolean;
+  limit?: number;
+  offset?: number;
+  /** Canonical reaction key, or a legacy reaction value accepted by the gateway. */
+  type?: string;
+}
+
+/** The deliberately small, public projection of one reaction author. */
+export interface ReactionUser {
+  id: string;
+  user_id: string;
+  reaction_type: string;
+  created_at: string | null;
+  username: string;
+  display_name: string;
+  profile_pic: string | null;
+}
+
+/** A reaction row that is safe to use for the viewer's own reaction state. */
+export interface ReactionViewerRow {
+  id: string;
+  user_id: string;
+  reaction_type: string;
+  created_at: string | null;
+}
+
+export interface ReactionUsersPage {
+  content_type?: ReactionContentType;
+  content_id?: string;
+  reaction_count: number;
+  reaction_types: Record<string, number>;
+  filtered_reaction_count: number;
+  users: ReactionUser[];
+  viewer_reactions: ReactionViewerRow[];
+  has_more: boolean;
+  next_offset: number | null;
+}
+
+export type ReactionUsersResult = {
+  data: ReactionUsersPage | null;
+  error: { message: string; code?: string } | null;
+};
+
+export interface CommentReactionCountSummary {
+  reaction_count: number;
+  reaction_types: Record<string, number>;
+  viewer_reactions: ReactionViewerRow[];
+}
+
+export type CommentReactionCountsResult = {
+  data: { counts: Record<string, CommentReactionCountSummary> } | null;
+  error: { message: string; code?: string } | null;
+};
+
 function getToken(): string | null {
   try {
     const sessionStr = localStorage.getItem('tone-auth-token');
@@ -1181,6 +1241,97 @@ class GatewayAuth {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function countValue(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const number = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(number) && number >= 0 ? Math.floor(number) : null;
+}
+
+function normalizeReactionUsersPage(
+  value: unknown,
+  includeUsers: boolean,
+  requestedType?: string
+): ReactionUsersPage {
+  const record = isRecord(value) ? value : {};
+  const reactionTypes: Record<string, number> = {};
+
+  if (isRecord(record.reaction_types)) {
+    for (const [type, rawCount] of Object.entries(record.reaction_types)) {
+      const count = countValue(rawCount);
+      if (type && count !== null) reactionTypes[type] = count;
+    }
+  }
+
+  const aggregateCount = countValue(record.reaction_count)
+    ?? Object.values(reactionTypes).reduce((sum, count) => sum + count, 0);
+  const requestedTypeCount = requestedType ? reactionTypes[requestedType] : undefined;
+  const filteredCount = countValue(record.filtered_reaction_count)
+    ?? (requestedType ? (requestedTypeCount ?? 0) : aggregateCount);
+
+  const users: ReactionUser[] = [];
+  if (includeUsers && Array.isArray(record.users)) {
+    for (const rawUser of record.users) {
+      if (!isRecord(rawUser)) continue;
+      const id = stringValue(rawUser.id);
+      const userId = stringValue(rawUser.user_id);
+      const reactionType = stringValue(rawUser.reaction_type);
+      if (!id || !userId || !reactionType) continue;
+
+      users.push({
+        id,
+        user_id: userId,
+        reaction_type: reactionType,
+        created_at: stringValue(rawUser.created_at),
+        username: stringValue(rawUser.username) || 'unknown',
+        display_name: stringValue(rawUser.display_name) || 'Unknown user',
+        profile_pic: stringValue(rawUser.profile_pic),
+      });
+    }
+  }
+
+  const viewerReactions: ReactionViewerRow[] = [];
+  if (Array.isArray(record.viewer_reactions)) {
+    for (const rawReaction of record.viewer_reactions) {
+      if (!isRecord(rawReaction)) continue;
+      const id = stringValue(rawReaction.id);
+      const userId = stringValue(rawReaction.user_id);
+      const reactionType = stringValue(rawReaction.reaction_type);
+      if (!id || !userId || !reactionType) continue;
+      viewerReactions.push({
+        id,
+        user_id: userId,
+        reaction_type: reactionType,
+        created_at: stringValue(rawReaction.created_at),
+      });
+    }
+  }
+
+  const contentType = record.content_type === 'post' || record.content_type === 'comment'
+    ? record.content_type
+    : undefined;
+  const nextOffsetValue = countValue(record.next_offset);
+
+  return {
+    ...(contentType ? { content_type: contentType } : {}),
+    ...(stringValue(record.content_id) ? { content_id: stringValue(record.content_id)! } : {}),
+    reaction_count: aggregateCount,
+    reaction_types: reactionTypes,
+    filtered_reaction_count: filteredCount,
+    users,
+    viewer_reactions: viewerReactions,
+    has_more: record.has_more === true,
+    next_offset: nextOffsetValue,
+  };
+}
+
 class GatewayClient {
   private _baseUrl: string;
   private _authInstance: GatewayAuth;
@@ -1251,6 +1402,136 @@ class GatewayClient {
         }
         const json = await res.json();
         return { data: json, error: null };
+      })
+      .catch((err) => ({ data: null, error: { message: String(err) } }));
+  }
+
+  /**
+   * Fetch an authorized, paginated reaction-user page. This deliberately does
+   * not use the generic table reader: reaction rows contain reactor identities
+   * and the gateway must make the visibility decision before returning them.
+   */
+  private _fetchReactionUsers(
+    kind: ReactionContentType,
+    contentId: string,
+    options: ReactionUsersOptions = {}
+  ): Promise<ReactionUsersResult> {
+    if (!this._baseUrl || !contentId) {
+      return Promise.resolve({ data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } });
+    }
+
+    const includeUsers = options.includeUsers !== false;
+    const rawLimit = Number(options.limit);
+    const rawOffset = Number(options.offset);
+    const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(100, Math.floor(rawLimit))) : 25;
+    const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0;
+    const params = new URLSearchParams({
+      include_users: String(includeUsers),
+      limit: String(limit),
+      offset: String(offset),
+    });
+    if (options.type) params.set('type', options.type);
+
+    const token = getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    return fetch(
+      `${this._baseUrl}/api/${kind === 'post' ? 'posts' : 'comments'}/${encodeURIComponent(contentId)}/reaction-users?${params.toString()}`,
+      { method: 'GET', headers, cache: 'no-store' }
+    )
+      .then(async (res) => {
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => null);
+          const message = isRecord(errBody)
+            ? stringValue(errBody.message) || stringValue(errBody.error) || res.statusText
+            : res.statusText;
+          return {
+            data: null,
+            error: {
+              message: message || `Reaction users request failed (${res.status})`,
+              code: String(res.status),
+            },
+          };
+        }
+
+        const json = await res.json();
+        return { data: normalizeReactionUsersPage(json, includeUsers, options.type), error: null };
+      })
+      .catch((err) => ({ data: null, error: { message: String(err) } }));
+  }
+
+  postReactionUsers(postId: string, options: ReactionUsersOptions = {}): Promise<ReactionUsersResult> {
+    return this._fetchReactionUsers('post', postId, options);
+  }
+
+  commentReactionUsers(commentId: string, options: ReactionUsersOptions = {}): Promise<ReactionUsersResult> {
+    return this._fetchReactionUsers('comment', commentId, options);
+  }
+
+  /** Aggregate-only counts for a batch of comments, plus the viewer's own state. */
+  commentReactionCounts(commentIds: string[]): Promise<CommentReactionCountsResult> {
+    const ids = [...new Set(commentIds.filter((id) => typeof id === 'string' && id.length > 0))].slice(0, 100);
+    if (!this._baseUrl || ids.length === 0) {
+      return Promise.resolve({ data: { counts: {} }, error: null });
+    }
+    const token = getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const params = new URLSearchParams({ ids: ids.join(',') });
+    return fetch(`${this._baseUrl}/api/comments/reaction-counts?${params.toString()}`, {
+      method: 'GET',
+      headers,
+      cache: 'no-store',
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => null);
+          const message = isRecord(errBody)
+            ? stringValue(errBody.message) || stringValue(errBody.error) || res.statusText
+            : res.statusText;
+          return {
+            data: null,
+            error: { message: message || res.statusText, code: String(res.status) },
+          };
+        }
+        const json = await res.json();
+        const rawCounts = isRecord(json) && isRecord(json.counts) ? json.counts : {};
+        const counts: Record<string, CommentReactionCountSummary> = {};
+        for (const [commentId, rawSummary] of Object.entries(rawCounts)) {
+          if (!isRecord(rawSummary)) continue;
+          const reactionTypes: Record<string, number> = {};
+          if (isRecord(rawSummary.reaction_types)) {
+            for (const [type, rawCount] of Object.entries(rawSummary.reaction_types)) {
+              const count = countValue(rawCount);
+              if (type && count !== null) reactionTypes[type] = count;
+            }
+          }
+          const viewerReactions: ReactionViewerRow[] = [];
+          if (Array.isArray(rawSummary.viewer_reactions)) {
+            for (const rawReaction of rawSummary.viewer_reactions) {
+              if (!isRecord(rawReaction)) continue;
+              const id = stringValue(rawReaction.id);
+              const userId = stringValue(rawReaction.user_id);
+              const reactionType = stringValue(rawReaction.reaction_type);
+              if (!id || !userId || !reactionType) continue;
+              viewerReactions.push({
+                id,
+                user_id: userId,
+                reaction_type: reactionType,
+                created_at: stringValue(rawReaction.created_at),
+              });
+            }
+          }
+          const aggregate = countValue(rawSummary.reaction_count)
+            ?? Object.values(reactionTypes).reduce((sum, count) => sum + count, 0);
+          counts[commentId] = {
+            reaction_count: aggregate,
+            reaction_types: reactionTypes,
+            viewer_reactions: viewerReactions,
+          };
+        }
+        return { data: { counts }, error: null };
       })
       .catch((err) => ({ data: null, error: { message: String(err) } }));
   }
