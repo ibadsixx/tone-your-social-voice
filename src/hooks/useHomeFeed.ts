@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { postsApi } from '@/api';
 import { gateway } from '@/lib/gateway';
+import { isPostVisibleToViewer, loadFriendIds } from '@/lib/postVisibility';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { createNotification } from '@/hooks/useNotifications';
@@ -113,7 +114,10 @@ function mapFeedPosts(
     group_id: post.group_posts?.[0]?.groups?.id || null,
   })) as unknown as HomeFeedPost[]).filter(p =>
     (!p.group_id || !unfollowedGroupIds.includes(p.group_id)) &&
-    (!viewerId || isPostVisibleToViewer(p, viewerId, friendIds))
+    // A guest is NOT a friend: filtering is applied for guests too, so a
+    // logged-out feed can never render friends-only content. The previous
+    // `!viewerId ||` short-circuit skipped the check entirely when logged out.
+    isPostVisibleToViewer(p, viewerId || '', friendIds)
   );
 }
 
@@ -127,68 +131,10 @@ async function loadUnfollowedGroupIds(userId?: string): Promise<string[]> {
   return ((unfollowRows || []) as Array<{ group_id: string }>).map(row => row.group_id);
 }
 
-// Loads the current user's accepted friend IDs for audience filtering.
-async function loadFriendIds(userId?: string): Promise<Set<string>> {
-  if (!userId) return new Set();
-  const { data } = await gateway
-    .from('friends')
-    .select('requester_id, receiver_id')
-    .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`)
-    .eq('status', 'accepted');
-  const ids = new Set<string>();
-  for (const row of (data || []) as Array<{ requester_id: string; receiver_id: string }>) {
-    if (row.requester_id !== userId) ids.add(row.requester_id);
-    if (row.receiver_id !== userId) ids.add(row.receiver_id);
-  }
-  return ids;
-}
-
-// Determines whether a post is visible to the current user based on its audience settings.
-// The gateway uses service_role keys that bypass RLS, so audience enforcement happens here.
-function isPostVisibleToViewer(
-  post: HomeFeedPost,
-  viewerId: string,
-  friendIds: Set<string>
-): boolean {
-  const authorId = post.user_id;
-
-  // Authors always see their own posts.
-  if (viewerId === authorId) return true;
-
-  // Non-public visibility hides the post from everyone except the author.
-  if (post.visibility && post.visibility !== 'public') return false;
-
-  const audience = post.audience_type;
-
-  // Default / public — visible to everyone.
-  if (!audience || audience === 'public') return true;
-
-  // Only me — visible to the author only (already returned above).
-  if (audience === 'only_me') return false;
-
-  // Friends — visible when viewer and author are mutual friends.
-  if (audience === 'friends') return friendIds.has(authorId);
-
-  // Friends except — friends minus excluded list.
-  if (audience === 'friends_except') {
-    if (!friendIds.has(authorId)) return false;
-    const excluded = post.audience_excluded_user_ids;
-    return !excluded || !excluded.includes(viewerId);
-  }
-
-  // Specific friends — viewer must be in the explicit user list.
-  if (audience === 'specific') {
-    const allowed = post.audience_user_ids;
-    return !!allowed && allowed.includes(viewerId);
-  }
-
-  // Custom list — audience_list_id references an audience_lists row; without
-  // a membership lookup we conservatively hide the post.
-  if (audience === 'custom_list') return false;
-
-  // Unknown audience type — hide.
-  return false;
-}
+// Audience filtering lives in the canonical @/lib/postVisibility module and is
+// mirrored in the Gateway (which is the enforcing boundary, because the
+// gateway's service-role reads bypass RLS). Keeping ONE implementation here is
+// what stops the three copies from drifting again.
 
 export const useHomeFeed = () => {
   const [posts, setPosts] = useState<HomeFeedPost[]>([]);
@@ -388,7 +334,10 @@ export const useHomeFeed = () => {
         audience_excluded_user_ids: audience.excludedUserIds || null,
         audience_list_id: audience.customListId || null
       } : {
-        audience_type: 'friends'
+        // With no explicit audience selection the post is PUBLIC, matching the
+        // `audience_type` column DEFAULT. This previously defaulted to 'friends',
+        // which silently published every composer's post as friends-only.
+        audience_type: 'public'
       };
 
       // Prepare feeling data

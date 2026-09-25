@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { postsApi } from '@/api';
+import { isPostVisibleToViewer, loadFriendIds } from '@/lib/postVisibility';
+import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
 interface Post {
@@ -12,6 +14,8 @@ interface Post {
   type: 'normal_post' | 'profile_picture_update' | 'cover_photo_update' | 'shared_post' | 'reel';
   shared_post_id?: string | null;
   audience_type?: string;
+  visibility?: string | null;
+  status?: string | null;
   audience_user_ids?: string[];
   audience_excluded_user_ids?: string[];
   audience_list_id?: string;
@@ -53,6 +57,7 @@ export const usePost = (postId?: string) => {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const fetchPost = async () => {
     if (!postId) {
@@ -68,7 +73,18 @@ export const usePost = (postId?: string) => {
 
       if (error) throw error;
 
-      if (!data) {
+      // Defense in depth for the direct `/post/:id` surface, which previously
+      // applied no audience check at all. The Gateway now refuses a row the
+      // viewer may not see (404) and the RLS policy enforces it for direct
+      // Supabase reads; this keeps a friends-only post from rendering if any
+      // other caller ever returns the row. An unauthorized post is reported as
+      // not found so the page does not confirm that a private post exists.
+      const viewerId = user?.id || '';
+      const friendIds = await loadFriendIds(viewerId);
+      if (data && !isPostVisibleToViewer(data, viewerId, friendIds)) {
+        setNotFound(true);
+        setPost(null);
+      } else if (!data) {
         setNotFound(true);
         setPost(null);
       } else {
@@ -94,7 +110,7 @@ export const usePost = (postId?: string) => {
 
   useEffect(() => {
     fetchPost();
-  }, [postId]);
+  }, [postId, user?.id]);
 
   return {
     post,

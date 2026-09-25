@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { postsApi } from '@/api';
-import { gateway } from '@/lib/gateway';
+import { isPostVisibleToViewer, loadFriendIds } from '@/lib/postVisibility';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { POST_CREATED_EVENT } from '@/hooks/useHomeFeed';
@@ -38,41 +38,8 @@ interface Post {
   } | null;
 }
 
-async function loadFriendIds(userId: string): Promise<Set<string>> {
-  const { data } = await gateway
-    .from('friends')
-    .select('requester_id, receiver_id')
-    .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`)
-    .eq('status', 'accepted');
-  const ids = new Set<string>();
-  for (const row of (data || []) as Array<{ requester_id: string; receiver_id: string }>) {
-    if (row.requester_id !== userId) ids.add(row.requester_id);
-    if (row.receiver_id !== userId) ids.add(row.receiver_id);
-  }
-  return ids;
-}
-
-function isPostVisibleToViewer(
-  post: Post,
-  viewerId: string,
-  friendIds: Set<string>
-): boolean {
-  if (viewerId === post.user_id) return true;
-  if (post.visibility && post.visibility !== 'public') return false;
-
-  const audience = post.audience_type;
-  if (!audience || audience === 'public') return true;
-  if (audience === 'only_me') return false;
-  if (audience === 'friends') return friendIds.has(post.user_id);
-  if (audience === 'friends_except') {
-    if (!friendIds.has(post.user_id)) return false;
-    return !post.audience_excluded_user_ids?.includes(viewerId);
-  }
-  if (audience === 'specific') {
-    return !!post.audience_user_ids && post.audience_user_ids.includes(viewerId);
-  }
-  return false;
-}
+// Audience filtering lives in the canonical @/lib/postVisibility module, shared
+// with the home feed, Explore and the Gateway-side evaluator.
 
 export const usePosts = (userId?: string) => {
   const [posts, setPosts] = useState<Post[]>([]);
@@ -98,14 +65,16 @@ export const usePosts = (userId?: string) => {
         shared_post: post.shared_post
       }));
 
-      // When viewing another user's profile, filter by audience settings.
-      // The gateway uses service_role which bypasses RLS, so we filter client-side.
-      if (user && user.id !== userId) {
-        const friendIds = await loadFriendIds(user.id);
-        setPosts(postsWithTypedMedia.filter(p => isPostVisibleToViewer(p, user.id, friendIds)));
-      } else {
-        setPosts(postsWithTypedMedia);
-      }
+      // Audience filtering uses the canonical @/lib/postVisibility module and
+      // runs for EVERY viewer, not just "another user while signed in". The
+      // owner is allowed through by the owner bypass and a guest only sees
+      // public content, so removing the old `user && user.id !== userId` guard
+      // cannot hide the owner's own posts and no longer skips the check when
+      // logged out. The Gateway enforces the same rule server-side; this is the
+      // defense-in-depth layer.
+      const viewerId = user?.id || '';
+      const friendIds = await loadFriendIds(viewerId);
+      setPosts(postsWithTypedMedia.filter(p => isPostVisibleToViewer(p, viewerId, friendIds)));
     } catch {
       toast({
         title: 'Error',

@@ -284,7 +284,11 @@ export default function EditorPublish() {
         duration: videoClip?.duration || project.project_json.settings?.duration || 30,
         aspect_ratio: '9:16',
         audience_type: audienceTypeMap[settings.audience],
-        visibility: audienceTypeMap[settings.audience],
+        // `visibility` is intentionally NOT written. `audience_type` is the
+        // canonical, RLS-authoritative column and the two used to be written
+        // with the same value, which made any consumer that consulted the
+        // legacy column first reduce a Friends reel to owner-only. Leaving it
+        // unset matches every other creation path.
         status: 'draft',
         scheduled_at: settings.scheduledAt ? new Date(settings.scheduledAt).toISOString() : null,
         // Music data if present
@@ -410,7 +414,7 @@ export default function EditorPublish() {
         duration: Math.round(videoClip.duration || project.project_json.settings?.duration || 30),
         aspect_ratio: '9:16',
         audience_type: audienceTypeMap[settings.audience],
-        visibility: audienceTypeMap[settings.audience],
+        // See the note above: `visibility` is legacy and left unset.
         status: status,
         scheduled_at: settings.scheduledAt ? new Date(settings.scheduledAt).toISOString() : null,
         // Music data if present

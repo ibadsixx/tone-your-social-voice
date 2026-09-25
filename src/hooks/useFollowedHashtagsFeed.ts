@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { gateway } from '@/lib/gateway';
+import { isPublicAudience } from '@/lib/postVisibility';
 import { useAuth } from './useAuth';
 
 interface HashtagPost {
@@ -11,6 +12,9 @@ interface HashtagPost {
   created_at: string;
   type: 'normal_post' | 'profile_picture_update' | 'cover_photo_update' | 'shared_post' | 'reel';
   shared_post_id?: string | null;
+  audience_type?: string | null;
+  visibility?: string | null;
+  status?: string | null;
   duration?: number | null;
   aspect_ratio?: string | null;
   music_url?: string | null;
@@ -184,7 +188,8 @@ export const useFollowedHashtagsFeed = () => {
           })
         );
 
-        setPosts(postsWithData as HashtagPost[]);
+        // Public discovery surface: public content only (see useHashtagFeed).
+        setPosts((postsWithData as HashtagPost[]).filter(post => isPublicAudience(post)));
       } catch (error: any) {
         console.error('Error in fetchFollowedHashtagsPosts:', error);
         setPosts([]);

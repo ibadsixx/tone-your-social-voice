@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { gateway } from '@/lib/gateway';
+import { isPublicAudience } from '@/lib/postVisibility';
 import { useToast } from '@/hooks/use-toast';
 
 interface ExplorePost {
@@ -9,6 +10,9 @@ interface ExplorePost {
   media_url: string | null;
   created_at: string;
   type: 'normal_post' | 'profile_picture_update' | 'cover_photo_update' | 'shared_post' | 'reel';
+  audience_type?: string | null;
+  visibility?: string | null;
+  status?: string | null;
   profiles: {
     username: string;
     display_name: string;
@@ -51,7 +55,9 @@ export const useExplorePosts = () => {
 
       if (error) throw error;
 
-      const newPosts = data || [];
+      // Explore is a PUBLIC discovery surface: public content only, so
+      // friends-only posts are never discoverable here (not even by a friend).
+      const newPosts = ((data || []) as ExplorePost[]).filter(post => isPublicAudience(post));
       
       setError(null);
       if (resetPosts) {

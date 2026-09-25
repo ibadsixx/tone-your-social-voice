@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { gateway } from '@/lib/gateway';
+import { isPublicAudience } from '@/lib/postVisibility';
 
 interface HashtagPost {
   id: string;
@@ -10,6 +11,9 @@ interface HashtagPost {
   created_at: string;
   type: 'normal_post' | 'profile_picture_update' | 'cover_photo_update' | 'shared_post' | 'reel';
   shared_post_id?: string | null;
+  audience_type?: string | null;
+  visibility?: string | null;
+  status?: string | null;
   duration?: number | null;
   aspect_ratio?: string | null;
   music_url?: string | null;
@@ -140,7 +144,10 @@ export const useHashtagFeed = (tag: string) => {
           })
         );
 
-        setPosts(postsWithData as HashtagPost[]);
+        // A hashtag page is a PUBLIC discovery surface: only public content is
+        // listed, so friends-only posts can never be discovered by hashtag even
+        // by one of the author's accepted friends.
+        setPosts((postsWithData as HashtagPost[]).filter(post => isPublicAudience(post)));
       } catch (error) {
         console.error('Error in fetchHashtagPosts:', error);
         setPosts([]);

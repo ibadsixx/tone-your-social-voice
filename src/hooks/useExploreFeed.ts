@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useContentFiltering } from '@/hooks/useContentFiltering';
 import { getExplorePostsData, matchesCategory, type ExplorePost, type ExplorePostCategory } from '@/api/explore';
 import { type ExploreWeights, DEFAULT_EXPLORE_WEIGHTS, rankExplorePosts, type ExploreRankingContext } from '@/lib/exploreRanking';
-import { isPostVisibleToViewer, loadFriendIds as loadFriends } from '@/lib/postVisibility';
+import { isPublicAudience, loadFriendIds as loadFriends } from '@/lib/postVisibility';
 import { useToast } from '@/hooks/use-toast';
 
 const PAGE_SIZE = 30;
@@ -64,15 +64,18 @@ export const useExploreFeed = (options: UseExploreFeedOptions = {}) => {
 
   const filteredAndRanked = useMemo(() => {
     if (!ready) return [];
-    const viewerId = user?.id;
     return rawPosts.filter(post => {
       if (!post.media_url || !post.media_url.trim()) return false;
-      if (viewerId !== post.user_id && !isPostVisibleToViewer(post, viewerId || '', friendIds)) return false;
+      // Explore is a PUBLIC discovery surface, so it is public-only — even for
+      // the author and even for the author's accepted friends. Using the
+      // viewer-aware filter here (the old behavior) let friends-only content
+      // surface in Explore. The viewer's own profile/feed still show it.
+      if (!isPublicAudience(post)) return false;
       if (!shouldShowContent(post.id, post.user_id)) return false;
       if (!matchesCategory(post, category)) return false;
       return true;
     });
-  }, [rawPosts, category, shouldShowContent, friendIds, user, ready]);
+  }, [rawPosts, category, shouldShowContent, ready]);
 
   const rankedPosts = useMemo(
     () => rankExplorePosts(filteredAndRanked, rankingContext, weights),
