@@ -1,45 +1,12 @@
 import { useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import Post from './Post';
-import ProfilePhotosGrid from './ProfilePhotosGrid';
-import ProfileReelsGrid from './ProfileReelsGrid';
+import { ProfileContentSection } from './ProfileContentSection';
 import { Image, Video, Share2, Grid3X3 } from 'lucide-react';
 import type { ProfileSectionFilter } from '@/lib/profileSections';
-
-interface PostData {
-  id: string;
-  user_id: string;
-  content: string | null;
-  media_url: string | null;
-  media_type?: 'image' | 'video' | null;
-  created_at: string;
-  type: 'normal_post' | 'profile_picture_update' | 'cover_photo_update' | 'shared_post' | 'reel';
-  shared_post_id?: string | null;
-  profiles: {
-    username: string;
-    display_name: string;
-    profile_pic: string | null;
-  };
-  shared_post?: {
-    id: string;
-    content: string | null;
-    media_url: string | null;
-    type: string;
-    created_at: string;
-    profiles: {
-      username: string;
-      display_name: string;
-      profile_pic: string | null;
-    };
-  } | null;
-}
+import type { ProfileContentKind } from '@/api/profileContent';
 
 interface FilteredPostsLayoutProps {
-  posts: PostData[];
-  loading: boolean;
-  isOwnProfile: boolean;
+  profileId: string;
   coverPic?: string | null;
   // When provided, the profile section is controlled by the URL (the parent
   // derives it from the route) and clicks are reported back to the parent so it
@@ -49,10 +16,15 @@ interface FilteredPostsLayoutProps {
   onFilterChange?: (filter: ProfileSectionFilter) => void;
 }
 
+const FILTER_KIND: Record<ProfileSectionFilter, ProfileContentKind> = {
+  all: 'posts',
+  photos: 'photos',
+  reels: 'reels',
+  shared: 'shared',
+};
+
 const FilteredPostsLayout = ({
-  posts,
-  loading,
-  isOwnProfile,
+  profileId,
   coverPic,
   activeFilter: controlledFilter,
   onFilterChange,
@@ -72,60 +44,10 @@ const FilteredPostsLayout = ({
     { id: 'shared', label: 'Shared', icon: Share2 },
   ] as const;
 
-  const getFilteredPosts = () => {
-    if (activeFilter === 'all') return posts;
-    
-    return posts.filter(post => {
-      switch (activeFilter) {
-        case 'shared':
-          return post.type === 'shared_post' || post.shared_post_id;
-        default:
-          return true;
-      }
-    });
-  };
-
-  const filteredPosts = getFilteredPosts();
-
-  if (loading) {
-    return (
-      <div className="flex gap-6">
-        {/* Sidebar skeleton */}
-        <div className="hidden md:block w-64 space-y-2">
-          {[1, 2, 3, 4, 5].map(i => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-        {/* Mobile tabs skeleton */}
-        <div className="md:hidden w-full">
-          <div className="flex space-x-2 mb-4">
-            {[1, 2, 3, 4, 5].map(i => (
-              <Skeleton key={i} className="h-10 flex-1" />
-            ))}
-          </div>
-        </div>
-        {/* Posts skeleton */}
-        <div className="flex-1 space-y-4">
-          {[1, 2, 3].map(i => (
-            <Card key={i}>
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-center space-x-3">
-                  <Skeleton className="h-10 w-10 rounded-full" />
-                  <div className="space-y-2">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-3 w-24" />
-                  </div>
-                </div>
-                <Skeleton className="h-20 w-full" />
-                <Skeleton className="h-48 w-full" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
+  // The section chrome is rendered unconditionally. It used to disappear into a
+  // full-page skeleton while posts loaded, which meant the page the visitor had
+  // just chosen a section on visibly reset underneath them; now only the
+  // CONTENT of the loading section shows a skeleton (do.md 12).
   return (
     <div className="flex flex-col md:flex-row gap-6">
       {/* Desktop Sidebar */}
@@ -178,47 +100,22 @@ const FilteredPostsLayout = ({
         </div>
       </div>
 
-      {/* Posts List / Photos gallery / Reels gallery */}
-      {activeFilter === 'photos' ? (
-        <div className="flex-1">
-          <ProfilePhotosGrid posts={posts} loading={loading} coverPic={coverPic} />
-        </div>
-      ) : activeFilter === 'reels' ? (
-        <div className="flex-1">
-          <ProfileReelsGrid posts={posts} loading={loading} />
-        </div>
-      ) : (
-        <div className="flex-1 space-y-4">
-          {filteredPosts.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-muted-foreground">
-                  {activeFilter === 'all'
-                    ? 'No posts yet'
-                    : `No ${activeFilter} found`
-                  }
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            filteredPosts.map(post => (
-              <Post
-                key={post.id}
-                id={post.id}
-                user_id={post.user_id}
-                content={post.content}
-                media_url={post.media_url}
-                media_type={post.media_type}
-                created_at={post.created_at}
-                type={post.type}
-                shared_post_id={post.shared_post_id}
-                profiles={post.profiles}
-                shared_post={post.shared_post}
-              />
-            ))
-          )}
-        </div>
-      )}
+      {/*
+        All four sections stay mounted so each keeps its own cursor and its own
+        already-loaded items, and only the active one is enabled — switching tabs
+        starts that section's own feed instead of refetching another's.
+      */}
+      {filters.map(filter => (
+        <ProfileContentSection
+          key={filter.id}
+          kind={FILTER_KIND[filter.id]}
+          variant={filter.id}
+          profileId={profileId}
+          active={activeFilter === filter.id}
+          enabled={activeFilter === filter.id}
+          coverPic={coverPic}
+        />
+      ))}
     </div>
   );
 };

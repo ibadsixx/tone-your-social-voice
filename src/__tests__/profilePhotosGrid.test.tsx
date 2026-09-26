@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 // The real Post component pulls in auth/feed/reaction providers; for these
@@ -7,8 +7,17 @@ vi.mock('@/components/Post', () => ({
   default: () => <div data-testid="post-card" />,
 }));
 
+// The sections now read one page at a time from the profile content endpoint.
+vi.mock('@/api/profileContent', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/profileContent')>();
+  return { ...actual, getProfileContentPage: vi.fn() };
+});
+
 import FilteredPostsLayout from '@/components/FilteredPostsLayout';
 import { ProfilePhotosGrid } from '@/components/ProfilePhotosGrid';
+import { getProfileContentPage } from '@/api/profileContent';
+
+const mockPage = getProfileContentPage as unknown as ReturnType<typeof vi.fn>;
 
 function makePost(overrides: Record<string, unknown>) {
   return {
@@ -20,35 +29,54 @@ function makePost(overrides: Record<string, unknown>) {
     created_at: '2026-01-01T00:00:00.000Z',
     type: 'normal_post' as const,
     profiles: { username: 'alice', display_name: 'Alice', profile_pic: null },
+    shared_post: null,
     ...overrides,
   };
 }
 
+/**
+ * The server's Photos predicate is deliberately inclusive (see
+ * src/api/profileContent.ts), so a photos page may legitimately contain rows the
+ * client then narrows away. Serving every fixture row for every section is
+ * therefore the realistic shape — and it is what proves the client filter still
+ * does its job.
+ */
+function serveRows(rows: unknown[]) {
+  mockPage.mockImplementation(() =>
+    Promise.resolve({
+      data: { items: rows, has_more: false, next_cursor: null, degraded: false },
+      error: null,
+    })
+  );
+}
+
 describe('FilteredPostsLayout Photos filter', () => {
-  it('renders a photo grid instead of full post cards', () => {
-    const posts = [
+  beforeEach(() => mockPage.mockReset());
+
+  it('renders a photo grid instead of full post cards', async () => {
+    serveRows([
       makePost({ id: 'img1', media_url: 'https://cdn.test/1.jpg', media_type: 'image' }),
       makePost({ id: 'vid1', media_url: 'https://cdn.test/v.mp4', media_type: 'video' }),
       makePost({ id: 'text1' }),
-    ];
+    ]);
 
-    render(<FilteredPostsLayout posts={posts} loading={false} isOwnProfile />);
-    expect(screen.getAllByTestId('post-card')).toHaveLength(3);
+    render(<FilteredPostsLayout profileId="u1" />);
+    expect(await screen.findAllByTestId('post-card')).toHaveLength(3);
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Photos' })[0]);
 
-    expect(screen.getByTestId('profile-photos-grid')).toBeTruthy();
+    expect(await screen.findByTestId('profile-photos-grid')).toBeTruthy();
     // No full post cards in the Photos section.
     expect(screen.queryByTestId('post-card')).toBeNull();
   });
 
-  it('shows an empty state when the profile has no photos', () => {
-    const posts = [makePost({ id: 'text1' }), makePost({ id: 'reel1', type: 'reel' })];
+  it('shows an empty state when the profile has no photos', async () => {
+    serveRows([makePost({ id: 'text1' }), makePost({ id: 'reel1', type: 'reel' })]);
 
-    render(<FilteredPostsLayout posts={posts} loading={false} isOwnProfile />);
+    render(<FilteredPostsLayout profileId="u1" />);
     fireEvent.click(screen.getAllByRole('button', { name: 'Photos' })[0]);
 
-    expect(screen.getByTestId('profile-photos-empty')).toBeTruthy();
+    expect(await screen.findByTestId('profile-photos-empty')).toBeTruthy();
     expect(screen.queryByTestId('profile-photos-grid')).toBeNull();
   });
 });
@@ -137,17 +165,14 @@ describe('ProfilePhotosGrid cover photo', () => {
     expect(screen.getByTestId('profile-photos-grid').querySelectorAll('button')).toHaveLength(1);
   });
 
-  it('Test 5: the Photos filter in FilteredPostsLayout includes the cover photo', () => {
-    render(
-      <FilteredPostsLayout
-        posts={[makePost({ id: 'text1' })]}
-        loading={false}
-        isOwnProfile
-        coverPic="https://cdn.test/cover.jpg"
-      />
-    );
+  it('Test 5: the Photos filter in FilteredPostsLayout includes the cover photo', async () => {
+    mockPage.mockReset();
+    serveRows([makePost({ id: 'text1' })]);
+
+    render(<FilteredPostsLayout profileId="u1" coverPic="https://cdn.test/cover.jpg" />);
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Photos' })[0]);
+    expect(await screen.findByTestId('profile-photos-grid')).toBeTruthy();
     expect(screen.getByTestId('profile-photos-grid').querySelectorAll('button')).toHaveLength(1);
   });
 });

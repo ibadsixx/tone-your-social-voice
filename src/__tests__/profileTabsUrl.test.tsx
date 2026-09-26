@@ -45,6 +45,15 @@ vi.mock('@/hooks/usePosts', async (importOriginal) => {
   };
 });
 
+// Each content section reads one page at a time from the profile content
+// endpoint. An empty page with no cursor is what a profile with no content in
+// that section looks like, and it keeps the deep-link assertions off the wire.
+const getProfileContentPage = vi.fn();
+vi.mock('@/api/profileContent', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/profileContent')>();
+  return { ...actual, getProfileContentPage: (...args: unknown[]) => getProfileContentPage(...args) };
+});
+
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
@@ -115,6 +124,11 @@ describe('Profile section URL navigation', () => {
   beforeEach(() => {
     getProfileByUsername.mockReset();
     getProfileByUsername.mockResolvedValue({ data: profile, error: null });
+    getProfileContentPage.mockReset();
+    getProfileContentPage.mockResolvedValue({
+      data: { items: [], has_more: false, next_cursor: null, degraded: false },
+      error: null,
+    });
   });
 
   it('defaults the bare profile URL to Posts and loads the profile once', async () => {
@@ -151,7 +165,14 @@ describe('Profile section URL navigation', () => {
 
     await screen.findByTestId('profile-header');
     expect(screen.getByTestId('path').textContent).toBe('/profile/test/reels');
-    expect(screen.getByTestId('profile-reels-empty')).toBeTruthy();
+    // The deep-linked section reads its own first page, rather than the profile
+    // shell waiting on a fetch of every section's content.
+    expect(getProfileContentPage).toHaveBeenCalledWith(
+      'p1',
+      'reels',
+      expect.objectContaining({ cursor: null, limit: 1 })
+    );
+    expect(await screen.findByTestId('profile-reels-empty')).toBeTruthy();
     expect(getProfileByUsername).toHaveBeenCalledTimes(1);
   });
 

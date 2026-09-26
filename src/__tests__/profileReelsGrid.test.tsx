@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
@@ -9,8 +9,33 @@ vi.mock('@/components/Post', () => ({
   default: () => <div data-testid="post-card" />,
 }));
 
+// The sections read one page at a time from the profile content endpoint.
+vi.mock('@/api/profileContent', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/profileContent')>();
+  return { ...actual, getProfileContentPage: vi.fn() };
+});
+
 import FilteredPostsLayout from '@/components/FilteredPostsLayout';
 import { ProfileReelsGrid } from '@/components/ProfileReelsGrid';
+import { getProfileContentPage } from '@/api/profileContent';
+
+const mockPage = getProfileContentPage as unknown as ReturnType<typeof vi.fn>;
+
+/**
+ * The server's Reels predicate is deliberately inclusive (see
+ * src/api/profileContent.ts), so a reels page may legitimately contain rows the
+ * client then narrows away. Serving every fixture row for every section is
+ * therefore the realistic shape — and it is what proves the client filter still
+ * does its job.
+ */
+function serveRows(rows: unknown[]) {
+  mockPage.mockImplementation(() =>
+    Promise.resolve({
+      data: { items: rows, has_more: false, next_cursor: null, degraded: false },
+      error: null,
+    })
+  );
+}
 
 function reelPost(overrides: Record<string, unknown> = {}) {
   return {
@@ -89,32 +114,32 @@ describe('ProfileReelsGrid', () => {
 });
 
 describe('FilteredPostsLayout Reels filter', () => {
-  it('Test 3: shows only reels as a gallery, never full post cards', () => {
-    renderWithRouter(
-      <FilteredPostsLayout
-        posts={[
-          makePost({ id: 'photo', media_url: 'https://cdn.test/p.jpg', media_type: 'image' }),
-          makePost({
-            id: 'reel-1',
-            type: 'reel',
-            media_url: 'https://cdn.test/r.mp4',
-            media_type: 'video',
-          }),
-        ]}
-        loading={false}
-        isOwnProfile
-      />
-    );
+  beforeEach(() => mockPage.mockReset());
+
+  it('Test 3: shows only reels as a gallery, never full post cards', async () => {
+    serveRows([
+      makePost({ id: 'photo', media_url: 'https://cdn.test/p.jpg', media_type: 'image' }),
+      makePost({
+        id: 'reel-1',
+        type: 'reel',
+        media_url: 'https://cdn.test/r.mp4',
+        media_type: 'video',
+      }),
+    ]);
+
+    renderWithRouter(<FilteredPostsLayout profileId="u1" />);
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Reels' })[0]);
 
-    const tiles = screen.getByTestId('profile-reels-grid').querySelectorAll('button');
-    expect(tiles).toHaveLength(1);
+    const grid = await screen.findByTestId('profile-reels-grid');
+    expect(grid.querySelectorAll('button')).toHaveLength(1);
     expect(screen.queryByTestId('post-card')).toBeNull();
   });
 
   it('Test 7: the Videos tab is gone and the remaining filters are intact', () => {
-    renderWithRouter(<FilteredPostsLayout posts={[]} loading={false} isOwnProfile />);
+    serveRows([]);
+
+    renderWithRouter(<FilteredPostsLayout profileId="u1" />);
 
     expect(screen.queryByRole('button', { name: 'Videos' })).toBeNull();
     for (const label of ['Posts', 'Photos', 'Reels', 'Shared']) {

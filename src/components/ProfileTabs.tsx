@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useUserPosts } from '@/hooks/usePosts';
 import AboutSection from './AboutSection';
 import Post from './Post';
 import ScheduledPostsTab from './ScheduledPostsTab';
@@ -46,7 +45,6 @@ const ProfileTabs = ({
     onTabChange?.(tab);
   };
   const { user } = useAuth();
-  const { posts, loading: postsLoading } = useUserPosts(profileId);
 
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="mt-6">
@@ -74,10 +72,10 @@ const ProfileTabs = ({
       </TabsList>
       
       <TabsContent value="posts" className="mt-6">
-        <FilteredPostsLayout 
-          posts={posts} 
-          loading={postsLoading} 
-          isOwnProfile={isOwnProfile} 
+        {/* No `posts`/`loading` props: each of the four sections now reads its
+            own page, one item per request, from the profile content endpoint. */}
+        <FilteredPostsLayout
+          profileId={profileId}
           coverPic={coverPic}
           activeFilter={activeFilter}
           onFilterChange={onFilterChange}
