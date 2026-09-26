@@ -423,7 +423,7 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
                 className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-primary"
               >
                 {isTone && (
-                  <img src="/favicon.ico" alt="Tone" className="h-4 w-4 shrink-0 rounded-sm" />
+                  <img src="/favicon.ico" alt="Tone" className="h-4 w-4 shrink-0 rounded-sm"  loading="eager" decoding="async" />
                 )}
                 {!isTone && <Icon className="h-4 w-4 shrink-0 text-primary" />}
                 <span>{link.label || link.type}</span>

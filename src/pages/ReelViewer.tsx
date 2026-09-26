@@ -60,7 +60,7 @@ const ReelViewer = () => {
     toggleLike,
     toggleSave,
     shareReel
-  } = useReelInteractions(id || '');
+  } = useReelInteractions(id || '', { loadCommentsOnMount: false });
 
   // Fetch list of all reels for navigation
   useEffect(() => {
@@ -379,14 +379,13 @@ const ReelViewer = () => {
             autoPlay
             loop
             playsInline
-            muted={isMuted}
-          />
+            muted={isMuted} preload="auto" />
         ) : (
           <img
             src={reel.media_url}
             alt={reel.content || 'Reel'}
             className="h-full w-full object-contain"
-          />
+           loading="eager" decoding="async" />
         )}
 
         {/* Double-tap heart animation */}

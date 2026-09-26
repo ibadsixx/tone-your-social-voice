@@ -78,8 +78,7 @@ const Stories = () => {
                 src={currentUserProfile.profile_pic}
                 alt=""
                 className="absolute inset-0 w-full h-full object-cover"
-                onError={() => setImgError(true)}
-              />
+                onError={() => setImgError(true)} loading="eager" decoding="async" />
             ) : (
               <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/40 flex items-center justify-center">
                 <span className="text-4xl sm:text-6xl font-bold text-primary/60">

@@ -168,7 +168,7 @@ const ReelPlayer = ({
           src={mediaUrl}
           alt="Reel"
           className="w-full h-full object-cover"
-        />
+         loading="lazy" decoding="async" />
       )}
       
       {/* Audio player for music */}

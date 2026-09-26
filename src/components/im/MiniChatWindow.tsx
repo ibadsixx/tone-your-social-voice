@@ -252,13 +252,13 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
                 >
                   {msg.content && <p className="break-words">{msg.content}</p>}
                   {msg.gif_url && (
-                    <img src={msg.gif_url} alt="" className="max-w-full rounded-lg mt-1" />
+                    <img src={msg.gif_url} alt="" className="max-w-full rounded-lg mt-1"  loading="lazy" decoding="async" />
                   )}
                   {msg.image_url && (
-                    <img src={msg.image_url} alt="" className="max-w-full rounded-lg mt-1" />
+                    <img src={msg.image_url} alt="" className="max-w-full rounded-lg mt-1"  loading="lazy" decoding="async" />
                   )}
                   {msg.media_url && (
-                    <video src={msg.media_url} className="max-w-full rounded-lg mt-1" controls />
+                    <video src={msg.media_url} className="max-w-full rounded-lg mt-1" controls preload="metadata" />
                   )}
                 </div>
               </div>

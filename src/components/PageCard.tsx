@@ -54,7 +54,7 @@ export const PageCard = ({ page, onFollow, onUnfollow, variant = 'default', load
               src={page.cover_image} 
               alt={`${page.name} cover`}
               className="w-full h-full object-cover"
-            />
+             loading="lazy" decoding="async" />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center">

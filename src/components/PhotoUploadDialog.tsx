@@ -93,7 +93,7 @@ const PhotoUploadDialog = ({ type, onUpload, isUploading, children }: PhotoUploa
                   className={`w-full rounded-lg object-cover ${
                     type === 'profile' ? 'aspect-square max-h-64' : 'aspect-[3/1] max-h-48'
                   }`}
-                />
+                 loading="lazy" decoding="async" />
                 <Button
                   variant="destructive"
                   size="sm"

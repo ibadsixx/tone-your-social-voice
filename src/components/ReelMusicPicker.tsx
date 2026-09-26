@@ -206,7 +206,7 @@ const ReelMusicPicker = ({ onSelectMusic, selectedMusic, maxDuration = 60 }: Ree
               <div className="space-y-4 overflow-y-auto flex-1">
                 <div className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
                   {selectedTrack.thumbnail_url && (
-                    <img src={selectedTrack.thumbnail_url} alt="" className="w-16 h-16 rounded object-cover" />
+                    <img src={selectedTrack.thumbnail_url} alt="" className="w-16 h-16 rounded object-cover"  loading="lazy" decoding="async" />
                   )}
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{selectedTrack.title}</p>
@@ -354,7 +354,7 @@ const ReelMusicPicker = ({ onSelectMusic, selectedMusic, maxDuration = 60 }: Ree
                                   className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-secondary transition-colors"
                                 >
                                   {track.thumbnail_url && (
-                                    <img src={track.thumbnail_url} alt="" className="w-12 h-12 rounded object-cover" />
+                                    <img src={track.thumbnail_url} alt="" className="w-12 h-12 rounded object-cover"  loading="lazy" decoding="async" />
                                   )}
                                   <div className="flex-1 text-left min-w-0">
                                     <p className="font-medium text-sm truncate">{track.title}</p>
@@ -383,7 +383,7 @@ const ReelMusicPicker = ({ onSelectMusic, selectedMusic, maxDuration = 60 }: Ree
                                   className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-secondary transition-colors"
                                 >
                                   {track.thumbnail_url && (
-                                    <img src={track.thumbnail_url} alt="" className="w-12 h-12 rounded object-cover" />
+                                    <img src={track.thumbnail_url} alt="" className="w-12 h-12 rounded object-cover"  loading="lazy" decoding="async" />
                                   )}
                                   <div className="flex-1 text-left min-w-0">
                                     <p className="font-medium text-sm truncate">{track.title}</p>
@@ -434,7 +434,7 @@ const ReelMusicPicker = ({ onSelectMusic, selectedMusic, maxDuration = 60 }: Ree
                                 {index + 1}
                               </div>
                               {track.thumbnail_url && (
-                                <img src={track.thumbnail_url} alt="" className="w-12 h-12 rounded object-cover" />
+                                <img src={track.thumbnail_url} alt="" className="w-12 h-12 rounded object-cover"  loading="lazy" decoding="async" />
                               )}
                               <div className="flex-1 text-left min-w-0">
                                 <p className="font-medium text-sm truncate">{track.title}</p>

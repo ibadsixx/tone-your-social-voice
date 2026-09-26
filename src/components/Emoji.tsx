@@ -28,6 +28,6 @@ export const Emoji: React.FC<EmojiProps> = ({
       style={{
         verticalAlign: 'middle'
       }}
-    />
+     loading="lazy" decoding="async" />
   );
 };

@@ -498,7 +498,7 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
                             src={item.url || item.localUrl}
                             alt="Preview"
                             className="w-full h-full object-cover"
-                          />
+                           loading="lazy" decoding="async" />
                         ) : (
                           <div className="relative w-full h-full">
                             <video

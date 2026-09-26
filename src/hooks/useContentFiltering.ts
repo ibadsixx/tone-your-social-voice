@@ -37,19 +37,39 @@ export const useContentFiltering = () => {
     }
 
     try {
-      // Fetch blocked users
-      const { data: blockedIds, error: blocksError } = await blockingApi.getBlockedUserIds(user.id);
-      if (blocksError) {
-        console.warn('[CONTENT_FILTER] Blocks fetch failed:', blocksError.message);
+      // These five are disjoint filter tables and every one of them only needs
+      // user.id — none consumes another's result. They were awaited one after
+      // another, which put five round trips (~1.5 s) in front of the explore feed,
+      // because useExploreFeed refuses to render a single card until they all land.
+      const [blocksResult, hiddenResult, restrictedResult, mutedResult, seeLessResult] =
+        await Promise.all([
+          blockingApi.getBlockedUserIds(user.id),
+          // Fetch hidden content - separate queries for content and profiles
+          // content_id entries are "See less" (single reel)
+          // profile_id entries are "Hide profile" (all content from creator)
+          gateway
+            .from('hidden_content')
+            .select('content_id, profile_id, content_type')
+            .eq('user_id', user.id),
+          blockingApi.getRestrictedUsers(user.id),
+          gateway
+            .from('muted_users')
+            .select('muted_user_id')
+            .eq('user_id', user.id),
+          gateway
+            .from('content_preferences')
+            .select('owner_id')
+            .eq('user_id', user.id)
+            .eq('content_type', 'reel')
+            .eq('preference', 'see_less'),
+        ]);
+
+      const blockedIds = blocksResult.data;
+      if (blocksResult.error) {
+        console.warn('[CONTENT_FILTER] Blocks fetch failed:', blocksResult.error.message);
       }
 
-      // Fetch hidden content - separate queries for content and profiles
-      // content_id entries are "See less" (single reel)
-      // profile_id entries are "Hide profile" (all content from creator)
-      const { data: hiddenData } = await gateway
-        .from('hidden_content')
-        .select('content_id, profile_id, content_type')
-        .eq('user_id', user.id);
+      const hiddenData = hiddenResult.data;
 
       // Hidden reels (See less) - only content_id with content_type='reel'
       const hiddenContentIds = hiddenData
@@ -60,31 +80,13 @@ export const useContentFiltering = () => {
       const hiddenProfileIds = hiddenData
         ?.filter(h => h.profile_id && !h.content_id)
         .map(h => h.profile_id!) || [];
-      
+
       console.log('[CONTENT_FILTER] Hidden reels (See less):', hiddenContentIds);
       console.log('[CONTENT_FILTER] Hidden profiles:', hiddenProfileIds);
 
-      // Fetch restricted users
-      const { data: restrictedData } = await blockingApi.getRestrictedUsers(user.id);
-      const restrictedIds = restrictedData?.map(r => r.restricted_user_id) || [];
-
-      // Fetch muted users
-      const { data: mutedData } = await gateway
-        .from('muted_users')
-        .select('muted_user_id')
-        .eq('user_id', user.id);
-
-      const mutedIds = mutedData?.map(m => m.muted_user_id) || [];
-
-      // Fetch see_less preferences for reels
-      const { data: seeLessData } = await gateway
-        .from('content_preferences')
-        .select('owner_id')
-        .eq('user_id', user.id)
-        .eq('content_type', 'reel')
-        .eq('preference', 'see_less');
-
-      const seeLessOwnerIds = seeLessData?.map(p => p.owner_id) || [];
+      const restrictedIds = restrictedResult.data?.map(r => r.restricted_user_id) || [];
+      const mutedIds = mutedResult.data?.map(m => m.muted_user_id) || [];
+      const seeLessOwnerIds = seeLessResult.data?.map(p => p.owner_id) || [];
 
       setState({
         blockedUserIds: blockedIds,

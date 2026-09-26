@@ -55,8 +55,18 @@ export const useMessagingSystem = (currentUserId?: string) => {
     }
 
     try {
-      // Check if blocked
-      const isBlocked = await checkIfBlocked(currentUserId, receiverId);
+      // The block check and the friendship check read different tables and neither
+      // depends on the other, so they were two round trips in a row before the
+      // conversation was even looked up. Run them together; both decisions are
+      // still applied in the same order below.
+      const [isBlocked, areFriends] = await Promise.all([
+        checkIfBlocked(currentUserId, receiverId),
+        // (no longer blocks messaging — only decides whether the recipient sees
+        // this as a plain DM or as a "message request" they can Accept / Delete /
+        // Block)
+        checkFriendship(currentUserId, receiverId),
+      ]);
+
       if (isBlocked) {
         return {
           success: false,
@@ -67,11 +77,6 @@ export const useMessagingSystem = (currentUserId?: string) => {
           }
         };
       }
-
-      // Check if friends (no longer blocks messaging — only decides whether the
-      // recipient sees this as a plain DM or as a "message request" they can
-      // Accept / Delete / Block)
-      const areFriends = await checkFriendship(currentUserId, receiverId);
 
       // Always open/create a conversation and send the first message, for friends
       // and non-friends alike. For non-friends a pending message_requests row is

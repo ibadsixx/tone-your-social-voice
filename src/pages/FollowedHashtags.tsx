@@ -1,7 +1,7 @@
 import { useFollowedHashtagsFeed } from '@/hooks/useFollowedHashtagsFeed';
 import { useAuth } from '@/hooks/useAuth';
 import Post from '@/components/Post';
-import { Loader2, Hash, Heart, RefreshCw } from 'lucide-react';
+import { Hash, Heart, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
@@ -9,7 +9,7 @@ import PageContainer from '@/components/PageContainer';
 
 const FollowedHashtags = () => {
   const { user } = useAuth();
-  const { posts, loading, followedHashtags, error, refresh } = useFollowedHashtagsFeed();
+  const { posts, loading, hashtagsLoading, followedHashtags, error, refresh } = useFollowedHashtagsFeed();
 
   if (!user) {
     return (
@@ -30,14 +30,11 @@ const FollowedHashtags = () => {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
+  // Only the post list waits on `loading`. The page title, the chips card and the
+  // empty/error states are decided by `hashtagsLoading`, which clears as soon as
+  // the follow + hashtag reads land — two of the four requests this page makes.
+  // Gating everything on the post list meant a full-page spinner hid a chips card
+  // that was already populated.
   return (
     <PageContainer size="sm">
       <div className="mb-6">
@@ -50,27 +47,51 @@ const FollowedHashtags = () => {
         </p>
       </div>
 
-      {followedHashtags.length > 0 && (
-        <Card className="p-4 mb-6">
-          <h3 className="text-sm font-semibold text-foreground mb-3">
-            Your Followed Hashtags ({followedHashtags.length})
-          </h3>
+      {hashtagsLoading ? (
+        <Card className="p-4 mb-6" aria-label="Loading followed hashtags">
+          <div className="h-4 w-44 rounded bg-muted animate-pulse mb-3" />
           <div className="flex flex-wrap gap-2">
-            {followedHashtags.map((hashtag) => (
-              <Link
-                key={hashtag.id}
-                to={`/hashtag/${hashtag.tag}`}
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-primary/10 hover:bg-primary/20 transition-colors"
-              >
-                <Hash className="h-3 w-3 text-primary" />
-                <span className="text-sm font-medium text-primary">{hashtag.tag}</span>
-              </Link>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-7 w-24 rounded-full bg-muted animate-pulse" />
             ))}
           </div>
         </Card>
+      ) : (
+        followedHashtags.length > 0 && (
+          <Card className="p-4 mb-6">
+            <h3 className="text-sm font-semibold text-foreground mb-3">
+              Your Followed Hashtags ({followedHashtags.length})
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {followedHashtags.map((hashtag) => (
+                <Link
+                  key={hashtag.id}
+                  to={`/hashtag/${hashtag.tag}`}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-primary/10 hover:bg-primary/20 transition-colors"
+                >
+                  <Hash className="h-3 w-3 text-primary" />
+                  <span className="text-sm font-medium text-primary">{hashtag.tag}</span>
+                </Link>
+              ))}
+            </div>
+          </Card>
+        )
       )}
 
-      {error ? (
+      {loading ? (
+        <div className="space-y-4" aria-label="Loading posts">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="rounded-xl border border-border/50 bg-card/60 p-6 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-muted animate-pulse" />
+                <div className="h-4 w-32 rounded bg-muted animate-pulse" />
+              </div>
+              <div className="h-3 w-3/4 rounded bg-muted animate-pulse" />
+              <div className="h-3 w-1/2 rounded bg-muted animate-pulse" />
+            </div>
+          ))}
+        </div>
+      ) : error ? (
         <Card className="p-8 text-center">
           <Hash className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
           <h2 className="text-xl font-semibold text-foreground mb-2">

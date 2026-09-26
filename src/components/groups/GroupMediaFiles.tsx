@@ -100,7 +100,7 @@ export default function GroupMediaFiles({ groupId }: Props) {
                 >
                   {item.type === 'video' ? (
                     <>
-                      <video src={item.url} className="w-full h-full object-cover" />
+                      <video src={item.url} className="w-full h-full object-cover" preload="metadata" />
                       <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                         <Play className="h-6 w-6 text-white" />
                       </div>
@@ -147,9 +147,9 @@ export default function GroupMediaFiles({ groupId }: Props) {
       <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
         <DialogContent className="max-w-4xl p-2">
           {selected?.type === 'video' ? (
-            <video src={selected.url} controls autoPlay className="w-full max-h-[80vh] object-contain" />
+            <video src={selected.url} controls autoPlay className="w-full max-h-[80vh] object-contain" preload="metadata" />
           ) : (
-            <img src={selected?.url} alt="" className="w-full max-h-[80vh] object-contain" />
+            <img src={selected?.url} alt="" className="w-full max-h-[80vh] object-contain"  loading="lazy" decoding="async" />
           )}
         </DialogContent>
       </Dialog>

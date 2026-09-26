@@ -410,7 +410,7 @@ export function EditorSidebar({
                             onClick={() => handleLayerClick('emoji', layer.id)}
                           >
                             {layer.content.startsWith('http') || layer.content.startsWith('/') ? (
-                              <img src={layer.content} alt="sticker" className="h-4 w-4 shrink-0" />
+                              <img src={layer.content} alt="sticker" className="h-4 w-4 shrink-0"  loading="lazy" decoding="async" />
                             ) : (
                               <span className="text-sm shrink-0">{layer.content}</span>
                             )}

@@ -75,7 +75,7 @@ export const ChatEmojiModal: React.FC<ChatEmojiModalProps> = ({
                     src={emoji.url} 
                     alt={emoji.name} 
                     className="w-8 h-8"
-                  />
+                   loading="lazy" decoding="async" />
                 </button>
               ))}
             </div>

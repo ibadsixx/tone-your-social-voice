@@ -80,13 +80,13 @@ export function EmojiOverlay({ layers, onLayersChange, isEditing }: EmojiOverlay
                 alt="emoji" 
                 className="w-12 h-12 object-contain select-none pointer-events-none" 
                 draggable={false}
-              />
+               loading="eager" decoding="async" />
             ) : (
               <span className="text-4xl select-none">{layer.content}</span>
             )
           )}
           {layer.type === 'gif' && (
-            <img src={layer.content} alt="GIF" className="w-24 h-24 object-contain" />
+            <img src={layer.content} alt="GIF" className="w-24 h-24 object-contain"  loading="eager" decoding="async" />
           )}
           {layer.type === 'text' && (
             <span className="text-white text-xl font-bold drop-shadow-lg">{layer.content}</span>

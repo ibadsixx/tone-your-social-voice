@@ -24,7 +24,16 @@ interface ReelLike {
   created_at: string;
 }
 
-export const useReelInteractions = (reelId: string) => {
+export const useReelInteractions = (
+  reelId: string,
+  options?: { loadCommentsOnMount?: boolean }
+) => {
+  // Counts come from the reel row itself (`likes_count`, `comments_count`), so a
+  // card or a viewer that only shows totals never needs the comment list. It used
+  // to fetch the first page of comments on mount regardless, which meant every
+  // reel in the feed pulled 20 comments nobody had asked to see. Defaults to
+  // enabled so existing call sites are unchanged.
+  const loadCommentsOnMount = options?.loadCommentsOnMount ?? true;
   const [comments, setComments] = useState<ReelComment[]>([]);
   const [likes, setLikes] = useState<ReelLike[]>([]);
   const [likesCount, setLikesCount] = useState(0);
@@ -407,8 +416,8 @@ export const useReelInteractions = (reelId: string) => {
     fetchCounts();
     checkUserLike();
     checkUserSaved();
-    getComments(0);
-  }, [reelId]);
+    if (loadCommentsOnMount) getComments(0);
+  }, [reelId, loadCommentsOnMount]);
 
   // Real-time subscriptions
   useEffect(() => {

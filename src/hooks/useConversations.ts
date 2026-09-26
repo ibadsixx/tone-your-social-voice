@@ -168,38 +168,42 @@ export async function fetchVisibleDmUserIds(userId: string): Promise<{
   // instead of re-deriving the peer, so `message_requests` drives the inbox.
   const visitedConversationIds = new Set<string>();
   try {
-    // Accepted friends (both directions).
-    const { data: friends } = await gateway
-      .from('friends')
-      .select('requester_id, receiver_id')
-      .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`)
-      .eq('status', 'accepted');
+    // These three read different tables and their results are only merged below —
+    // none of them consumes another's output. They were awaited one after another,
+    // which put three round trips in front of the inbox for no reason. One wave.
+    const [friendsRes, inRequestsRes, outRequestsRes] = await Promise.all([
+      // Accepted friends (both directions).
+      gateway
+        .from('friends')
+        .select('requester_id, receiver_id')
+        .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`)
+        .eq('status', 'accepted'),
+      // Accepted message requests also surface in Chats: a request I accepted
+      // makes its sender a normal inbox peer.
+      gateway.from('message_requests').select('sender_id, status').eq('receiver_id', userId),
+      // Requests where I am the SENDER: I initiated the DM, so that conversation
+      // shows in MY Chats regardless of acceptance status — the recipient sees it
+      // in Pending (Maybe-you-know / Spam) until they accept. Visibility is driven
+      // by the peer (receiver_id) here; the definitive author-visible guard is
+      // the `messages` the user sent (fetchSentConversationIds). Selecting only
+      // columns that exist on `message_requests` keeps this working on schemas
+      // that don't carry a conversation_id column.
+      gateway.from('message_requests').select('receiver_id').eq('sender_id', userId),
+    ]);
+
+    const friends = friendsRes.data;
+    const inRequests = inRequestsRes.data;
+    const outRequests = outRequestsRes.data;
+
     (friends || []).forEach(f => {
       if (f.requester_id === userId) visibleUserIds.add(f.receiver_id);
       if (f.receiver_id === userId) visibleUserIds.add(f.requester_id);
     });
 
-    // Accepted message requests also surface in Chats: a request I accepted
-    // makes its sender a normal inbox peer.
-    const { data: inRequests } = await gateway
-      .from('message_requests')
-      .select('sender_id, status')
-      .eq('receiver_id', userId);
     (inRequests || []).forEach(req => {
       if (req.status === 'accepted') visibleUserIds.add(req.sender_id);
     });
 
-    // Requests where I am the SENDER: I initiated the DM, so that conversation
-    // shows in MY Chats regardless of acceptance status — the recipient sees it
-    // in Pending (Maybe-you-know / Spam) until they accept. Visibility is driven
-    // by the peer (receiver_id) here; the definitive author-visible guard is
-    // the `messages` the user sent (fetchSentConversationIds). Selecting only
-    // columns that exist on `message_requests` keeps this working on schemas
-    // that don't carry a conversation_id column.
-    const { data: outRequests } = await gateway
-      .from('message_requests')
-      .select('receiver_id')
-      .eq('sender_id', userId);
     (outRequests || []).forEach(req => {
       if (req.receiver_id) visibleUserIds.add(req.receiver_id);
     });
@@ -491,11 +495,23 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
 
   if (!convs) return [];
 
-  const { data: otherParts } = await gateway
-    .from('conversation_participants')
-    .select('conversation_id, user_id')
-    .in('conversation_id', convIds)
-    .neq('user_id', userId);
+  // Everything the inbox filter needs is derived from the conversation ids that
+  // are already in hand, and none of these three reads consumes another's
+  // result — they were awaited in sequence, so each one cost a full round trip
+  // before the filter could run at all. One parallel wave.
+  const [otherPartsRes, visibleDmRes, sentConvIdsRes] = await Promise.all([
+    gateway
+      .from('conversation_participants')
+      .select('conversation_id, user_id')
+      .in('conversation_id', convIds)
+      .neq('user_id', userId),
+    fetchVisibleDmUserIds(userId),
+    fetchSentConversationIds(userId),
+  ]);
+
+  const otherParts = otherPartsRes.data;
+  const { visibleUserIds, visitedConversationIds } = visibleDmRes;
+  const sentInConversationIds = sentConvIdsRes;
 
   const firstOtherPerConv = new Map<string, string>();
   (otherParts || []).forEach(p => {
@@ -504,8 +520,6 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
     }
   });
 
-  const { visibleUserIds, visitedConversationIds } = await fetchVisibleDmUserIds(userId);
-  const sentInConversationIds = await fetchSentConversationIds(userId);
   const visibleConvs = filterRequestConversations(
     convs,
     firstOtherPerConv,
@@ -517,38 +531,42 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
   if (convIds2.length === 0) return [];
 
   const otherUserIds = [...new Set(firstOtherPerConv.values())];
-  const { data: profilesData } = await gateway
-    .from('profiles')
-    .select('id, username, display_name, profile_pic, last_seen_at')
-    .in('id', otherUserIds);
+  const groupConvIds = visibleConvs.filter(c => c.type === 'group').map(c => c.id);
 
-  const profileMap = new Map((profilesData || []).map(p => [p.id, p]));
+  // Avatars, last-message previews, group presence and unread badges are four
+  // independent enrichments of a conversation list that is already known. They
+  // were four more round trips, strictly one after another, at the tail of a
+  // chain that already had ~9 of them. Same wave.
+  const [profilesRes, messagesRes, groupOnlineCounts, unreadMap] = await Promise.all([
+    gateway
+      .from('profiles')
+      .select('id, username, display_name, profile_pic, last_seen_at')
+      .in('id', otherUserIds),
+    gateway
+      .from('messages')
+      .select('conversation_id, content, audio_path, created_at')
+      .in('conversation_id', convIds2)
+      .order('created_at', { ascending: false })
+      .limit(200),
+    // Group Chat presence: count OTHER online group members (current user
+    // excluded) using the same `profiles.last_seen_at` online source as DMs.
+    fetchGroupOnlineCounts(groupConvIds, userId),
+    // Per-user unread counts for EVERY chat type (DM, group, channel), reusing
+    // the existing read-state architecture (`message_reads`): UNREAD = messages
+    // sent by others that the current user has no `message_reads` row for. This
+    // extends the Channel unread badge calculation to DM/group items so the Chats
+    // list exposes the current user's unread state for every conversation.
+    computeUnreadCounts(convIds2, userId),
+  ]);
 
-  const { data: allMessages } = await gateway
-    .from('messages')
-    .select('conversation_id, content, audio_path, created_at')
-    .in('conversation_id', convIds2)
-    .order('created_at', { ascending: false })
-    .limit(200);
+  const profileMap = new Map((profilesRes.data || []).map(p => [p.id, p]));
 
   const lastMsgMap = new Map<string, { content: string; audio_path?: string | null; created_at: string }>();
-  (allMessages || []).forEach(msg => {
+  (messagesRes.data || []).forEach(msg => {
     if (!lastMsgMap.has(msg.conversation_id)) {
       lastMsgMap.set(msg.conversation_id, msg);
     }
   });
-
-  // Group Chat presence: count OTHER online group members (current user
-  // excluded) using the same `profiles.last_seen_at` online source as DMs.
-  const groupConvIds = visibleConvs.filter(c => c.type === 'group').map(c => c.id);
-  const groupOnlineCounts = await fetchGroupOnlineCounts(groupConvIds, userId);
-
-  // Per-user unread counts for EVERY chat type (DM, group, channel), reusing
-  // the existing read-state architecture (`message_reads`): UNREAD = messages
-  // sent by others that the current user has no `message_reads` row for. This
-  // extends the Channel unread badge calculation to DM/group items so the Chats
-  // list exposes the current user's unread state for every conversation.
-  const unreadMap = await computeUnreadCounts(convIds2, userId);
 
   const items = visibleConvs.map(conv => {
     const otherUserId = firstOtherPerConv.get(conv.id);

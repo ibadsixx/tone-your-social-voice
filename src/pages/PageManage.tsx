@@ -45,6 +45,21 @@ const PageManage = () => {
     }
 
     (async () => {
+      // The two counts are independent of the page row and of each other, so they
+      // used to be three round trips in a row. They are also decorative: they
+      // render as numbers on the quick-link cards, so the page stops waiting as
+      // soon as the page row lands and the counts fill in behind it.
+      const countsPromise = Promise.all([
+        gateway
+          .from('page_followers')
+          .select('*', { count: 'exact', head: true })
+          .eq('page_id', id),
+        gateway
+          .from('page_posts')
+          .select('*', { count: 'exact', head: true })
+          .eq('page_id', id),
+      ]);
+
       const { data, error } = await gateway
         .from('pages')
         .select('id, name, profile_pic, description, category, created_at')
@@ -55,20 +70,11 @@ const PageManage = () => {
       } else if (!state) {
         setPage({ id, name: 'Page', profile_pic: null });
       }
-
-      const { count: fCount } = await gateway
-        .from('page_followers')
-        .select('*', { count: 'exact', head: true })
-        .eq('page_id', id);
-      setFollowerCount(fCount ?? 0);
-
-      const { count: pCount } = await gateway
-        .from('page_posts')
-        .select('*', { count: 'exact', head: true })
-        .eq('page_id', id);
-      setPostCount(pCount ?? 0);
-
       setLoading(false);
+
+      const [followersRes, postsRes] = await countsPromise;
+      setFollowerCount(followersRes.count ?? 0);
+      setPostCount(postsRes.count ?? 0);
     })();
   }, [id, location.state]);
 

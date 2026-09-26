@@ -29,14 +29,19 @@ export const usePages = () => {
     try {
       setLoading(true);
 
+      // `page_followers` only needs the viewer's own id and the page list does not
+      // need it, so these were two round trips in a row. Issue them together. A
+      // followers failure must not take down the page list, so it degrades to "no
+      // follow state" rather than rejecting.
+      const followersPromise = user
+        ? gateway.from('page_followers').select('*').eq('user_id', user.id).catch(() => null)
+        : Promise.resolve(null);
+
       const pagesRes = await gateway.from('pages').select('*');
       if (pagesRes.error) throw pagesRes.error;
 
-      let allFollowers: any[] = [];
-      if (user) {
-        const followersRes = await gateway.from('page_followers').select('*').eq('user_id', user.id);
-        allFollowers = (followersRes.data as any[]) || [];
-      }
+      const followersRes = await followersPromise;
+      const allFollowers: any[] = (followersRes?.data as any[]) || [];
 
       const pagesWithFollowerInfo = (pagesRes.data as any[])?.map(page => {
         const userFollowing = user ? allFollowers.find(f => f.page_id === page.id) : null;

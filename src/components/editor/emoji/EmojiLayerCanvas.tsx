@@ -156,7 +156,7 @@ export function EmojiLayerCanvas({
             alt="sticker" 
             className="w-16 h-16 object-contain pointer-events-none"
             draggable={false}
-          />
+           loading="eager" decoding="async" />
         ) : (
           <span className="text-5xl pointer-events-none select-none">{layer.content}</span>
         )}

@@ -7,7 +7,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
   ArrowLeft,
-  Loader2,
   ShieldCheck,
   AlertTriangle,
   CheckCircle2,
@@ -57,17 +56,12 @@ const PageStatus = () => {
     })();
   }, [id, location.state]);
 
-  if (loading) {
-    return (
-      <PageContainer size="sm">
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </PageContainer>
-    );
-  }
+  // Everything below except the page name and avatar is static content defined in
+  // this file, so a full-page spinner held back the whole page for one row read.
+  // The header shows a placeholder instead and the status cards render at once.
+  const pageMissing = !page && !loading;
 
-  if (!page) return null;
+  if (pageMissing) return null;
 
   const sections = [
     {
@@ -113,15 +107,23 @@ const PageStatus = () => {
       </div>
 
       <div className="flex items-center gap-3">
-        <Avatar className="h-10 w-10">
-          <AvatarImage src={page.profile_pic || ''} />
-          <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-            {page.name.charAt(0).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
+        {page ? (
+          <Avatar className="h-10 w-10">
+            <AvatarImage src={page.profile_pic || ''} />
+            <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+              {page.name.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+        ) : (
+          <div className="h-10 w-10 rounded-full bg-muted animate-pulse" />
+        )}
         <div>
           <h1 className="text-xl font-bold">Page Quality</h1>
-          <p className="text-sm text-muted-foreground">{page.name}</p>
+          {page ? (
+            <p className="text-sm text-muted-foreground">{page.name}</p>
+          ) : (
+            <div className="h-4 w-32 rounded bg-muted animate-pulse mt-1" />
+          )}
         </div>
       </div>
 

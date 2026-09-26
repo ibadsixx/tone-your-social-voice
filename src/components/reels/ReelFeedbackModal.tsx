@@ -252,14 +252,13 @@ const ReelFeedbackModal = ({
                   <video 
                     src={previewUrl} 
                     className="w-full h-32 object-cover"
-                    controls
-                  />
+                    controls preload="metadata" />
                 ) : (
                   <img 
                     src={previewUrl} 
                     alt="Attachment preview" 
                     className="w-full h-32 object-cover"
-                  />
+                   loading="lazy" decoding="async" />
                 )}
                 <button
                   onClick={removeAttachment}

@@ -43,7 +43,10 @@ interface RealtimeRowPayload {
   old?: Record<string, unknown>;
 }
 
-export const useComments = (postId: string) => {
+export const useComments = (postId: string, options?: { enabled?: boolean }) => {
+  // Defaults to enabled so every existing call site keeps its current behaviour.
+  // Pass `enabled: <panel is open>` to defer the fetch until it is actually needed.
+  const enabled = options?.enabled ?? true;
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -386,6 +389,14 @@ export const useComments = (postId: string) => {
   };
 
   useEffect(() => {
+    // A Post renders this hook whether or not anyone has opened its comments
+    // panel, so fetching here meant every post in the feed pulled its comment
+    // list and its reaction aggregate on mount. The count does not need any of
+    // that: the feed's own `comments (id)` select already resolves the exact
+    // number per post, which is what the "N comments" label shows. So the list
+    // is fetched when the panel is actually opened.
+    if (!enabled) return;
+
     fetchComments();
 
     // Set up real-time subscription for comments and reactions
@@ -458,7 +469,7 @@ export const useComments = (postId: string) => {
     return () => {
       gateway.removeChannel(channel);
     };
-  }, [postId, user?.id]);
+  }, [postId, user?.id, enabled]);
 
   // Helper functions for threaded comments
   const getTopLevelComments = () => {

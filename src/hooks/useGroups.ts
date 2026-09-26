@@ -28,13 +28,18 @@ export const useGroups = () => {
     try {
       setLoading(true);
 
+      // The pinned-group rows only need the viewer's own id, and the group list
+      // does not need them, so these two were awaited one after the other for no
+      // reason. Issue them together; a pin failure must not hide the group list.
+      const pinsPromise = user ? groupsApi.getUserPinnedGroups(user.id) : Promise.resolve(null);
+
       const { data, error } = await groupsApi.getGroupsWithMembers();
 
       if (error) throw error;
 
       let pinnedIds = new Set<string>();
-      if (user) {
-        const { data: pinRows } = await groupsApi.getUserPinnedGroups(user.id);
+      if (pinsPromise) {
+        const { data: pinRows } = await pinsPromise;
         pinnedIds = new Set((pinRows || []).map(r => r.group_id));
       }
 

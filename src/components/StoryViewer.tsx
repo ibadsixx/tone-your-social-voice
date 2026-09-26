@@ -642,6 +642,7 @@ const StoryViewer = ({
                     console.log('[Story] Video ended naturally');
                     // Don't auto-advance here - let the progress timer handle it
                   }}
+                  preload="auto"
                 />
               ) : (
                 <img
@@ -649,7 +650,7 @@ const StoryViewer = ({
                   alt="Story"
                   className="max-w-full max-h-full object-contain"
                   style={{ maxWidth: '100%', maxHeight: '100%' }}
-                />
+                 loading="eager" decoding="async" />
               )}
             </motion.div>
           </AnimatePresence>

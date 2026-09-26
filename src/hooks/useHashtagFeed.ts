@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
 import { isPublicAudience } from '@/lib/postVisibility';
+import { fetchEngagementForPosts } from '@/lib/postEngagement';
 
 interface HashtagPost {
   id: string;
@@ -122,27 +122,18 @@ export const useHashtagFeed = (tag: string) => {
           return;
         }
 
-        // Get likes and comments for each post
-        const postsWithData = await Promise.all(
-          (postsData || []).map(async (post) => {
-            const [likesResult, commentsResult] = await Promise.all([
-              gateway
-                .from('likes')
-                .select('id, user_id')
-                .eq('post_id', post.id),
-              gateway
-                .from('comments')
-                .select('id, content, profiles:user_id(display_name)')
-                .eq('post_id', post.id),
-            ]);
-
-            return {
-              ...post,
-              likes: likesResult.data || [],
-              comments: commentsResult.data || [],
-            };
-          })
+        // Likes and comments for the whole page, in two round trips. These used
+        // to be fetched per post, which re-read the whole `likes` and `comments`
+        // tables once per post because the gateway ignores filters.
+        const { likesByPostId, commentsByPostId } = await fetchEngagementForPosts(
+          (postsData || []).map((post) => post.id)
         );
+
+        const postsWithData = (postsData || []).map((post) => ({
+          ...post,
+          likes: likesByPostId.get(post.id) || [],
+          comments: commentsByPostId.get(post.id) || [],
+        }));
 
         // A hashtag page is a PUBLIC discovery surface: only public content is
         // listed, so friends-only posts can never be discovered by hashtag even

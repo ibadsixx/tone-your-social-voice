@@ -246,7 +246,7 @@ export const InviteToConversationDialog: React.FC<InviteToConversationDialogProp
                 >
                   <Avatar className="h-9 w-9">
                     {invitee.profile_pic ? (
-                      <img src={invitee.profile_pic} alt="" className="object-cover" />
+                      <img src={invitee.profile_pic} alt="" className="object-cover"  loading="lazy" decoding="async" />
                     ) : (
                       <AvatarFallback className="bg-primary/10 text-primary text-sm">
                         {(invitee.display_name || '?')[0]}

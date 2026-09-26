@@ -85,8 +85,7 @@ export function PhotoLightbox({ album, index, onIndexChange, onClose }: PhotoLig
         alt=""
         draggable={false}
         onClick={(event) => event.stopPropagation()}
-        className="max-h-[90vh] max-w-[92vw] select-none object-contain"
-      />
+        className="max-h-[90vh] max-w-[92vw] select-none object-contain" loading="eager" decoding="async" />
 
       {canNext && (
         <button

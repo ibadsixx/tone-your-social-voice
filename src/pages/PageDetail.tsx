@@ -312,12 +312,17 @@ const PageDetail = () => {
       setEducationCurrent(((data as any).work_education?.education?.current === true || (data as any).work_education?.education?.current === 'true'));
       setFamilyMembers((data as any).family_members ?? []);
 
+      // Everything above is the page itself, and the cover, name, description,
+      // tabs and admin actions all render from it. Releasing the page gate here
+      // means the follower count below is the only thing still arriving, instead
+      // of a decorative number holding the whole page behind a spinner.
+      setLoading(false);
+
       const { data: followerData } = await gateway
         .from('page_followers')
         .select('*')
         .eq('page_id', id);
       setFollowerCount((followerData as any[])?.length ?? 0);
-      setLoading(false);
     })();
   }, [id, navigate, toast]);
 
@@ -784,7 +789,7 @@ const PageDetail = () => {
         )}
         <div className="relative h-56 md:h-72 bg-gradient-to-br from-primary/20 to-purple-500/20">
           {page.cover_image && (
-            <img src={page.cover_image} alt={page.name} className="w-full h-full object-cover" />
+            <img src={page.cover_image} alt={page.name} className="w-full h-full object-cover"  loading="eager" decoding="async" />
           )}
           {isAdmin && (
             <Button

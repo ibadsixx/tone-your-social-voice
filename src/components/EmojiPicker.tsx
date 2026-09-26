@@ -153,7 +153,7 @@ export const EmojiPickerPanel = ({ onEmojiSelect, onOpenStickers, onOpenGifs }: 
                 className="h-7 px-1.5 text-xs data-[state=active]:bg-background"
                 title={category.label}
               >
-                <img src={category.icon} alt={category.label} className="h-4 w-4 object-contain" />
+                <img src={category.icon} alt={category.label} className="h-4 w-4 object-contain"  loading="lazy" decoding="async" />
               </TabsTrigger>
             ))}
             {onOpenStickers && (

@@ -35,37 +35,24 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
 
   const fetchExploreContent = useCallback(async () => {
     try {
-      // Get suggested people (top 5 profiles) - RLS automatically excludes blocked users
-      const { data: profiles, error: profilesError } = await gateway
-        .from('profiles')
-        .select('id, display_name, username, profile_pic')
-        .limit(5);
+      // People, pages, groups and hashtags are four independent tables and none
+      // of these reads consumes another's result, so they used to cost four round
+      // trips in a row. One parallel wave instead; error precedence is unchanged.
+      const [profilesRes, pagesRes, groupsRes, hashtagsRes] = await Promise.all([
+        // RLS automatically excludes blocked users
+        gateway.from('profiles').select('id, display_name, username, profile_pic').limit(5),
+        gateway.from('pages').select('id, name, description').limit(5),
+        gateway.from('groups').select('id, name, description').limit(5),
+        gateway.from('hashtags').select('id, tag, follower_count').order('follower_count', { ascending: false }).limit(5),
+      ]);
 
+      const { data: profiles, error: profilesError } = profilesRes;
       if (profilesError) throw profilesError;
-
-      // Get suggested pages (top 5)
-      const { data: pages, error: pagesError } = await gateway
-        .from('pages')
-        .select('id, name, description')
-        .limit(5);
-
+      const { data: pages, error: pagesError } = pagesRes;
       if (pagesError) throw pagesError;
-
-      // Get suggested groups (top 5)
-      const { data: groups, error: groupsError } = await gateway
-        .from('groups')
-        .select('id, name, description')
-        .limit(5);
-
+      const { data: groups, error: groupsError } = groupsRes;
       if (groupsError) throw groupsError;
-
-      // Get suggested hashtags (top 5 by followers)
-      const { data: hashtags, error: hashtagsError } = await gateway
-        .from('hashtags')
-        .select('id, tag, follower_count')
-        .order('follower_count', { ascending: false })
-        .limit(5);
-
+      const { data: hashtags, error: hashtagsError } = hashtagsRes;
       if (hashtagsError) throw hashtagsError;
 
       // Transform results
@@ -118,40 +105,28 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
       if (term.startsWith('@')) term = term.slice(1);
       const searchPattern = `%${term}%`;
 
-      // Search profiles (people) - RLS automatically excludes blocked users
-      const { data: profiles, error: profilesError } = await gateway
-        .from('profiles')
-        .select('id, display_name, username, profile_pic')
-        .or(`display_name.ilike.${searchPattern},username.ilike.${searchPattern}`)
-        .limit(20);
+      // Four independent tables again, and this one re-runs on every debounced
+      // keystroke, so the serialised version cost ~1.2 s and ~168 KB of table
+      // bodies per keystroke. One parallel wave; error precedence is unchanged.
+      const [profilesRes, pagesRes, groupsRes, hashtagsRes] = await Promise.all([
+        // RLS automatically excludes blocked users
+        gateway
+          .from('profiles')
+          .select('id, display_name, username, profile_pic')
+          .or(`display_name.ilike.${searchPattern},username.ilike.${searchPattern}`)
+          .limit(20),
+        gateway.from('pages').select('id, name, description').ilike('name', searchPattern).limit(5),
+        gateway.from('groups').select('id, name, description').ilike('name', searchPattern).limit(5),
+        gateway.from('hashtags').select('id, tag, follower_count').ilike('tag', searchPattern).limit(5),
+      ]);
 
+      const { data: profiles, error: profilesError } = profilesRes;
       if (profilesError) throw profilesError;
-
-      // Search pages
-      const { data: pages, error: pagesError } = await gateway
-        .from('pages')
-        .select('id, name, description')
-        .ilike('name', searchPattern)
-        .limit(5);
-
+      const { data: pages, error: pagesError } = pagesRes;
       if (pagesError) throw pagesError;
-
-      // Search groups
-      const { data: groups, error: groupsError } = await gateway
-        .from('groups')
-        .select('id, name, description')
-        .ilike('name', searchPattern)
-        .limit(5);
-
+      const { data: groups, error: groupsError } = groupsRes;
       if (groupsError) throw groupsError;
-
-      // Search hashtags
-      const { data: hashtags, error: hashtagsError } = await gateway
-        .from('hashtags')
-        .select('id, tag, follower_count')
-        .ilike('tag', searchPattern)
-        .limit(5);
-
+      const { data: hashtags, error: hashtagsError } = hashtagsRes;
       if (hashtagsError) throw hashtagsError;
 
       // Transform results

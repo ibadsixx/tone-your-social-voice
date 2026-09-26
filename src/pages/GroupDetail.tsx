@@ -406,29 +406,44 @@ const GroupDetailPage = () => {
   const fetchGroupDetail = async () => {
     try {
       setLoading(true);
+
       const { data: groupData, error: groupError } = await groupsApi.getGroupById(groupId!);
 
       if (groupError) throw groupError;
       setGroup(groupData);
 
-      const { data: membersData, error: membersError } = await groupsApi.getGroupMembers(groupId!);
+      // The cover, name, description, member-count and the whole tab bar all
+      // render from `group` alone, so the page stops waiting here. Members and
+      // the follow/pin badges enrich what is already on screen and arrive after.
+      setLoading(false);
 
+      // These three only need groupId (and the viewer's own id), and none of them
+      // consumes another's result, so they used to be three round trips in a row
+      // for no reason. Issue them together.
+      const [membersResult, followPin] = await Promise.all([
+        groupsApi.getGroupMembers(groupId!),
+        user
+          ? Promise.all([
+              groupsApi.getGroupFollowStatus(groupId!, user.id),
+              groupsApi.getGroupPinStatus(groupId!, user.id),
+            ])
+          : Promise.resolve(null),
+      ]);
+
+      const { data: membersData, error: membersError } = membersResult;
       if (membersError) throw membersError;
       setMembers(membersData || []);
 
-      if (user) {
+      if (user && followPin) {
         const membership = membersData?.find(m => m.user_id === user.id);
         setIsMember(!!membership);
         setUserRole(membership?.role || null);
 
         // A row in `group_follows` indicates the user has explicitly UNFOLLOWED.
         // Without a row, members are treated as following by default.
-        const { data: unfollowRow } = await groupsApi.getGroupFollowStatus(groupId!, user.id);
-        setIsFollowing(!unfollowRow);
-
-        // Check if this group is pinned by the current user
-        const { data: pinRow } = await groupsApi.getGroupPinStatus(groupId!, user.id);
-        setIsPinned(!!pinRow);
+        const [followResult, pinResult] = followPin;
+        setIsFollowing(!followResult.data);
+        setIsPinned(!!pinResult.data);
       }
     } catch (error: any) {
       console.error('Failed to load group:', error);
@@ -613,7 +628,7 @@ const GroupDetailPage = () => {
             src={group.cover_image}
             alt={`${group.name} cover`}
             className="w-full h-full object-cover"
-          />
+           loading="eager" decoding="async" />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-primary/30 via-primary/10 to-muted">
             <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCAwIDAgNjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjA1KSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-50" />
@@ -679,7 +694,7 @@ const GroupDetailPage = () => {
               {members.slice(0, 10).map((member) => (
                 <Avatar key={member.user_id} className="h-8 w-8 border-2 border-card">
                   {member.profiles?.profile_pic ? (
-                    <img src={member.profiles.profile_pic} alt="" className="object-cover" />
+                    <img src={member.profiles.profile_pic} alt="" className="object-cover"  loading="lazy" decoding="async" />
                   ) : (
                     <AvatarFallback className="text-xs bg-primary/10 text-primary">
                       {(member.profiles?.display_name || '?')[0]}

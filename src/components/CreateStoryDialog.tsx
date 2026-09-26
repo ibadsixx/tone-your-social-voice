@@ -391,7 +391,7 @@ function MusicTab({ music, onSelect }: { music: MusicData | null; onSelect: (m: 
             className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 transition-colors text-left"
           >
             {track.thumbnail_url ? (
-              <img src={track.thumbnail_url} alt="" className="w-10 h-10 rounded object-cover shrink-0" />
+              <img src={track.thumbnail_url} alt="" className="w-10 h-10 rounded object-cover shrink-0"  loading="lazy" decoding="async" />
             ) : (
               <div className="w-10 h-10 rounded bg-secondary flex items-center justify-center shrink-0">
                 <Music2 className="h-4 w-4 text-muted-foreground" />
@@ -2278,7 +2278,7 @@ export default function CreateStoryDialog({
                     <div key={item.id} className="relative aspect-square rounded-lg overflow-hidden group">
                       <button onClick={() => openItem(item)} className="absolute inset-0">
                         {item.kind === 'image' ? (
-                          <img src={item.url} alt="" className="w-full h-full object-cover" />
+                          <img src={item.url} alt="" className="w-full h-full object-cover"  loading="lazy" decoding="async" />
                         ) : (
                           <video src={item.url} muted playsInline preload="metadata" className="w-full h-full object-cover" />
                         )}

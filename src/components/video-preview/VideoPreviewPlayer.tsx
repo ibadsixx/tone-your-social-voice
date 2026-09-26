@@ -197,8 +197,7 @@ export const VideoPreviewPlayer = forwardRef<VideoPreviewPlayerRef, VideoPreview
           muted={volume === 0}
           controls={false}
           onLoadedMetadata={handleLoadedMetadata}
-          onError={handleError}
-        />
+          onError={handleError} preload="auto" />
       ) : (
         <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
       )}

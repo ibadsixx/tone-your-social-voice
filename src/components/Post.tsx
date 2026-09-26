@@ -190,7 +190,7 @@ const Post = ({
     getTopLevelComments,
     getReplies,
     getReplyCount
-  } = useComments(id);
+  } = useComments(id, { enabled: showComments });
   
   const { isSaved, isLoading: isSaveLoading, toggleSave } = useSavedPosts(id);
   const { isMuted, isLoading: isMuteLoading, toggleMute } = useMutedUsers(user_id);

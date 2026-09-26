@@ -689,7 +689,7 @@ const Settings = () => {
                             1. Scan this QR code with your authenticator app:
                           </p>
                           <div className="flex justify-center p-4 bg-white rounded-lg">
-                            <img src={totpData.qr_code} alt="TOTP QR Code" className="w-48 h-48" />
+                            <img src={totpData.qr_code} alt="TOTP QR Code" className="w-48 h-48"  loading="lazy" decoding="async" />
                           </div>
                         </div>
 

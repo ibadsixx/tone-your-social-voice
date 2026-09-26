@@ -539,7 +539,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             src={message.image_url}
             controls
             playsInline
-            preload="auto"
+            preload="metadata"
             className="max-w-xs rounded-lg"
             style={{ maxHeight: '300px' }}
           />
@@ -554,6 +554,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           <img
             src={message.image_url}
             alt="Shared image"
+            loading="lazy"
+            decoding="async"
             className="rounded-xl max-w-[250px] max-h-[250px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => window.open(mediaAppUrl(message.image_url), '_blank')}
             onError={(e) => {
@@ -583,6 +585,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <img
               src={message.media_url}
               alt="Shared image"
+              loading="lazy"
+              decoding="async"
               className="rounded-xl max-w-[250px] max-h-[250px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
               onClick={() => window.open(mediaAppUrl(message.media_url), '_blank')}
               onError={(e) => {
@@ -605,7 +609,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               src={message.media_url}
               controls
               playsInline
-              preload="auto"
+              preload="metadata"
               className="max-w-xs rounded-lg"
               style={{ maxHeight: '300px' }}
             />
@@ -625,6 +629,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <img
               src={message.attachment_url}
               alt="Shared image"
+              loading="lazy"
+              decoding="async"
               className="rounded-xl max-w-[250px] max-h-[250px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
               onClick={() => window.open(mediaAppUrl(message.attachment_url), '_blank')}
               onError={(e) => {
@@ -645,7 +651,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               src={message.attachment_url}
               controls
               playsInline
-              preload="auto"
+              preload="metadata"
               className="max-w-xs rounded-lg"
               style={{ maxHeight: '300px' }}
             />
@@ -767,7 +773,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               src={getMediaUrl() || ''}
               controls
               playsInline
-              preload="auto"
+              preload="metadata"
               className="rounded-2xl max-w-[280px] max-h-[320px] shadow-sm"
               style={{ maxHeight: '320px' }}
             />
@@ -781,6 +787,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <img
               src={getImageUrl() || ''}
               alt="Shared image"
+              loading="lazy"
+              decoding="async"
               className="rounded-2xl max-w-[280px] max-h-[320px] object-cover cursor-pointer hover:opacity-95 transition-opacity shadow-sm"
               onClick={() => window.open(getImageUrl() || '', '_blank')}
               onError={(e) => {
@@ -858,6 +866,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                         <img 
                           src={replyImageUrl}
                           alt="Reply image"
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-[60px] object-cover"
                         />
                         {message.reply_to.content && (
@@ -914,7 +924,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   loop
                   muted
                   playsInline
-                  preload="auto"
+                  preload="metadata"
                   className="max-w-[250px] max-h-[200px] rounded-xl object-contain"
                 />
               </div>

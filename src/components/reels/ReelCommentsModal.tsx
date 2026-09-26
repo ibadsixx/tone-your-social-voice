@@ -22,7 +22,7 @@ const ReelCommentsModal = ({ reelId, isOpen, onClose }: ReelCommentsModalProps) 
     postComment,
     deleteComment,
     loadMoreComments
-  } = useReelInteractions(reelId);
+  } = useReelInteractions(reelId, { loadCommentsOnMount: isOpen });
 
   const { user } = useAuth();
   const [commentText, setCommentText] = useState('');

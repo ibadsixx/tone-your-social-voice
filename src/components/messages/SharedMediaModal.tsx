@@ -159,7 +159,7 @@ const MediaGrid: React.FC<{ media: SharedMedia[] }> = ({ media }) => {
               src={selectedMedia?.url}
               alt=""
               className="w-full max-h-[80vh] object-contain"
-            />
+             loading="eager" decoding="async" />
           )}
         </DialogContent>
       </Dialog>

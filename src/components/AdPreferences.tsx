@@ -119,7 +119,7 @@ const AdPreferences = () => {
                   {adActivity.filter(a => a.interaction_type === 'viewed').map((ad) => (
                     <div key={ad.id} className="rounded-lg overflow-hidden border border-border/50 bg-muted/20">
                       <div className="aspect-video bg-muted/50 relative">
-                        <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
+                        <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover"  loading="lazy" decoding="async" />
                       </div>
                       <div className="p-2">
                         <p className="text-xs text-muted-foreground truncate">{ad.advertiser}</p>
@@ -143,7 +143,7 @@ const AdPreferences = () => {
                   {adActivity.filter(a => a.interaction_type === 'clicked').map((ad) => (
                     <div key={ad.id} className="rounded-lg overflow-hidden border border-border/50 bg-muted/20">
                       <div className="aspect-video bg-muted/50 relative">
-                        <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
+                        <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover"  loading="lazy" decoding="async" />
                       </div>
                       <div className="p-2">
                         <p className="text-xs text-muted-foreground truncate">{ad.advertiser}</p>
@@ -167,7 +167,7 @@ const AdPreferences = () => {
                   {adActivity.filter(a => a.interaction_type === 'hidden').map((ad) => (
                     <div key={ad.id} className="rounded-lg overflow-hidden border border-border/50 bg-muted/20">
                       <div className="aspect-video bg-muted/50 relative">
-                        <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
+                        <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover"  loading="lazy" decoding="async" />
                       </div>
                       <div className="p-2">
                         <p className="text-xs text-muted-foreground truncate">{ad.advertiser}</p>
@@ -191,7 +191,7 @@ const AdPreferences = () => {
                   {savedAds.map((ad) => (
                     <div key={ad.id} className="rounded-lg overflow-hidden border border-border/50 bg-muted/20">
                       <div className="aspect-video bg-muted/50 relative">
-                        <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
+                        <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover"  loading="lazy" decoding="async" />
                       </div>
                       <div className="p-2">
                         <p className="text-xs text-muted-foreground truncate">{ad.title}</p>

@@ -390,8 +390,7 @@ export const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(({
             controls={false}
             loop={false}
             onCanPlay={handleCanPlay}
-            onError={handleError}
-          />
+            onError={handleError} preload="metadata" />
         )}
 
         {/* Error/Loading/Empty State */}
@@ -442,7 +441,7 @@ export const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(({
               alt={layer.fileName} 
               className="max-w-[50%] max-h-[50%] pointer-events-none"
               draggable={false}
-            />
+             loading="eager" decoding="async" />
           </div>
         ))}
 

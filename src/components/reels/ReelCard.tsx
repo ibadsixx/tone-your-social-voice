@@ -38,7 +38,7 @@ const ReelCard = ({ reel, isActive, onDoubleTap, onHideReel }: ReelCardProps) =>
     commentsCount,
     isLikedByCurrentUser,
     toggleLike
-  } = useReelInteractions(reel.id);
+  } = useReelInteractions(reel.id, { loadCommentsOnMount: false });
 
   const [showHeart, setShowHeart] = useState(false);
   const [showComments, setShowComments] = useState(false);

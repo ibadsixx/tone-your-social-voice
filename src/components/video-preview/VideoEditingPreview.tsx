@@ -199,7 +199,7 @@ export function VideoEditingPreview({ uploadData, onPublish }: VideoEditingPrevi
                       {edits.layers.map((layer) => (
                         <span key={layer.id} className="text-2xl">
                           {layer.content.startsWith('/emoji/') ? (
-                            <img src={layer.content} alt="emoji" className="w-8 h-8 object-contain" />
+                            <img src={layer.content} alt="emoji" className="w-8 h-8 object-contain"  loading="eager" decoding="async" />
                           ) : (
                             layer.content
                           )}

@@ -164,7 +164,7 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
                 >
                   <Avatar className="h-9 w-9">
                     {friend.profile_pic ? (
-                      <img src={friend.profile_pic} alt="" className="object-cover" />
+                      <img src={friend.profile_pic} alt="" className="object-cover"  loading="lazy" decoding="async" />
                     ) : (
                       <AvatarFallback className="bg-primary/10 text-primary text-sm">
                         {(friend.display_name || '?')[0]}

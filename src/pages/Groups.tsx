@@ -10,6 +10,22 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import PageContainer from '@/components/PageContainer';
 
+// The page title, subtitle, create-group button and the tab bar are all static or
+// viewer-only state, so none of them needs the group list. The list itself is
+// shown as a skeleton grid while it loads, instead of the whole page collapsing
+// into a spinner.
+const GroupGridSkeleton = () => (
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-label="Loading groups">
+    {[0, 1, 2, 3, 4, 5].map((i) => (
+      <div key={i} className="rounded-xl border border-border/50 bg-card/60 p-5 space-y-3">
+        <div className="h-6 w-2/3 rounded bg-muted animate-pulse" />
+        <div className="h-3 w-full rounded bg-muted animate-pulse" />
+        <div className="h-3 w-1/2 rounded bg-muted animate-pulse" />
+      </div>
+    ))}
+  </div>
+);
+
 const Groups = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -24,16 +40,6 @@ const Groups = () => {
     getJoinedGroups,
     getManagedGroups
   } = useGroups();
-
-  if (loading) {
-    return (
-      <PageContainer size="xl">
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      </PageContainer>
-    );
-  }
 
   const suggestedGroups = getSuggestedGroups();
   const newGroups = getNewGroups();
@@ -93,7 +99,9 @@ const Groups = () => {
             <Sparkles className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-semibold">Suggested Groups</h2>
           </div>
-          {suggestedGroups.length > 0 ? (
+          {loading ? (
+            <GroupGridSkeleton />
+          ) : suggestedGroups.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {suggestedGroups.map((group, index) => (
                 <motion.div
@@ -124,7 +132,9 @@ const Groups = () => {
             <TrendingUp className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-semibold">Most Active Groups</h2>
           </div>
-          {activeGroups.length > 0 ? (
+          {loading ? (
+            <GroupGridSkeleton />
+          ) : activeGroups.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {activeGroups.map((group, index) => (
                 <motion.div
@@ -155,7 +165,9 @@ const Groups = () => {
             <Calendar className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-semibold">New Groups</h2>
           </div>
-          {newGroups.length > 0 ? (
+          {loading ? (
+            <GroupGridSkeleton />
+          ) : newGroups.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {newGroups.map((group, index) => (
                 <motion.div
@@ -186,7 +198,9 @@ const Groups = () => {
             <UserCheck className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-semibold">Your Joined Groups</h2>
           </div>
-          {joinedGroups.length > 0 ? (
+          {loading ? (
+            <GroupGridSkeleton />
+          ) : joinedGroups.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {joinedGroups.map((group, index) => (
                 <motion.div
@@ -220,7 +234,9 @@ const Groups = () => {
             <Crown className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-semibold">Groups You Manage</h2>
           </div>
-          {managedGroups.length > 0 ? (
+          {loading ? (
+            <GroupGridSkeleton />
+          ) : managedGroups.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {managedGroups.map((group, index) => (
                 <motion.div

@@ -369,14 +369,13 @@ export const MessageInput: React.FC<MessageInputProps> = ({
                   src={previewUrl}
                   alt="Preview"
                   className="w-12 h-12 object-cover rounded"
-                />
+                 loading="lazy" decoding="async" />
               )}
               {isVideo && (
                 <video
                   src={previewUrl}
                   className="w-12 h-12 object-cover rounded"
-                  muted
-                />
+                  muted preload="metadata" />
               )}
               {!isImage && !isVideo && (
                 <div className="w-12 h-12 bg-accent rounded flex items-center justify-center">

@@ -57,15 +57,13 @@ const MediaViewer = () => {
             autoPlay
             playsInline
             onContextMenu={(e) => e.preventDefault()}
-            className="m-auto max-h-full max-w-full object-contain"
-          />
+            className="m-auto max-h-full max-w-full object-contain" preload="auto" />
         ) : (
           <img
             src={src}
             alt="Media"
             onContextMenu={(e) => e.preventDefault()}
-            className="m-auto"
-          />
+            className="m-auto" loading="eager" decoding="async" />
         )}
       </div>
     </div>

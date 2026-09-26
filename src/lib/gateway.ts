@@ -7,6 +7,95 @@ const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
 // Cloudinary URL and return it from getPublicUrl() instead of a dead URL.
 const storageUrlCache = new Map<string, string>();
 
+/**
+ * In-flight GET coalescing.
+ *
+ * The Gateway ignores `select`/`limit`/`offset`/`order` and even equality
+ * filters, so `GET /api/<table>` is a whole-table read no matter what the caller
+ * asked for. Several components routinely read the same table in the same tick —
+ * `Post` calls `useProfile()` once per post, and Layout, Stories and NewPost each
+ * read the viewer's own profile too — which turned one feed page into a dozen
+ * identical 42 KB table reads.
+ *
+ * Two properties make this safe to coalesce at all:
+ *
+ *  - The key is the full request identity: method, URL and the caller's auth
+ *    token. The token is in the key, so one viewer's rows can never be handed to
+ *    another viewer, and a post-logout read is a different key from a
+ *    pre-logout one.
+ *  - Entries are dropped as soon as the promise settles. This is NOT a cache: a
+ *    later read re-fetches. So a just-accepted friend request, a new post, or a
+ *    changed permission is still picked up on the very next read — the staleness
+ *    class of bug that a TTL cache would introduce cannot occur.
+ *
+ * Only the network round trip is shared. Each caller still runs its own column
+ * trimming, join resolution and row shaping, and receives a private deep copy of
+ * the body, because those steps write onto the rows in place.
+ */
+type SharedGet = {
+  status: number;
+  ok: boolean;
+  statusText: string;
+  contentType: string;
+  /** `undefined` when the body was not valid JSON. */
+  json: unknown;
+  /** True when the body could not be parsed as JSON. */
+  jsonFailed: boolean;
+};
+
+const inflightGets = new Map<string, Promise<SharedGet | null>>();
+
+/** Request identity for coalescing. Token included so it is never shared across viewers. */
+function inflightGetKey(url: string, token: string | null): string {
+  return `GET ${url} ${token ?? '<anonymous>'}`;
+}
+
+/**
+ * Deep copy one row. Falls back to a shallow copy if the body holds something
+ * `structuredClone` refuses (a function or a symbol, say — it handles cycles
+ * fine, but it does throw `DataCloneError` on non-cloneable values), because a
+ * failed clone must not turn a successful read into an error.
+ */
+function cloneRow<T>(row: T): T {
+  try {
+    return structuredClone(row);
+  } catch {
+    if (row && typeof row === 'object') return { ...(row as object) } as T;
+    return row;
+  }
+}
+
+async function sharedGet(url: string, init: RequestInit, token: string | null): Promise<SharedGet | null> {
+  const key = inflightGetKey(url, token);
+  const existing = inflightGets.get(key);
+  if (existing) return existing;
+
+  // A transport failure is deliberately NOT caught here: it rejects, and each
+  // awaiting caller falls through to _execute's own catch, so a dropped
+  // connection surfaces exactly as it did before coalescing existed.
+  const pending = (async (): Promise<SharedGet | null> => {
+    const res = await fetch(url, init);
+    const contentType = res.headers.get('content-type') || '';
+    if (res.status === 204) {
+      return { status: 204, ok: res.ok, statusText: res.statusText, contentType, json: undefined, jsonFailed: false };
+    }
+    let json: unknown;
+    let jsonFailed = false;
+    try {
+      json = await res.json();
+    } catch {
+      jsonFailed = true;
+    }
+    return { status: res.status, ok: res.ok, statusText: res.statusText, contentType, json, jsonFailed };
+  })();
+
+  inflightGets.set(key, pending);
+  // Clear on settle, so nothing is ever served from a stale entry.
+  const release = () => { if (inflightGets.get(key) === pending) inflightGets.delete(key); };
+  pending.then(release, release);
+  return pending;
+}
+
 type TableName = keyof Database['public']['Tables'];
 
 /** The two content types that expose paginated reaction-user lists. */
@@ -523,10 +612,13 @@ class PostgrestFilterBuilder<T> {
         console.log(`[gateway] PUT ${url}`, { body: this._body, filters: this._filters });
       }
 
-      let res = await fetch(url, fetchOptions);
+      // GETs are coalesced: identical concurrent reads of the same table share one
+      // network round trip. Everything below is per-caller.
+      const isGet = this._method === 'GET';
+      let get = isGet ? await sharedGet(url, fetchOptions, token) : null;
 
       // Handle 401 - try refresh token and retry
-      if (res.status === 401 && token) {
+      if (isGet && get!.status === 401 && token) {
         const sessionStr = localStorage.getItem('tone-auth-token');
         const session = sessionStr ? JSON.parse(sessionStr) : null;
 
@@ -537,7 +629,9 @@ class PostgrestFilterBuilder<T> {
             const newToken = getToken();
             if (newToken && newToken !== token) {
               headers['Authorization'] = `Bearer ${newToken}`;
-              res = await fetch(url, { ...fetchOptions, headers });
+              // New token means a new key, so this retry is never shared with the
+              // request that failed with 401.
+              get = await sharedGet(url, { ...fetchOptions, headers }, newToken);
             }
           } else {
             localStorage.removeItem('tone-auth-token');
@@ -551,30 +645,61 @@ class PostgrestFilterBuilder<T> {
         }
       }
 
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({ message: res.statusText }));
-        return { data: null, error: { message: errBody.message || errBody.error || res.statusText, code: String(res.status) } };
+      if (isGet) {
+        if (get!.status === 204) return { data: null as unknown as T, error: null };
+
+        const ct = get!.contentType;
+        // Strictly as before: a missing content-type is treated as a non-JSON
+        // response, not waved through.
+        if (!ct.includes('application/json')) {
+          return { data: null, error: { message: `Gateway returned non-JSON response (${ct.split(';')[0] || 'unknown content-type'}) for /api/${this._table}`, code: String(get!.status) } };
+        }
+        if (get!.jsonFailed) {
+          return { data: null, error: { message: get!.statusText || `Gateway returned an unreadable body for /api/${this._table}`, code: String(get!.status) } };
+        }
+        if (!get!.ok) {
+          const errBody = (get!.json ?? {}) as { message?: string; error?: string };
+          return { data: null, error: { message: errBody.message || errBody.error || get!.statusText, code: String(get!.status) } };
+        }
+      } else {
+        const res = await fetch(url, fetchOptions);
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({ message: res.statusText }));
+          return { data: null, error: { message: errBody.message || errBody.error || res.statusText, code: String(res.status) } };
+        }
+        if (res.status === 204) return { data: null as unknown as T, error: null };
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+          return { data: null, error: { message: `Gateway returned non-JSON response (${ct.split(';')[0] || 'unknown content-type'}) for /api/${this._table}`, code: String(res.status) } };
+        }
+        get = { status: res.status, ok: res.ok, statusText: res.statusText, contentType: ct, json: await res.json(), jsonFailed: false };
       }
 
-      if (res.status === 204) return { data: null, error: null };
-
-      const ct = res.headers.get('content-type') || '';
-      if (!ct.includes('application/json')) {
-        return { data: null, error: { message: `Gateway returned non-JSON response (${ct.split(';')[0] || 'unknown content-type'}) for /api/${this._table}`, code: String(res.status) } };
-      }
-
-      const json = await res.json();
+      const json = get!.json;
 
       if (this._headOnly) {
         return { data: null as unknown as T, error: null };
       }
 
-      // Normalize to array for client-side filtering
-      let results: Record<string, unknown>[] = Array.isArray(json)
-        ? json as Record<string, unknown>[]
-        : json != null
-          ? [json as Record<string, unknown>]
-          : [];
+      // Normalize to array for client-side filtering.
+      //
+      // For a coalesced GET the parsed body is shared with every other caller that
+      // asked for the same table, and the steps below (column trimming, join
+      // resolution) write onto these row objects in place. Hand each caller its
+      // own deep copy so one query's resolved joins can never appear in another's
+      // results. Cloning a ~40 KB body costs microseconds against a ~300 ms
+      // round trip, and it is what makes sharing the read safe.
+      let results: Record<string, unknown>[];
+      if (Array.isArray(json)) {
+        results = isGet
+          ? (json as Record<string, unknown>[]).map((row) => cloneRow(row))
+          : (json as Record<string, unknown>[]);
+      } else if (json != null) {
+        const single = json as Record<string, unknown>;
+        results = [isGet ? cloneRow(single) : single];
+      } else {
+        results = [];
+      }
 
       // The Gateway ignores `select`/`limit`/`order`/filters, so this response is
       // every row of `this._table`. Seed the join memo with it so a join back onto

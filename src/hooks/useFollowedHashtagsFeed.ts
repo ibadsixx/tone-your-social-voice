@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { gateway } from '@/lib/gateway';
 import { isPublicAudience } from '@/lib/postVisibility';
+import { fetchEngagementForPosts } from '@/lib/postEngagement';
 import { useAuth } from './useAuth';
 
 interface HashtagPost {
@@ -49,6 +50,11 @@ export const useFollowedHashtagsFeed = () => {
   const { user } = useAuth();
   const [posts, setPosts] = useState<HashtagPost[]>([]);
   const [loading, setLoading] = useState(true);
+  // The page needs two signals, not one. The followed-hashtag chips are ready
+  // after the follow + hashtag reads; the post list still has to resolve links,
+  // posts and engagement. Gating the whole page on the latter hid content that
+  // was already available.
+  const [hashtagsLoading, setHashtagsLoading] = useState(true);
   const [followedHashtags, setFollowedHashtags] = useState<Array<{ id: string; tag: string }>>([]);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -57,6 +63,7 @@ export const useFollowedHashtagsFeed = () => {
     const fetchFollowedHashtagsPosts = async () => {
       if (!user) {
         setLoading(false);
+        setHashtagsLoading(false);
         setError(null);
         return;
       }
@@ -76,6 +83,7 @@ export const useFollowedHashtagsFeed = () => {
           setPosts([]);
           setError(followsError.message || 'Failed to load followed hashtags');
           setLoading(false);
+          setHashtagsLoading(false);
           return;
         }
 
@@ -83,6 +91,7 @@ export const useFollowedHashtagsFeed = () => {
           setPosts([]);
           setFollowedHashtags([]);
           setLoading(false);
+          setHashtagsLoading(false);
           return;
         }
 
@@ -99,10 +108,13 @@ export const useFollowedHashtagsFeed = () => {
           setPosts([]);
           setError(hashtagsError.message || 'Failed to load followed hashtags');
           setLoading(false);
+          setHashtagsLoading(false);
           return;
         }
 
         setFollowedHashtags((hashtagsData as any[]) || []);
+        // The chips are populated; only the post list is still loading.
+        setHashtagsLoading(false);
 
         // Get all post IDs from hashtag_links for followed hashtags
         const { data: links, error: linksError } = await gateway
@@ -166,27 +178,18 @@ export const useFollowedHashtagsFeed = () => {
           return;
         }
 
-        // Get likes and comments for each post
-        const postsWithData = await Promise.all(
-          (postsData || []).map(async (post) => {
-            const [likesResult, commentsResult] = await Promise.all([
-              gateway
-                .from('likes')
-                .select('id, user_id')
-                .eq('post_id', post.id),
-              gateway
-                .from('comments')
-                .select('id, content, profiles:user_id(display_name)')
-                .eq('post_id', post.id),
-            ]);
-
-            return {
-              ...post,
-              likes: likesResult.data || [],
-              comments: commentsResult.data || [],
-            };
-          })
+        // Likes and comments for the whole page, in two round trips. These used
+        // to be fetched per post, which re-read the whole `likes` and `comments`
+        // tables once per post because the gateway ignores filters.
+        const { likesByPostId, commentsByPostId } = await fetchEngagementForPosts(
+          (postsData || []).map((post) => post.id)
         );
+
+        const postsWithData = (postsData || []).map((post) => ({
+          ...post,
+          likes: likesByPostId.get(post.id) || [],
+          comments: commentsByPostId.get(post.id) || [],
+        }));
 
         // Public discovery surface: public content only (see useHashtagFeed).
         setPosts((postsWithData as HashtagPost[]).filter(post => isPublicAudience(post)));
@@ -216,5 +219,5 @@ export const useFollowedHashtagsFeed = () => {
 
   const refresh = () => setRetry((n) => n + 1);
 
-  return { posts, loading, followedHashtags, error, refresh };
+  return { posts, loading, hashtagsLoading, followedHashtags, error, refresh };
 };

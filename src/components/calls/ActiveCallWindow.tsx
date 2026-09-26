@@ -106,7 +106,7 @@ export const ActiveCallWindow: React.FC = () => {
 
   // Attach local stream to the PiP preview. `isVideoOff` must be a dependency:
   // the preview is conditionally rendered, so turning the camera back on
-  // remounts the <video> even though `localStream` itself never changed —
+  // remounts the <video preload="auto" /> even though `localStream` itself never changed —
   // the same MediaStream must be attached to the new element again.
   useEffect(() => {
     if (localVideoRef.current && localStream && !isVideoOff) {
@@ -145,7 +145,7 @@ export const ActiveCallWindow: React.FC = () => {
   // element only renders once status is 'connected' (same remount concern as above).
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
-      console.log('[MEDIA] attaching remote stream to <video>', {
+      console.log('[MEDIA] attaching remote stream to <video preload="auto" />', {
         muted: remoteVideoRef.current.muted,
         paused: remoteVideoRef.current.paused,
         videoTracks: remoteStream.getVideoTracks().map(t => ({ enabled: t.enabled, readyState: t.readyState })),
@@ -249,8 +249,7 @@ export const ActiveCallWindow: React.FC = () => {
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
-                className="w-full h-full object-cover"
-              />
+                className="w-full h-full object-cover" preload="auto" />
             ) : (
               <div className="flex flex-col items-center">
                 {/* Animated rings for calling/connecting states */}
@@ -358,8 +357,7 @@ export const ActiveCallWindow: React.FC = () => {
                 playsInline
                 muted
                 className="w-full h-full object-cover mirror"
-                style={{ transform: 'scaleX(-1)' }}
-              />
+                style={{ transform: 'scaleX(-1)' }} preload="auto" />
             </motion.div>
           )}
 

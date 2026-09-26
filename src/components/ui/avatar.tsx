@@ -18,12 +18,24 @@ const Avatar = React.forwardRef<
 ))
 Avatar.displayName = AvatarPrimitive.Root.displayName
 
+// Avatars are the single most repeated image in the product: every post, comment,
+// chat row, member tile, modal and picker renders one, often many at once. This
+// component wraps Radix's Image, which emits a bare <img> with no loading hint, so
+// before this default every avatar in the app was an eager request competing with
+// the feed's own images and videos.
+//
+// Defaulting to lazy fixes every call site at once, and is safe: browsers still
+// load an in-viewport lazy image immediately, so the first screen of avatars is
+// unaffected. A caller that genuinely needs eager can pass loading="eager", which
+// wins because the spread comes last.
 const AvatarImage = React.forwardRef<
   React.ElementRef<typeof AvatarPrimitive.Image>,
   React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Image>
->(({ className, ...props }, ref) => (
+>(({ className, loading = "lazy", decoding = "async", ...props }, ref) => (
   <AvatarPrimitive.Image
     ref={ref}
+    loading={loading}
+    decoding={decoding}
     className={cn("aspect-square h-full w-full", className)}
     {...props}
   />

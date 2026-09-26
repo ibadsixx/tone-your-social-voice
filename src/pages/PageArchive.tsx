@@ -50,6 +50,9 @@ const PageArchive = () => {
     }
 
     (async () => {
+      // The follower count is decorative; the archive toggle only needs
+      // `archived`. Release the gate as soon as the page row lands so the header
+      // and the toggle render immediately, then fill the count in.
       const { data, error } = await gateway
         .from('pages')
         .select('id, name, profile_pic, archived, created_at')
@@ -60,13 +63,14 @@ const PageArchive = () => {
         setLoading(false);
         return;
       }
+      setPage({ ...data, follower_count: 0 } as PageArchiveData);
+      setLoading(false);
 
       const { count } = await gateway
         .from('page_followers')
         .select('*', { count: 'exact', head: true })
         .eq('page_id', id);
-      setPage({ ...data, follower_count: count ?? 0 } as PageArchiveData);
-      setLoading(false);
+      setPage(prev => (prev ? { ...prev, follower_count: count ?? 0 } : prev));
     })();
   }, [id, location.state]);
 

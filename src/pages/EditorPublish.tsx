@@ -85,6 +85,11 @@ export default function EditorPublish() {
 
   const [project, setProject] = useState<EditorProject | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // The publish form is hydrated from a second read (the draft post row), so the
+  // page itself no longer waits for it — but publishing must not be possible
+  // until the form holds the saved values, or a fast click would publish defaults
+  // over the draft.
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -124,6 +129,12 @@ export default function EditorPublish() {
       
       console.log('[EditorPublish] Project loaded:', data.id);
       setProject(data as EditorProject);
+
+      // The video preview, the header and every stat come from the project row, so
+      // the page stops waiting here. The settings form below is hydrated from the
+      // draft-post read that follows, and the Publish button stays disabled until
+      // that finishes.
+      setIsLoading(false);
       
       // Check if there's an existing draft post
       const projectJson = data.project_json as any;
@@ -183,6 +194,7 @@ export default function EditorPublish() {
       toast({ title: 'Failed to load project', variant: 'destructive' });
       navigate('/editor');
     } finally {
+      setIsLoadingSettings(false);
       setIsLoading(false);
     }
   };
@@ -650,7 +662,7 @@ export default function EditorPublish() {
           </Button>
           <Button 
             onClick={handlePublish} 
-            disabled={isPublishing || !videoUrl || !!validationError}
+            disabled={isPublishing || isLoadingSettings || !videoUrl || !!validationError}
             className="gap-2"
           >
             {isPublishing ? (
@@ -690,8 +702,7 @@ export default function EditorPublish() {
                       className="w-full h-full object-contain"
                       loop
                       playsInline
-                      onEnded={() => setIsPlaying(false)}
-                    />
+                      onEnded={() => setIsPlaying(false)} preload="auto" />
                     <button
                       onClick={togglePlayPause}
                       className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors"

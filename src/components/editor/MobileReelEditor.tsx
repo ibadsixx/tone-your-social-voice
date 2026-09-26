@@ -868,7 +868,7 @@ export default function MobileReelEditor({ projectId }: MobileReelEditorProps) {
         <div className="px-4 py-4 space-y-4">
           <div className="flex items-center gap-3 rounded-xl border border-white/20 bg-white/10 p-3">
             {audioTrack.thumbnailUrl ? (
-              <img src={audioTrack.thumbnailUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />
+              <img src={audioTrack.thumbnailUrl} alt="" className="h-12 w-12 rounded-lg object-cover"  loading="eager" decoding="async" />
             ) : (
               <div className="h-12 w-12 rounded-lg bg-white/20 flex items-center justify-center">
                 <Music className="h-6 w-6 text-white" />
@@ -892,7 +892,7 @@ export default function MobileReelEditor({ projectId }: MobileReelEditorProps) {
       return (
         <div className="px-4 py-4 space-y-4">
           <div className="flex items-center gap-3 rounded-xl border border-white/20 bg-white/10 p-3">
-            {pendingMusic.thumbnail_url && <img src={pendingMusic.thumbnail_url} alt="" className="h-12 w-12 rounded-lg object-cover" />}
+            {pendingMusic.thumbnail_url && <img src={pendingMusic.thumbnail_url} alt="" className="h-12 w-12 rounded-lg object-cover"  loading="eager" decoding="async" />}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{pendingMusic.title}</p>
               <p className="text-xs text-white/60 truncate">{pendingMusic.artist}</p>
@@ -958,7 +958,7 @@ export default function MobileReelEditor({ projectId }: MobileReelEditorProps) {
                 className="w-full flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-2.5 text-left hover:bg-white/10"
               >
                 {track.thumbnail_url ? (
-                  <img src={track.thumbnail_url} alt="" className="h-10 w-10 rounded-lg object-cover" />
+                  <img src={track.thumbnail_url} alt="" className="h-10 w-10 rounded-lg object-cover"  loading="eager" decoding="async" />
                 ) : (
                   <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center">
                     {track.source_type === 'youtube'
@@ -1088,8 +1088,7 @@ export default function MobileReelEditor({ projectId }: MobileReelEditorProps) {
               className="max-h-full max-w-full object-contain"
               playsInline
               style={{ filter: buildFilterStyle(globalFilter) }}
-              onClick={togglePlay}
-            />
+              onClick={togglePlay} preload="metadata" />
             {renderTextOverlays(true)}
             {renderEmojiOverlays(true)}
 

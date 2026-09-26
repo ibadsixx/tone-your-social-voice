@@ -109,7 +109,7 @@ export const PinnedMessagesBanner: React.FC<PinnedMessagesBannerProps> = ({
                         src={message.sender_profile.profile_pic}
                         alt={message.sender_profile.display_name}
                         className="w-10 h-10 rounded-full object-cover"
-                      />
+                       loading="lazy" decoding="async" />
                     ) : (
                       <span className="text-sm font-medium text-primary">
                         {getSenderName(message).charAt(0).toUpperCase()}
@@ -133,7 +133,7 @@ export const PinnedMessagesBanner: React.FC<PinnedMessagesBannerProps> = ({
                         src={message.image_url || message.media_url || ''}
                         alt="Pinned"
                         className="w-full h-full object-cover"
-                      />
+                       loading="lazy" decoding="async" />
                     </div>
                   )}
                   

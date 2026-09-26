@@ -99,14 +99,13 @@ export const SharedPost = ({ sharedPost, onClick }: SharedPostProps) => {
                     src={sharedPost.media_url}
                     alt="Shared post media"
                     className="w-full h-auto rounded-lg border border-border/30"
-                  />
+                   loading="lazy" decoding="async" />
                 </Link>
               ) : (
                 <video
                   src={sharedPost.media_url}
                   controls
-                  className="w-full max-h-64 rounded-lg border border-border/30"
-                />
+                  className="w-full max-h-64 rounded-lg border border-border/30" preload="metadata" />
               )}
             </div>
           )}

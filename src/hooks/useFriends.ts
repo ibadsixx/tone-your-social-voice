@@ -100,10 +100,12 @@ export const useFriends = (userId?: string) => {
   useEffect(() => {
     if (!userId) return;
 
+    // The mount effect above already loads the list, so calling refresh() here as
+    // well issued a second `friends` read plus a second profiles join in the same
+    // commit. The interval and the focus listener are the point of this effect.
     const refresh = () => {
       if (document.visibilityState === 'visible') fetchFriends(true);
     };
-    refresh();
     const interval = setInterval(refresh, 15000);
     window.addEventListener('focus', refresh);
 

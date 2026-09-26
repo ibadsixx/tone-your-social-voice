@@ -69,7 +69,7 @@ export const PeopleYouMayKnow = () => {
                           src={person.profile_pic}
                           alt={person.display_name}
                           className="w-full h-full object-cover"
-                        />
+                         loading="lazy" decoding="async" />
                       </div>
                     ) : (
                       <div className="w-full aspect-square flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/40">

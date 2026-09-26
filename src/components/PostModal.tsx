@@ -68,8 +68,7 @@ const PostModal = ({ post, isOpen, onClose }: PostModalProps) => {
                   controls={isPlaying}
                   muted
                   playsInline
-                  onClick={() => setIsPlaying(!isPlaying)}
-                />
+                  onClick={() => setIsPlaying(!isPlaying)} preload="auto" />
                 {!isPlaying && (
                   <button
                     onClick={() => setIsPlaying(true)}
@@ -85,7 +84,7 @@ const PostModal = ({ post, isOpen, onClose }: PostModalProps) => {
                   src={post.media_url || ''}
                   alt={post.content || 'Post media'}
                   className="max-w-full max-h-full object-contain"
-                />
+                 loading="eager" decoding="async" />
               </Link>
             )}
           </div>

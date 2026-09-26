@@ -179,14 +179,13 @@ export const ExploreViewer = ({ open, posts, index, onClose, onNavigate }: Explo
                     muted={!isPlaying}
                     loop
                     onClick={() => setIsPlaying(prev => !prev)}
-                    onEnded={() => setIsPlaying(false)}
-                  />
+                    onEnded={() => setIsPlaying(false)} preload="auto" />
                 ) : (
                   <img
                     src={getMediaThumbnail(src, 1080)}
                     alt={current.content || 'Post'}
                     className="max-h-full max-w-full object-contain"
-                  />
+                   loading="eager" decoding="async" />
                 )}
 
                 {mediaType !== 'photo' && !isPlaying && (

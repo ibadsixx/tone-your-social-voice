@@ -27,7 +27,6 @@ export const useExploreFeed = (options: UseExploreFeedOptions = {}) => {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
-  const [friendsLoaded, setFriendsLoaded] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
@@ -48,14 +47,21 @@ export const useExploreFeed = (options: UseExploreFeedOptions = {}) => {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   useEffect(() => {
-    if (!user) { setFriendsLoaded(true); return; }
-    loadFriends(user.id).then(ids => {
-      setFriendIds(ids);
-      setFriendsLoaded(true);
-    });
+    if (!user) return;
+    // Ranking input only — the grid no longer waits on this.
+    loadFriends(user.id).then(setFriendIds);
   }, [user]);
 
-  const ready = !loading && !filtersLoading && friendsLoaded;
+  // `filtersLoading` has to stay in this gate. `shouldShowContent` answers "yes"
+  // for everything while its blocked/hidden/restricted/muted id-lists are still
+  // empty, so rendering before the filters land would briefly show content from
+  // people the viewer has blocked or muted. That is an authorization decision,
+  // not a performance one, and it is the one part of the grid that must wait.
+  //
+  // `friendsLoaded` does not have to. Friend ids only feed `rankExplorePosts` —
+  // the same rows are shown either way, just ordered slightly differently once
+  // they land — so the grid no longer waits on that read to paint its first cards.
+  const ready = !loading && !filtersLoading;
 
   const rankingContext: ExploreRankingContext = useMemo(
     () => ({ viewerId: user?.id, friendIds }),

@@ -43,7 +43,7 @@ export const useStoryReactions = (storyId: string) => {
     return () => {
       gateway.removeChannel(channel);
     };
-  }, [storyId]);
+  }, [storyId, user?.id]);
 
   const fetchReactions = async () => {
     try {
