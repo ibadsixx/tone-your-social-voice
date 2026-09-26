@@ -8,6 +8,7 @@ import { MessageCircle, Share2, MoreHorizontal, Send, Trash2, Repeat2, MapPin, B
 import ReactionPicker from '@/components/ReactionPicker';
 import ReactionsCounter from '@/components/ReactionsCounter';
 import { useReactions } from '@/hooks/useReactions';
+import { useNearViewport } from '@/hooks/useNearViewport';
 import type { ReactionKey } from '@/lib/reactions';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -196,13 +197,18 @@ const Post = ({
   const { isMuted, isLoading: isMuteLoading, toggleMute } = useMutedUsers(user_id);
   const { isEnabled: notificationsEnabled, isLoading: isNotifLoading, toggleNotifications } = usePostNotifications(id);
   
+  // Reactions are only asked for once the card is on its way into view. The Feed
+  // renders a card per post, so reading on mount made this an N+1 that grew with
+  // the feed whether or not the reader ever scrolled that far (do.md §16).
+  const { ref: nearViewportRef, inView: nearViewport } = useNearViewport<HTMLDivElement>();
+
   // Reactions hook for Lottie-based reaction system
   const { 
     userReaction, 
     reactionsCount, 
     reactionCounts,
     toggleReaction: togglePostReaction 
-  } = useReactions(id, user_id);
+  } = useReactions(id, user_id, { enabled: nearViewport });
   
   const isOwner = user?.id === user_id;
   
@@ -350,6 +356,14 @@ const Post = ({
 
   return (
     <motion.div
+      // Stable hooks for the feed's own verification. A post card is otherwise
+      // indistinguishable from any other Card in the DOM, which made it
+      // impossible to assert in a real browser that scrolling appended posts,
+      // kept the first page, and never duplicated one (do.md §515). No visual
+      // effect: these are attributes, not styles.
+      ref={nearViewportRef}
+      data-testid="post"
+      data-post-id={id}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}

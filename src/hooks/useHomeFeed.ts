@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { postsApi } from '@/api';
 import { gateway } from '@/lib/gateway';
 import { isPostVisibleToViewer, loadFriendIds } from '@/lib/postVisibility';
@@ -148,55 +148,158 @@ async function loadUnfollowedGroupIds(userId?: string): Promise<string[]> {
 // gateway's service-role reads bypass RLS). Keeping ONE implementation here is
 // what stops the three copies from drifting again.
 
+/**
+ * One page of the feed.
+ *
+ * Sized for balance rather than by guesswork (do.md §4): a post card is roughly
+ * half a viewport tall, so 10 covers two full screens plus scroll room without
+ * making the first paint carry a heavy list. The timeline itself is fetched in
+ * one request, so the page size now costs a render rather than a round trip.
+ */
+const POSTS_PER_PAGE = 10;
+
+/**
+ * A position in the feed, used instead of an offset (do.md §8, §9).
+ *
+ * `created_at` is not unique — many posts can share a timestamp — so `id` is
+ * carried alongside it to break the tie. An offset cannot do this: a post
+ * created while the user is scrolling shifts every later page by one row, which
+ * duplicates one post and silently drops another.
+ */
+type FeedCursor = { created_at: string; id: string };
+
+function cursorOf(post: { id: string; created_at: string }): FeedCursor {
+  return { created_at: post.created_at, id: post.id };
+}
+
+/**
+ * Total order: newest first, `id` breaking ties. Deterministic, so the same
+ * timeline always yields the same sequence and the cursor can binary-search it.
+ */
+function compareFeedPosts(
+  a: { created_at: string; id: string },
+  b: { created_at: string; id: string }
+): number {
+  if (a.created_at !== b.created_at) return a.created_at < b.created_at ? 1 : -1;
+  if (a.id === b.id) return 0;
+  return a.id < b.id ? 1 : -1;
+}
+
+/** Index of the first post strictly after `cursor` — where the next page starts. */
+function indexAfterCursor(feed: HomeFeedPost[], cursor: FeedCursor | null): number {
+  if (!cursor) return 0;
+  let lo = 0;
+  let hi = feed.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    // `> 0` means strictly older than the cursor, i.e. comes after it.
+    if (compareFeedPosts(feed[mid], cursor) > 0) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo;
+}
+
+/** The next page after `cursor`, or an empty array at the end of the feed. */
+function pageAfter(feed: HomeFeedPost[], cursor: FeedCursor | null): HomeFeedPost[] {
+  const start = indexAfterCursor(feed, cursor);
+  if (start >= feed.length) return [];
+  return feed.slice(start, start + POSTS_PER_PAGE);
+}
+
+/** Dedupe by post id, keeping the first occurrence (do.md §10). */
+function dedupeById<T extends { id: string }>(posts: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const post of posts) {
+    if (seen.has(post.id)) continue;
+    seen.add(post.id);
+    out.push(post);
+  }
+  return out;
+}
+
 export const useHomeFeed = () => {
+  // `posts` is what the user has been shown. `timeline` is the whole authorized
+  // feed, read once; pages are revealed from it as the user scrolls.
   const [posts, setPosts] = useState<HomeFeedPost[]>([]);
+  const [timeline, setTimeline] = useState<HomeFeedPost[]>([]);
+  const [cursor, setCursor] = useState<FeedCursor | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [offset, setOffset] = useState(0);
   const { toast } = useToast();
   const { user } = useAuth();
 
-  const POSTS_PER_PAGE = 10;
+  // Mirrors of the two values `loadMore` reads. They keep `loadMore` referentially
+  // stable, which matters because it is an IntersectionObserver callback: a new
+  // function identity on every cursor advance would tear down and rebuild the
+  // observer mid-scroll.
+  const timelineRef = useRef<HomeFeedPost[]>([]);
+  const cursorRef = useRef<FeedCursor | null>(null);
+
+  // Re-entrancy guard (do.md §7). IntersectionObserver can fire several times
+  // for one approach to the sentinel; only one page may be revealed per call.
+  const loadMoreInFlight = useRef(false);
+
+  const advanceCursor = useCallback((next: FeedCursor | null) => {
+    cursorRef.current = next;
+    setCursor(next);
+  }, []);
+
+  const setTimelineBoth = useCallback((next: HomeFeedPost[]) => {
+    timelineRef.current = next;
+    setTimeline(next);
+  }, []);
+
+  /**
+   * The one request the feed makes. It returns every post this viewer may see,
+   * in a stable total order, with no pagination applied.
+   */
+  const fetchTimeline = useCallback(async (): Promise<HomeFeedPost[]> => {
+    // The feed read and the two lookups that feed the client-side filter are
+    // independent, so they start together.
+    //
+    // This is not a privacy trade-off. The Gateway is the enforcing boundary
+    // (service-role reads bypass RLS) and already returns only rows this viewer
+    // may see, so the timeline is correctly scoped whatever the lookups
+    // return. `mapFeedPosts` then applies the same matrix again before anything
+    // is put in state, so the client check stays defence-in-depth and no
+    // unfiltered row is ever rendered. The lookups are still re-read on every
+    // check, so a just-accepted friendship is never served from a stale set.
+    const [unfollowedGroupIds, friendIds, { data, error }] = await Promise.all([
+      loadUnfollowedGroupIds(user?.id),
+      loadFriendIds(user?.id),
+      postsApi.getFeedTimeline(),
+    ]);
+
+    if (error) throw error;
+    return dedupeById(mapFeedPosts(data, unfollowedGroupIds, user?.id, friendIds))
+      .sort(compareFeedPosts);
+  }, [user]);
 
   const fetchPosts = useCallback(async (resetPosts = false) => {
     try {
       setLoading(true);
-      const currentOffset = resetPosts ? 0 : offset;
-
-      // The feed read and the two lookups that feed the client-side filter are
-      // independent, so they start together. They used to be awaited in sequence —
-      // group_follows, then friends, then posts — which put two full round trips
-      // in front of the feed on every load and every poll.
-      //
-      // This is not a privacy trade-off. The Gateway is the enforcing boundary
-      // (service-role reads bypass RLS) and already returns only rows this viewer
-      // may see, so `getFeedPosts` is correctly scoped whatever the lookups
-      // return. `mapFeedPosts` then applies the same matrix again before anything
-      // is put in state, so the client check stays defence-in-depth and no
-      // unfiltered row is ever rendered. The lookups are still re-read on every
-      // check, so a just-accepted friendship is never served from a stale set.
-      const [unfollowedGroupIds, friendIds, { data, error }] = await Promise.all([
-        loadUnfollowedGroupIds(user?.id),
-        loadFriendIds(user?.id),
-        postsApi.getFeedPosts(currentOffset, POSTS_PER_PAGE),
-      ]);
-
-      if (error) throw error;
-
-      const postsWithTypedMedia = mapFeedPosts(data, unfollowedGroupIds, user?.id, friendIds);
+      const list = await fetchTimeline();
+      setTimelineBoth(list);
 
       if (resetPosts) {
-        setPosts(postsWithTypedMedia);
-        setOffset(POSTS_PER_PAGE);
+        // An explicit refresh restarts from the top; anything already on screen
+        // is replaced, which is what "refresh" means to the user.
+        const first = pageAfter(list, null);
+        setPosts(first);
+        advanceCursor(first.length ? cursorOf(first[first.length - 1]) : null);
       } else {
-        setPosts(prev => [...prev, ...postsWithTypedMedia]);
-        setOffset(prev => prev + POSTS_PER_PAGE);
+        const fresh = pageAfter(list, cursorRef.current);
+        if (fresh.length) {
+          setPosts(prev => dedupeById([...prev, ...fresh]));
+          advanceCursor(cursorOf(fresh[fresh.length - 1]));
+        }
       }
-      
-      setHasMore(postsWithTypedMedia.length === POSTS_PER_PAGE);
+
       setError(null);
     } catch (error: any) {
+      // The already-revealed posts are deliberately left in state: a failed
+      // re-read must not destroy a feed the user is reading (do.md §14).
       setError(error?.message || 'Failed to load posts');
       toast({
         title: 'Error',
@@ -206,16 +309,34 @@ export const useHomeFeed = () => {
     } finally {
       setLoading(false);
     }
-  }, [offset, toast, user]);
+  }, [fetchTimeline, advanceCursor, setTimelineBoth, toast]);
 
+  /**
+   * Reveal the next page. This is a read from the already-fetched timeline, not
+   * a request, so it cannot fail, cannot race and cannot leave the feed empty
+   * (do.md §6, §7, §14).
+   */
   const loadMore = useCallback(() => {
-    if (!loading && hasMore) {
-      fetchPosts(false);
+    if (loadMoreInFlight.current) return;
+    loadMoreInFlight.current = true;
+    try {
+      const fresh = pageAfter(timelineRef.current, cursorRef.current);
+      // No rows after the cursor means the end of the feed: stop (do.md §13).
+      if (!fresh.length) return;
+      setPosts(prev => dedupeById([...prev, ...fresh]));
+      advanceCursor(cursorOf(fresh[fresh.length - 1]));
+    } finally {
+      loadMoreInFlight.current = false;
     }
-  }, [fetchPosts, loading, hasMore]);
+  }, [advanceCursor]);
+
+  /** Is there anything left to reveal? Drives the sentinel and the end marker. */
+  const hasMore = useMemo(
+    () => indexAfterCursor(timeline, cursor) < timeline.length,
+    [timeline, cursor]
+  );
 
   const refresh = useCallback(() => {
-    setOffset(0);
     fetchPosts(true);
   }, [fetchPosts]);
 
@@ -226,8 +347,9 @@ export const useHomeFeed = () => {
   const newPostsCheckInFlight = useRef(false);
 
   // Silent check for posts that appeared since the feed was loaded (e.g. by other
-  // users or from another surface). New rows are prepended; existing rows and any
-  // deeper pagination the user has already loaded are left untouched.
+  // users or from another surface), and for posts that have only just become
+  // authorized — a Friends-only post whose viewer has since accepted the author
+  // must appear without a manual refresh (do.md §12).
   const checkForNewPosts = useCallback(async () => {
     if (newPostsCheckInFlight.current) return;
     newPostsCheckInFlight.current = true;
@@ -238,22 +360,37 @@ export const useHomeFeed = () => {
       const [unfollowedGroupIds, friendIds, { data, error }] = await Promise.all([
         loadUnfollowedGroupIds(user?.id),
         loadFriendIds(user?.id),
-        postsApi.getFeedPosts(0, POSTS_PER_PAGE),
+        postsApi.getFeedTimeline(),
       ]);
       if (error || !data || data.length === 0) return;
 
-      const latest = mapFeedPosts(data, unfollowedGroupIds, user?.id, friendIds);
+      const latest = dedupeById(mapFeedPosts(data, unfollowedGroupIds, user?.id, friendIds))
+        .sort(compareFeedPosts);
+      if (!latest.length) return;
+
       setPosts(prev => {
         const known = new Set(prev.map(p => p.id));
-        const fresh = latest.filter(p => !known.has(p.id));
+        // Only rows strictly newer than everything already on screen may jump to
+        // the top. A row that sorts *after* the first revealed post is older
+        // history the user has not reached yet; prepending it would reorder the
+        // feed and, for a row the user has already scrolled past, look like a
+        // duplicate. Those rows stay in the timeline and are revealed in order
+        // by `loadMore`, which keeps the cursor honest (do.md §9).
+        const boundary = prev[0];
+        const fresh = latest.filter(
+          p => !known.has(p.id) && (!boundary || compareFeedPosts(p, boundary) < 0)
+        );
         return fresh.length > 0 ? [...fresh, ...prev] : prev;
       });
+
+      // Keep the timeline current so `hasMore` and later pages see the new rows.
+      setTimelineBoth(dedupeById([...latest, ...timelineRef.current]).sort(compareFeedPosts));
     } catch {
       // Polling must never disrupt the UI — ignore transient failures.
     } finally {
       newPostsCheckInFlight.current = false;
     }
-  }, [user]);
+  }, [user, setTimelineBoth]);
 
   const toggleLike = useCallback(async (postId: string) => {
     if (!user) return;

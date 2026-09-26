@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,6 +25,60 @@ const Home = () => {
   // Only surface a feed error once the feed has actually given up — a failed
   // background poll (which never touches `posts`) must not blank the feed.
   const feedError = error && !loading ? error : null;
+
+  const feedSentinelRef = useRef<HTMLDivElement>(null);
+  // Tracks whether a page reveal is in progress so the status row can say so.
+  // `loadMore` reveals from the already-fetched timeline, so this is a render
+  // frame rather than a round trip.
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // Automatic pagination (do.md §2, §3).
+  //
+  // An IntersectionObserver on a sentinel under the feed, rather than a `scroll`
+  // listener: a scroll handler runs on every frame of every scroll, while this
+  // runs only when the sentinel actually enters the band.
+  //
+  // `rootMargin` extends the viewport by 800px, so the next page is revealed
+  // while the user is still ~800px from the end — inside the 500-1000px band
+  // the spec asks for, so scrolling never reaches a blank gap (do.md §5).
+  //
+  // The observer is deliberately kept out of `loadMore`'s dependencies: it reads
+  // the latest `loadMore` and `hasMore` through refs, so revealing a page cannot
+  // tear the observer down and rebuild it mid-scroll. It is created once.
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+  const hasMoreRef = useRef(hasMore);
+  hasMoreRef.current = hasMore;
+
+  useEffect(() => {
+    const node = feedSentinelRef.current;
+    if (!node) return;
+
+    // No IntersectionObserver (very old browser, or a test environment without
+    // the stub) must not break the feed — the posts already loaded stay.
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const isNear = entries.some(e => e.isIntersecting);
+        if (!isNear) return;
+        // §7: an observer can fire repeatedly for one approach. `loadMore`
+        // advances the cursor, so a repeat call reveals the *next* page rather
+        // than re-requesting the same one, and it also guards re-entrancy.
+        if (!hasMoreRef.current) return;
+        setLoadingMore(true);
+        try {
+          loadMoreRef.current();
+        } finally {
+          setLoadingMore(false);
+        }
+      },
+      { root: null, rootMargin: '800px 0px', threshold: 0 }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   const handleCreatePost = async (content: string, media?: File[], taggedUsers?: any[], audience?: any, feeling?: any, scheduledAt?: Date, location?: any, preUploadedMedia?: { url: string; mediaType: 'image' | 'video' }[]) => {
     if (!content.trim() && !media?.length && !preUploadedMedia?.length) return;
@@ -188,30 +242,39 @@ const Home = () => {
                 </motion.div>
               )}
 
-              {/* Load More Button */}
-              {hasMore && posts.length > 0 && (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.3 }}
-                  className="flex justify-center pt-6"
-                >
-                  <Button 
-                    variant="outline" 
-                    onClick={loadMore}
-                    disabled={loading}
-                    className="border-border/50 hover:bg-tone-purple hover:text-white transition-all"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Loading more posts...
-                      </>
-                    ) : (
-                      'Load more posts'
-                    )}
-                  </Button>
-                </motion.div>
+              {/* Feed sentinel + status row.
+                  There is deliberately no "Load more posts" button: the next page
+                  is revealed by an IntersectionObserver on the sentinel below
+                  (do.md §1, §2, §3). The sentinel carries no content of its own —
+                  it exists purely to be watched. */}
+              <div ref={feedSentinelRef} aria-hidden="true" data-testid="feed-sentinel" />
+
+              {/* Status under the feed. Kept separate from the feed itself so a
+                  slow or failed next page can never blank posts the user is
+                  already reading (do.md §6, §13, §14). */}
+              {posts.length > 0 && (
+                <div className="flex justify-center pt-6" role="status" aria-live="polite">
+                  {feedError ? (
+                    /* A failed refresh keeps every loaded post on screen; this is
+                       the retry affordance rather than a full-page error. */
+                    <Button
+                      variant="outline"
+                      onClick={() => refresh()}
+                      className="border-border/50 hover:bg-tone-purple hover:text-white transition-all"
+                    >
+                      Couldn&apos;t refresh the feed — Try again
+                    </Button>
+                  ) : loadingMore ? (
+                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading more posts...
+                    </span>
+                  ) : hasMore ? (
+                    <span className="text-sm text-muted-foreground">Keep scrolling for more</span>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">You&apos;re all caught up</span>
+                  )}
+                </div>
               )}
             </motion.div>
           </div>

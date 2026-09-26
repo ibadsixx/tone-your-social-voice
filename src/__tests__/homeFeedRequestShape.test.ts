@@ -27,7 +27,7 @@ const OWNER_ID = 'a';     // publishes the friends-only content
 const VIEWER_ID = 'b';    // accepted friend
 const STRANGER_ID = 'c';  // not a friend
 
-const getFeedPosts = vi.fn();
+const getFeedTimeline = vi.fn();
 const loadFriendIds = vi.fn();
 let groupFollowsDeferred: { resolve: (v: unknown) => void; pending: boolean };
 const releaseGroupFollows = () => {
@@ -39,7 +39,7 @@ const releaseGroupFollows = () => {
 
 vi.mock('@/api', () => ({
   postsApi: {
-    getFeedPosts: (...args: unknown[]) => getFeedPosts(...args),
+    getFeedTimeline: (...args: unknown[]) => getFeedTimeline(...args),
     createPost: vi.fn(),
   },
 }));
@@ -104,11 +104,11 @@ async function settle() {
 
 describe('A. the feed read does not wait for the filter lookups', () => {
   beforeEach(() => {
-    getFeedPosts.mockReset();
+    getFeedTimeline.mockReset();
     loadFriendIds.mockReset();
     groupFollowsDeferred = { resolve: () => {}, pending: false };
     loadFriendIds.mockResolvedValue(new Set([OWNER_ID]));
-    getFeedPosts.mockResolvedValue({ data: [publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [publicPost()], error: null });
   });
 
   it('issues the feed request even while group_follows is still in flight', async () => {
@@ -117,7 +117,7 @@ describe('A. the feed read does not wait for the filter lookups', () => {
 
     // group_follows has never resolved. The feed request must already be out.
     expect(groupFollowsDeferred.pending).toBe(true);
-    expect(getFeedPosts).toHaveBeenCalledTimes(1);
+    expect(getFeedTimeline).toHaveBeenCalledTimes(1);
   });
 
   it('issues the feed request even while the friends lookup is still in flight', async () => {
@@ -127,7 +127,7 @@ describe('A. the feed read does not wait for the filter lookups', () => {
     renderHook(() => useHomeFeed());
     await settle();
 
-    expect(getFeedPosts).toHaveBeenCalledTimes(1);
+    expect(getFeedTimeline).toHaveBeenCalledTimes(1);
     releaseFriends(new Set([OWNER_ID]));
     await settle();
   });
@@ -146,7 +146,7 @@ describe('A. the feed read does not wait for the filter lookups', () => {
     // The client filter is defence-in-depth behind the Gateway. Removing the
     // waterfall must not weaken it.
     loadFriendIds.mockResolvedValue(new Set<string>());
-    getFeedPosts.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
 
     const view = renderHook(() => useHomeFeed());
     await settle();
@@ -159,7 +159,7 @@ describe('A. the feed read does not wait for the filter lookups', () => {
   });
 
   it('shows friends-only content to an accepted friend', async () => {
-    getFeedPosts.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
 
     const view = renderHook(() => useHomeFeed());
     await settle();
@@ -170,7 +170,7 @@ describe('A. the feed read does not wait for the filter lookups', () => {
   });
 
   it('reports a feed-scoped error without throwing', async () => {
-    getFeedPosts.mockResolvedValue({ data: null, error: { message: 'Gateway unreachable' } });
+    getFeedTimeline.mockResolvedValue({ data: null, error: { message: 'Gateway unreachable' } });
 
     const view = renderHook(() => useHomeFeed());
     await settle();

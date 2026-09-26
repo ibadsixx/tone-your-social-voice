@@ -47,8 +47,28 @@ export async function getPostByIdSingle(id: string): Promise<ApiResult<Post>> {
   return gateway.from('posts').select('*').eq('id', id).single() as Promise<ApiResult<Post>>;
 }
 
-export async function getFeedPosts(offset: number, limit: number): Promise<ApiResult<Post[]>> {
-  return gateway.from('posts').select(POST_SELECT_FULL).order('created_at', { ascending: false }).range(offset, offset + limit - 1) as Promise<ApiResult<Post[]>>;
+/**
+ * The feed timeline, read in ONE request.
+ *
+ * The Gateway ignores `range`, `limit` and `order` and returns the whole `posts`
+ * table, leaving the client to filter, order and slice it locally. That makes
+ * offset paging quadratic in bandwidth: `getFeedPosts(0, 10)`, `(10, 10)`,
+ * `(20, 10)` are three separate downloads of the same full table just to show
+ * 30 posts. It is also *incorrect*, not merely slow — a post created while the
+ * user sits on page 2 shifts every later page by one row, so one post is served
+ * twice and another is never served at all.
+ *
+ * So the timeline is read once and the client pages through it with a stable
+ * `(created_at, id)` cursor. `created_at` alone is not a safe key: many posts
+ * share a timestamp, so `id` breaks the tie (do.md §8, §9, §10).
+ *
+ * This is the same read as before with no audience filter applied here —
+ * authorization is unchanged. The Gateway still decides which rows exist, and
+ * `mapFeedPosts` re-applies the same visibility matrix client-side as
+ * defence-in-depth (do.md §11, §12).
+ */
+export async function getFeedTimeline(): Promise<ApiResult<Post[]>> {
+  return gateway.from('posts').select(POST_SELECT_FULL).order('created_at', { ascending: false }) as Promise<ApiResult<Post[]>>;
 }
 
 export async function getUserPosts(userId: string): Promise<ApiResult<Post[]>> {

@@ -49,7 +49,11 @@ interface UseReactionsResult {
   removeReaction: () => Promise<void>;
 }
 
-export const useReactions = (postId: string, postOwnerId?: string): UseReactionsResult => {
+export const useReactions = (
+  postId: string,
+  postOwnerId?: string,
+  { enabled = true }: { enabled?: boolean } = {}
+): UseReactionsResult => {
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [counts, setCounts] = useState<{ count: number; types: Record<string, number> } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -154,6 +158,18 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
       return;
     }
 
+    // `enabled` is how a caller keeps a card's reaction read out of the way
+    // until the card is worth reading. The endpoint and its privacy policy are
+    // untouched: this is still `include_users=false`, so a guest still receives
+    // no identity rows and a viewer still receives only their own state. All
+    // that changes is *when* the aggregate is asked for (do.md §16).
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
     // Every viewer uses the aggregate/state endpoint. Guests receive no
     // identity rows; authenticated viewers receive only their own state row.
     fetchReactions();
@@ -178,7 +194,7 @@ export const useReactions = (postId: string, postOwnerId?: string): UseReactions
     return () => {
       gateway.removeChannel(channel);
     };
-  }, [postId, fetchReactions]);
+  }, [postId, enabled, fetchReactions]);
 
   const toggleReaction = useCallback(async (reactionKey: ReactionKey) => {
     if (!user) {

@@ -66,6 +66,30 @@ vi.mock('framer-motion', () => ({
 
 import Home from '@/pages/Home';
 
+// --- IntersectionObserver stub ---------------------------------------------
+//
+// jsdom has no IntersectionObserver, and the behaviour under test is *what the
+// component does when the sentinel enters the band*, so the observer is stubbed
+// with something the test can drive by hand.
+
+type ObserverCallback = (entries: { isIntersecting: boolean }[]) => void;
+const observers: { callback: ObserverCallback; options?: IntersectionObserverInit }[] = [];
+
+class MockIntersectionObserver {
+  constructor(callback: ObserverCallback, options?: IntersectionObserverInit) {
+    observers.push({ callback, options });
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() { return []; }
+}
+
+/** Pretend the sentinel entered the observer band. */
+function intersectSentinel() {
+  observers.forEach(o => o.callback([{ isIntersecting: true }]));
+}
+
 // --- Helpers ---------------------------------------------------------------
 
 function renderHome() {
@@ -85,8 +109,11 @@ beforeEach(() => {
   homeFeed.loading = true;
   homeFeed.error = null;
   homeFeed.hasMore = false;
+  homeFeed.loadMore = vi.fn();
   homeFeed.refresh = vi.fn();
   auth.user = { id: VIEWER_ID };
+  observers.length = 0;
+  vi.stubGlobal('IntersectionObserver', MockIntersectionObserver);
 });
 
 // --- Tests -----------------------------------------------------------------
@@ -203,15 +230,100 @@ describe('Reels and Friend suggestions are independent of the feed', () => {
   });
 });
 
-describe('pagination', () => {
-  it('offers Load more only once a full page has arrived', async () => {
+describe('infinite scroll (do.md §1-§3, §13)', () => {
+  it('renders no "Load more posts" button anywhere', () => {
+    homeFeed.loading = false;
+    homeFeed.posts = [post('p1'), post('p2')];
+    homeFeed.hasMore = true;
+    renderHome();
+
+    expect(screen.queryByText('Load more posts')).toBeNull();
+    expect(screen.queryByRole('button', { name: /load more/i })).toBeNull();
+  });
+
+  it('watches a sentinel at the end of the feed with an IntersectionObserver', () => {
     homeFeed.loading = false;
     homeFeed.posts = [post('p1')];
     homeFeed.hasMore = true;
     renderHome();
 
-    await waitFor(() => expect(screen.getByText('Load more posts')).toBeTruthy());
-    screen.getByText('Load more posts').click();
-    expect(homeFeed.loadMore).toHaveBeenCalled();
+    expect(screen.getByTestId('feed-sentinel')).toBeTruthy();
+    expect(observers.length).toBe(1);
+  });
+
+  it('prefetches before the user reaches the end (rootMargin 500-1000px)', () => {
+    homeFeed.loading = false;
+    homeFeed.posts = [post('p1')];
+    homeFeed.hasMore = true;
+    renderHome();
+
+    const rootMargin = observers[0]?.options?.rootMargin ?? '';
+    const px = Number(rootMargin.match(/(\d+)px/)?.[1] ?? '0');
+    // §3/§5: load while the user is still 500-1000px away, never at a blank gap.
+    expect(px).toBeGreaterThanOrEqual(500);
+    expect(px).toBeLessThanOrEqual(1000);
+  });
+
+  it('reveals the next page automatically when the sentinel is reached', () => {
+    homeFeed.loading = false;
+    homeFeed.posts = [post('p1')];
+    homeFeed.hasMore = true;
+    renderHome();
+
+    expect(homeFeed.loadMore).not.toHaveBeenCalled();
+    intersectSentinel();
+    expect(homeFeed.loadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not ask for another page once the feed has ended (§13)', () => {
+    homeFeed.loading = false;
+    homeFeed.posts = [post('p1')];
+    homeFeed.hasMore = false;
+    renderHome();
+
+    intersectSentinel();
+    expect(homeFeed.loadMore).not.toHaveBeenCalled();
+    expect(screen.getByText(/all caught up/i)).toBeTruthy();
+  });
+
+  it('keeps existing posts on screen while a page is revealed (§6)', () => {
+    homeFeed.loading = false;
+    homeFeed.posts = [post('p1'), post('p2'), post('p3')];
+    homeFeed.hasMore = true;
+    renderHome();
+
+    expect(screen.getAllByTestId('post').length).toBe(3);
+    // No full-page loader appears just because the sentinel was reached.
+    intersectSentinel();
+    expect(screen.getAllByTestId('post').length).toBe(3);
+  });
+
+  it('re-observes nothing when a page is revealed (observer is not torn down)', () => {
+    homeFeed.loading = false;
+    homeFeed.posts = [post('p1')];
+    homeFeed.hasMore = true;
+    renderHome();
+    const created = observers.length;
+
+    intersectSentinel();
+    // Re-rendering as a result of revealing must not build a second observer,
+    // which is what would make mid-scroll pagination stutter.
+    expect(observers.length).toBe(created);
+  });
+});
+
+describe('feed error handling (§14)', () => {
+  it('keeps loaded posts visible and offers a retry instead of blanking the feed', () => {
+    homeFeed.loading = false;
+    homeFeed.posts = [post('p1'), post('p2')];
+    homeFeed.hasMore = true;
+    homeFeed.error = 'Gateway unreachable';
+    renderHome();
+
+    expect(screen.getAllByTestId('post').length).toBe(2);
+    const retry = screen.getByRole('button', { name: /try again/i });
+    expect(retry).toBeTruthy();
+    retry.click();
+    expect(homeFeed.refresh).toHaveBeenCalled();
   });
 });

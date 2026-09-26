@@ -20,12 +20,12 @@ const OWNER_ID = 'a';       // publishes the friends-only content
 const VIEWER_ID = 'b';      // accepted friend
 const STRANGER_ID = 'c';    // not a friend
 
-const getFeedPosts = vi.fn();
+const getFeedTimeline = vi.fn();
 const loadFriendIds = vi.fn();
 
 vi.mock('@/api', () => ({
   postsApi: {
-    getFeedPosts: (...args: unknown[]) => getFeedPosts(...args),
+    getFeedTimeline: (...args: unknown[]) => getFeedTimeline(...args),
     createPost: vi.fn(),
   },
 }));
@@ -70,7 +70,7 @@ function friendsPost(overrides: Record<string, unknown> = {}) {
     audience_type: 'friends',
     visibility: null,
     status: 'published',
-    created_at: '2026-01-01T00:00:00.000Z',
+    created_at: '2026-01-02T00:00:00.000Z',
     profiles: { username: 'a', display_name: 'A', profile_pic: null },
     ...overrides,
   };
@@ -78,7 +78,20 @@ function friendsPost(overrides: Record<string, unknown> = {}) {
 
 function publicPost(overrides: Record<string, unknown> = {}) {
   return {
-    ...friendsPost({ id: 'post-public-1', audience_type: 'public' }),
+    // Older than the Friends post on purpose. Every test below describes "A
+    // publishes to Friends while B has the feed open", and a genuinely newer
+    // post is what makes that unambiguous.
+    //
+    // These two fixtures used to share a `created_at`, which left the expected
+    // order resting on whatever the server happened to return. The feed now
+    // sorts by `(created_at, id)` so that pagination has a stable total order
+    // (do.md §9), which made that ambiguity fail loudly. The tie-break itself is
+    // pinned in homeFeedInfiniteScroll.test.ts.
+    ...friendsPost({
+      id: 'post-public-1',
+      audience_type: 'public',
+      created_at: '2026-01-01T00:00:00.000Z',
+    }),
     ...overrides,
   };
 }
@@ -109,11 +122,11 @@ async function fireWindow(type: string) {
 }
 
 beforeEach(() => {
-  getFeedPosts.mockReset();
+  getFeedTimeline.mockReset();
   loadFriendIds.mockReset();
   // Viewer B is an accepted friend of A only.
   loadFriendIds.mockResolvedValue(new Set([OWNER_ID]));
-  getFeedPosts.mockResolvedValue({ data: [publicPost()], error: null });
+  getFeedTimeline.mockResolvedValue({ data: [publicPost()], error: null });
 });
 
 afterEach(() => {
@@ -124,12 +137,12 @@ afterEach(() => {
 
 describe('home feed synchronization (do.md bug #2)', () => {
   it('prepends a newly published Friends post on window focus, with no reload', async () => {
-    getFeedPosts.mockResolvedValue({ data: [publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [publicPost()], error: null });
     const { result } = await mountFeed();
     expect(result.current.posts.map(p => p.id)).toEqual(['post-public-1']);
 
     // A publishes to Friends while B has the feed open.
-    getFeedPosts.mockResolvedValue({
+    getFeedTimeline.mockResolvedValue({
       data: [friendsPost(), publicPost()],
       error: null,
     });
@@ -142,10 +155,10 @@ describe('home feed synchronization (do.md bug #2)', () => {
   });
 
   it('catches up when the tab becomes visible again (visibilitychange)', async () => {
-    getFeedPosts.mockResolvedValue({ data: [publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [publicPost()], error: null });
     const { result } = await mountFeed();
 
-    getFeedPosts.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
 
     const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
     await act(async () => {
@@ -162,14 +175,14 @@ describe('home feed synchronization (do.md bug #2)', () => {
   });
 
   it('catches up when the network reconnects (online)', async () => {
-    getFeedPosts.mockResolvedValue({ data: [publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [publicPost()], error: null });
     const { result } = await mountFeed();
-    const before = getFeedPosts.mock.calls.length;
+    const before = getFeedTimeline.mock.calls.length;
 
-    getFeedPosts.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
     await fireWindow('online');
 
-    expect(getFeedPosts.mock.calls.length).toBeGreaterThan(before);
+    expect(getFeedTimeline.mock.calls.length).toBeGreaterThan(before);
     await waitFor(() => {
       expect(result.current.posts.map(p => p.id)).toEqual(['post-friends-1', 'post-public-1']);
     });
@@ -183,7 +196,7 @@ describe('home feed synchronization (do.md bug #2)', () => {
     // do.md section 14: a just-accepted friendship must take effect immediately.
     expect(loadFriendIds).toHaveBeenCalled();
 
-    getFeedPosts.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
     await fireWindow('focus');
     await waitFor(() => {
       expect(result.current.posts.map(p => p.id)).toContain('post-friends-1');
@@ -191,7 +204,7 @@ describe('home feed synchronization (do.md bug #2)', () => {
   });
 
   it('does not duplicate a post that is already displayed', async () => {
-    getFeedPosts.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
     const { result } = await mountFeed();
     expect(result.current.posts.map(p => p.id)).toEqual(['post-friends-1', 'post-public-1']);
 
@@ -203,14 +216,14 @@ describe('home feed synchronization (do.md bug #2)', () => {
 
   it('polls on a bounded interval so an open feed is never stale for a minute', async () => {
     vi.useFakeTimers();
-    getFeedPosts.mockResolvedValue({ data: [publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [publicPost()], error: null });
 
     const { result } = renderHook(() => useHomeFeed());
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    const callsAfterMount = getFeedPosts.mock.calls.length;
+    const callsAfterMount = getFeedTimeline.mock.calls.length;
 
     // The old interval was 60_000, which is the "appears after a very long
     // delay" symptom for a viewer who simply leaves the tab open.
@@ -220,13 +233,13 @@ describe('home feed synchronization (do.md bug #2)', () => {
       await Promise.resolve();
     });
 
-    expect(getFeedPosts.mock.calls.length).toBeGreaterThan(callsAfterMount);
+    expect(getFeedTimeline.mock.calls.length).toBeGreaterThan(callsAfterMount);
     void result;
   });
 
   it('collapses concurrent triggers into a single request', async () => {
     const { result } = await mountFeed();
-    const before = getFeedPosts.mock.calls.length;
+    const before = getFeedTimeline.mock.calls.length;
 
     // A laptop waking from sleep fires focus/visibilitychange/online together.
     await act(async () => {
@@ -238,13 +251,13 @@ describe('home feed synchronization (do.md bug #2)', () => {
       await Promise.resolve();
     });
 
-    expect(getFeedPosts.mock.calls.length - before).toBe(1);
+    expect(getFeedTimeline.mock.calls.length - before).toBe(1);
     void result;
   });
 
   it('still reacts to POST_CREATED_EVENT from the composer', async () => {
     const { result } = await mountFeed();
-    getFeedPosts.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent(POST_CREATED_EVENT));
@@ -261,14 +274,14 @@ describe('home feed synchronization (do.md bug #2)', () => {
   it('never delivers a Friends post to a non-friend through the sync path', async () => {
     // Viewer C is not a friend of A.
     loadFriendIds.mockResolvedValue(new Set<string>());
-    getFeedPosts.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
 
     const { result } = await mountFeed();
 
     expect(result.current.posts.map(p => p.id)).toEqual(['post-public-1']);
 
     // A new Friends post must not appear for C on any trigger.
-    getFeedPosts.mockResolvedValue({
+    getFeedTimeline.mockResolvedValue({
       data: [friendsPost({ id: 'post-friends-2' }), friendsPost(), publicPost()],
       error: null,
     });
@@ -283,7 +296,7 @@ describe('home feed synchronization (do.md bug #2)', () => {
     vi.doMock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: null }) }));
     vi.resetModules();
     loadFriendIds.mockResolvedValue(new Set<string>());
-    getFeedPosts.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
+    getFeedTimeline.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
 
     const { useHomeFeed: useHomeFeedGuest } = await import('@/hooks/useHomeFeed');
     const view = renderHook(() => useHomeFeedGuest());
@@ -291,7 +304,7 @@ describe('home feed synchronization (do.md bug #2)', () => {
 
     expect(view.result.current.posts.map(p => p.id)).toEqual(['post-public-1']);
 
-    getFeedPosts.mockResolvedValue({
+    getFeedTimeline.mockResolvedValue({
       data: [friendsPost({ id: 'post-friends-3' }), friendsPost(), publicPost()],
       error: null,
     });
