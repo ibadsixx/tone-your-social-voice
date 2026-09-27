@@ -7,21 +7,71 @@ import Post from '@/components/Post';
 import { usePost } from '@/hooks/usePost';
 import { useAuth } from '@/hooks/useAuth';
 import PageContainer from '@/components/PageContainer';
+import { applyNoIndexSeo, applySeo, buildContentJsonLd, buildContentSeo } from '@/lib/seo';
 
-const PostPage = () => {
+// One page component for all three public content URLs: /post/:id, /reel/:id and
+// /photo/:id. They are one kind of thing - a row in `posts` - so giving them one
+// renderer is what keeps the metadata, the schema and the not-found behavior
+// identical across all three instead of drifting apart (do.md §7, §10).
+//
+// The route is reached by a direct hit from a search result, so `useParams` is
+// the only source of the id; there is no list, no feed, and no previous page to
+// fall back on. That is why the not-found branch renders its own view instead of
+// navigating away: redirecting to /404 loses the URL the crawler asked for, and
+// an unauthenticated visitor should see "not available", never a login form
+// (do.md §13 - the Home guard must not apply to public content detail pages).
+const PublicContentPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { post, loading, notFound } = usePost(id);
   const { user } = useAuth();
 
+  // Head tags are written from the loaded content, and the canonical is derived
+  // from the row's own type, so a reel reached at /reel/:id canonicalises to
+  // /reel/:id even if a crawler found it at /post/:id. For a public post this is
+  // the whole indexing surface: canonical + robots=index + Open Graph + schema.
+  // For anything else - a draft, a friends-only post, a missing id - `isPublic`
+  // is false and the page asks to be dropped from the index instead.
   useEffect(() => {
-    if (post) {
-      const title = `${post.profiles?.display_name || 'Unknown'}: ${
-        post.content?.slice(0, 100) || 'Post'
-      }`;
-      document.title = title;
+    if (!post) {
+      if (notFound) applyNoIndexSeo('Content not available · Tone', window.location.href);
+      return;
     }
-  }, [post]);
+    const seo = buildContentSeo({
+      id: post.id,
+      type: post.type,
+      media_type: post.media_type,
+      media_url: post.media_url,
+      content: post.content,
+      created_at: post.created_at,
+      duration: typeof post.duration === 'number' ? post.duration : null,
+      profiles: post.profiles,
+      audience_type: post.audience_type,
+      visibility: post.visibility,
+      status: post.status,
+    });
+    applySeo({
+      title: seo.title,
+      description: seo.description,
+      canonical: seo.canonical,
+      image: seo.image,
+      index: seo.isPublic,
+      jsonLd: buildContentJsonLd({
+        id: post.id,
+        type: post.type,
+        media_type: post.media_type,
+        media_url: post.media_url,
+        content: post.content,
+        created_at: post.created_at,
+        duration: typeof post.duration === 'number' ? post.duration : null,
+        profiles: post.profiles,
+        audience_type: post.audience_type,
+        visibility: post.visibility,
+        status: post.status,
+        seo,
+      }),
+    });
+  }, [post, notFound]);
 
   if (loading) {
     return (
@@ -49,16 +99,10 @@ const PostPage = () => {
           <p className="text-muted-foreground">
             {user
               ? "This post doesn't exist or has been removed."
-              : "This post is private or doesn't exist. Sign in to explore more of the community."}
+              : "This post may be private, or it may have been removed."}
           </p>
-          {!user && (
-            <Button onClick={() => navigate('/auth')} className="mt-4">
-              Sign in
-            </Button>
-          )}
-          <Button variant="outline" onClick={() => navigate('/')} className="mt-4 ml-2">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Feed
+          <Button onClick={() => navigate(user ? '/' : '/auth')}>
+            {user ? 'Back to Feed' : 'Sign in'}
           </Button>
         </div>
       </div>
@@ -70,11 +114,11 @@ const PostPage = () => {
       <PageContainer size="sm">
         <Button
           variant="ghost"
-          onClick={() => navigate('/')}
+          onClick={() => navigate(-1)}
           className="mb-4"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Feed
+          Back
         </Button>
 
         <Post
@@ -111,4 +155,4 @@ const PostPage = () => {
   );
 };
 
-export default PostPage;
+export default PublicContentPage;

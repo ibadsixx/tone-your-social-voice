@@ -15,7 +15,7 @@ import RequireAuth from "@/components/RequireAuth";
 import Auth from "@/pages/Auth";
 import Profile from "@/pages/Profile";
 import ProfilePage from "@/pages/ProfilePage";
-import PostPage from "@/pages/PostPage";
+import PublicContentPage from "@/pages/PublicContentPage";
 import Messages from "@/pages/Messages";
 
 import Search from "@/pages/Search";
@@ -84,7 +84,19 @@ const App = () => (
                 {/* Profile -> About subsections are URL-driven and deep-linkable. */}
                 <Route path="profile/:username/about" element={<ProfilePage />} />
                 <Route path="profile/:username/about/:aboutSection" element={<ProfilePage />} />
-                <Route path="post/:id" element={<PostPage />} />
+                {/* Public content detail pages. /post/:id, /reel/:id and
+                /photo/:id all render the same page component: a Post, Reel and
+                Photo are three shapes of one `posts` row, so one renderer is
+                what keeps their metadata, schema and 404 behavior identical
+                (do.md §7). These routes are deliberately NOT RequireAuth-wrapped
+                and ARE on isPublicPath in Layout, so a guest or a crawler
+                reaching a public URL directly is never bounced to /auth - the
+                Home feed guard is a separate concern (§13). Reachability is
+                still decided by the Gateway's audience check: a friends-only
+                or Only-Me post returns nothing here and the page 404s. */}
+                <Route path="post/:id" element={<PublicContentPage />} />
+                <Route path="reel/:id" element={<PublicContentPage />} />
+                <Route path="photo/:id" element={<PublicContentPage />} />
                 <Route path="messages/*" element={<Messages />} />
                 <Route path="search" element={<Search />} />
                 <Route path="groups" element={<Groups />} />

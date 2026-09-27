@@ -1,14 +1,108 @@
+# robots.txt for Tone.
+#
+# This file is a crawl BUDGET hint, not a security control. Nothing here is
+# load-bearing for privacy: an unauthenticated requester can always read the
+# robots.txt and then request the URL anyway, and a disallowed URL that a crawler
+# already knows is still reachable. Every privacy decision is made by the Gateway
+# from the row's own `audience` column, which refuses friends-only / Only-Me /
+# draft content to anonymous callers regardless of who is asking (do.md §6, §16).
+#
+# Concretely, that means:
+#   - the Disallow rules below exist to stop crawlers wasting budget on pages
+#     that can only ever be a login wall, NOT to hide private content
+#   - public content URLs are explicitly ALLOWED, because a Disallow here would
+#     make a public post permanently unindexable
+#   - private content is never listed here either way: it is not linked, and the
+#     Gateway returns 404 for it to an anonymous caller
+
+# Explicitly allow the public content URLs. Most-specific-match wins in the
+# robots spec, so without these, a user-agent that matched a later, broader
+# Disallow could have public posts excluded. Public Post/Reel/Photo pages are the
+# whole point of this file - they must stay crawlable.
+User-agent: *
+Allow: /post/
+Allow: /reel/
+Allow: /photo/
+Allow: /profile/
+Allow: /search
+Allow: /groups/
+Allow: /pages/
+Allow: /hashtag/
+Allow: /explore/
+
+# Authenticated application areas. These have no anonymous content to index, so
+# crawling them is pure waste. This is a hint only - the routes themselves
+# redirect to /auth for a guest, which is a UX decision, and the data behind them
+# is protected by the Gateway's authorization.
+Disallow: /auth
+Disallow: /messages
+Disallow: /settings
+Disallow: /notifications
+Disallow: /editor
+Disallow: /create
+Disallow: /saved
+Disallow: /mentions
+Disallow: /hashtags/following
+Disallow: /story/
+Disallow: /feedback
+Disallow: /friends/requests
+Disallow: /edit-preview
+Disallow: /pages/*/status
+Disallow: /pages/*/archive
+Disallow: /pages/*/activity-log
+Disallow: /pages/*/manage
+
+# Named crawlers get the same rules explicitly, so the public allowances are
+# unambiguous for the engines that matter and cannot be lost to a merge that
+# reorders sections.
 User-agent: Googlebot
-Allow: /
+Allow: /post/
+Allow: /reel/
+Allow: /photo/
+Allow: /profile/
+Allow: /search
+Allow: /groups/
+Allow: /pages/
+Allow: /hashtag/
+Allow: /explore/
+Disallow: /auth
+Disallow: /messages
+Disallow: /settings
+Disallow: /notifications
+Disallow: /editor
+Disallow: /create
+Disallow: /saved
+Disallow: /mentions
 
 User-agent: Bingbot
-Allow: /
+Allow: /post/
+Allow: /reel/
+Allow: /photo/
+Allow: /profile/
+Disallow: /auth
+Disallow: /messages
+Disallow: /settings
 
+# Social link preview bots need the public post pages (and the public profile
+# pages) to render an og:title / og:image, so they are allowed the same content
+# URLs. This is not a privileged grant: it is the same guest read path, and
+# there is no User-Agent branch anywhere in the Gateway.
 User-agent: Twitterbot
-Allow: /
+Allow: /post/
+Allow: /reel/
+Allow: /photo/
+Allow: /profile/
 
 User-agent: facebookexternalhit
-Allow: /
+Allow: /post/
+Allow: /reel/
+Allow: /photo/
+Allow: /profile/
 
-User-agent: *
-Allow: /
+# Where to find public content. The sitemap is generated per request by the
+# Gateway and filtered by the same audience check as a guest read, so a post
+# that becomes friends-only leaves the sitemap on the next crawl without any
+# invalidation step (do.md §11). The Gateway builds this from its own
+# deployment origin; set PUBLIC_SITE_URL to pin it if the gateway is served
+# from more than one hostname.
+Sitemap: https://gateway-iota-two.vercel.app/api/sitemap.xml

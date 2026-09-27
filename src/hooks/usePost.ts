@@ -12,6 +12,9 @@ interface Post {
   media_type?: 'image' | 'video' | null;
   created_at: string;
   type: 'normal_post' | 'profile_picture_update' | 'cover_photo_update' | 'shared_post' | 'reel';
+  // Reel length, in seconds. Read by the public content page to emit a
+  // VideoObject with a real `duration`; absent on non-reel posts.
+  duration?: number | null;
   shared_post_id?: string | null;
   audience_type?: string;
   visibility?: string | null;
@@ -91,6 +94,11 @@ export const usePost = (postId?: string) => {
         const postWithTypedMedia = {
           ...data,
           media_type: data.media_type as 'image' | 'video' | null,
+          // The API returns `duration` as whatever Postgres inferred for the
+          // numeric column, which may arrive as a string. The VideoObject
+          // duration must be a number, so coerce it here - once - rather than
+          // guarding for it in every consumer.
+          duration: typeof data.duration === 'number' ? data.duration : null,
           shared_post: data.shared_post
         };
         setPost(postWithTypedMedia);

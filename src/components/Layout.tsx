@@ -47,33 +47,7 @@ import {
   Clapperboard,
 } from 'lucide-react';
 
-// Public routes a logged-out visitor may open. The app already uses
-// /profile/:username for `/:username`, /search for the Explore surface, and
-// /explore/hashtags for the hashtag explorer — those paths are preserved, not
-// duplicated. Owner/management surfaces under /pages/:id/* (status, archive,
-// activity-log, manage) and /hashtag/:tag/analytics stay protected.
-//
-// `/` is deliberately NOT in this set. The Home feed is the one surface that
-// requires a session, so a guest on `/` is sent to /auth instead of being handed
-// a read-only feed. The page itself is additionally wrapped in `RequireAuth`
-// (see App.tsx); the two are independent checks on purpose, and this one is the
-// earlier of the two to run — it returns before the shell renders an `<Outlet/>`,
-// so a guest never gets the header, sidebar and feed chrome of a page they are
-// about to be redirected away from.
-const PUBLIC_EXACT = new Set(['/search', '/groups', '/pages', '/profile', '/explore/hashtags']);
-const PUBLIC_PREFIXES = ['/profile/', '/post/', '/groups/', '/pages/', '/hashtag/'];
-const PROTECTED_SUFFIXES = ['/status', '/archive', '/activity-log', '/manage', '/analytics'];
-
-function isPublicPath(pathname: string): boolean {
-  if (PUBLIC_EXACT.has(pathname)) return true;
-  for (const prefix of PUBLIC_PREFIXES) {
-    if (!pathname.startsWith(prefix)) continue;
-    const rest = pathname.slice(prefix.length);
-    if (PROTECTED_SUFFIXES.some((suffix) => rest.endsWith(suffix))) return false;
-    return true;
-  }
-  return false;
-}
+import { isPublicPath } from '@/lib/publicPaths';
 
 const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; onSignOut: () => void }) => {
   const { menu } = useHeaderAvatarMenu();
