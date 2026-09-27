@@ -20,6 +20,13 @@
 # Disallow could have public posts excluded. Public Post/Reel/Photo pages are the
 # whole point of this file - they must stay crawlable.
 User-agent: *
+# The sitemap itself, and every child sitemap it points at. Not needed to make
+# them crawlable today (no Disallow below matches them), but stating it
+# explicitly means a future broad Disallow cannot silently cut the sitemap off -
+# and a crawler that cannot fetch /sitemap.xml loses discovery for the whole
+# site, not one URL (do.md §16).
+Allow: /sitemap.xml
+Allow: /sitemap-
 Allow: /post/
 Allow: /reel/
 Allow: /photo/
@@ -56,6 +63,8 @@ Disallow: /pages/*/manage
 # unambiguous for the engines that matter and cannot be lost to a merge that
 # reorders sections.
 User-agent: Googlebot
+Allow: /sitemap.xml
+Allow: /sitemap-
 Allow: /post/
 Allow: /reel/
 Allow: /photo/
@@ -99,10 +108,17 @@ Allow: /reel/
 Allow: /photo/
 Allow: /profile/
 
-# Where to find public content. The sitemap is generated per request by the
-# Gateway and filtered by the same audience check as a guest read, so a post
-# that becomes friends-only leaves the sitemap on the next crawl without any
-# invalidation step (do.md §11). The Gateway builds this from its own
-# deployment origin; set PUBLIC_SITE_URL to pin it if the gateway is served
-# from more than one hostname.
-Sitemap: https://gateway-iota-two.vercel.app/api/sitemap.xml
+# Where to find public content.
+#
+# The sitemap is NOT a file: it is generated per request by the Gateway, through
+# the same audience check as a guest read, so a post that becomes friends-only
+# leaves the sitemap on the next crawl with no invalidation step (do.md §15). It
+# is served here at the canonical frontend origin via the vercel.json rewrites
+# above the SPA catch-all, so a crawler gets XML rather than the app shell
+# (do.md §17). The <loc> values inside it are frontend-origin too, so a sitemap
+# and the site it describes are the same origin (do.md §22).
+#
+# The Gateway is only the generator; the advertised URL is this one. Pointing
+# the declaration at the Gateway's own host would have a crawler index URLs
+# rooted at a host that is not the site.
+Sitemap: https://tonesn.vercel.app/sitemap.xml

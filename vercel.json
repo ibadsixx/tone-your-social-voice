@@ -1,5 +1,7 @@
 {
   "rewrites": [
+    { "source": "/sitemap.xml", "destination": "https://gateway-iota-two.vercel.app/api/sitemap.xml" },
+    { "source": "/sitemap-:file", "destination": "https://gateway-iota-two.vercel.app/api/sitemap-:file" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
