@@ -30,6 +30,10 @@ export const PROFILE_ITEMS_PER_REQUEST = 1;
  * Friends-only posts can fill several batches. The sentinel does not move when
  * that happens, so the hook keeps asking on the visitor's behalf — bounded, so
  * a pathologically private profile cannot spin forever.
+ *
+ * The bound is on consecutive EMPTY pages, not on rounds: the loop below stops
+ * the moment an item is appended, so a long but productive feed costs one
+ * request per item exactly as before.
  */
 const MAX_CONSECUTIVE_EMPTY_PAGES = 12;
 
@@ -110,58 +114,74 @@ export function useProfileContent(
       const generation = generationRef.current;
 
       try {
-        const { data, error: requestError } = await getProfileContentPage(profileId, kind, {
-          cursor: cursorRef.current,
-          limit: PROFILE_ITEMS_PER_REQUEST,
-        });
-        // A response that arrives after the section was switched or unmounted
-        // belongs to a feed nobody is looking at any more.
-        if (generation !== generationRef.current) return;
+        // ONE visitor-facing request, but it can take more than one round-trip.
+        //
+        // A page that comes back empty with `has_more` is the Gateway saying it
+        // skipped past rows this viewer may not read, and the next item they MAY
+        // read is behind them (do.md 18/19). The obvious handling — return, and
+        // wait for the next scroll — strands the feed: an empty page appends
+        // nothing, so the sentinel does not move, its intersection does not
+        // change, and there is nothing to scroll. A guest whose profile opens
+        // with a run of Friends-only posts would sit on an empty section while
+        // public content waited below it. So the loop keeps asking here, inside
+        // the request the visitor already made, and stops as soon as it has an
+        // item to show.
+        for (;;) {
+          const { data, error: requestError } = await getProfileContentPage(profileId, kind, {
+            cursor: cursorRef.current,
+            limit: PROFILE_ITEMS_PER_REQUEST,
+          });
+          // A response that arrives after the section was switched or unmounted
+          // belongs to a feed nobody is looking at any more.
+          if (generation !== generationRef.current) return;
 
-        if (requestError || !data) {
-          setError(requestError?.message || 'Failed to load this content');
-          return;
-        }
+          if (requestError || !data) {
+            setError(requestError?.message || 'Failed to load this content');
+            return;
+          }
 
-        setError(null);
-        setDegraded(data.degraded);
+          setError(null);
+          setDegraded(data.degraded);
 
-        // Advance the cursor even for an empty page: an empty page with
-        // `has_more` is how the Gateway reports "I skipped past content you
-        // cannot see, ask again from further down".
-        cursorRef.current = data.next_cursor;
+          // Advance the cursor even for an empty page: an empty page with
+          // `has_more` is how the Gateway reports "I skipped past content you
+          // cannot see, ask again from further down".
+          cursorRef.current = data.next_cursor;
 
-        if (data.items.length === 0) {
-          emptyRunRef.current += 1;
-          if (!data.has_more || emptyRunRef.current >= MAX_CONSECUTIVE_EMPTY_PAGES) {
+          if (data.items.length === 0) {
+            emptyRunRef.current += 1;
+            if (!data.has_more || emptyRunRef.current >= MAX_CONSECUTIVE_EMPTY_PAGES) {
+              doneRef.current = true;
+              setHasMore(false);
+              setDone(true);
+              return;
+            }
+            continue;
+          }
+
+          emptyRunRef.current = 0;
+          // Dedupe by id. The cursor makes this unreachable in normal operation;
+          // it is here so a repeated id can never produce a duplicated key or a
+          // React "two children with the same key" crash.
+          const fresh = data.items.filter((item) => {
+            if (seenIdsRef.current.has(item.id)) return false;
+            seenIdsRef.current.add(item.id);
+            return true;
+          });
+          if (fresh.length > 0) {
+            const merged = itemsRef.current.concat(fresh);
+            itemsRef.current = merged;
+            setItems(merged);
+          }
+
+          if (!data.has_more) {
             doneRef.current = true;
             setHasMore(false);
             setDone(true);
+          } else {
+            setHasMore(true);
           }
           return;
-        }
-
-        emptyRunRef.current = 0;
-        // Dedupe by id. The cursor makes this unreachable in normal operation;
-        // it is here so a repeated id can never produce a duplicated key or a
-        // React "two children with the same key" crash.
-        const fresh = data.items.filter((item) => {
-          if (seenIdsRef.current.has(item.id)) return false;
-          seenIdsRef.current.add(item.id);
-          return true;
-        });
-        if (fresh.length > 0) {
-          const merged = itemsRef.current.concat(fresh);
-          itemsRef.current = merged;
-          setItems(merged);
-        }
-
-        if (!data.has_more) {
-          doneRef.current = true;
-          setHasMore(false);
-          setDone(true);
-        } else {
-          setHasMore(true);
         }
       } catch (err) {
         if (generation !== generationRef.current) return;
