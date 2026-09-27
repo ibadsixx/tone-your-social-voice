@@ -246,7 +246,30 @@ export interface ApplySeoOptions {
   image?: string | null;
   /** false -> noindex,follow. Only ever false for content that is NOT public. */
   index: boolean;
+  /**
+   * false -> pair `index` with `nofollow`, so a page can be excluded from the
+   * index AND have its links not followed. Used by the public profile when its
+   * owner has declined search-engine discovery: do.md asks for exactly
+   * `noindex, nofollow` there, and `nofollow` is the part that stops a crawler
+   * from walking off the profile into the rest of the account.
+   *
+   * Defaults to true, which leaves every existing content page byte-identical.
+   */
+  follow?: boolean;
   jsonLd?: unknown;
+}
+
+// The one place the robots directive is composed.
+//
+// `noindex, nofollow` is emitted with a space because that is the literal do.md
+// specifies for the profile case; `index,follow` and `noindex,follow` are
+// emitted without one because that is what the content pages have always
+// emitted, and existing assertions pin those exact strings. Both spellings are
+// the same directive to every crawler - the comma-separated list is tokenised on
+// commas, not on spaces.
+export function robotsDirective(index: boolean, follow = true): string {
+  if (index) return follow ? 'index,follow' : 'index,nofollow';
+  return follow ? 'noindex,follow' : 'noindex, nofollow';
 }
 
 export function applySeo(options: ApplySeoOptions): void {
@@ -259,8 +282,10 @@ export function applySeo(options: ApplySeoOptions): void {
 
   // The one robots directive that matters here. Public content must never get
   // noindex; everything else must, so a crawler stops re-fetching a URL that can
-  // only ever 404 for an anonymous visitor.
-  setMeta(doc, 'meta[name]', 'name', 'robots', options.index ? 'index,follow' : 'noindex,follow');
+  // only ever 404 for an anonymous visitor. This is the ONLY writer of
+  // meta[name=robots] in the app - a second writer is how two routes end up
+  // disagreeing about whether the current page is indexable.
+  setMeta(doc, 'meta[name]', 'name', 'robots', robotsDirective(options.index, options.follow ?? true));
 
   setMeta(doc, 'meta[property]', 'property', 'og:type', options.jsonLd ? 'article' : 'website');
   setMeta(doc, 'meta[property]', 'property', 'og:site_name', SITE_NAME);

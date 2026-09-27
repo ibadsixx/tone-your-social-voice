@@ -1,5 +1,10 @@
 import { gateway } from './client';
+import { API_URL } from './client';
 import type { ApiResult } from './client';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
 
 export interface Profile {
   id: string;
@@ -54,6 +59,46 @@ export async function getProfileById(id: string): Promise<ApiResult<Profile>> {
 
 export async function getProfileByUsername(username: string): Promise<ApiResult<Profile>> {
   return gateway.from('profiles').select('*').eq('username', username).maybeSingle() as Promise<ApiResult<Profile>>;
+}
+
+/**
+ * Whether this profile's owner permits external search-engine indexing.
+ *
+ * The Privacy Checkup answer lives in `privacy_settings`, which is not a
+ * guest-readable domain and has no foreign key to `profiles`, so it cannot ride
+ * along on `getProfileByUsername`'s `select('*')`. The Gateway reads it
+ * server-side and answers with a single boolean - see
+ * gateway/src/features/profileIndexing.ts.
+ *
+ * FAIL-CLOSED, without exception. Every path that is not an explicit
+ * `{ search_engine_indexing: true }` returns `false`:
+ *
+ *   - no gateway configured, network failure, non-2xx, unparseable body, a
+ *     missing field, or a non-boolean value all resolve to `false`.
+ *
+ * The reason is the direction of the harm. `false` costs a user who wanted to be
+ * found some traffic, which they can undo by flipping the switch. `true` on a
+ * failed lookup publishes a profile whose owner never agreed to it, and they have
+ * no way to see that it happened. There is no third option here that is safe to
+ * default to, so the default is the restrictive one.
+ */
+export async function getProfileSearchEngineIndexing(username: string): Promise<boolean> {
+  const base = API_URL || '';
+  if (!base) return false;
+  try {
+    const res = await fetch(
+      `${base}/api/public/profile-indexing?username=${encodeURIComponent(username)}`,
+      // The endpoint is already no-store server-side; repeating it here keeps the
+      // browser from answering a later visit from its own cache, which for a
+      // privacy directive is the wrong place to keep a stale copy.
+      { method: 'GET', headers: { 'Content-Type': 'application/json' }, cache: 'no-store' }
+    );
+    if (!res.ok) return false;
+    const json = await res.json();
+    return isRecord(json) && json.search_engine_indexing === true;
+  } catch {
+    return false;
+  }
 }
 
 export async function updateProfile(id: string, data: Partial<Profile>): Promise<ApiResult<null>> {

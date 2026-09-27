@@ -25,6 +25,7 @@ import {
   sectionToTab,
   profileTabPath,
 } from '@/lib/profileTabs';
+import { useProfileSeo } from '@/hooks/useProfileSeo';
 
 const ProfilePage = () => {
   const { username, section } = useParams<{ username: string; section?: string }>();
@@ -35,6 +36,12 @@ const ProfilePage = () => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // The owner's "Permit search engines beyond Tone to reference your profile?"
+  // answer decides whether this page may be indexed. This is also what puts a
+  // per-profile canonical on the page, which the app's index.html otherwise
+  // leaves pointing at "/" for every route.
+  useProfileSeo(username, profile);
 
   useEffect(() => {
     if (username) {
