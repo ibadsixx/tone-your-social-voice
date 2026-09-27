@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { groupsApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import type { GroupMember } from '@/api/types';
+import type { GroupMember, GroupPin } from '@/api/types';
 
 export interface Group {
   id: string;
@@ -31,17 +31,33 @@ export const useGroups = () => {
       // The pinned-group rows only need the viewer's own id, and the group list
       // does not need them, so these two were awaited one after the other for no
       // reason. Issue them together; a pin failure must not hide the group list.
-      const pinsPromise = user ? groupsApi.getUserPinnedGroups(user.id) : Promise.resolve(null);
+      //
+      // "No viewer" is a null *request*, never a promise that resolves to null.
+      // A promise is always truthy, so `Promise.resolve(null)` made the
+      // `if (pinsRequest)` below unconditionally true and the guest path went on
+      // to await `null` and destructure `.data` from it, which threw
+      // "Cannot destructure property 'data' of '(intermediate value)' as it is
+      // null" every time a guest opened a profile that had a post to render
+      // (each Post card mounts SharePostModal, which mounts this hook).
+      const pinsRequest = user ? groupsApi.getUserPinnedGroups(user.id) : null;
 
       const { data, error } = await groupsApi.getGroupsWithMembers();
 
       if (error) throw error;
 
-      let pinnedIds = new Set<string>();
-      if (pinsPromise) {
-        const { data: pinRows } = await pinsPromise;
-        pinnedIds = new Set((pinRows || []).map(r => r.group_id));
+      // The awaited value is read defensively as well: a pins response that
+      // comes back absent is an empty pin set, not a crash, and a pins read
+      // that fails outright degrades to "no pin state" rather than taking the
+      // group list down with it. The failure is still reported, just not fatally.
+      let pinRows: GroupPin[] = [];
+      if (pinsRequest) {
+        const pinResult = await pinsRequest.catch((err) => {
+          console.warn('[useGroups] Could not load pinned groups:', err);
+          return null;
+        });
+        pinRows = pinResult?.data ?? [];
       }
+      const pinnedIds = new Set(pinRows.map(r => r.group_id));
 
       const groupsWithMemberInfo = data?.map(group => {
         const members = group.group_members || [];
