@@ -11,6 +11,7 @@ import { PageSwitchProvider } from "@/contexts/PageSwitchContext";
 import { IncomingCallModal, ActiveCallWindow } from "@/components/calls";
 import Layout from "@/components/Layout";
 import Home from "@/pages/Home";
+import RequireAuth from "@/components/RequireAuth";
 import Auth from "@/pages/Auth";
 import Profile from "@/pages/Profile";
 import ProfilePage from "@/pages/ProfilePage";
@@ -69,7 +70,12 @@ const App = () => (
               {/* Fullscreen story editor */}
               <Route path="/story/create" element={<StoryEditor />} />
               <Route path="/" element={<ErrorBoundary><Layout /></ErrorBoundary>}>
-                <Route index element={<Home />} />
+                {/* The Home feed is authentication-required. The guard wraps the
+                    page rather than sitting inside it, so Home never mounts for
+                    a guest — and mounting is what would start its feed request
+                    (do.md §1–§4, §9). Every other route under this shell stays
+                    guest-readable, so the public surfaces are unaffected. */}
+                <Route index element={<RequireAuth><Home /></RequireAuth>} />
                 <Route path="profile" element={<Profile />} />
                 <Route path="profile/:username" element={<ProfilePage />} />
                 {/* Profile sections are URL-driven (Posts/Photos/Reels/Shared) while

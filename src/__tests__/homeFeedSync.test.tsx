@@ -291,8 +291,16 @@ describe('home feed synchronization (do.md bug #2)', () => {
     expect(result.current.posts.map(p => p.id)).toEqual(['post-public-1']);
   });
 
-  it('never delivers a Friends post to a guest through the sync path', async () => {
+  it('gives a guest no feed at all, so no trigger can deliver a Friends post', async () => {
     // No viewer id at all.
+    //
+    // This used to assert that a guest saw the *public* posts and never the
+    // Friends one. That was the old contract, when Home was a mixed feed open to
+    // guests. Home is now authentication-required (do.md — "Update the Tone app
+    // so that the Home/Feed page is strictly restricted to authenticated
+    // users"), so the guarantee is stronger and simpler: a guest has no Home feed
+    // to leak anything into. The request is never made, and no trigger —
+    // focus, online, or the composer's POST_CREATED_EVENT — can start it.
     vi.doMock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: null }) }));
     vi.resetModules();
     loadFriendIds.mockResolvedValue(new Set<string>());
@@ -302,19 +310,22 @@ describe('home feed synchronization (do.md bug #2)', () => {
     const view = renderHook(() => useHomeFeedGuest());
     await settle();
 
-    expect(view.result.current.posts.map(p => p.id)).toEqual(['post-public-1']);
+    expect(view.result.current.posts).toEqual([]);
+    expect(getFeedTimeline).not.toHaveBeenCalled();
 
     getFeedTimeline.mockResolvedValue({
       data: [friendsPost({ id: 'post-friends-3' }), friendsPost(), publicPost()],
       error: null,
     });
+    await fireWindow('focus');
+    await fireWindow('online');
     await act(async () => {
-      window.dispatchEvent(new Event('focus'));
-      await Promise.resolve();
-      await Promise.resolve();
+      window.dispatchEvent(new CustomEvent(POST_CREATED_EVENT));
       await Promise.resolve();
     });
 
-    expect(view.result.current.posts.map(p => p.id)).toEqual(['post-public-1']);
+    // Still nothing, and still no request.
+    expect(view.result.current.posts).toEqual([]);
+    expect(getFeedTimeline).not.toHaveBeenCalled();
   });
 });

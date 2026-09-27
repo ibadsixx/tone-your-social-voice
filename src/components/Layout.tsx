@@ -47,12 +47,20 @@ import {
   Clapperboard,
 } from 'lucide-react';
 
-// Public routes a logged-out visitor may open (do.md §1). The app already uses
+// Public routes a logged-out visitor may open. The app already uses
 // /profile/:username for `/:username`, /search for the Explore surface, and
 // /explore/hashtags for the hashtag explorer — those paths are preserved, not
 // duplicated. Owner/management surfaces under /pages/:id/* (status, archive,
 // activity-log, manage) and /hashtag/:tag/analytics stay protected.
-const PUBLIC_EXACT = new Set(['/', '/search', '/groups', '/pages', '/profile', '/explore/hashtags']);
+//
+// `/` is deliberately NOT in this set. The Home feed is the one surface that
+// requires a session, so a guest on `/` is sent to /auth instead of being handed
+// a read-only feed. The page itself is additionally wrapped in `RequireAuth`
+// (see App.tsx); the two are independent checks on purpose, and this one is the
+// earlier of the two to run — it returns before the shell renders an `<Outlet/>`,
+// so a guest never gets the header, sidebar and feed chrome of a page they are
+// about to be redirected away from.
+const PUBLIC_EXACT = new Set(['/search', '/groups', '/pages', '/profile', '/explore/hashtags']);
 const PUBLIC_PREFIXES = ['/profile/', '/post/', '/groups/', '/pages/', '/hashtag/'];
 const PROTECTED_SUFFIXES = ['/status', '/archive', '/activity-log', '/manage', '/analytics'];
 

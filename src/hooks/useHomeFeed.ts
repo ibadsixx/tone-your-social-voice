@@ -661,9 +661,44 @@ export const useHomeFeed = () => {
     }
   }, [user, toast, refresh]);
 
+  // The initial read, gated on a resolved session.
+  //
+  // The Home feed is the one surface that requires a viewer, so there is nothing
+  // to fetch for a guest. `user` is the identity decoded from the verified
+  // session, so this is the same check the route guard makes — not a second rule
+  // and not a client-supplied id.
+  //
+  // The gate matters in three places, not one:
+  //
+  //   * on a direct load of `/`, `user` is still null on the first render
+  //     because the session has not been read yet, so an unguarded mount would
+  //     fire the request during the authentication transition (do.md §9);
+  //   * `GroupDetail`, `PageDetail` and `CreatePost` call this hook purely for
+  //     `createPost`, and those routes are guest-readable. Without the gate a
+  //     visitor browsing a public group would pull the whole Home timeline they
+  //     are not allowed to see the page for;
+  //   * it keeps the feed consistent with the page, so a future route that
+  //     mounts the hook without the guard still cannot leak a request.
+  //
+  // The dependency is the user's ID, not the `user` object.
+  //
+  // `useAuth` returns a fresh object on every call, so an effect keyed on
+  // `user` re-runs on every render and refetches the timeline forever — a
+  // request loop rather than a feed. The id is a primitive that changes only
+  // when the viewer actually changes, so this runs on sign-in, on sign-out, and
+  // on a genuine account switch, and not in between.
+  const viewerId = user?.id ?? null;
+
+  // `fetchPosts` is read through a ref for the same reason: it is a useCallback
+  // whose identity tracks `user`, and listing it here would put the object
+  // identity back into the dependency list by the back door.
+  const fetchPostsRef = useRef(fetchPosts);
+  fetchPostsRef.current = fetchPosts;
+
   useEffect(() => {
-    fetchPosts(true);
-  }, []);
+    if (!viewerId) return;
+    fetchPostsRef.current(true);
+  }, [viewerId]);
 
   // Poll for new posts, catch up instantly when the tab becomes visible again or
   // the network comes back, and refresh immediately when any surface dispatches
@@ -674,7 +709,9 @@ export const useHomeFeed = () => {
   // who never switched tabs or reloaded waited out the full interval even though
   // the post was already published and already authorized for them.
   useEffect(() => {
-    if (!user) return;
+    // Same gate as the initial read above, and the same reason: keyed on the id
+    // so a re-render cannot re-arm the pollers.
+    if (!viewerId) return;
 
     const onVisible = () => {
       if (!document.hidden) checkForNewPosts();
@@ -703,7 +740,7 @@ export const useHomeFeed = () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener(POST_CREATED_EVENT, onPostCreated);
     };
-  }, [user, checkForNewPosts]);
+  }, [viewerId, checkForNewPosts]);
 
   return {
     posts,
