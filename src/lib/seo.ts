@@ -129,24 +129,47 @@ function seoImage(input: ContentSeoInput): string | null {
   return /^https?:\/\//i.test(src) ? src : null;
 }
 
-// Mirrors the Gateway's `isPublishedContent` + audience evaluation, but only to
-// decide INDEXING signals. It is not a privacy control: a restricted post that an
-// authenticated owner opens still gets `noindex` (correct - it must never enter
-// an index), and the data itself was already authorized by the Gateway.
+// Mirrors the Gateway's `isGuestSafePublicContent` exactly, and exists for one
+// reason: this decides INDEXING signals, so it must never be more permissive
+// than the authorization the Gateway actually applied. If the two disagree, this
+// side is the bug - it would publish `index,follow` for a row the API refused to
+// hand the crawler at all, which is exactly the "crawlable but not retrievable"
+// state that gets a public URL dropped from the index.
+//
+// It is NOT a privacy control, and it is not a second enforcement point. The row
+// was already authorized by the Gateway before it reached here; all this decides
+// is whether to ask for indexing. A restricted post opened by its owner still
+// gets `noindex`, which is correct.
+//
+// The rule, in order:
+//   1. the row must be published;
+//   2. `audience_type` must be exactly `public`;
+//   3. a legacy `visibility` must not contradict it.
+//
+// No default for an absent audience, and no widening of aliases or case. The
+// column is `text DEFAULT 'public'`, but a default only applies to an INSERT
+// that omits the column, so NULL is still reachable and an absent audience is an
+// absent decision rather than a decision to publish. RLS agrees: `can_view_post`
+// is `WHEN post_audience_type = 'public' THEN true ... ELSE false`.
 export function isPublicAudienceForSeo(row: ContentSeoInput): boolean {
   const status = row.status;
-  if (status && String(status).trim().toLowerCase() !== 'published') return false;
-  const normalize = (value: unknown): string | null => {
-    if (value === null || value === undefined) return null;
-    const raw = String(value).trim().toLowerCase().replace(/[\s-]+/g, '_');
-    if (raw === '') return null;
-    return ['public', 'everyone', 'anyone', 'all'].includes(raw) ? 'public' : 'restricted';
-  };
-  const declared = normalize(row.audience_type);
-  if (declared !== null) return declared === 'public';
-  const legacy = normalize(row.visibility);
-  if (legacy !== null) return legacy === 'public';
-  return true;
+  if (status !== null && status !== undefined && status !== '') {
+    if (String(status).trim().toLowerCase() !== 'published') return false;
+  }
+  if (!isExactlyPublic(row.audience_type)) return false;
+  // A null or absent legacy column does not contradict the canonical one. A
+  // present one that is not `public` does, and RLS would have published the row
+  // anyway - but a drifted row is not something to put in front of a crawler.
+  const legacy = row.visibility;
+  if (legacy === null || legacy === undefined) return true;
+  return isExactlyPublic(legacy);
+}
+
+// Whitespace is tolerated because it is a storage artifact rather than a
+// different audience, and no audience picker can produce it. Case is NOT
+// normalized, so it stays an exact comparison and matches RLS.
+function isExactlyPublic(value: unknown): boolean {
+  return typeof value === 'string' && value.trim() === 'public';
 }
 
 export function buildContentSeo(input: ContentSeoInput): ContentSeo {

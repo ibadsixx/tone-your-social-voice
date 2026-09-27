@@ -142,9 +142,19 @@ describe('audience decides indexing signals (§5, §3)', () => {
     expect(isPublicAudienceForSeo(content({ status: 'scheduled' }))).toBe(false);
   });
 
-  it('accepts public audience spellings in any casing or alias', () => {
-    for (const value of ['Public', 'PUBLIC', ' Everyone ', 'All', 'Anyone']) {
-      expect(isPublicAudienceForSeo(content({ audience_type: value, visibility: value }))).toBe(true);
+  it('indexes only the exact value public, never a near-miss spelling', () => {
+    // Whitespace is tolerated: a trailing space is a storage artifact, not a
+    // different audience, and no audience picker produces one.
+    expect(isPublicAudienceForSeo(content({ audience_type: 'public', visibility: 'public' }))).toBe(true);
+    expect(isPublicAudienceForSeo(content({ audience_type: ' public ', visibility: ' public ' }))).toBe(true);
+
+    // Case and aliases are NOT tolerated. RLS compares
+    // `post_audience_type = 'public'` literally, so these are non-public in the
+    // database already; widening them here would make this module MORE
+    // permissive than the Gateway that authorized the row, which is the one
+    // direction that turns into `index,follow` on a URL the API will not serve.
+    for (const value of ['Public', 'PUBLIC', 'pUBLIC', 'Everyone', 'everyone', 'Anyone', 'All', 'all']) {
+      expect(isPublicAudienceForSeo(content({ audience_type: value, visibility: value }))).toBe(false);
     }
   });
 
@@ -152,10 +162,103 @@ describe('audience decides indexing signals (§5, §3)', () => {
     expect(isPublicAudienceForSeo(content({ audience_type: 'secret_handshake', visibility: 'secret_handshake' }))).toBe(false);
   });
 
-  it('lets a restrictive legacy column deny when the audience column is empty', () => {
+  it('refuses an absent audience, and does not fall back to the legacy column (§11)', () => {
+    // A NULL is not a decision to publish. The column is `text DEFAULT 'public'`,
+    // but a default only applies to an INSERT that omits the column, so NULL is
+    // reachable, and an absent decision must not become an indexed URL.
+    expect(isPublicAudienceForSeo(content({ audience_type: null, visibility: null }))).toBe(false);
+    // A restrictive legacy column still denies.
     expect(isPublicAudienceForSeo(content({ audience_type: null, visibility: 'friends' }))).toBe(false);
-    // ...but a public legacy column with no audience column is still public.
-    expect(isPublicAudienceForSeo(content({ audience_type: null, visibility: 'public' }))).toBe(true);
+    // ...and a PUBLIC legacy column does not rescue an absent audience, which is
+    // the specific fallback the rule forbids.
+    expect(isPublicAudienceForSeo(content({ audience_type: null, visibility: 'public' }))).toBe(false);
+    // A missing column entirely, not just a null one.
+    expect(isPublicAudienceForSeo(content({ audience_type: undefined, visibility: undefined }))).toBe(false);
+    expect(isPublicAudienceForSeo(content({ audience_type: '', visibility: '' }))).toBe(false);
+  });
+
+  it('refuses a row whose two audience columns disagree', () => {
+    // RLS reads only audience_type and would publish this row, but a guest has
+    // no identity for the per-viewer rules to be checked against, so a drifted
+    // row is not handed to a crawler. The Gateway refuses it for the same reason;
+    // the two must agree or this page would ask to index a URL the API 404s.
+    expect(isPublicAudienceForSeo(content({ audience_type: 'public', visibility: 'friends' }))).toBe(false);
+    // An absent legacy column does not contradict the canonical one.
+    expect(isPublicAudienceForSeo(content({ audience_type: 'public', visibility: null }))).toBe(true);
+    expect(isPublicAudienceForSeo(content({ audience_type: 'public' }))).toBe(true);
+  });
+
+  it('never marks a guest-visible row noindex, and never omits noindex on a private one', () => {
+    // The indexing signal is the only thing this decides, so the two directions
+    // have to be exhaustive: public -> indexable, everything else -> noindex.
+    // Asserted on the emitted DOM tag, because that is the thing a crawler reads
+    // and the thing a regression in `applySeo` would silently break.
+    const cases: Array<[string, Record<string, unknown>, boolean]> = [
+      ['public', { audience_type: 'public', visibility: 'public' }, true],
+      ['public + absent legacy', { audience_type: 'public', visibility: null }, true],
+      ['whitespace padded', { audience_type: ' public ', visibility: ' public ' }, true],
+      ['null audience', { audience_type: null, visibility: null }, false],
+      ['undefined audience', { audience_type: undefined }, false],
+      ['empty audience', { audience_type: '' }, false],
+      ['friends', { audience_type: 'friends', visibility: 'friends' }, false],
+      ['only_me', { audience_type: 'only_me', visibility: 'only_me' }, false],
+      ['private', { audience_type: 'private', visibility: 'private' }, false],
+      ['friends_except', { audience_type: 'friends_except', visibility: 'friends_except' }, false],
+      ['specific', { audience_type: 'specific' }, false],
+      ['custom_list', { audience_type: 'custom_list' }, false],
+      ['unknown', { audience_type: 'mystery' }, false],
+      ['cased public', { audience_type: 'Public', visibility: 'Public' }, false],
+      ['alias Everyone', { audience_type: 'Everyone', visibility: 'Everyone' }, false],
+      ['alias All', { audience_type: 'All', visibility: 'All' }, false],
+      ['drifted columns', { audience_type: 'public', visibility: 'friends' }, false],
+      ['draft public', { audience_type: 'public', visibility: 'public', status: 'draft' }, false],
+      ['scheduled public', { audience_type: 'public', visibility: 'public', status: 'scheduled' }, false],
+    ];
+    for (const [label, over, expected] of cases) {
+      const seo = buildContentSeo(content(over));
+      expect(seo.isPublic, `${label}: isPublic`).toBe(expected);
+      applySeo({
+        title: seo.title,
+        description: seo.description,
+        canonical: seo.canonical,
+        image: seo.image,
+        index: seo.isPublic,
+      });
+      expect(head('meta[name="robots"]'), `${label}: robots`).toBe(expected ? 'index,follow' : 'noindex,follow');
+    }
+  });
+
+  it('never emits the word noindex on a public row, whatever else changes', () => {
+    // §11/"never add noindex to public content" as an absolute over the whole
+    // page, not just the robots meta: a stray noindex in a description, a
+    // canonical or the JSON-LD would still deindex the URL.
+    for (const kind of ['normal_post', 'reel', 'photo'] as const) {
+      for (const over of [
+        { audience_type: 'public', visibility: 'public' },
+        { audience_type: 'public', visibility: null },
+        { audience_type: ' public ', visibility: ' public ' },
+      ]) {
+        const seo = buildContentSeo(content({ ...over, type: kind, media_type: kind === 'normal_post' ? 'image' : undefined }));
+        applySeo({
+          title: seo.title,
+          description: seo.description,
+          canonical: seo.canonical,
+          image: seo.image,
+          index: seo.isPublic,
+        });
+        const emitted = [
+          seo.title,
+          seo.description,
+          seo.canonical,
+          head('meta[name="robots"]'),
+          head('meta[property="og:title"]'),
+          head('meta[property="og:description"]'),
+          head('meta[name="twitter:card"]'),
+          document.head.innerHTML,
+        ].join(' ');
+        expect(emitted.toLowerCase(), `${kind} ${JSON.stringify(over)}`).not.toContain('noindex');
+      }
+    }
   });
 });
 
@@ -316,21 +419,95 @@ describe('guest access to public content pages (§1, §4, §13)', () => {
 });
 
 describe('restricted and missing content stays out of the index (§2, §14 D-J)', () => {
-  it.each([
+  // The full §13 matrix: every non-public audience, across all three content
+  // kinds. Each entry is asserted twice, because the two requirements are
+  // independent and a regression in either would be invisible if only one were
+  // checked.
+  //
+  //   (a) the indexing signal - a row that is not exactly `public` must never be
+  //       marked indexable, whatever else is true about it;
+  //   (b) the guest render - the Gateway withholds these rows, so the page has
+  //       to treat them as absent and tell a crawler that already knows the URL
+  //       to drop it, rather than rendering a summary of a post the visitor was
+  //       never given.
+  const RESTRICTED_MATRIX: Array<[string, Record<string, unknown>]> = [
+    // Restricted audiences, by name, for each kind.
     ['D. friends-only post', { audience_type: 'friends', visibility: 'friends' }],
     ['E. friends-only reel', { type: 'reel', audience_type: 'friends', visibility: 'friends' }],
     ['F. friends-only photo', { media_type: 'image', audience_type: 'friends', visibility: 'friends' }],
     ['G. only-me post', { audience_type: 'only_me', visibility: 'only_me' }],
-  ])('%s is not indexable and shows no content to a guest', async (_label, restricted) => {
-    // The Gateway would never hand this row to an anonymous client; the page
-    // treats it as absent, so a crawler that already knows the URL is told to
-    // drop it instead of being served a summary.
+    ['only-me reel', { type: 'reel', audience_type: 'only_me', visibility: 'only_me' }],
+    ['only-me photo', { media_type: 'image', audience_type: 'only_me', visibility: 'only_me' }],
+    ['only-me with a public legacy column', { audience_type: 'only_me', visibility: 'public' }],
+    ['friends_except', { audience_type: 'friends_except', visibility: 'friends_except' }],
+    ['specific', { audience_type: 'specific' }],
+    ['custom_list', { audience_type: 'custom_list' }],
+    ['private', { audience_type: 'private', visibility: 'private' }],
+    // Absent audiences: "Do NOT assume that an unknown audience is public."
+    ['null audience', { audience_type: null, visibility: null }],
+    ['null audience with a public legacy column', { audience_type: null, visibility: 'public' }],
+    ['missing audience', { audience_type: undefined, visibility: undefined }],
+    ['empty audience', { audience_type: '', visibility: '' }],
+    // Public-SOUNDING values that are not the value.
+    ['cased Public', { audience_type: 'Public', visibility: 'Public' }],
+    ['cased PUBLIC', { audience_type: 'PUBLIC', visibility: 'PUBLIC' }],
+    ['alias Everyone', { audience_type: 'Everyone', visibility: 'Everyone' }],
+    ['alias anyone', { audience_type: 'anyone', visibility: 'anyone' }],
+    ['alias All', { audience_type: 'All', visibility: 'All' }],
+    // Unknown / custom tokens, including values a permissive coercion would
+    // turn into public.
+    ['unknown token', { audience_type: 'secret_handshake', visibility: 'secret_handshake' }],
+    ['boolean-ish 1', { audience_type: '1', visibility: '1' }],
+    ['boolean-ish true', { audience_type: 'true', visibility: 'true' }],
+    ['boolean-ish 0', { audience_type: '0', visibility: '0' }],
+    // Public audience but unpublished.
+    ['draft', { audience_type: 'public', visibility: 'public', status: 'draft' }],
+    ['scheduled', { audience_type: 'public', visibility: 'public', status: 'scheduled' }],
+    ['archived', { audience_type: 'public', visibility: 'public', status: 'archived' }],
+    // Drifted legacy column.
+    ['columns disagree', { audience_type: 'public', visibility: 'friends' }],
+  ];
+
+  it.each(RESTRICTED_MATRIX)('%s is never indexable', (_label, restricted) => {
+    const seo = buildContentSeo(content(restricted));
+    expect(seo.isPublic, `${_label} must not be treated as public`).toBe(false);
+    applySeo({
+      title: seo.title,
+      description: seo.description,
+      canonical: seo.canonical,
+      image: seo.image,
+      index: seo.isPublic,
+    });
+    expect(head('meta[name="robots"]')).toBe('noindex,follow');
+  });
+
+  it.each(RESTRICTED_MATRIX)('%s shows no content to a guest', async (_label, restricted) => {
+    // The Gateway never hands these rows to an anonymous client, so the page
+    // sees `notFound` and must say so, rather than rendering a summary of a post
+    // the visitor was never given.
+    expect(buildContentSeo(content(restricted)).isPublic).toBe(false);
     mockUsePost.mockReturnValue({ post: null, loading: false, notFound: true });
     renderAt(`/post/${UUID}`);
     await waitFor(() => expect(head('meta[name="robots"]')).toBe('noindex,follow'));
-    expect(headHref('link[rel="canonical"]')).not.toContain('/post/');
+    // The real invariant is that NOTHING indexable or summarising survives, not
+    // that the canonical is rewritten. The not-found branch deliberately sets a
+    // self-referential canonical (`window.location.href`), which is correct: it
+    // consolidates variants of the same path and, paired with noindex, keeps the
+    // URL out of the index. An earlier version of this test asserted the
+    // canonical did not contain the post path, which passed only because the
+    // in-memory test router never moves jsdom's own location - it was protecting
+    // nothing, and would have failed against a real browser.
     expect(screen.queryByTestId('post-body')).toBeNull();
-    expect(restricted).toBeTruthy();
+    // The description is the fixed "not available" string, never text lifted from
+    // a post the visitor was not given - a "not available" page that carried the
+    // real post's description would be a summary leak even with noindex.
+    expect(head('meta[name="description"]')).toBe('This content is not available.');
+    expect(head('meta[name="description"]')).not.toContain('Hello');
+    expect(head('meta[property="og:image"]')).toBeNull();
+    expect(document.head.querySelector('script[type="application/ld+json"]')).toBeNull();
+    // And the visitor is told the content is unavailable rather than bounced to a
+    // sign-in wall: a content detail page must not redirect a guest to /auth.
+    expect(screen.getByText(/isn't available/i)).toBeTruthy();
   });
 
   it('J. a deleted public post 404s rather than being indexed', async () => {
