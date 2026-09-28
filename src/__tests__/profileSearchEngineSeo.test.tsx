@@ -48,6 +48,7 @@ import {
   profileIndexingSwitchOn,
 } from '@/lib/profileIndexing';
 import { robotsDirective } from '@/lib/seo';
+import { isPublicPath } from '@/lib/publicPaths';
 import { useProfileSeo } from '@/hooks/useProfileSeo';
 
 const robots = () => document.head.querySelector('meta[name="robots"]')?.getAttribute('content') ?? null;
@@ -110,6 +111,35 @@ describe('the effective value itself', () => {
     expect(robotsDirective(false, false)).toBe('noindex, nofollow');
     // The existing content-page spelling is unaffected by this work.
     expect(robotsDirective(false, true)).toBe('noindex,follow');
+  });
+
+  it('routes and serves every username shape the sitemap is able to emit', () => {
+    // The cross-repo invariant, and the one with no test until now. The Gateway
+    // decides sitemap membership with its own `NAME_RE` in sitemap.ts; this app
+    // decides whether a path is publicly reachable with `isPublicPath` and
+    // whether a username is well-formed with `isProfileUsername`. Nothing in
+    // either repo asserts that the three agree.
+    //
+    // If they ever drift, the failure is quiet and bad in one direction: the
+    // sitemap advertises /profile/<shape> that the app refuses to route (a login
+    // wall or a 404 in the crawler's hands), or the app serves a profile whose
+    // username the sitemap silently refuses to list. The first is a discovery
+    // bug and the second is an inconsistency; both are invisible without this.
+    for (const name of ['ada', 'ada_2', 'a', 'A'.repeat(1), 'a'.repeat(64), 'User_99', '_leading']) {
+      const path = profilePath(name);
+      // 1. The app can render a profile route for it.
+      expect(isProfileUsername(name), `${name} must be a username this app can link to`).toBe(true);
+      // 2. That route is publicly reachable, so no guest or crawler is bounced
+      //    to /auth - do.md's "the page does not redirect to /auth".
+      expect(isPublicPath(path), `${path} must be a public route`).toBe(true);
+    }
+    // And the shapes the Gateway rejects are also rejected here, so the two
+    // validators cannot drift apart in the tightening direction either.
+    for (const name of ['a'.repeat(65), 'ada.lovelace', 'ada lovelace', 'ada/evil', 'ada?x=1', '']) {
+      expect(isProfileUsername(name), `${JSON.stringify(name)} must be rejected on both sides`).toBe(false);
+    }
+    // robots.txt must also not be forbidding what the sitemap advertises.
+    expect(isPublicPath(profilePath('someuser'))).toBe(true);
   });
 
   it('rejects username shapes the app can never link to', () => {
