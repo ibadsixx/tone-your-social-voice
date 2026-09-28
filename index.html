@@ -6,6 +6,25 @@
     <title>Tone — Connect through mood & emotion</title>
     <meta name="description" content="Tone: connect through mood, share posts, and chat. Join the Tonex community." />
     <meta name="author" content="Tone" />
+    <!-- Google Search Console verification. This belongs in index.html, and only
+         here, for two reasons that are easy to get wrong later:
+
+           - Google fetches the served HTML with no JavaScript guarantee about SPA
+             behaviour. A tag rendered from React would depend on hydration
+             completing, which is exactly the thing a verifier must not depend on.
+             index.html is the document Vite ships and Vercel serves, so the tag is
+             in the first byte of the response.
+           - Nothing in the app removes it. `applySeo` only mutates the specific
+             tags it manages (og:*, twitter:*, robots, canonical, JSON-LD) and
+             never rewrites document.head wholesale, so the tag survives client-side
+             navigation and is present on every route, not just the homepage.
+
+         The value is the verification token and must not be edited, trimmed or
+         URL-encoded. It is deliberately not repeated in any component, test
+         fixture or constant - a single copy in the document is all that is
+         needed, and copies are what turn a public identifier into something that
+         has to be hunted down later. -->
+    <meta name="google-site-verification" content="OmGdgVrqOfL4UPFzfGnmDH3AM_CjfWpskGUpfSxI8wE" />
     <link rel="canonical" href="/" />
 
     <meta property="og:title" content="Tone — Social network for mood & connection" />
