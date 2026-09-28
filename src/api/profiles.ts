@@ -70,17 +70,28 @@ export async function getProfileByUsername(username: string): Promise<ApiResult<
  * server-side and answers with a single boolean - see
  * gateway/src/features/profileIndexing.ts.
  *
- * FAIL-CLOSED, without exception. Every path that is not an explicit
- * `{ search_engine_indexing: true }` returns `false`:
+ * TRUSTED ANSWER, WITHHELD BY DEFAULT. This is no longer "return true only on an
+ * explicit `{ search_engine_indexing: true }`", because the Gateway now resolves
+ * the default itself: a profile with no stored preference comes back as
+ * `{ search_engine_indexing: true }`. So a 200 body is authoritative and is
+ * passed through as-is.
  *
- *   - no gateway configured, network failure, non-2xx, unparseable body, a
- *     missing field, or a non-boolean value all resolve to `false`.
+ * Everything that is NOT an authoritative 200 is `false`:
  *
- * The reason is the direction of the harm. `false` costs a user who wanted to be
- * found some traffic, which they can undo by flipping the switch. `true` on a
- * failed lookup publishes a profile whose owner never agreed to it, and they have
- * no way to see that it happened. There is no third option here that is safe to
- * default to, so the default is the restrictive one.
+ *   - no gateway configured, network failure, any non-2xx (including the 404
+ *     for a username that does not exist), an unparseable body, a missing field,
+ *     or a non-boolean value all resolve to `false`.
+ *
+ * That stays fail-closed on error even though the product default is now
+ * permissive, and the reason is that the two cases are different facts. "The
+ * owner never answered" is answered by the default; "we could not reach the
+ * answer" is not, and the owner it failed to answer for may be one of the people
+ * who explicitly turned indexing off. Publishing them because the Gateway was
+ * briefly unreachable is not a recoverable mistake - they cannot see it happen -
+ * whereas a profile that is withheld is withheld, and the next crawl fixes it.
+ *
+ * The asymmetry is the same one the Gateway makes, one layer up: the permissive
+ * rule applies to an absent *preference*, never to an unavailable *read*.
  */
 export async function getProfileSearchEngineIndexing(username: string): Promise<boolean> {
   const base = API_URL || '';

@@ -1,20 +1,22 @@
-// do.md "Fix Privacy Checkup - Search Engine Profile Indexing".
+// do.md "Fix Privacy Checkup - Search Engine Profile Indexing", then do.md
+// "Search Engine Discovery Must Default to ON".
 //
 // The through-line of every assertion here: the owner's Privacy Checkup answer
 // must reach the page a crawler actually reads, and it must be unable to reach it
 // as anything other than the answer they gave.
 //
-// The negative cases carry the weight. A test that only proved "an opted-in
-// profile gets index,follow" would still pass if the module also emitted
-// index,follow for a profile that opted out, which is the failure that actually
-// matters - it publishes someone who said no.
+// The Sep 28, 2026 change INVERTED the default, and the inversion is why the
+// negative cases still carry the weight. A permissive default makes a missing
+// answer dangerous in a way a restrictive one never was: if "unknown" ever
+// collapses into "the default", a failed lookup starts publishing profiles whose
+// owners explicitly said no. So the properties under test are:
 //
-// The three properties under test, in order of how badly a bug would hurt:
-//   1. fail-closed  - absent, unresolvable, malformed and error answers are all
-//                     "do not index", including while the answer is still loading
-//   2. per profile  - the answer is read per owner, never from a module constant
-//                     and never cached from a previous profile
-//   3. no leakage   - the directive is not leaked onto routes that have nothing
+//   1. the default  - absent / 'true' -> index,follow. 'false' is the only OFF.
+//   2. failure      - an unreachable or errored answer is WITHHELD, not defaulted.
+//                     The default and the unresolved state must stay distinct.
+//   3. per profile  - the answer is read per owner, never from a module constant
+//                     and never carried over from the previous profile
+//   4. no leakage   - the directive is not leaked onto routes that have nothing
 //                     to do with this setting, and no private profile field is
 //                     copied into metadata a crawler archives
 //
@@ -33,13 +35,18 @@ vi.mock('@/api/profiles', async () => {
 });
 
 import {
-  applyProfileNoIndexSeo,
+  applyProfilePendingSeo,
   applyProfileSeo,
   buildProfileSeo,
   clearProfileRobotsSeo,
   isProfileUsername,
   profilePath,
 } from '@/lib/profileSeo';
+import {
+  PROFILE_INDEXING_OPT_OUT,
+  isSearchEngineIndexingEnabled,
+  profileIndexingSwitchOn,
+} from '@/lib/profileIndexing';
 import { robotsDirective } from '@/lib/seo';
 import { useProfileSeo } from '@/hooks/useProfileSeo';
 
@@ -67,13 +74,41 @@ afterEach(() => {
   clearProfileRobotsSeo();
 });
 
-describe('the consent test itself', () => {
-  it('accepts only the exact string the switch writes', () => {
-    // The only writer is `c.toString()` on a boolean switch, so 'true'/'false' is
-    // the whole domain. Anything looser risks publishing a profile that said no.
+describe('the effective value itself', () => {
+  it('is ON for absent, ON for true, and OFF only for the exact opt-out', () => {
+    // This is the rule do.md specifies, restated against the same helper the
+    // Privacy Checkup switch and the Gateway both mirror.
+    expect(isSearchEngineIndexingEnabled(undefined)).toBe(true); // brand-new user
+    expect(isSearchEngineIndexingEnabled(null)).toBe(true); // existing user, no row
+    expect(isSearchEngineIndexingEnabled('true')).toBe(true);
+    expect(isSearchEngineIndexingEnabled('false')).toBe(false);
+    expect(PROFILE_INDEXING_OPT_OUT).toBe('false');
+  });
+
+  it('never reads a drifted value as a refusal', () => {
+    // Under a permissive default, the only harm a lenient parse can do is fail to
+    // honour a 'false' that was not literally 'false' - and the switch only ever
+    // writes the literal. The reverse leniency would silently de-list people who
+    // never asked for it, which is the invisible failure this rule exists to
+    // remove.
+    for (const drifted of ['FALSE', 'False', ' false', 'false ', 'no', '0', 'off', '', 0, false, {}]) {
+      expect(isSearchEngineIndexingEnabled(drifted)).toBe(true);
+    }
+  });
+
+  it('shows the Privacy Checkup switch ON for an account that never opened it', () => {
+    // The visible half of the default. This used to be `=== 'true'`, so every
+    // new account was shown the switch OFF while the product treated them as
+    // indexable - the switch and the crawler disagreeing about the same person.
+    expect(profileIndexingSwitchOn({})).toBe(true);
+    expect(profileIndexingSwitchOn({ search_engine_indexing: 'true' })).toBe(true);
+    expect(profileIndexingSwitchOn({ search_engine_indexing: 'false' })).toBe(false);
+  });
+
+  it('keeps the app-wide noindex/nofollow spellings unchanged', () => {
     expect(robotsDirective(true, true)).toBe('index,follow');
     expect(robotsDirective(false, false)).toBe('noindex, nofollow');
-    // The existing content-page spellings are unchanged by this work.
+    // The existing content-page spelling is unaffected by this work.
     expect(robotsDirective(false, true)).toBe('noindex,follow');
   });
 
@@ -90,7 +125,7 @@ describe('the consent test itself', () => {
   });
 });
 
-describe('A. opted IN', () => {
+describe('A. indexing permitted', () => {
   it('is indexable, and says so in the head', () => {
     const seo = buildProfileSeo(PROFILE, true);
     expect(seo.index).toBe(true);
@@ -111,7 +146,7 @@ describe('A. opted IN', () => {
   });
 });
 
-describe('B. opted OUT', () => {
+describe('B. indexing explicitly withheld', () => {
   it('emits exactly the directive do.md asks for', () => {
     const seo = buildProfileSeo(PROFILE, false);
     expect(seo.index).toBe(false);
@@ -121,34 +156,78 @@ describe('B. opted OUT', () => {
     expect(robots()).toBe('noindex, nofollow');
   });
 
-  it('stays noindex through every unresolved state, not just a resolved "no"', () => {
-    // Each of these is a way the answer can fail to arrive. All of them must read
-    // as "do not index", because the alternative is publishing on a failed
-    // lookup - the failure mode of a privacy control would be what violates it.
-    for (const answer of [false, undefined, null, '', 'true', 1, {}]) {
-      document.head.innerHTML = '';
-      applyProfileNoIndexSeo('ada');
-      // A hostile/garbled answer must not be able to talk the page into index.
-      void answer;
-      expect(robots()).toBe('noindex, nofollow');
-    }
-  });
-
   it('does not become indexable when the lookup rejects', async () => {
+    // The sharpest assertion in the file, and the reason the default and the
+    // unresolved state had to be separated. A rejected lookup is NOT the default:
+    // the answer we failed to get may have been 'false'. If the page kept the
+    // pending `index,follow` after a rejection, a gateway outage would publish
+    // every profile whose owner had opted out - the exact inverse of the harm the
+    // previous fail-closed design existed to prevent.
     mockIndexing.mockRejectedValue(new Error('gateway down'));
     const Harness = () => {
       useProfileSeo('ada', PROFILE);
       return null;
     };
     render(<Harness />);
-    // Synchronously, before any answer exists: already restricted.
-    expect(robots()).toBe('noindex, nofollow');
+    // While pending, the page carries the default, so an unconfigured profile is
+    // indexable from its first paint rather than after a second round trip.
+    expect(robots()).toBe('index,follow');
     await waitFor(() => expect(mockIndexing).toHaveBeenCalledWith('ada'));
-    // ...and still restricted after the rejection settles.
+    // ...and withdrawn as soon as the rejection lands.
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
     expect(robots()).toBe('noindex, nofollow');
+  });
+
+  it('withdraws when the API resolves false, the ordinary opt-out path', async () => {
+    mockIndexing.mockResolvedValue(false);
+    const Harness = () => {
+      useProfileSeo('ada', PROFILE);
+      return null;
+    };
+    render(<Harness />);
+    expect(robots()).toBe('index,follow');
+    await waitFor(() => expect(robots()).toBe('noindex, nofollow'));
+  });
+});
+
+describe('the OFF -> ON round trip', () => {
+  it('follows the stored value in both directions, on the same mount', async () => {
+    // do.md's "user changes OFF -> ON -> ON again", driven through the hook so the
+    // transition is exercised rather than asserted in the abstract. The owner
+    // flips a switch; the only thing that changes is the answer the Gateway
+    // returns. A mutable variable rather than mockResolvedValue because
+    // mockReset() in beforeEach leaves the mock with no implementation, and
+    // re-arming it from inside a render would race the effect that reads it.
+    let stored: boolean = false;
+    mockIndexing.mockImplementation(async () => stored);
+    const Harness = () => {
+      useProfileSeo('ada', PROFILE);
+      return null;
+    };
+
+    const first = render(<Harness />);
+    await waitFor(() => expect(robots()).toBe('noindex, nofollow'));
+
+    // The owner turns it back on. The read is keyed on the username, so it does
+    // not re-fire on a re-render - the value is picked up the way it is in the
+    // product, on the next page load. Unmounting and mounting again is that.
+    stored = true;
+    first.unmount();
+    render(<Harness />);
+    await waitFor(() => expect(robots()).toBe('index,follow'));
+
+    // And it stays that way - the third state in do.md's list, where the change is
+    // re-asserted rather than being a transient that decays back. A second visit
+    // with the same stored value must not quietly fall back to the withheld
+    // state, which is the failure mode a "default to the safe answer" patch
+    // would introduce.
+    render(<Harness />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(robots()).toBe('index,follow');
   });
 });
 
@@ -164,16 +243,15 @@ describe('the directive follows the owner, not a constant', () => {
     const { rerender } = render(<Harness user="ada" prof={PROFILE} />);
     await waitFor(() => expect(robots()).toBe('index,follow'));
 
-    // Same component, different owner, opted out. Must not keep the previous
-    // profile's answer - this is the "per profile, not global" requirement.
+    // Same component, different owner who withheld indexing. Must not keep the
+    // previous profile's answer - this is the "per profile, not global" requirement,
+    // and it is a publication bug rather than a withholding bug under this default.
     const other = { ...PROFILE, username: 'bob' } as unknown as Profile;
     rerender(<Harness user="bob" prof={other} />);
-    // Restricted immediately on navigation, before bob's answer is read.
-    expect(robots()).toBe('noindex, nofollow');
+    // Reset to the default synchronously on navigation, before bob's answer is read.
+    expect(robots()).toBe('index,follow');
     await waitFor(() => expect(mockIndexing).toHaveBeenLastCalledWith('bob'));
-    // Settle bob's answer inside act. Bob's reply is `false`, which equals the
-    // state already in place, so there is no visible change for waitFor to detect
-    // - the update has to be flushed explicitly or it lands after the test ends.
+    // Settle bob's answer inside act, then confirm the page ends up withheld.
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
@@ -182,8 +260,6 @@ describe('the directive follows the owner, not a constant', () => {
   });
 
   it('does not describe the previous profile while navigating between two', async () => {
-    // Both owners opted in, so the only thing that could betray the transition is
-    // the wrong profile's data landing under the new URL.
     mockIndexing.mockResolvedValue(true);
     const Harness = ({ user, prof }: { user: string; prof: Profile | null }) => {
       useProfileSeo(user, prof);
@@ -214,23 +290,29 @@ describe('the directive follows the owner, not a constant', () => {
     expect(meta('description')).toBe('Different bio entirely.');
   });
 
-  it('stays restricted while the profile itself is still loading', async () => {
+  it('carries placeholder metadata, not the profile own, while the row loads', async () => {
+    // profile === null is the loading state. The pending SEO is a generic
+    // placeholder on purpose: the page must not be described as Ada's before Ada's
+    // row has arrived, and the real metadata replaces it as soon as it does. The
+    // directive itself is the default, because the default does not depend on
+    // having read the profile.
     mockIndexing.mockResolvedValue(true);
     const Harness = () => {
-      // profile === null is the loading state: no display name, no bio, and the
-      // page must not be advertised as indexable on the strength of the flag alone.
       useProfileSeo('ada', null);
       return null;
     };
     render(<Harness />);
-    // An opt-in flag on its own is not enough - there is no profile to index yet.
-    expect(robots()).toBe('noindex, nofollow');
-    // Let the flag resolve, then confirm the page is STILL restricted, because
-    // the full profile SEO is only applied once a profile row exists.
+    expect(robots()).toBe('index,follow');
+    expect(document.title).not.toBe('Ada Lovelace on Tone');
+    expect(canonical()).toContain('/profile/ada');
+
+    // Settle the answer so the state update is flushed inside act; with no profile
+    // row it must not change the directive or invent metadata.
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
-    expect(robots()).toBe('noindex, nofollow');
+    expect(robots()).toBe('index,follow');
+    expect(document.title).not.toBe('Ada Lovelace on Tone');
   });
 });
 
@@ -254,7 +336,9 @@ describe('no leakage', () => {
   it('copies no gated profile field into metadata a crawler archives', () => {
     // getProfileByUsername selects `*`, so these arrive on the client whether or
     // not the SEO layer wants them. A meta description is the most archived piece
-    // of a page, so nothing with a `*_visibility` column may end up in one.
+    // of a page, so nothing with a `*_visibility` column may end up in one. This
+    // matters more than it did before: with a default-ON rule there are far more
+    // pages a crawler will actually keep, so the blast radius of a leak grew.
     const leaky = {
       ...PROFILE,
       about_you: 'Private thoughts',

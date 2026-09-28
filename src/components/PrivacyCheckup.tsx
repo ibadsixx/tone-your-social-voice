@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { profileIndexingSwitchOn } from '@/lib/profileIndexing';
 import { ArrowLeft, Trash2, User, Monitor, Tag, ShieldBan, ChevronRight, Check, UserPlus, Phone, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -932,7 +933,12 @@ const PrivacyCheckup = () => {
           </p>
         </div>
         <Switch
-          checked={privacySettings.search_engine_indexing === 'true'}
+          // Default-ON, so this is the effective value rather than a test for
+          // consent: a user who has never opened the checkup is shown the switch
+          // ON, because that is how the product treats them everywhere else. It
+          // used to read `=== 'true'`, which showed OFF for every unconfigured
+          // account while the crawler was being told the opposite thing.
+          checked={profileIndexingSwitchOn(privacySettings)}
           onCheckedChange={c => updatePrivacySetting('search_engine_indexing', c.toString())}
         />
       </div>

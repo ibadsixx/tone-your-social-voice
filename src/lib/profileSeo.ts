@@ -25,14 +25,20 @@
 // and are untouched by anything here. A user who turns this off stays exactly as
 // findable inside Tone.
 //
-// FAIL-CLOSED, and the default is the load state rather than the resolved state.
-// A profile starts out `noindex, nofollow` and is only relaxed to `index,follow`
-// once BOTH the profile has loaded AND the owner has been confirmed opted in. The
-// ordering is the safety property: if the flag request fails, is slow, or returns
-// something unrecognised, the page is left saying "do not index me". Defaulting
-// the other way would mean an outage in one small endpoint is what gets a user's
-// profile published - i.e. the failure mode of a privacy control would be the
-// thing that violates it.
+// DEFAULT-ON as of Sep 28, 2026. A profile with no stored preference is
+// `index,follow`; only a confirmed explicit OFF produces `noindex, nofollow`.
+//
+// This inverts the previous revision, which was fail-closed and used the load
+// state as the default. The distinction that carried that version's safety
+// argument - "an outage in one small endpoint should not be what publishes a
+// profile" - has not gone away, but it now lives on the resolved answer rather
+// than on the default. A failed or unreadable read still resolves to noindex
+// (see getProfileSearchEngineIndexing, and the Gateway's three-state read),
+// because "I could not determine this" is not the same fact as "this user never
+// answered", and only the second one means ON. What changed is that the DEFAULT
+// is no longer the same thing as the unresolved state - so the overwhelmingly
+// common case, a user who has never touched the switch, now gets `index,follow`
+// with no special case at all.
 import { applySeo, absoluteUrl, plainText, robotsDirective, truncate } from '@/lib/seo';
 
 export const PROFILE_PATH_PREFIX = '/profile/';
@@ -83,7 +89,7 @@ const SITE_NAME = 'Tone';
 // column happened to be public to this particular viewer would be a new leak
 // created by the SEO layer, and it would not show up in any privacy test that
 // only checked the rendered page.
-export function buildProfileSeo(input: ProfileSeoInput, optIn: boolean): ProfileSeo {
+export function buildProfileSeo(input: ProfileSeoInput, indexingAllowed: boolean): ProfileSeo {
   const handle = plainText(input.username);
   const name = plainText(input.display_name) || (handle ? `@${handle}` : '');
   const bio = plainText(input.bio);
@@ -106,46 +112,59 @@ export function buildProfileSeo(input: ProfileSeoInput, optIn: boolean): Profile
     image: typeof input.profile_pic === 'string' && /^https?:\/\//i.test(input.profile_pic)
       ? input.profile_pic
       : null,
-    // Opted in  -> `index,follow`: the user asked to be found, so the crawler
-    //              should also be free to follow the links on the profile.
-    // Opted out -> `noindex, nofollow`: the literal do.md specifies, and
+    // Permitted -> `index,follow`: the default, and a crawler is also free to
+    //              follow the links on the profile.
+    // Withheld   -> `noindex, nofollow`: the literal do.md specifies, and
     //              `nofollow` is the half that stops a crawler walking off the
     //              profile into the rest of the account.
-    robots: robotsDirective(optIn, optIn),
-    index: optIn,
+    robots: robotsDirective(indexingAllowed, indexingAllowed),
+    index: indexingAllowed,
   };
 }
 
-export function applyProfileSeo(input: ProfileSeoInput, optIn: boolean): ProfileSeo {
-  const seo = buildProfileSeo(input, optIn);
+export function applyProfileSeo(input: ProfileSeoInput, indexingAllowed: boolean): ProfileSeo {
+  const seo = buildProfileSeo(input, indexingAllowed);
   applySeo({
     title: seo.title,
     description: seo.description,
     canonical: seo.canonical,
     image: seo.image,
     index: seo.index,
-    // Paired with `index`, so this is `index,follow` when the owner opted in and
-    // `noindex, nofollow` when they did not. An opted-in profile is not penalised
-    // with nofollow it did not ask for.
-    follow: optIn,
+    // Paired with `index`, so this is `index,follow` by default and
+    // `noindex, nofollow` only for an owner who explicitly withheld it. A profile
+    // that is indexable is not penalised with nofollow it did not ask for.
+    follow: indexingAllowed,
   });
   return seo;
 }
 
-// The fail-closed state, applied before the profile has loaded.
+// The provisional state, applied before the owner's answer has arrived.
 //
-// Without this the page would inherit whatever the previous route left in the
-// head - and since the SPA never reloads the document, that could be
-// `index,follow` from a post the visitor just came from. So a profile page is
-// unindexable from its first paint, and only an explicit, confirmed opt-in lifts
-// it.
-export function applyProfileNoIndexSeo(username: string): void {
+// It is `index,follow` rather than noindex, because under the default-ON rule
+// the unresolved state and the default have come apart. Two consequences, and
+// both are deliberate:
+//
+//   - Starting here is what makes the default real. A user with no stored
+//     preference would otherwise be noindex for as long as the request took, and
+//     a crawler that read the first paint would record the withholding instead
+//     of the answer.
+//   - It leaves a real exposure window. A user who HAS opted out is briefly
+//     `index,follow` until their answer arrives. That window is one request to
+//     the Gateway, and it is the price of the product default the spec requires;
+//     the window does not exist for anyone who opted in, and it is closed on any
+//     failure, because a failed read resolves to noindex rather than to this
+//     provisional state.
+//
+// Without writing anything here, the page would instead inherit whatever the
+// previous route left in the head - and since the SPA never reloads the
+// document, that could be anything.
+export function applyProfilePendingSeo(username: string): void {
   applySeo({
     title: 'Profile on Tone',
-    description: 'This profile is not available for search indexing.',
+    description: 'A profile on Tone.',
     canonical: absoluteUrl(profilePath(username)),
-    index: false,
-    follow: false,
+    index: true,
+    follow: true,
   });
 }
 
