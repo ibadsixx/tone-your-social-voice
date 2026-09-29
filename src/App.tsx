@@ -9,6 +9,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { CallProvider } from "@/contexts/CallContext";
 import { PageSwitchProvider } from "@/contexts/PageSwitchContext";
 import { IncomingCallModal, ActiveCallWindow } from "@/components/calls";
+import { PresenceHeartbeat } from "@/components/presence/PresenceHeartbeat";
 import Layout from "@/components/Layout";
 import Home from "@/pages/Home";
 import RequireAuth from "@/components/RequireAuth";
@@ -52,6 +53,12 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <BrowserRouter>
       <AuthProvider>
+        {/* Presence is a property of the SESSION, not of a route (do.md). This
+            used to be mounted inside pages/Messages.tsx, so navigating to Home
+            or any other screen silently stopped the heartbeat and the user aged
+            out of everyone else's green dot while still signed in. Mounted here,
+            above the router, exactly once, and it renders nothing. */}
+        <PresenceHeartbeat />
         <CallProvider>
           <PageSwitchProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>

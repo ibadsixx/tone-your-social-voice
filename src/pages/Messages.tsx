@@ -5,7 +5,6 @@ import { ChatWindow } from '@/components/messages/ChatWindow';
 import { NewConversationDialog } from '@/components/messages/NewConversationDialog';
 import { AddPeopleDialog } from '@/components/messages/AddPeopleDialog';
 import { useConversations } from '@/hooks/useConversations';
-import { usePresence } from '@/hooks/usePresence';
 import { useProfile } from '@/hooks/useProfile';
 import { useStatusVisibility } from '@/hooks/useStatusVisibility';
 import { useMessageRequests } from '@/hooks/useMessageRequests';
@@ -73,7 +72,11 @@ const Messages = () => {
   const currentUserId = user?.id || null;
   const { toast } = useToast();
 
-  usePresence(currentUserId || undefined);
+  // Presence is NO LONGER mounted here. This page used to own the heartbeat,
+  // which meant leaving Messages stopped it and the user aged out of every other
+  // user's green dot while still signed in. It is now mounted once above the
+  // router in App.tsx (see components/presence/PresenceHeartbeat.tsx). Keeping
+  // both mounts would double the write rate and give presence two owners.
   const { profile } = useProfile(currentUserId || undefined);
   const {
     visibleTo,
@@ -244,6 +247,7 @@ const Messages = () => {
 
   const {
     conversations,
+    presenceTick,
     messages,
     firstUnreadIndex,
     hasMoreMessages,
@@ -1151,6 +1155,7 @@ const Messages = () => {
             loading={loading}
             onArchiveConversation={archiveConversation}
             currentUserId={currentUserId}
+            presenceTick={presenceTick}
           />
         )}
       </div>

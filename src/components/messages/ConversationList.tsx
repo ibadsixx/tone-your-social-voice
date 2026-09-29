@@ -39,6 +39,15 @@ interface ConversationListProps {
   loading: boolean;
   onArchiveConversation?: (conversationId: string) => void;
   currentUserId?: string | null;
+  /**
+   * Increments on every presence refresh round and is passed straight through to
+   * the memoised item. It is an invalidation signal, not data: the item's online
+   * dot is derived from `Date.now()` at render time, so a memo bailed-out render
+   * leaves the dot frozen. Optional with a default so any other caller keeps
+   * compiling; a caller that omits it gets a dot that updates on prop changes
+   * only.
+   */
+  presenceTick?: number;
 }
 
 const formatLastMessage = (message?: Conversation['last_message']) => {
@@ -53,12 +62,21 @@ const ConversationItem = memo(({
   onSelect,
   onArchive,
   currentUserId,
+  // Consumed for its side effect on memoisation only. `isOnline()` compares
+  // `last_seen_at` against `Date.now()` during render, so the dot is only as
+  // current as the last time this component ran. The presence refresh in
+  // useConversations bumps this counter every round - including rounds where
+  // nothing changed, which is precisely when a disconnecting partner's dot has
+  // to go gray. Without it, memo sees identical props, bails out, and a partner
+  // who has gone offline keeps a green dot indefinitely.
+  presenceTick,
 }: {
   conversation: Conversation;
   isActive: boolean;
   onSelect: (id: string) => void;
   onArchive?: (id: string) => void;
   currentUserId?: string | null;
+  presenceTick: number;
 }) => {
   const isGroup = conversation.type === 'group';
   const isChannel = conversation.type === 'channel';
@@ -76,6 +94,10 @@ const ConversationItem = memo(({
   const previewText = formatLastMessage(conversation.last_message);
   const online = !isMulti && !presenceHidden && isOnline(conversation.other_user?.last_seen_at);
   const isGroupOnline = isGroup && (conversation.online_count || 0) >= 2;
+  // `online` above is a function of the clock, so re-running this render is the
+  // only thing that can make it change. Stated explicitly so the prop is not
+  // mistaken for an unused leftover and removed by a later cleanup.
+  void presenceTick;
 
   return (
     <button
@@ -210,7 +232,8 @@ export const ConversationList: React.FC<ConversationListProps> = ({
   onSelectConversation,
   loading,
   onArchiveConversation,
-  currentUserId
+  currentUserId,
+  presenceTick = 0
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -299,6 +322,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
                 onSelect={onSelectConversation}
                 onArchive={onArchiveConversation}
                 currentUserId={currentUserId}
+                presenceTick={presenceTick}
               />
             ))
           )}

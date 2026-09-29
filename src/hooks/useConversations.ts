@@ -16,7 +16,7 @@ import { playMessageNotification } from '@/lib/notificationSounds';
 import { parseCallLog, callLogLabel, formatCallDuration } from '@/lib/callLog';
 import { subscribeToMessages, getMessageRealtime } from '@/lib/messageRealtime';
 import { ensureMessageRequest, hasAcceptedFriendship } from '@/lib/messageRequests';
-import { isOnline } from '@/hooks/usePresence';
+import { isOnline, POLL_INTERVAL_MS as PRESENCE_POLL_INTERVAL_MS } from '@/hooks/usePresence';
 import { logVoiceInsert } from '@/lib/voiceDiagnostics';
 
 // Call-log messages store a JSON envelope in `content`; show a readable label
@@ -798,6 +798,11 @@ export const useConversations = (currentUserId?: string) => {
   const actingPageId = actingPage?.id;
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  // Bumped on every presence refresh round. Threaded to the conversation list so
+  // the memoised item re-evaluates its online dot against the current clock; see
+  // the presence refresh effect below for why a changed timestamp alone is not
+  // enough.
+  const [presenceTick, setPresenceTick] = useState(0);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -1887,11 +1892,30 @@ export const useConversations = (currentUserId?: string) => {
     };
   }, [currentUserId, fetchConversations]);
 
-  // Periodically refresh conversation partners' online presence (matches usePresence 30s interval)
+  // Periodically refresh conversation partners' online presence (matches the
+  // heartbeat's POLL_INTERVAL_MS in hooks/usePresence.ts).
+  //
+  // `presenceTick` is not decoration. `ConversationItem` is wrapped in React.memo
+  // and the update below deliberately returns the SAME conversation object when a
+  // partner's `last_seen_at` has not moved. That is the correct optimisation, but
+  // it means the item's props stay shallowly equal, so memo bails out and the
+  // component never re-runs `isOnline()` - and `isOnline()` is a pure comparison
+  // against `Date.now()`, so the dot is only correct as of the last render. The
+  // result was that a partner's dot could turn green when a new timestamp arrived
+  // but could never turn gray again once the timestamp stopped moving, which is
+  // exactly the state a user goes into when they disconnect. The tick is the
+  // invalidation signal that lets the dot age out on a timer, and it is bumped
+  // UNCONDITIONALLY at the end of the round: the round where nothing changed is
+  // precisely the round in which a disconnecting partner's dot has to go gray.
   useEffect(() => {
     if (!currentUserId) return;
 
     const refreshPresence = async () => {
+      // Skip the work entirely while the tab is hidden, where the dot is not
+      // visible and the partner's presence is not changing what the user sees.
+      // `onVisible` refreshes immediately on the way back in, so a hidden tab
+      // never shows a stale dot for more than one round trip.
+      if (document.hidden) return;
       const allConvs = conversationsDataRef.current;
       if (allConvs.length === 0) return;
 
@@ -1906,6 +1930,10 @@ export const useConversations = (currentUserId?: string) => {
         setConversations(prev => prev.map(conv => {
           if (!conv.other_user) return conv;
           const newLastSeen = lastSeenMap.get(conv.other_user.id);
+          // A null/absent `last_seen_at` is kept rather than written through:
+          // that is the shape the gateway returns for a partner whose presence
+          // it has redacted (non-friend with a pending message request), and
+          // overwriting with null would be correct only by accident.
           if (!newLastSeen || newLastSeen === conv.other_user.last_seen_at) return conv;
           return {
             ...conv,
@@ -1928,19 +1956,28 @@ export const useConversations = (currentUserId?: string) => {
           return { ...conv, online_count: newCount };
         }));
       }
+
+      setPresenceTick(t => t + 1);
+    };
+
+    const onVisible = () => {
+      if (!document.hidden) refreshPresence();
     };
 
     const initialRefresh = setTimeout(refreshPresence, 2000);
-    const interval = setInterval(refreshPresence, 30000);
+    const interval = setInterval(refreshPresence, PRESENCE_POLL_INTERVAL_MS);
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       clearTimeout(initialRefresh);
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [currentUserId]);
 
   return {
     conversations,
+    presenceTick,
     messages,
     firstUnreadIndex,
     hasMoreMessages,

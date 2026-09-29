@@ -1554,6 +1554,49 @@ class GatewayClient {
   }
 
   /**
+   * Mark the signed-in user as currently connected (do.md "online presence").
+   *
+   * This replaced `rpc('update_last_seen')`, which never succeeded: the database
+   * function resolves the row through `auth.uid()` and updated zero rows without
+   * erroring, so `profiles.last_seen_at` stayed at its INSERT default for every
+   * user in production. The gateway endpoint derives the id from the verified
+   * bearer token, so the write no longer depends on `auth.uid()` resolving.
+   *
+   * `updated: 0` is reported rather than folded into `ok: true`, because it means
+   * the token is valid but no profile row was written - the one failure mode the
+   * caller can still act on, and one that is invisible if collapsed.
+   */
+  presenceHeartbeat(): Promise<{
+    data: { ok: boolean; updated: number; last_seen_at: string } | null;
+    error: { message: string; code?: string } | null;
+  }> {
+    if (!this._baseUrl) {
+      return Promise.resolve({ data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } });
+    }
+    const token = getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    return fetch(`${this._baseUrl}/api/presence/heartbeat`, {
+      method: 'POST',
+      headers,
+      // `cache: 'no-store'` because a cached 200 would report "you are online"
+      // for as long as the entry lived, which is the same stale-presence failure
+      // the endpoint's own no-store header prevents server-side.
+      cache: 'no-store',
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({ message: res.statusText }));
+          return { data: null, error: { message: errBody.message || errBody.error || res.statusText, code: String(res.status) } };
+        }
+        const json = await res.json().catch(() => null);
+        return { data: json, error: null };
+      })
+      .catch((err) => ({ data: null, error: { message: String(err) } }));
+  }
+
+  /**
    * Real server-side totals for a profile's relationships. The friends /
    * following / followers COUNT is public profile metadata (do.md): the
    * gateway returns the actual totals even when the underlying list is not
