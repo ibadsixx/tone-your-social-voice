@@ -1597,6 +1597,50 @@ class GatewayClient {
   }
 
   /**
+   * Remove the signed-in user's presence because they explicitly logged out.
+   *
+   * This is the "untrack" for a system with no Realtime channel to untrack from:
+   * `GatewayChannel` above implements neither `track()`/`untrack()` nor
+   * `presenceState()`/`presence_diff`, and its `send({ type: 'broadcast' })` only
+   * reaches broadcast listeners in THIS tab, so a local broadcast cannot tell
+   * another user anything. The marker has to be persisted for the other user's
+   * existing `last_seen_at` refresh to read.
+   *
+   * MUST be called while the bearer token is still valid - i.e. BEFORE
+   * `auth.signOut()` - because the endpoint is authenticated and takes the caller
+   * id from the token alone. See `endPresenceSession` and `useAuth.signOut`.
+   *
+   * `cache: 'no-store'` for the same reason as the heartbeat: a cached response
+   * would let a stale "ok" outlive the presence it removed.
+   */
+  presenceLogout(): Promise<{
+    data: { ok: boolean; updated: number; last_seen_at: string } | null;
+    error: { message: string; code?: string } | null;
+  }> {
+    if (!this._baseUrl) {
+      return Promise.resolve({ data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } });
+    }
+    const token = getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    return fetch(`${this._baseUrl}/api/presence/logout`, {
+      method: 'POST',
+      headers,
+      cache: 'no-store',
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({ message: res.statusText }));
+          return { data: null, error: { message: errBody.message || errBody.error || res.statusText, code: String(res.status) } };
+        }
+        const json = await res.json().catch(() => null);
+        return { data: json, error: null };
+      })
+      .catch((err) => ({ data: null, error: { message: String(err) } }));
+  }
+
+  /**
    * Real server-side totals for a profile's relationships. The friends /
    * following / followers COUNT is public profile metadata (do.md): the
    * gateway returns the actual totals even when the underlying list is not

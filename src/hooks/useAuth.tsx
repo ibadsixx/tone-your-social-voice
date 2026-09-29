@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { gateway } from '@/lib/gateway';
 import { profilesApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
+import { endPresenceSession } from '@/hooks/usePresence';
 
 interface GatewayUser {
   id: string;
@@ -257,9 +258,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const signOut = async () => {
+    // Presence is removed BEFORE the session is destroyed, and this ordering is
+    // the fix rather than a detail of it (do.md "online presence indicator").
+    //
+    // What was wrong: sign-out wrote nothing about presence at all. It revoked
+    // the session and cleared auth state, and the `profiles.last_seen_at` row was
+    // left holding the timestamp from the last heartbeat - up to one interval
+    // earlier. `isOnline()` kept answering true for the whole freshness window,
+    // so every other user kept seeing a green dot on somebody who had logged out.
+    // There was no error to look at and nothing to time out early: the presence
+    // row simply described the last moment the heartbeat happened to run.
+    //
+    // Why it has to be here and not in a `useEffect` cleanup: the cleanup would
+    // run AFTER `setUser(null)`, at which point the bearer token is gone and the
+    // write 401s. The user id being unavailable at cleanup time is the exact race
+    // this ordering avoids - and it is why `endPresenceSession` takes no user id
+    // and relies purely on the token that is still in localStorage at this point.
+    //
+    // `endPresenceSession` also stops the heartbeat and waits for any write
+    // already in flight, so the marker cannot be overwritten by a heartbeat that
+    // lands after it. Without that, a heartbeat dispatched moments before sign-out
+    // would put the green dot straight back for another 150 seconds.
+    await endPresenceSession();
+
     try {
       const { error } = await gateway.auth.signOut();
-      
+
       if (error) {
         toast({
           title: "Sign out failed",
