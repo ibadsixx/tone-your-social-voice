@@ -7,7 +7,13 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-FRONT="npx vitest run src/__tests__/presenceLogout.test.tsx src/__tests__/presenceOnlineIndicator.test.tsx --reporter=basic"
+# No `--reporter` flag: vitest 4 removed `basic`, and an unknown reporter makes the
+# runner exit non-zero BEFORE running anything. Since this harness reads "non-zero
+# exit" as "the mutant was caught", that turned every frontend result into a false
+# CAUGHT - a test suite that cannot run is indistinguishable from one that failed a
+# test, which is the same class of mistake as running the gateway suite from the
+# wrong directory. The self-check below is what exposed it.
+FRONT="npx vitest run src/__tests__/presenceLogout.test.tsx src/__tests__/presenceOnlineIndicator.test.tsx"
 # Absolute, and run with an explicit cwd. The first version of this harness ran
 # the gateway suite from the frontend directory, where `src/features/` does not
 # exist - so ts-node exited non-zero and every gateway mutant was scored CAUGHT
@@ -15,13 +21,6 @@ FRONT="npx vitest run src/__tests__/presenceLogout.test.tsx src/__tests__/presen
 # test caught it" from "the runner could not start" is worse than none.
 GW_DIR="$(cd ../gateway && pwd)"
 BACK="cd '$GW_DIR' && npx ts-node src/features/presenceTest.ts"
-
-# Prove the harness can tell the two apart before trusting any result: an
-# unmutated suite must SURVIVE.
-echo "=== harness self-check (both suites must pass unmutated) ==="
-run "S1 frontend baseline" SURVIVED bash -c "$FRONT"
-run "S2 gateway baseline" SURVIVED bash -c "$BACK"
-echo
 
 PASS=0; FAIL=0
 
@@ -41,14 +40,27 @@ run() {
   fi
 }
 
-mutate() { # mutate <file> <python-expr-replacing-content>
+# Prove the harness can tell the two apart before trusting any result: an
+# unmutated suite must SURVIVE. (This check has to come AFTER `run` is defined -
+# the first version of this harness put it first, so the function was not yet in
+# scope, and the check silently did nothing.)
+echo "=== harness self-check (both suites must pass unmutated) ==="
+run "S1 frontend baseline" SURVIVED bash -c "$FRONT"
+run "S2 gateway baseline" SURVIVED bash -c "$BACK"
+echo
+
+mutate() { # mutate <file> <old|||new>
   python3 - "$1" "$2" <<'PY'
 import sys, io
 path, expr = sys.argv[1], sys.argv[2]
 src = io.open(path, encoding='utf-8').read()
 old, new = expr.split('|||')
+# A literal backslash-n in the shell argument means "newline" - the mutants are
+# multi-line and `\n` inside a double-quoted string is NOT expanded by bash, so
+# without this every multi-line target would silently fail to match.
+old = old.replace('\\n', '\n'); new = new.replace('\\n', '\n')
 if old not in src:
-    print("MUTATION TARGET NOT FOUND in %s: %r" % (path, old[:80]))
+    print("MUTATION TARGET NOT FOUND in %s: %r" % (path, old[:120]))
     sys.exit(3)
 io.open(path, 'w', encoding='utf-8').write(src.replace(old, new, 1))
 PY
@@ -64,8 +76,9 @@ import sys, io
 path, expr = sys.argv[1], sys.argv[2]
 src = io.open(path, encoding='utf-8').read()
 old, new = expr.split('|||')
+old = old.replace('\\n', '\n'); new = new.replace('\\n', '\n')
 if old not in src:
-    print("MUTATION TARGET NOT FOUND in %s: %r" % (path, old[:80]))
+    print("MUTATION TARGET NOT FOUND in %s: %r" % (path, old[:120]))
     sys.exit(3)
 io.open(path, 'w', encoding='utf-8').write(src.replace(old, new, 1))
 PY
@@ -113,10 +126,19 @@ mutate src/hooks/usePresence.ts "gateway.presenceLogout()|||Promise.resolve({ da
 run "M6 no logout write reaches the gateway" CAUGHT bash -c "$FRONT"
 restore . src/hooks/usePresence.ts
 
-# M7: the reader stops recognising the marker, so it ages out only by timeout.
+# M7: drop the explicit marker check from `isOnline`.
+#
+# EXPECTED TO SURVIVE, and that is the point of listing it. With the epoch as the
+# marker, `Date.now() - 0` is already outside any plausible freshness window, so
+# the comparison alone answers "offline" and removing the guard changes no
+# behaviour. The guard is kept anyway (see the note in usePresence.ts): it is the
+# only thing that keeps logout correct if the marker is ever backdated to restore
+# last-seen precision, which is the obvious next change and would silently put
+# logged-out users back to green. Recorded as SURVIVED so the redundancy stays
+# documented and cannot be mistaken for load-bearing coverage.
 mutate src/hooks/usePresence.ts "  if (isLoggedOutPresence(lastSeenAt)) return false;
   const seen|||  const seen"
-run "M7 reader does not recognise the marker" CAUGHT bash -c "$FRONT"
+run "M7 reader drops the explicit marker check (redundant today)" SURVIVED bash -c "$FRONT"
 restore . src/hooks/usePresence.ts
 
 # M8: signing back in does not resume the heartbeat.
@@ -137,38 +159,18 @@ mutate src/hooks/usePresence.ts "  if (isLoggedOutPresence(lastSeenAt)) return '
 run "M10 marker renders as the literal epoch date" CAUGHT bash -c "$FRONT"
 restore . src/hooks/usePresence.ts
 
-# M11: a user id is sent in the body, enabling force-offline of another account.
-mutate src/lib/gateway.ts "      cache: 'no-store',
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const errBody = await res.json().catch(() => ({ message: res.statusText }));
-          return { data: null, error: { message: errBody.message || errBody.error || res.statusText, code: String(res.status) } };
-        }
-        const json = await res.json().catch(() => null);
-        return { data: json, error: null };
-      })
-      .catch((err) => ({ data: null, error: { message: String(err) } }));
-  }
-
-  /**
-   * Real server-side totals|||      cache: 'no-store',
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const errBody = await res.json().catch(() => ({ message: res.statusText }));
-          return { data: null, error: { message: errBody.message || errBody.error || res.statusText, code: String(res.status) } };
-        }
-        const json = await res.json().catch(() => null);
-        return { data: json, error: null };
-      })
-      .catch((err) => ({ data: null, error: { message: String(err) } }));
-  }
-
-  /**
-   * Real server-side totals"
-run "M11 sanity - no-op mutation should survive" SURVIVED bash -c "$FRONT"
+# M11: a user id is sent in the request body, which would let the caller name
+# whose presence to remove. The gateway ignores it, but the client must not offer
+# it - the "no id in the body" assertion has to bite.
+mutate src/lib/gateway.ts "    return fetch(\`\${this._baseUrl}/api/presence/logout\`, {\n      method: 'POST',\n      headers,|||    return fetch(\`\${this._baseUrl}/api/presence/logout\`, {\n      method: 'POST',\n      headers,\n      body: JSON.stringify({ user_id: 'someone-else' }),"
+run "M11 logout sends a user id in the body" CAUGHT bash -c "$FRONT"
 restore . src/lib/gateway.ts
+
+# M12: the marker write is moved inside the interval, so it fires repeatedly
+# rather than once per sign-out. The "exactly one call" assertion must bite.
+mutate src/hooks/usePresence.ts "      trackPresenceWrite(gateway.presenceHeartbeat()).then(() => undefined);|||      trackPresenceWrite(gateway.presenceHeartbeat()).then(() => undefined);\n      gateway.presenceLogout().then(() => undefined);"
+run "M12 the marker is written on a timer, not once per sign-out" CAUGHT bash -c "$FRONT"
+restore . src/hooks/usePresence.ts
 
 echo "=== gateway mutants ==="
 

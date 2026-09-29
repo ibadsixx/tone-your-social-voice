@@ -237,9 +237,19 @@ describe('the marker the reader sees', () => {
       .toBe(new Date(PRESENCE_LOGGED_OUT_AT).getTime());
   });
 
-  // The `isOnline` guard on the marker is what makes this robust rather than
-// incidental: it is checked BEFORE the freshness comparison, so the answer does
-// not depend on OFFLINE_THRESHOLD_MS at all.
+  // Documents a KNOWN REDUNDANCY, deliberately.
+//
+// `isOnline` checks `isLoggedOutPresence` before its freshness comparison, and
+// with the epoch as the marker that check is not load-bearing: `Date.now() - 0`
+// is already outside any plausible window, so deleting the line changes nothing.
+// Mutant M7 in scripts/presence-mutants.sh confirms this by SURVIVING.
+//
+// The guard is kept because it is what keeps logout correct if the marker is
+// ever changed, and the obvious change is to backdate it to restore last-seen
+// precision - which would put logged-out users back to green for the whole
+// window, i.e. the original bug. This test exists so that redundancy is
+// documented rather than rediscovered: if you are reading this while deleting the
+// guard, the deletion is only safe while the marker stays the epoch.
 it('reads as offline under any plausible increase of the freshness window', () => {
     // The reason the marker is the epoch rather than `now - threshold - margin`:
     // a backdated value couples this repo to OFFLINE_THRESHOLD_MS, which lives in
