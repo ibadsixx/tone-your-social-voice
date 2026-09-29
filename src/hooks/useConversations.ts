@@ -16,7 +16,7 @@ import { playMessageNotification } from '@/lib/notificationSounds';
 import { parseCallLog, callLogLabel, formatCallDuration } from '@/lib/callLog';
 import { subscribeToMessages, getMessageRealtime } from '@/lib/messageRealtime';
 import { ensureMessageRequest, hasAcceptedFriendship } from '@/lib/messageRequests';
-import { isOnline, POLL_INTERVAL_MS as PRESENCE_POLL_INTERVAL_MS } from '@/hooks/usePresence';
+import { isOnline, reportClockSkew, POLL_INTERVAL_MS as PRESENCE_POLL_INTERVAL_MS } from '@/hooks/usePresence';
 import { logVoiceInsert } from '@/lib/voiceDiagnostics';
 
 // Call-log messages store a JSON envelope in `content`; show a readable label
@@ -1926,7 +1926,22 @@ export const useConversations = (currentUserId?: string) => {
         .in('id', userIds);
 
       if (profiles) {
-        const lastSeenMap = new Map(profiles.map(p => [p.id, p.last_seen_at]));
+        // Annotated because the gateway client's `select()` is untyped and infers
+        // the row literal `[p.id, p.last_seen_at]` as a union, which made this
+        // Map a `Map<unknown, unknown>` and leaked `unknown` into every consumer -
+        // including the value written onto `other_user.last_seen_at`, where
+        // `Conversation['other_user']['last_seen_at']` is `string | undefined`.
+        const lastSeenMap = new Map<string, string | null | undefined>(
+          profiles.map(p => [p.id, p.last_seen_at])
+        );
+        // Diagnose an unreadable clock once, here, where the full set of partner
+        // timestamps is in hand. A reader whose system clock is behind the
+        // gateway's gets every dot refused by `isOnline`'s lower bound, and
+        // without this the only symptom is "everyone is gray" - a fresh bug
+        // report with nothing pointing at the cause. Reads the values out of the
+        // map this round already built, so it adds no request, no state change
+        // and no second pass over `profiles`.
+        reportClockSkew([...lastSeenMap.values()]);
         setConversations(prev => prev.map(conv => {
           if (!conv.other_user) return conv;
           const newLastSeen = lastSeenMap.get(conv.other_user.id);

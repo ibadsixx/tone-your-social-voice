@@ -13,7 +13,7 @@ cd "$(dirname "$0")/.."
 # CAUGHT - a test suite that cannot run is indistinguishable from one that failed a
 # test, which is the same class of mistake as running the gateway suite from the
 # wrong directory. The self-check below is what exposed it.
-FRONT="npx vitest run src/__tests__/presenceLogout.test.tsx src/__tests__/presenceOnlineIndicator.test.tsx"
+FRONT="npx vitest run src/__tests__/presenceLogout.test.tsx src/__tests__/presenceOnlineIndicator.test.tsx src/__tests__/presenceStaleDot.test.tsx"
 # Absolute, and run with an explicit cwd. The first version of this harness ran
 # the gateway suite from the frontend directory, where `src/features/` does not
 # exist - so ts-node exited non-zero and every gateway mutant was scored CAUGHT
@@ -170,6 +170,56 @@ restore . src/lib/gateway.ts
 # rather than once per sign-out. The "exactly one call" assertion must bite.
 mutate src/hooks/usePresence.ts "      trackPresenceWrite(gateway.presenceHeartbeat()).then(() => undefined);|||      trackPresenceWrite(gateway.presenceHeartbeat()).then(() => undefined);\n      gateway.presenceLogout().then(() => undefined);"
 run "M12 the marker is written on a timer, not once per sign-out" CAUGHT bash -c "$FRONT"
+restore . src/hooks/usePresence.ts
+
+# M13-M19: the lower bound on the freshness comparison. `isOnline` used to ask only
+# `Date.now() - seen < OFFLINE_THRESHOLD_MS`, which nothing in it could reject for
+# being from the FUTURE - a negative age satisfies a positive threshold, so a
+# reader whose clock is behind the gateway's saw every partner green with no upper
+# limit at all. These seven are the ways the bound can be wrong.
+
+# M13: the bound removed outright. This is the original defect.
+mutate src/hooks/usePresence.ts "  if (age < -MAX_CLOCK_SKEW_MS) return false;
+  return age < OFFLINE_THRESHOLD_MS;|||  return age < OFFLINE_THRESHOLD_MS;"
+run "M13 freshness comparison has no lower bound" CAUGHT bash -c "$FRONT"
+restore . src/hooks/usePresence.ts
+
+# M14: the sign is flipped, so the bound rejects a slightly STALE stamp instead of
+# a future one - an inversion that would gray out a partner who just heartbeated.
+mutate src/hooks/usePresence.ts "if (age < -MAX_CLOCK_SKEW_MS) return false;|||if (age < MAX_CLOCK_SKEW_MS) return false;"
+run "M14 lower bound sign flipped" CAUGHT bash -c "$FRONT"
+restore . src/hooks/usePresence.ts
+
+# M15: the tolerance widened to 15 minutes - the number in the bug report, which
+# would reintroduce the symptom at a smaller scale while looking like a fix.
+mutate src/hooks/usePresence.ts "MAX_CLOCK_SKEW_MS = 60000|||MAX_CLOCK_SKEW_MS = 15 * 60 * 1000"
+run "M15 skew tolerance widened to 15 minutes" CAUGHT bash -c "$FRONT"
+restore . src/hooks/usePresence.ts
+
+# M16: the UPPER bound widened to 15 minutes. do.md rules out buying a fix with a
+# timeout, and the arithmetic test has to notice the window growing at all.
+mutate src/hooks/usePresence.ts "OFFLINE_THRESHOLD_MS = 150000|||OFFLINE_THRESHOLD_MS = 15 * 60 * 1000"
+run "M16 freshness window widened to 15 minutes" CAUGHT bash -c "$FRONT"
+restore . src/hooks/usePresence.ts
+
+# M17: the label's future guard loses its skew clause, so a stamp from the future
+# reads "Just now" forever beside a dot `isOnline` has already called gray.
+mutate src/hooks/usePresence.ts "if (Number.isNaN(diffMs) || diffMs < -MAX_CLOCK_SKEW_MS) return 'Offline';|||if (Number.isNaN(diffMs)) return 'Offline';"
+run "M17 formatLastSeen loses the future-stamp guard" CAUGHT bash -c "$FRONT"
+restore . src/hooks/usePresence.ts
+
+# M18: the whole guard goes, so an unparseable timestamp renders "Invalid Date"
+# and a future one renders "Just now" forever.
+mutate src/hooks/usePresence.ts "  if (Number.isNaN(diffMs) || diffMs < -MAX_CLOCK_SKEW_MS) return 'Offline';
+|||"
+run "M18 formatLastSeen guard removed entirely" CAUGHT bash -c "$FRONT"
+restore . src/hooks/usePresence.ts
+
+# M19: off-by-one on the bound. The tolerance is a MAXIMUM lead, so a stamp exactly
+# MAX_CLOCK_SKEW_MS ahead is admissible and one millisecond further is not; an
+# off-by-one in either direction silently changes which of those two is online.
+mutate src/hooks/usePresence.ts "if (age < -MAX_CLOCK_SKEW_MS) return false;|||if (age < -MAX_CLOCK_SKEW_MS - 1) return false;"
+run "M19 lower bound off-by-one" CAUGHT bash -c "$FRONT"
 restore . src/hooks/usePresence.ts
 
 echo "=== gateway mutants ==="

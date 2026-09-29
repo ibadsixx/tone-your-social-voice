@@ -53,6 +53,52 @@ export const POLL_INTERVAL_MS = 30000;
 export const OFFLINE_THRESHOLD_MS = 150000;
 
 /**
+ * How far into the FUTURE a `last_seen_at` may be and still count as online.
+ *
+ * This is the lower bound the freshness comparison was missing, and it is the whole
+ * of the fix for a dot that stays green far longer than any window in this file.
+ *
+ * `isOnline` used to ask only `Date.now() - seen < OFFLINE_THRESHOLD_MS`. That is
+ * a one-sided test. A `last_seen_at` LATER than the reader's own clock produces a
+ * NEGATIVE age, and a negative number is less than any positive threshold - so the
+ * dot renders green and stays green. Not for 150s. For as long as the offset
+ * lasts, which for a device whose clock is persistently wrong is forever: the
+ * offset never closes, because both clocks advance at the same rate, so every
+ * subsequent heartbeat is stamped just as far in the future as the last one and
+ * no amount of polling or refreshing can ever age the value out. The reported
+ * symptom - a partner green for "more than 15 minutes, sometimes even longer",
+ * with no number that the threshold can explain - is that shape. 150000 is 150
+ * SECONDS; there is no 15-minute window anywhere in the presence path, and the
+ * only way a dot outlives the window by an unbounded amount is a timestamp that
+ * the comparison was never able to reject.
+ *
+ * WHERE THE OFFSET COMES FROM. The column is written with the GATEWAY's clock, not
+ * the writer's: `writePresenceHeartbeat` in the gateway calls `new Date()` and
+ * sends the result, so the writer's own device clock cannot skew the value. What
+ * can skew it is the READER's, and `isOnline` compares the gateway's stamp against
+ * the browser's `Date.now()`. A reader whose clock is behind the gateway's is the
+ * whole failure. A laptop that boots on a dead RTC battery and has not yet
+ * resynchronised is the ordinary case, and a permanent offset is a permanent
+ * wrong answer rather than a temporary one.
+ *
+ * WHY 60s. The two clocks in question are a serverless runtime and a browser, so
+ * real skew is milliseconds and NTP keeps it there; 60s is a thousandfold margin
+ * that still covers a reader which has not finished synchronising. It is also
+ * short enough to be irrelevant next to the thing it guards: with the bound in
+ * place a skewed reader resolves a stuck-forever dot into at most 60s of green
+ * past the last real heartbeat, after which the ordinary 150s window applies and
+ * the dot ages out on schedule like any other.
+ *
+ * The failure direction is the point. A timestamp this far ahead is not evidence
+ * that anyone is connected - it is evidence that the reader cannot measure the
+ * interval - so it is answered OFFLINE, the same direction as an unparseable
+ * value, and never as online. Showing a genuinely-online partner as gray for a
+ * minute is a cosmetic miss that a heartbeat clears; showing a departed partner
+ * as green indefinitely is the bug this exists to remove.
+ */
+export const MAX_CLOCK_SKEW_MS = 60000;
+
+/**
  * The value `profiles.last_seen_at` is set to when a user explicitly logs out.
  *
  * MUST stay byte-equal to `PRESENCE_LOGGED_OUT_AT` in `gateway/src/features/
@@ -117,7 +163,61 @@ export function isOnline(lastSeenAt?: string | null): boolean {
   // NaN in a comparison yields false, so this is already the safe branch, but
   // stating it keeps the intent from being "reversed" by a later edit.
   if (Number.isNaN(seen)) return false;
-  return Date.now() - seen < OFFLINE_THRESHOLD_MS;
+  const age = Date.now() - seen;
+  // The lower bound, and the reason a dot could previously stay green with no
+  // upper limit at all. See MAX_CLOCK_SKEW_MS: a stamp from the future makes the
+  // age negative, and a negative age satisfies the freshness test forever, so a
+  // reader whose clock is behind the gateway's saw every partner as permanently
+  // online. Rejecting it here makes the window two-sided, which is what a
+  // freshness window has to be to mean anything.
+  if (age < -MAX_CLOCK_SKEW_MS) return false;
+  return age < OFFLINE_THRESHOLD_MS;
+}
+
+/**
+ * How many of `stamps` this client rejects for being from the future, warning
+ * once per page load when there are any.
+ *
+ * This exists because of what the lower bound in `isOnline` does to a reader with
+ * a broken clock. Before it, that reader saw every partner green forever. After
+ * it, that reader sees every partner gray - which is the safe direction, but it
+ * is a *different* wrong answer, and silently swapping one for the other would
+ * hand the next person a fresh bug report with nothing pointing at the cause. The
+ * whole reason this took six rounds to find is that the presence path was
+ * invisible while it was broken: a write that never ran, a marker that was never
+ * written, and a comparison that could not say no all produced no output
+ * anywhere. A clock that cannot be measured should not be silent either.
+ *
+ * Module-level rather than per-call so a reader with twenty stale conversations
+ * does not print twenty lines on every refresh round, and so the count is
+ * returned for the caller to assert on rather than being trapped in console
+ * output.
+ */
+let warnedClockSkew = false;
+
+export function reportClockSkew(stamps: Array<string | null | undefined>): number {
+  const now = Date.now();
+  const ahead = stamps.filter((s) => {
+    if (!s) return false;
+    const seen = new Date(s).getTime();
+    return !Number.isNaN(seen) && now - seen < -MAX_CLOCK_SKEW_MS;
+  }).length;
+  if (ahead > 0 && !warnedClockSkew) {
+    warnedClockSkew = true;
+    console.warn(
+      `[presence] ${ahead} of ${stamps.length} partner timestamps are more than ` +
+        `${MAX_CLOCK_SKEW_MS / 1000}s ahead of this device's clock, so they are ` +
+        'being read as offline. If every dot is unexpectedly gray, check this ' +
+        "device's system clock - the gateway stamps presence with its own clock, " +
+        'so the offset is local.'
+    );
+  }
+  return ahead;
+}
+
+/** Reset the once-per-load warning latch. Exported so tests can re-arm it. */
+export function resetClockSkewWarning(): void {
+  warnedClockSkew = false;
 }
 
 export function formatLastSeen(lastSeenAt?: string | null): string {
@@ -132,6 +232,16 @@ export function formatLastSeen(lastSeenAt?: string | null): string {
   const lastSeen = new Date(lastSeenAt);
   const now = new Date();
   const diffMs = now.getTime() - lastSeen.getTime();
+  // Two values this cannot put a truthful time on, and both answer the same way
+  // as isOnline: no claim. An unparseable string would otherwise fall through
+  // every branch below - each comparison against NaN is false - and render the
+  // literal text "Invalid Date" in the conversation list. A stamp from the future
+  // has a negative diff, so `diffMins < 1` would report "Just now" for a
+  // partner whose dot `isOnline` has already decided is gray, which is the same
+  // disagreement in the other direction. "Offline" is what the call sites show
+  // for an absent timestamp and is what a gray dot with no usable time behind it
+  // should read as.
+  if (Number.isNaN(diffMs) || diffMs < -MAX_CLOCK_SKEW_MS) return 'Offline';
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
