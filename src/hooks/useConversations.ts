@@ -16,6 +16,7 @@ import { playMessageNotification } from '@/lib/notificationSounds';
 import { parseCallLog, callLogLabel, formatCallDuration } from '@/lib/callLog';
 import { subscribeToMessages, getMessageRealtime } from '@/lib/messageRealtime';
 import { ensureMessageRequest, hasAcceptedFriendship } from '@/lib/messageRequests';
+import { notifyConversationRead } from '@/lib/unreadBadgeBus';
 import { isOnline, reportClockSkew, POLL_INTERVAL_MS as PRESENCE_POLL_INTERVAL_MS } from '@/hooks/usePresence';
 import { logVoiceInsert } from '@/lib/voiceDiagnostics';
 
@@ -1546,6 +1547,14 @@ export const useConversations = (currentUserId?: string) => {
           c.conversation_id === conversationId ? { ...c, unread_count: 0 } : c
         ));
       }
+
+      // The global Messages-nav badge keeps its own unread-conversation set
+      // (hooks/useUnreadConversationCount.tsx). It cannot see this hook's
+      // conversation list and hears no SSE event for a local read (message.read
+      // flows to the senders, not to the reader), so it is told directly: this
+      // conversation just became fully read and must leave the badge set
+      // immediately (do.md §7).
+      notifyConversationRead(conversationId);
 
       // Ping every other participant who sent a message in this conversation so
       // their clients flip seen states without waiting for a refetch. A DM has

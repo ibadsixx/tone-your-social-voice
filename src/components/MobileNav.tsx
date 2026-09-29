@@ -8,6 +8,8 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { useUnreadConversationCount } from '@/hooks/useUnreadConversationCount';
 
 interface MobileNavProps {
   guest?: boolean;
@@ -27,6 +29,7 @@ const mainNav = [
 
 const MobileNav = ({ guest, profilePic, displayName, email, actingPageName, actingPagePic, avatarMenu }: MobileNavProps) => {
   const location = useLocation();
+  const { count: unreadMessageCount } = useUnreadConversationCount();
   // Logged-out visitors get Home + Search only; the Messages entry and the
   // account sheet are replaced with a Sign in link.
   const items = guest ? mainNav.filter((item) => item.href !== '/messages') : mainNav;
@@ -49,7 +52,14 @@ const MobileNav = ({ guest, profilePic, displayName, email, actingPageName, acti
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              <Icon className="h-4 w-4" />
+              <span className="relative">
+                <Icon className="h-4 w-4" />
+                {item.label === 'Messages' && unreadMessageCount > 0 && (
+                  <Badge className="absolute -top-1.5 -right-2.5 h-3.5 min-w-3.5 px-1 text-[9px] leading-none bg-red-500 text-white flex items-center justify-center">
+                    {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                  </Badge>
+                )}
+              </span>
             </Link>
           );
         })}

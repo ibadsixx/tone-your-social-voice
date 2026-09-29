@@ -47,6 +47,7 @@ function getToken(): string | null {
 export class UserRealtimeChannel {
   private userId: string;
   private listeners: Array<{ event: string; callback: RealtimeCallback }> = [];
+  private reconnectCallbacks: Array<() => void> = [];
   private connId: string | null = null;
   private controller: AbortController | null = null;
   private retryTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -60,6 +61,22 @@ export class UserRealtimeChannel {
   on(event: string, callback: RealtimeCallback): this {
     this.listeners.push({ event, callback });
     return this;
+  }
+
+  /**
+   * Run `callback` whenever the stream (re)connects. Every successful
+   * connection — the first one and each reconnect — begins with an `init`
+   * frame carrying a fresh `connId`, so this fires exactly there. The global
+   * unread-badge provider uses it as its polling-free resync signal (do.md
+   * §15 reconnect): events that were lost while the stream was down are
+   * re-read from the server. Returns an unsubscribe.
+   */
+  onReconnect(callback: () => void): () => void {
+    this.reconnectCallbacks.push(callback);
+    return () => {
+      const idx = this.reconnectCallbacks.indexOf(callback);
+      if (idx !== -1) this.reconnectCallbacks.splice(idx, 1);
+    };
   }
 
   start(): void {
@@ -201,6 +218,13 @@ export class UserRealtimeChannel {
         this.connId = JSON.parse(data)?.connId ?? null;
       } catch {
         // ignore malformed init
+      }
+      for (const cb of [...this.reconnectCallbacks]) {
+        try {
+          cb();
+        } catch {
+          // a resync consumer must never take the stream down
+        }
       }
       return;
     }

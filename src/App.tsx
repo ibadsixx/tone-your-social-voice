@@ -10,6 +10,7 @@ import { CallProvider } from "@/contexts/CallContext";
 import { PageSwitchProvider } from "@/contexts/PageSwitchContext";
 import { IncomingCallModal, ActiveCallWindow } from "@/components/calls";
 import { PresenceHeartbeat } from "@/components/presence/PresenceHeartbeat";
+import { UnreadBadgeProvider } from "@/hooks/useUnreadConversationCount";
 import Layout from "@/components/Layout";
 import Home from "@/pages/Home";
 import RequireAuth from "@/components/RequireAuth";
@@ -59,6 +60,13 @@ const App = () => (
             out of everyone else's green dot while still signed in. Mounted here,
             above the router, exactly once, and it renders nothing. */}
         <PresenceHeartbeat />
+        {/* The unread Messages badge is a property of the SESSION, not of a
+            route: it must stay alive (and keep the shared message realtime
+            subscription alive) while the user is on Home, Profile, Groups,
+            Search or Settings, and it must clear when they log out. Mounted
+            here, above the router, exactly once; renders nothing itself, feeds
+            the Messages icons in Layout and MobileNav. */}
+        <UnreadBadgeProvider>
         <CallProvider>
           <PageSwitchProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
@@ -154,6 +162,7 @@ const App = () => (
           </ThemeProvider>
           </PageSwitchProvider>
         </CallProvider>
+        </UnreadBadgeProvider>
       </AuthProvider>
     </BrowserRouter>
   </QueryClientProvider>

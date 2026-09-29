@@ -14,6 +14,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { useEffect, useState } from 'react';
 import { gateway } from '@/lib/gateway';
+import { Badge } from '@/components/ui/badge';
+import { useUnreadConversationCount } from '@/hooks/useUnreadConversationCount';
 import FriendRequestsDropdown from '@/components/FriendRequestsDropdown';
 import MobileNav from '@/components/MobileNav';
 import CreateReelDialog from '@/components/CreateReelDialog';
@@ -290,6 +292,11 @@ const Layout = () => {
   const isMobile = useIsMobile();
   const [reelDialogOpen, setReelDialogOpen] = useState(false);
 
+  // Global unread Messages badge (do.md "Fix the Messages unread notification
+  // badge"): the provider above the router owns the count for the whole
+  // session, including on every page where no chat UI is mounted.
+  const { count: unreadMessageCount } = useUnreadConversationCount();
+
   // Guest/public access (do.md): the app keeps a single Layout shell, so route
   // protection is decided here. Public routes render immediately (even before
   // auth resolves — getSession is instant when a token exists and can take up
@@ -470,7 +477,14 @@ const Layout = () => {
                             : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
                         }`}
                       >
-                        <Icon className="h-5 w-5" />
+                        <span className="relative">
+                          <Icon className="h-5 w-5" />
+                          {item.name === 'Messages' && unreadMessageCount > 0 && (
+                            <Badge className="absolute -top-2 -right-2.5 h-4 min-w-4 px-1 text-[10px] leading-none bg-red-500 text-white flex items-center justify-center">
+                              {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                            </Badge>
+                          )}
+                        </span>
                       </Link>
                     </TooltipTrigger>
                     <TooltipContent side="right">
