@@ -1641,6 +1641,52 @@ class GatewayClient {
   }
 
   /**
+   * "Is at least one of my accepted friends currently online?" (do.md "green
+   * online-friends indicator on the mobile Messages icon").
+   *
+   * A BOOLEAN plus the instant it can first become false - not a roster. Which
+   * friend is online is more presence information than a nav dot needs, and this
+   * call exists precisely so the browser never has to work it out from a friend
+   * list plus a batch of `last_seen_at` stamps on a timer.
+   *
+   * `offlineAt` is why this is not polling: presence ages out silently, so no
+   * event announces that a friend closed the app. The server therefore also
+   * reports the soonest moment this answer can flip to false, and the caller arms
+   * ONE timeout for it instead of asking again every N seconds. A failed read
+   * returns `error` and callers keep whatever they already had - an error must
+   * never read as "nobody is online".
+   */
+  presenceOnlineFriends(): Promise<{
+    data: { hasOnlineFriend: boolean; offlineAt: string | null } | null;
+    error: { message: string; code?: string } | null;
+  }> {
+    if (!this._baseUrl) {
+      return Promise.resolve({ data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } });
+    }
+    const token = getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    return fetch(`${this._baseUrl}/api/presence/online-friends`, {
+      method: 'POST',
+      headers,
+      // `no-store` for the same reason as the heartbeat: a cached `true` would keep
+      // a green dot on the nav for as long as the entry lived, long after the
+      // friend it described had gone.
+      cache: 'no-store',
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({ message: res.statusText }));
+          return { data: null, error: { message: errBody.message || errBody.error || res.statusText, code: String(res.status) } };
+        }
+        const json = await res.json().catch(() => null);
+        return { data: json, error: null };
+      })
+      .catch((err) => ({ data: null, error: { message: String(err) } }));
+  }
+
+  /**
    * Real server-side totals for a profile's relationships. The friends /
    * following / followers COUNT is public profile metadata (do.md): the
    * gateway returns the actual totals even when the underlying list is not

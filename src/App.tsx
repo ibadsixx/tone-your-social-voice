@@ -11,6 +11,7 @@ import { PageSwitchProvider } from "@/contexts/PageSwitchContext";
 import { IncomingCallModal, ActiveCallWindow } from "@/components/calls";
 import { PresenceHeartbeat } from "@/components/presence/PresenceHeartbeat";
 import { UnreadBadgeProvider } from "@/hooks/useUnreadConversationCount";
+import { OnlineFriendsProvider } from "@/hooks/useOnlineFriends";
 import Layout from "@/components/Layout";
 import Home from "@/pages/Home";
 import RequireAuth from "@/components/RequireAuth";
@@ -67,6 +68,16 @@ const App = () => (
             here, above the router, exactly once; renders nothing itself, feeds
             the Messages icons in Layout and MobileNav. */}
         <UnreadBadgeProvider>
+        {/* "A friend of mine is online" is also a property of the SESSION, not of a
+            route: the dot on the mobile Messages icon has to be right on Home,
+            Profile, Groups, Search and Settings, not only on the Messages page, and
+            it has to clear on sign-out and when accounts change. Mounted here,
+            alongside the badge, exactly once; renders nothing itself.
+
+            It deliberately adds no subscription: it listens for `presence.updated` on
+            the SAME shared ref-counted `user:<myId>` SSE channel the unread badge
+            already holds open, and it polls nothing. */}
+        <OnlineFriendsProvider>
         <CallProvider>
           <PageSwitchProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
@@ -162,6 +173,7 @@ const App = () => (
           </ThemeProvider>
           </PageSwitchProvider>
         </CallProvider>
+        </OnlineFriendsProvider>
         </UnreadBadgeProvider>
       </AuthProvider>
     </BrowserRouter>

@@ -10,6 +10,7 @@ import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { useUnreadConversationCount } from '@/hooks/useUnreadConversationCount';
+import { useOnlineFriends } from '@/hooks/useOnlineFriends';
 
 interface MobileNavProps {
   guest?: boolean;
@@ -30,6 +31,13 @@ const mainNav = [
 const MobileNav = ({ guest, profilePic, displayName, email, actingPageName, actingPagePic, avatarMenu }: MobileNavProps) => {
   const location = useLocation();
   const { count: unreadMessageCount } = useUnreadConversationCount();
+  // MOBILE ONLY (do.md "green online-friends indicator"). The desktop rail in
+  // Layout.tsx deliberately does NOT read this hook, so the dot cannot appear there
+  // even if the desktop badge is later refactored - the indicator is absent by not
+  // being consumed, rather than hidden by a media query that a layout change could
+  // undo. The two indicators are independent: each renders from its own value, so
+  // either, both, or neither can be on screen at once.
+  const { hasOnlineFriend } = useOnlineFriends();
   // Logged-out visitors get Home + Search only; the Messages entry and the
   // account sheet are replaced with a Sign in link.
   const items = guest ? mainNav.filter((item) => item.href !== '/messages') : mainNav;
@@ -55,9 +63,31 @@ const MobileNav = ({ guest, profilePic, displayName, email, actingPageName, acti
               <span className="relative">
                 <Icon className="h-4 w-4" />
                 {item.label === 'Messages' && unreadMessageCount > 0 && (
-                  <Badge className="absolute -top-1.5 -right-2.5 h-3.5 min-w-3.5 px-1 text-[9px] leading-none bg-red-500 text-white flex items-center justify-center">
+                  <Badge data-testid="messages-unread-badge" className="absolute -top-1.5 -right-2.5 h-3.5 min-w-3.5 px-1 text-[9px] leading-none bg-red-500 text-white flex items-center justify-center">
                     {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
                   </Badge>
+                )}
+                {/* The green online-friends dot. BOTTOM-LEFT, and that is the whole
+                    design decision: the unread badge owns the top-right corner, so
+                    putting the dot anywhere near it would either overlap the count or
+                    force the badge to move. Two corners, two indicators, no
+                    collision, and both keep their existing geometry. `border-card`
+                    matches the ring the other online dots in the app use (see
+                    ConversationList) and the nav bar's own background, so the dot
+                    reads as cut out of the bar rather than floating over it.
+
+                    `absolute` is what keeps the row from jumping: the dot occupies no
+                    layout space, so the link is the same 40x40 whether it is present
+                    or absent. It is conditional on `hasOnlineFriend` alone, never on
+                    the unread count, which is what makes the two independent - and a
+                    logged-out session gets no dot, since the provider reports false
+                    until a verified caller exists. */}
+                {item.label === 'Messages' && hasOnlineFriend && (
+                  <span
+                    data-testid="messages-online-friends-dot"
+                    aria-hidden="true"
+                    className="absolute -bottom-1 -left-1.5 w-2.5 h-2.5 rounded-full border-2 border-card bg-green-500"
+                  />
                 )}
               </span>
             </Link>
