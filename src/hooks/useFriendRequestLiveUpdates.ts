@@ -93,11 +93,25 @@ export const useFriendRequestLiveUpdates = (
 
     const onFocus = () => refresh();
     const onFriendRequestSent = () => refresh();
+    // Returning to the app on a PHONE. `window focus` is unreliable across app
+    // switches on mobile, and the 15 s tick above is gated on the tab being visible,
+    // so without this the pending-request badge could only ever be as fresh as the
+    // moment the user backgrounded the app. Same listener `useNotifications` and
+    // `useOnlineFriends` already use; guarded on `!document.hidden` so the event that
+    // HID the tab does not spend a request.
+    const onVisibility = () => {
+      if (!document.hidden) refresh();
+    };
     window.addEventListener('focus', onFocus);
+    // On `document`, NOT on `window`. `visibilitychange` is dispatched at the Document
+    // with `bubbles: false`, so a window-level listener never fires — a mistake this
+    // file made once already and the accompanying test now pins.
+    document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener(FRIEND_REQUEST_SENT_EVENT, onFriendRequestSent);
 
     return () => {
       window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener(FRIEND_REQUEST_SENT_EVENT, onFriendRequestSent);
       subscribers.delete(refresh);
       if (subscribers.size === 0) stopSharedPolling();

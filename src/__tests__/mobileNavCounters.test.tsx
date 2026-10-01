@@ -11,13 +11,19 @@
 // re-implementing the header inside the test where a passing run would prove
 // nothing about the shipping component.
 //
-// NOTHING HERE POLLS OR SLEEPS FOR REAL. Freshness in the app comes from three
-// existing mechanisms, and each is exercised deliberately:
-//   * `window focus`            -> refetch, in both providers.
-//   * `tone:friend-request-sent`-> refetch, for friend requests.
+// NOTHING HERE POLLS OR SLEEPS FOR REAL. Freshness in the app comes from
+// pre-existing mechanisms, and each is exercised deliberately:
+//   * `window focus`             -> refetch, in both providers.
+//   * `tone:friend-request-sent` -> refetch, for friend requests.
 //   * the `notifications-changes` postgres_changes channel -> refetch, for
-//     notifications. One test fires this to prove the Realtime path works, which
-//     matters because it is the only push path these counters have.
+//     notifications. One test fires this to prove the WIRING is intact — the
+//     handler reaches the refetch — and that is all it proves. `GatewayChannel` in
+//     `src/lib/gateway.ts` is a stub whose `subscribe()` sets a boolean and calls
+//     back with 'SUBSCRIBED'; it stores `postgres_changes` callbacks in a private
+//     array that nothing ever invokes. So this channel is not a delivery path in
+//     production, and a passing run here must not be read as "the badge is
+//     push-updated". The reconnect and return-to-app paths, which DO have a real
+//     transport behind them, are in `mobileNavCountersReconnect.test.tsx`.
 // No test advances the 15 s interval; that would test the clock, not the badge.
 import { render, act, cleanup, waitFor, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
@@ -604,5 +610,136 @@ describe('no duplicate infrastructure', () => {
     const friendIntervals = setIntervalSpy.mock.calls.filter(c => c[1] === 15000).length;
     // Two consumers mounted (the provider and the page), still one interval.
     expect(friendIntervals).toBeLessThanOrEqual(1);
+  });
+});
+
+/**
+ * do.md §"UI consistency" asks for six things that are normally "verified" by
+ * staring at the badge: visible on small screens, correct positioning, no clipping
+ * from `overflow`, no accidental `display:none`, correct z-index, no layout
+ * jumping. Five of the six are CSS, and jsdom loads no stylesheet, so
+ * `getComputedStyle` returns empty strings for every Tailwind utility and a
+ * computed-style assertion would pass no matter what the component rendered.
+ *
+ * These tests therefore assert the thing a regression would actually change: the
+ * CLASS LIST on the badge and on every ancestor between it and the document, plus
+ * the DOM shape. A future edit that adds `overflow-hidden` to the header, or
+ * `hidden` to a wrapper, fails here instead of shipping an invisible badge.
+ *
+ * What is deliberately NOT claimed: real pixel geometry. `getBoundingClientRect()`
+ * is all zeros in jsdom, so "no layout jumping" is asserted structurally (the
+ * button's class list is byte-identical with and without a badge, and the badge is
+ * `absolute`) rather than by measurement. The measurement is the manual phone
+ * check.
+ */
+describe('UI consistency', () => {
+  /** Class utilities that apply at EVERY width, keyed by what they would break. */
+  const ALWAYS_ON_DENYLIST = [
+    { cls: 'hidden', breaks: 'display:none at all widths' },
+    { cls: 'overflow-hidden', breaks: 'clips a badge that overhangs the icon' },
+    { cls: 'overflow-x-hidden', breaks: 'clips the badge horizontally' },
+    { cls: 'overflow-y-hidden', breaks: 'clips the badge vertically' },
+    { cls: 'overflow-clip', breaks: 'clips the badge' },
+    { cls: 'invisible', breaks: 'visibility:hidden' },
+    { cls: 'opacity-0', breaks: 'invisible while still occupying space' },
+  ];
+
+  /**
+   * Width-prefixed utilities are allowed, and the reason is specific rather than
+   * convenient: `md:hidden` only applies at >=768px, and this badge only ever
+   * renders BELOW 768px (the mobile branch is chosen in JS by `useIsMobile`, not by
+   * a media query). A bare `hidden` would apply at mobile widths and is denied.
+   */
+  const appliesAtMobileWidth = (cls: string) => !/^(sm|md|lg|xl|2xl):/.test(cls);
+
+  const classList = (el: Element) =>
+    (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+
+  /** Every element from `el` up to `<body>`, innermost first. */
+  const ancestors = (el: Element) => {
+    const chain: Element[] = [];
+    for (let node: Element | null = el; node && node.tagName !== 'BODY'; node = node.parentElement) {
+      chain.push(node);
+    }
+    return chain;
+  };
+
+  const expectNoDeniedClass = (el: Element, label: string) => {
+    const violations: string[] = [];
+    for (const node of ancestors(el)) {
+      for (const cls of classList(node)) {
+        for (const denied of ALWAYS_ON_DENYLIST) {
+          if (cls === denied.cls && appliesAtMobileWidth(cls)) {
+            violations.push(`<${node.tagName.toLowerCase()} class="${cls}"> ${denied.breaks}`);
+          }
+        }
+      }
+    }
+    expect(violations, `${label} must not be hidden or clipped`).toEqual([]);
+  };
+
+  it('anchors the badge with an absolutely positioned badge inside a relative button', async () => {
+    render(<Harness />);
+    await firstFetch();
+    await withUnread(3);
+    const badge = bell()!;
+    const button = badge.parentElement!;
+
+    // The button was already `relative`, which is what anchors the badge; the badge
+    // is out of flow, so it cannot push the icon or change the hit area.
+    expect(classList(button)).toContain('relative');
+    expect(classList(badge)).toContain('absolute');
+    expect(classList(badge)).toContain('-top-1');
+    expect(classList(badge)).toContain('-right-1');
+    // Same corner as the desktop badge, so the two never disagree about placement.
+    expect(classList(badge)).toContain('bg-red-500');
+  });
+
+  it('has no overflow-clipping and no hidden ancestor between the badge and the body', async () => {
+    render(<Harness />);
+    await firstFetch();
+    await withUnread(1);
+    await addRequestsViaEvent('r1');
+    await waitFor(() => expect(requests()).not.toBeNull());
+
+    expectNoDeniedClass(bell()!, 'the notifications badge');
+    expectNoDeniedClass(requests()!, 'the friend-requests badge');
+
+    // The badge must not be the thing that is invisible: it is a sibling of the
+    // icon inside the button, not a screen-reader-only node.
+    expect(classList(bell()!)).not.toContain('sr-only');
+    expect(bell()!.textContent).toBe('1');
+  });
+
+  it('does not change the button when the badge appears or disappears', async () => {
+    render(<Harness />);
+    await firstFetch();
+
+    // No badge yet: capture the bare button, so the two states can be compared
+    // without relying on the badge existing in both.
+    const button = screen.getByTestId('mobile-bell-button');
+    const bare = { cls: button.getAttribute('class'), children: button.children.length };
+    expect(bell()).toBeNull();
+    // The icon is the ONLY thing in the button until a count exists. Asserted rather
+    // than assumed, because an extra in-flow sibling (even a visually-hidden one)
+    // would shift the icon inside a 36x36 box and the badge-vs-no-badge delta alone
+    // would not notice it.
+    expect(bare.children).toBe(1);
+    expect(button.children[0].tagName.toLowerCase()).toBe('svg');
+
+    await withUnread(2);
+    const withBadge = bell()!.parentElement!;
+    expect(withBadge.getAttribute('class')).toBe(bare.cls);
+    expect(withBadge.children.length).toBe(bare.children + 1);
+
+    // And back to nothing: the class list is untouched and the extra child is gone,
+    // so the header cannot jump between the two states.
+    state.unread = 0;
+    state.notifications = [];
+    await refresh();
+    expect(bell()).toBeNull();
+    const after = screen.getByTestId('mobile-bell-button');
+    expect(after.getAttribute('class')).toBe(bare.cls);
+    expect(after.children.length).toBe(bare.children);
   });
 });

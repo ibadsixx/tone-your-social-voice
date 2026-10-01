@@ -419,6 +419,7 @@ const Layout = () => {
                 {isMobile ? (
                   <button
                     type="button"
+                    data-testid="mobile-bell-button"
                     onClick={() => navigate('/notifications')}
                     className="relative hover:bg-tone-purple/10 hover:text-tone-purple transition-colors h-9 w-9 rounded-full flex items-center justify-center"
                   >
@@ -439,6 +440,7 @@ const Layout = () => {
                 {isMobile ? (
                   <button
                     type="button"
+                    data-testid="mobile-friend-requests-button"
                     onClick={() => navigate('/friends/requests')}
                     className="relative hover:bg-tone-purple/10 hover:text-tone-purple transition-colors h-9 w-9 rounded-full flex items-center justify-center"
                   >

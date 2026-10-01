@@ -1,30 +1,39 @@
 // do.md, "Fix the mobile navigation so these two icons display their correct
-// counters in real time" — verification for the Notifications bell badge and the
-// Friend Requests badge on the mobile header.
+// counters in real time" — the SSE RECONNECT half of the verification, kept in
+// its own file for worker-heap reasons (see the note at the bottom).
 //
-// SESSION-LIFETIME half of the do.md verification, split into its own file.
+// do.md §"Authentication and logout", item 4: "Realtime reconnects -> counters
+// synchronize correctly."
 //
-// The badge values themselves are asserted in `mobileNavCounters.test.tsx`, which
-// shares this exact mock setup. This file covers what happens to those values
-// across the boundaries of a session: first load, sign-out, and switching to
-// another account, plus the counters surviving navigation between pages.
+// WHY THIS NEEDS ITS OWN SUITE. The gateway caps its SSE functions at 300 s, so on
+// any long-lived session the stream drops and reconnects routinely. Nothing that
+// happened during the gap was delivered to anybody, so a counter that does not
+// re-read on reconnect is simply wrong until some unrelated event nudges it — and
+// on a phone, where an app switch or a backgrounded tab pauses the 15 s interval,
+// "unrelated event" can be a long time. These tests fire the app's own reconnect
+// hook and assert both counters return to the server truth with no reload, no
+// focus event and no interval tick.
 //
-// WHY IT IS A SEPARATE FILE. Each test mounts the real `Layout`, which drags in the
-// whole app shell. Twenty-plus of those mounts in one worker exhausts the heap and
-// the run dies of an OOM with no React warning and no failing assertion — a
-// green-looking test report truncated at 18/22. Splitting the file halves the
-// per-worker shell count, so the suite reports honestly. It is a harness-hygiene
-// split, not a behavioural one; the two files share identical mocks on purpose, so
-// a change to the fixtures has to be made in both.
+// The counter-independence proof that rides along here is the anti-duplication
+// one: the two providers must OBSERVE the shared `user:<myId>` stream through
+// `getMessageRealtime` (which does not ref-count) rather than SUBSCRIBE to it with
+// `subscribeToMessages` (which does). Otherwise a badge could hold a stream open
+// on its own, which is exactly the "duplicate Realtime subscriptions" and "one
+// subscription per navigation icon" that do.md forbids.
 //
-// NOTHING HERE POLLS OR SLEEPS FOR REAL. Freshness in the app comes from three
-// existing mechanisms, and each is exercised deliberately:
-//   * `window focus`            -> refetch, in both providers.
-//   * `tone:friend-request-sent`-> refetch, for friend requests.
-//   * the `notifications-changes` postgres_changes channel -> refetch, for
-//     notifications. One test fires this to prove the Realtime path works, which
-//     matters because it is the only push path these counters have.
-// No test advances the 15 s interval; that would test the clock, not the badge.
+// Split from `mobileNavCountersSession.test.tsx` for the same reason the other two
+// were split: this worker exhausts its heap at around eight Layout mounts, and the
+// failure mode is a bare "Worker exited unexpectedly" with no React warning, which
+// is indistinguishable from a product hang.
+
+// The badge values themselves are asserted in `mobileNavCounters.test.tsx` and the
+// session-lifetime behaviour in `mobileNavCountersSession.test.tsx`. All three
+// files share this exact mock setup, so a fixture change has to be made in each.
+//
+// NOTHING HERE POLLS OR SLEEPS FOR REAL. These tests drive the app's own reconnect
+// hook, so what is being verified is the wiring and the resync, not the clock: no
+// test advances the 15 s interval, because that would test the timer rather than the
+// badge.
 import { render, act, cleanup, waitFor, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter, Routes, Route, useNavigate } from 'react-router-dom';
@@ -67,14 +76,12 @@ const state = vi.hoisted(() => ({
 /**
  * A faithful-enough stand-in for `src/lib/messageRealtime.ts`.
  *
- * Present in this file for two reasons. First, the real module opens an SSE stream
- * on first use, and this suite is about what a signed-out session does and does not
- * read — an unmocked stream would add a real network request to that picture.
- * Second, it reproduces the one asymmetry that matters for do.md: the real module
- * keeps ONE shared, lazily-created `UserRealtimeChannel` per user, and
- * `subscribeToMessages` increments a ref count while `getMessageRealtime`
- * deliberately does not. The counters are asserted here to use the observer, and
- * `mobileNavCountersReconnect.test.tsx` is where the ref counting is counted.
+ * The real module keeps ONE shared, lazily-created `UserRealtimeChannel` per user
+ * and hands the same object to every consumer; `subscribeToMessages` increments a
+ * ref count and `getMessageRealtime` deliberately does not. That asymmetry is the
+ * whole point of this mock: do.md forbids duplicate subscriptions, so the counters
+ * must observe the existing stream rather than add a consumer to it, and the only
+ * way to prove that is to reproduce the ref counting and then count it.
  */
 vi.mock('@/lib/messageRealtime', () => {
   let shared: { userId: string; onReconnect: (cb: () => void) => () => void } | null = null;
@@ -417,6 +424,28 @@ async function notificationRealtime() {
   await waitFor(() => expect(state.countReads).toBeGreaterThan(before));
 }
 
+/**
+ * Fires every registered `onReconnect` callback, i.e. what the gateway's SSE hub
+ * does when the stream is re-established after a drop.
+ *
+ * This is the one path that matters most for correctness and is least visible: the
+ * gateway caps its SSE functions at 300 s, so on any long-lived session the stream
+ * drops and reconnects routinely, and nothing that happened during the gap was
+ * delivered to anybody. A counter that does not re-read on reconnect is simply
+ * wrong until some unrelated event nudges it.
+ */
+async function reconnectSse() {
+  expect(state.reconnectHandlers.length).toBeGreaterThan(0);
+  const before = { counts: state.countReads, friends: state.friendSelects.length };
+  await act(async () => {
+    state.reconnectHandlers.forEach(h => h());
+  });
+  await waitFor(() => {
+    expect(state.countReads).toBeGreaterThan(before.counts);
+    expect(state.friendSelects.length).toBeGreaterThan(before.friends);
+  });
+}
+
 beforeEach(() => {
   authStore.setUser({ id: 'me' });
   state.unread = 0;
@@ -428,13 +457,13 @@ beforeEach(() => {
   state.channels = [];
   state.writes = [];
   state.insertHandlers = [];
-  // `connectionsStarted` is deliberately NOT reset. It is cumulative for the whole
-  // file, and nothing in this file asserts on it — the count is asserted in
-  // `mobileNavCountersReconnect.test.tsx`. It is left accumulating rather than zeroed
-  // because a non-zero value at the end of this file is information, not noise: this
-  // file signs in as `me` and then as `other`, and the real module — like this mock —
-  // starts a fresh stream per user id and stops the previous one. Two identities,
-  // two streams, over time, is correct and is not a leak.
+  // NOT reset, deliberately. `connectionsStarted` is cumulative for the whole file,
+  // so "one stream" is asserted as an absolute 1 across every mount in it: if any
+  // provider or badge ever opened its own connection, this number would climb and the
+  // assertion would fail. (In `mobileNavCountersSession.test.tsx` the equivalent count
+  // legitimately reaches 2, because that file signs in as a second user and the real
+  // module — like this mock — starts a fresh stream for a different user id and stops
+  // the previous one. That is one stream per IDENTITY over time, not a leak.)
   state.consumerSubscribes = 0;
   state.realtimeObservers = 0;
   state.reconnectHandlers = [];
@@ -445,170 +474,155 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('authentication, sign-out and account switch', () => {
-  it('clears both counters immediately on sign-out', async () => {
-    render(<Harness />);
-    await firstFetch();
-    await withUnread(3);
-    await addRequestsViaEvent('r1');
-    await waitFor(() => expect(bell()?.textContent).toBe('3'));
-    await waitFor(() => expect(requests()?.textContent).toBe('1'));
-
-    // NOTE: deliberately NOT wrapped in act(). Wrapping setUser in act() here makes
-    // the harness spin (act re-flushes effects while the router is also reacting to
-    // the redirect that Layout issues for a signed-out user on a protected path, and
-    // the two fight until the heap dies). A standalone probe confirmed the component
-    // tree itself is stable across sign-out: zero extra reads, DOM collapses, no
-    // growth over 850ms. So the transition is driven directly and then observed.
-    authStore.setUser(null);
-
-    await waitFor(() => {
-      expect(bell()).toBeNull();
-      expect(requests()).toBeNull();
-    });
+/**
+ * Fires the browser event a phone sends when the user switches back into the app.
+ *
+ * `document.hidden` is a read-only accessor in jsdom, so it is redefined here
+ * rather than assigned; the assertion is that the app checks it at all, because a
+ * provider that refetched on *every* visibilitychange — including the one that hid
+ * the tab — would burn a request on the way out for no reason.
+ */
+async function returnToApp() {
+  const before = { counts: state.countReads, friends: state.friendSelects.length };
+  await act(async () => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    document.dispatchEvent(new Event('visibilitychange'));
   });
+  await waitFor(() => {
+    expect(state.countReads).toBeGreaterThan(before.counts);
+    expect(state.friendSelects.length).toBeGreaterThan(before.friends);
+  });
+}
 
-  it('re-reads both systems for the next account instead of inheriting the last one\'s', async () => {
+describe('realtime reconnect (do.md §"Authentication and logout", item 4)', () => {
+  it('re-reads both counters when the SSE stream reconnects', async () => {
     render(<Harness />);
     await firstFetch();
-    await withUnread(5);
-    await addRequestsViaEvent('r1');
+
+    // While the stream is down nothing can be delivered, so the values on screen go
+    // stale silently — which is exactly what the reconnect has to repair.
+    state.unread = 5;
+    state.notifications = [];
+    state.pending = [
+      { id: 'r1', requester_id: 'u1', created_at: new Date().toISOString() },
+      { id: 'r2', requester_id: 'u2', created_at: new Date().toISOString() },
+      { id: 'r3', requester_id: 'u3', created_at: new Date().toISOString() },
+    ];
+
+    await reconnectSse();
+
+    // The counts on screen were 0 before the reconnect and must now be the server
+    // truth, with no page reload, no focus event and no interval tick.
     await waitFor(() => expect(bell()?.textContent).toBe('5'));
-    const readsBeforeSwitch = state.countReads;
-
-    // Not wrapped in act(), for the same reason as the sign-out test: an account
-    // switch makes Layout re-evaluate its guest/redirect branch, and act() re-flushes
-    // effects while the router reacts to that, which spins the harness.
-    authStore.setUser({ id: 'other' });
-
-    // Both systems must go and ask the server for the NEW account rather than keep
-    // the previous account's numbers. This is the assertion that would have failed
-    // before `useFriendRequestLiveUpdates` was keyed on the user id instead of a
-    // boolean: an account switch leaves "is signed in" true, so the effect never
-    // re-ran and the new account was simply never fetched.
-    await waitFor(() => {
-      expect(queriedFor('other')).toBe(true);
-    });
-    await waitFor(() => {
-      expect(state.countReads).toBeGreaterThan(readsBeforeSwitch);
-    });
-
-    // And the previous account's queries are still on record, i.e. the switch
-    // produced genuinely new reads rather than being a no-op.
-    expect(queriedFor('me')).toBe(true);
+    await waitFor(() => expect(requests()?.textContent).toBe('3'));
   });
 
-  it('clears on sign-out so the next session starts from its own reads', async () => {
-    // do.md §3: "another user logs in -> previous user's counters do not remain."
-    // Signing out is the observable half of that: nothing from the old session may
-    // still be painted when the new one begins.
-    authStore.setUser(null);
-    const nav = { go: (_to: string) => {} };
-    function NavCapture() {
-      nav.go = useNavigate();
-      return null;
-    }
-
-    render(
-      <NotificationsProvider>
-        <PendingFriendRequestsProvider>
-          <TooltipProvider>
-            <MemoryRouter initialEntries={['/']}>
-              <NavCapture />
-              <Routes>
-                <Route path={AUTH_ROUTE} element={<p data-testid="auth-route">auth</p>} />
-                <Route path="/" element={<Layout />}>
-                  {ROUTES.map((r) => (
-                    <Route key={r} path={r} element={<p data-testid="page">{r}</p>} />
-                  ))}
-                </Route>
-              </Routes>
-            </MemoryRouter>
-          </TooltipProvider>
-        </PendingFriendRequestsProvider>
-      </NotificationsProvider>
-    );
-
-    // Signed out on a protected path, Layout redirects to /auth and unmounts, so
-    // there is no header and therefore no badge to leak. Asserted directly, with no
-    // waiting on a read that a signed-out session correctly never performs - both
-    // providers are mounted ABOVE the router, so they still exist here and simply
-    // report nothing.
-    await waitFor(() => expect(screen.getByTestId('auth-route')).toBeTruthy());
-    expect(state.countReads).toBe(0);
-    expect(state.friendSelects).toHaveLength(0);
-    expect(bell()).toBeNull();
-    expect(requests()).toBeNull();
-
-    // Signing in and landing back on a real page: the new session must build its
-    // counters from its own reads, starting from zero, with nothing carried over.
-    authStore.setUser({ id: 'me' });
-    nav.go('/');
-    await firstFetch();
-    expect(bell()).toBeNull();
-    expect(requests()).toBeNull();
-
-    await withUnread(2);
-    await addRequestsViaEvent('r1');
-    await waitFor(() => expect(bell()?.textContent).toBe('2'));
-    await waitFor(() => expect(requests()?.textContent).toBe('1'));
-  });
-
-  it('starts both counters at zero without any page visit', async () => {
+  it('survives repeated reconnects and never drifts from the server value', async () => {
     render(<Harness />);
     await firstFetch();
+    await withUnread(1);
+    await addRequestsViaEvent('r1');
+    await waitFor(() => expect(bell()?.textContent).toBe('1'));
+
+    // Two drops in a row, with the server value changing between them. A patch-based
+    // resync (e.g. re-applying the last known delta) would get this wrong; a
+    // re-read cannot.
+    state.unread = 2;
+    await reconnectSse();
+    await waitFor(() => expect(bell()?.textContent).toBe('2'));
+
+    state.unread = 0;
+    await reconnectSse();
+    await waitFor(() => expect(bell()).toBeNull());
+  });
+
+  it('observes the existing shared stream instead of adding a subscription', async () => {
+    // do.md forbids "duplicate Realtime subscriptions" and "one subscription per
+    // navigation icon". The counters must therefore NOT go through
+    // `subscribeToMessages`, which increments the shared channel's ref count: two
+    // providers taking a ref each would let a badge keep a stream alive on its own,
+    // and would mean a nav icon owning a subscription. They use
+    // `getMessageRealtime`, which hands back the same object WITHOUT counting, so
+    // mounting and unmounting them leaves the stream's lifecycle untouched.
+    render(<Harness />);
+    await firstFetch();
+
+    // Both providers observe the shared stream...
+    expect(state.reconnectHandlers.length).toBe(2);
+    // ...neither of them took a ref-counted subscription...
+    expect(state.consumerSubscribes).toBe(0);
+    // ...and exactly one stream exists for this identity, not one per provider and
+    // not one per badge. `connectionsStarted` is cumulative across the whole file, so
+    // this stays 1 no matter how many times a later test mounts the providers again.
+    expect(state.connectionsStarted).toBe(1);
+  });
+
+  it('unregisters the resync hook on sign-out, so a signed-out session reads nothing', async () => {
+    render(<Harness />);
+    await firstFetch();
+    expect(state.reconnectHandlers.length).toBe(2);
+    const countsAtSignOut = state.countReads;
+    const friendsAtSignOut = state.friendSelects.length;
+
+    // NOT wrapped in act(), for the same reason the session suite does it that way:
+    // act() re-flushes effects while the router is also reacting to the redirect
+    // Layout issues for a signed-out user on a protected path, and the two fight until
+    // the worker dies of a heap OOM with no React warning.
+    authStore.setUser(null);
+
+    // Both providers saw the session end and dropped their reconnect hooks, so
+    // nothing is left holding a resync against a session that no longer exists.
+    await waitFor(() => expect(state.reconnectHandlers.length).toBe(0));
+
+    // And the signed-out session reads nothing at all: the counts did not move again
+    // after the sign-out, which is also what stops the previous account's numbers
+    // reappearing when the stream next reconnects. A standalone probe confirmed this
+    // is stable rather than merely slow — zero further reads over 300 ms, with the DOM
+    // collapsed and no growth.
+    //
+    // NOTE: there is deliberately no `act()` wrapping anything after the sign-out. It
+    // is not needed (nothing below mutates React state) and it is actively harmful
+    // here: `act` re-flushes effects while the router is still reacting to the
+    // redirect Layout issues for a signed-out user on a protected path, and the two
+    // fight until the worker dies of a heap OOM with no React warning — the exact
+    // failure this suite exists to avoid confusing with a product hang.
+    expect(state.countReads).toBe(countsAtSignOut);
+    expect(state.friendSelects.length).toBe(friendsAtSignOut);
     expect(bell()).toBeNull();
     expect(requests()).toBeNull();
-    expect(screen.getByTestId('page').textContent).toBe('/');
   });
 });
 
-describe('navigation between pages', () => {
-  it('keeps both counters across every authenticated page', async () => {
-    const nav = { go: (_to: string) => {} };
-    function NavCapture() {
-      nav.go = useNavigate();
-      return null;
-    }
-
-    render(
-      <NotificationsProvider>
-        <PendingFriendRequestsProvider>
-          <TooltipProvider>
-            <MemoryRouter initialEntries={['/']}>
-              <NavCapture />
-              <Routes>
-                <Route path={AUTH_ROUTE} element={<p data-testid="auth-route">auth</p>} />
-                <Route path="/" element={<Layout />}>
-                  {ROUTES.map((r) => (
-                    <Route key={r} path={r} element={<p data-testid="page">{r}</p>} />
-                  ))}
-                </Route>
-              </Routes>
-            </MemoryRouter>
-          </TooltipProvider>
-        </PendingFriendRequestsProvider>
-      </NotificationsProvider>
-    );
-
+describe('returning to the app (the mobile case)', () => {
+  it('re-reads the notifications count when the tab becomes visible again', async () => {
+    render(<Harness />);
     await firstFetch();
-    await withUnread(4);
-    await addRequestsViaEvent('r1', 'r2');
-    await waitFor(() => expect(bell()?.textContent).toBe('4'));
-    await waitFor(() => expect(requests()?.textContent).toBe('2'));
+    await withUnread(1);
+    await waitFor(() => expect(bell()?.textContent).toBe('1'));
 
-    // Layout never unmounts on a child route change, so the providers above it must
-    // survive too. Each hop goes through the real router and the badges are re-read
-    // after every one — "the count cannot change" is exactly the claim that breaks
-    // when someone later moves a provider or adds a route guard.
-    for (const route of ROUTES) {
-      await act(async () => {
-        nav.go(route);
-      });
-      await waitFor(() => expect(screen.getByTestId('page').textContent).toBe(route));
-      expect(bell()?.textContent).toBe('4');
-      expect(requests()?.textContent).toBe('2');
-    }
+    // While the app is backgrounded on a phone the 15 s interval is gated off, so the
+    // badge can only be as fresh as the moment the user left. `window focus` is not
+    // dependable across app switches on mobile, which is why this provider also
+    // listens for `visibilitychange`.
+    state.unread = 4;
+    await returnToApp();
+    await waitFor(() => expect(bell()?.textContent).toBe('4'));
+  });
+
+  it('re-reads the pending requests when the tab becomes visible again', async () => {
+    render(<Harness />);
+    await firstFetch();
+    addRequests('r1');
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(FRIEND_REQUEST_SENT_EVENT));
+    });
+    await waitFor(() => expect(requests()?.textContent).toBe('1'));
+
+    // The friend-request side gets this for free from the ONE shared
+    // `useFriendRequestLiveUpdates` interval's listener set — a second listener on an
+    // existing listener set, not a second poll and not a second provider fetch path.
+    addRequests('r2', 'r3');
+    await returnToApp();
+    await waitFor(() => expect(requests()?.textContent).toBe('3'));
   });
 });
-

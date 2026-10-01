@@ -41,6 +41,7 @@ import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useFriendRequestLiveUpdates } from '@/hooks/useFriendRequestLiveUpdates';
+import { getMessageRealtime } from '@/lib/messageRealtime';
 
 export interface PendingFriendRequest {
   id: string;
@@ -127,6 +128,33 @@ export const PendingFriendRequestsProvider = ({ children }: { children: ReactNod
   // 15 s visible-only interval, `window focus`, and `tone:friend-request-sent`.
   // Mounted once here, for the whole session.
   useFriendRequestLiveUpdates(() => void refresh(true), userId);
+
+  /**
+   * SSE (RE)CONNECT RESYNC — do.md §"Authentication and logout": "Realtime
+   * reconnects -> counters synchronize correctly."
+   *
+   * Friend requests have no realtime event of their own: there is nothing on the
+   * wire to subscribe to, which is exactly why the shared 15 s interval exists.
+   * A reconnect is still worth reacting to, because it is the moment the app can
+   * be certain its last answer is stale — the interval is visibility-gated, so a
+   * backgrounded tab may have skipped every tick since the stream dropped.
+   *
+   * `getMessageRealtime` returns the app's single shared, ref-counted SSE channel
+   * on `user:<myId>`, the same connection the conversation list, the
+   * online-friends dot and the notifications badge already observe. It does not
+   * increment the ref count and opens no new channel, so this is a callback on an
+   * existing stream, not a subscription of its own.
+   */
+  useEffect(() => {
+    if (!userId) return;
+    const userChannel = getMessageRealtime(userId);
+    const unsubscribeReconnect = userChannel?.onReconnect(() => {
+      void refresh(true);
+    });
+    return () => {
+      unsubscribeReconnect?.();
+    };
+  }, [userId, refresh]);
 
   /**
    * The row is removed only AFTER the server confirms the write, which is what the

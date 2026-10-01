@@ -29,6 +29,30 @@
 // escape hatch are all carried over verbatim from the previous implementation.
 // Nothing here adds a poll or a subscription; this file runs the same work, once.
 //
+// WHAT ACTUALLY CARRIES THE COUNT, STATED HONESTLY (do.md "Real-time behavior").
+// do.md says "use the existing Realtime infrastructure" and "do not add polling",
+// and this file does neither. But it should not be assumed that the badge is
+// push-delivered, because it is not, and the reason is worth knowing:
+//
+//   * `notifications-changes` is registered through `gateway.channel(...)`, and
+//     `GatewayChannel` in `src/lib/gateway.ts` is a STUB: `subscribe()` sets a
+//     boolean and calls back with `'SUBSCRIBED'`, `postgres_changes` handlers are
+//     stored in `_listeners`, and nothing ever invokes them. There is no WebSocket
+//     and no server push behind this client's postgres_changes. (The same stub is
+//     why `callLog.ts` needs the `tone:call-log` window-event bridge.)
+//   * The transport that genuinely delivers is the gateway's SSE hub on
+//     `user:<myId>`, which is why the reconnect resync below is registered there.
+//
+// So the badge is kept correct by the pre-existing 15 s visibility-aware interval,
+// by `window focus`, by `visibilitychange`, and now by an SSE reconnect - i.e. it
+// converges within ~15 s while the tab is visible and immediately when the user
+// comes back, without a page refresh. No polling was ADDED here, and none was
+// removed. Turning the ≤15 s convergence into true push would mean publishing a
+// new event from every code path that inserts a notification (several routes, and
+// anything the database does on its own); that is a wider change than this file
+// should make unilaterally, and a missed publisher would be a silently missed
+// update. It is deliberately not done here.
+//
 // TWO LOGOUT/ACCOUNT-SWITCH DEFECTS FIXED ON THE WAY UP (do.md §"Authentication
 // and logout"):
 //
@@ -45,6 +69,7 @@ import { gateway } from '@/lib/gateway';
 import { notificationsApi, profilesApi } from '@/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { getMessageRealtime } from '@/lib/messageRealtime';
 
 export interface Notification {
   id: string;
@@ -201,8 +226,37 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
     const onFocus = () => void fetchNotifications();
     window.addEventListener('focus', onFocus);
 
+    // Returning to the tab. `window focus` alone is not enough for this feature,
+    // because this badge is read on phones, where `focus` on `window` is
+    // unreliable across app switches while `visibilitychange` is not. Same
+    // guarantee `useOnlineFriends` already relies on.
+    const handleVisibility = () => {
+      if (!document.hidden) void fetchNotifications();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // SSE (RE)CONNECT RESYNC — do.md §"Authentication and logout": "Realtime
+    // reconnects -> counters synchronize correctly."
+    //
+    // WHY A RE-READ AND NOT A PATCH. Nothing that happened while the stream was
+    // down is recoverable from events: the events were not delivered, and there is
+    // no replay buffer. The gateway also caps its SSE functions at 300 s, so a
+    // reconnect is a normal event on a long-lived session, not an edge case. The
+    // count is therefore read again from the server, which is the only thing that
+    // can be correct after a gap.
+    //
+    // WHY THIS IS NOT A SECOND SUBSCRIPTION. `getMessageRealtime` returns the app's
+    // single shared, ref-counted SSE channel on `user:<myId>` — the same connection
+    // the conversation list and the online-friends dot already hold. It does not
+    // increment that ref count (it is an observer, not a consumer) and it opens no
+    // new channel: there is exactly one stream, and this adds a callback to it.
+    const userChannel = getMessageRealtime(userId);
+    const unsubscribeReconnect = userChannel?.onReconnect(() => {
+      void fetchNotifications();
+    });
+
     // Set up realtime subscription
-    const channel = gateway
+    const notificationsChannel = gateway
       .channel('notifications-changes')
       .on(
         'postgres_changes',
@@ -233,9 +287,11 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
     void fetchNotifications();
 
     return () => {
-      gateway.removeChannel(channel);
+      gateway.removeChannel(notificationsChannel);
       if (pollInterval) clearInterval(pollInterval);
       window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      unsubscribeReconnect?.();
       if (pollsOwned.current) {
         backgroundPollOwner = false;
         pollsOwned.current = false;
