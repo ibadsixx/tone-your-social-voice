@@ -17,6 +17,8 @@ import { gateway } from '@/lib/gateway';
 import { Badge } from '@/components/ui/badge';
 import { useUnreadConversationCount } from '@/hooks/useUnreadConversationCount';
 import FriendRequestsDropdown from '@/components/FriendRequestsDropdown';
+import { useNotifications } from '@/hooks/useNotifications';
+import { usePendingFriendRequests } from '@/hooks/usePendingFriendRequests';
 import MobileNav from '@/components/MobileNav';
 import CreateReelDialog from '@/components/CreateReelDialog';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -297,6 +299,14 @@ const Layout = () => {
   // session, including on every page where no chat UI is mounted.
   const { count: unreadMessageCount } = useUnreadConversationCount();
 
+  // The two counters do.md asked for (Oct 1, 2026). Both come from providers
+  // mounted above the router, the same ones the desktop dropdowns read - Layout is
+  // simply another consumer of global state, not a second owner of it. Reading
+  // them here costs no extra request and no extra subscription: both providers run
+  // once for the session, and these are plain context reads.
+  const { unreadCount: unreadNotifications } = useNotifications();
+  const { count: pendingFriendRequests } = usePendingFriendRequests();
+
   // Guest/public access (do.md): the app keeps a single Layout shell, so route
   // protection is decided here. Public routes render immediately (even before
   // auth resolves — getSession is instant when a token exists and can take up
@@ -383,6 +393,29 @@ const Layout = () => {
                   </PopoverContent>
                 </Popover>
 
+                {/* MOBILE BRANCHES (do.md "Fix the mobile navigation so these two
+                    icons display their correct counters"). These two buttons used
+                    to render a bare icon with nothing on it. The badge was not
+                    missing because of CSS, overflow, z-index, provider scope or a
+                    separate mobile tree - it was missing because the mobile branch
+                    rendered a DIFFERENT COMPONENT from the desktop one. Desktop gets
+                    `NotificationsDropdown` / `FriendRequestsDropdown`, which each
+                    carry the badge and the count logic; mobile got a bare <button>
+                    that only navigates. So the counter existed in the component that
+                    was being replaced.
+
+                    The fix keeps the mobile buttons exactly as they are (same icon,
+                    same size, same navigation target, still a plain button rather
+                    than a dropdown - a dropdown popover on a phone is a different
+                    feature, not a missing badge) and reads the SAME two global
+                    states the desktop dropdowns read. So there is one notification
+                    state and one friend-request state, and mobile is a consumer of
+                    them rather than a second implementation.
+
+                    `absolute -top-1 -right-1 h-4 w-4 ... bg-red-500` and the `9+`
+                    cap are copied from the desktop badges in the two dropdown
+                    components below, so this is not a new visual language. The
+                    button is already `relative`, which is what anchors it. */}
                 {isMobile ? (
                   <button
                     type="button"
@@ -390,6 +423,14 @@ const Layout = () => {
                     className="relative hover:bg-tone-purple/10 hover:text-tone-purple transition-colors h-9 w-9 rounded-full flex items-center justify-center"
                   >
                     <Bell className="h-4 w-4" />
+                    {unreadNotifications > 0 && (
+                      <Badge
+                        data-testid="mobile-notifications-badge"
+                        className="absolute -top-1 -right-1 h-4 w-4 p-0 text-xs bg-red-500 text-white flex items-center justify-center"
+                      >
+                        {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                      </Badge>
+                    )}
                   </button>
                 ) : (
                   <NotificationsDropdown />
@@ -402,6 +443,14 @@ const Layout = () => {
                     className="relative hover:bg-tone-purple/10 hover:text-tone-purple transition-colors h-9 w-9 rounded-full flex items-center justify-center"
                   >
                     <UserPlus className="h-4 w-4" />
+                    {pendingFriendRequests > 0 && (
+                      <Badge
+                        data-testid="mobile-friend-requests-badge"
+                        className="absolute -top-1 -right-1 h-4 w-4 p-0 text-xs bg-red-500 text-white flex items-center justify-center"
+                      >
+                        {pendingFriendRequests > 9 ? '9+' : pendingFriendRequests}
+                      </Badge>
+                    )}
                   </button>
                 ) : (
                   <FriendRequestsDropdown />

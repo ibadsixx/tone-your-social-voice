@@ -2,23 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { gateway } from '@/lib/gateway';
 import { usePeopleYouMayKnow } from '@/hooks/usePeopleYouMayKnow';
+import { usePendingFriendRequests } from '@/hooks/usePendingFriendRequests';
 import { useFriendRequestLiveUpdates } from '@/hooks/useFriendRequestLiveUpdates';
 import { ArrowLeft, UserCheck, UserPlus, X, Loader2, User, Users } from 'lucide-react';
-
-interface PendingRequest {
-  id: string;
-  requester_id: string;
-  requester: {
-    display_name: string;
-    username: string;
-    profile_pic: string | null;
-  } | null;
-  created_at: string;
-}
 
 interface SentRequest {
   id: string;
@@ -33,44 +22,16 @@ interface SentRequest {
 
 const FriendRequestsPage = () => {
   const navigate = useNavigate();
-  const { toast } = useToast();
   const { user } = useAuth();
-  const [requests, setRequests] = useState<PendingRequest[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  // Pending INCOMING requests come from the one global provider (do.md), shared
+  // with the desktop dropdown and the mobile header icon. This page used to keep a
+  // second copy of the same query, which is why accepting a request in the
+  // dropdown left it listed here until this page's own next fetch.
+  const { requests, loading, actionLoading, refresh, accept, reject } = usePendingFriendRequests();
   const [tab, setTab] = useState<'received' | 'sent'>('received');
   const [sentRequests, setSentRequests] = useState<SentRequest[]>([]);
   const [loadingSent, setLoadingSent] = useState(false);
   const { suggestions, loading: loadingSuggestions, sendFriendRequest, removeSuggestion } = usePeopleYouMayKnow(5);
-
-  const fetchRequests = useCallback(async (silent = false) => {
-    if (!user?.id) return;
-    if (!silent) setLoading(true);
-    try {
-      const { data, error } = await gateway
-        .from('friends')
-        .select(`
-          id,
-          requester_id,
-          created_at,
-          requester:profiles!friends_requester_id_fkey(
-            display_name,
-            username,
-            profile_pic
-          )
-        `)
-        .eq('receiver_id', user.id)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setRequests(data || []);
-    } catch (error: any) {
-      console.error('Error fetching friend requests:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id]);
 
   const fetchSentRequests = useCallback(async (silent = false) => {
     if (!user?.id) return;
@@ -102,78 +63,27 @@ const FriendRequestsPage = () => {
   }, [user?.id]);
 
   useEffect(() => {
-    fetchRequests();
+    // The received list is the provider's job now (it fetched on mount and keeps
+    // itself live); only the SENT tab is still fetched here.
     fetchSentRequests();
-  }, [fetchRequests, fetchSentRequests]);
+  }, [fetchSentRequests]);
 
+  // The SENT tab still needs its own live refresh, which the shared
+  // `useFriendRequestLiveUpdates` provided before. It is mounted here rather than
+  // in the provider because sent requests are not counted by any badge and are
+  // only ever read on this page. The received list deliberately does NOT get a
+  // second live-update hook here - the provider already owns that one, and running
+  // it twice is exactly the duplicate subscription do.md rules out.
   useFriendRequestLiveUpdates(() => {
-    fetchRequests(true);
     fetchSentRequests(true);
-  }, !!user?.id);
+  }, user?.id);
 
   const handleAccept = async (requestId: string) => {
-    setActionLoading(requestId);
-    try {
-      const { data, error } = await gateway
-        .from('friends')
-        .update({ status: 'accepted' })
-        .eq('id', requestId)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (!data) {
-        throw new Error('Request could not be accepted');
-      }
-
-      setRequests(prev => prev.filter(r => r.id !== requestId));
-      toast({
-        title: 'Friend request accepted',
-        description: 'You are now friends!',
-      });
-    } catch (error: any) {
-      console.error('[accept] failed:', error?.message, error?.code, error?.details);
-      toast({
-        title: 'Error',
-        description: 'Failed to accept friend request.',
-        variant: 'destructive',
-      });
-    } finally {
-      setActionLoading(null);
-    }
+    await accept(requestId);
   };
 
   const handleReject = async (requestId: string) => {
-    setActionLoading(requestId);
-    try {
-      const { data, error } = await gateway
-        .from('friends')
-        .update({ status: 'rejected' })
-        .eq('id', requestId)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (!data) {
-        throw new Error('Request could not be rejected');
-      }
-
-      setRequests(prev => prev.filter(r => r.id !== requestId));
-      toast({
-        title: 'Friend request rejected',
-      });
-    } catch (error: any) {
-      console.error('[reject] failed:', error?.message, error?.code, error?.details);
-      toast({
-        title: 'Error',
-        description: 'Failed to reject friend request.',
-        variant: 'destructive',
-      });
-    } finally {
-      setActionLoading(null);
-    }
+    await reject(requestId);
   };
 
   return (

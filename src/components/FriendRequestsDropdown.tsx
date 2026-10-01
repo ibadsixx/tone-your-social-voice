@@ -11,23 +11,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { gateway } from '@/lib/gateway';
 import { UserPlus, UserCheck, X, Loader2, User, Users } from 'lucide-react';
 import { usePeopleYouMayKnow, SuggestedPerson } from '@/hooks/usePeopleYouMayKnow';
-import { useFriendRequestLiveUpdates } from '@/hooks/useFriendRequestLiveUpdates';
-
-interface PendingRequest {
-  id: string;
-  requester_id: string;
-  requester: {
-    display_name: string;
-    username: string;
-    profile_pic: string | null;
-  } | null;
-  created_at: string;
-}
+import { usePendingFriendRequests } from '@/hooks/usePendingFriendRequests';
 
 interface SentRequest {
   id: string;
@@ -41,45 +29,23 @@ interface SentRequest {
 }
 
 const FriendRequestsDropdown: React.FC = () => {
-  const { toast } = useToast();
   const { user } = useAuth();
-  const [requests, setRequests] = useState<PendingRequest[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  // Pending INCOMING requests now come from the one global provider (do.md), the
+  // same state the mobile header icon and /friends/requests read. This component
+  // previously kept its own copy of the query and its own accept/reject that
+  // mutated only that copy - which is why accepting here left the page showing a
+  // request that no longer existed. `requests`, `loading`, `actionLoading`,
+  // `handleAccept` and `handleReject` are gone for exactly that reason.
+  //
+  // SENT requests and suggestions deliberately stay local: they are only needed
+  // while this dropdown or that page is open, they are not counted by any badge,
+  // and hoisting them would mean fetching them for the whole session for nothing.
+  const { requests, loading, actionLoading, refresh, accept, reject } = usePendingFriendRequests();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<'received' | 'sent'>('received');
   const [sentRequests, setSentRequests] = useState<SentRequest[]>([]);
   const [loadingSent, setLoadingSent] = useState(false);
   const { suggestions, loading: loadingSuggestions, sendFriendRequest, removeSuggestion } = usePeopleYouMayKnow(5);
-
-  const fetchRequests = useCallback(async (silent = false) => {
-    if (!user?.id) return;
-    if (!silent) setLoading(true);
-    try {
-      const { data, error } = await gateway
-        .from('friends')
-        .select(`
-          id,
-          requester_id,
-          created_at,
-          requester:profiles!friends_requester_id_fkey(
-            display_name,
-            username,
-            profile_pic
-          )
-        `)
-        .eq('receiver_id', user.id)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setRequests(data || []);
-    } catch (error: any) {
-      console.error('Error fetching friend requests:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id]);
 
   const fetchSentRequests = useCallback(async () => {
     if (!user?.id) return;
@@ -112,76 +78,22 @@ const FriendRequestsDropdown: React.FC = () => {
 
   useEffect(() => {
     if (open) {
-      fetchRequests();
+      // The incoming list is already live in the provider (it fetched on mount and
+      // refreshes on focus, on the shared interval and on the friend-request
+      // event). Refreshing it again here would be a second request for data the
+      // dropdown already has; only the SENT tab is still local, so that is the one
+      // thing worth fetching on open.
+      void refresh(true);
       fetchSentRequests();
     }
-  }, [open, fetchRequests, fetchSentRequests]);
-
-  useFriendRequestLiveUpdates(() => fetchRequests(true), !!user?.id);
+  }, [open, refresh, fetchSentRequests]);
 
   const handleAccept = async (requestId: string) => {
-    setActionLoading(requestId);
-    try {
-      const { data, error } = await gateway
-        .from('friends')
-        .update({ status: 'accepted' })
-        .eq('id', requestId)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (!data) {
-        throw new Error('Request could not be accepted');
-      }
-
-      setRequests(prev => prev.filter(r => r.id !== requestId));
-      toast({
-        title: 'Friend request accepted',
-        description: 'You are now friends!',
-      });
-    } catch (error: any) {
-      console.error('[accept] failed:', error?.message, error?.code, error?.details);
-      toast({
-        title: 'Error',
-        description: 'Failed to accept friend request.',
-        variant: 'destructive',
-      });
-    } finally {
-      setActionLoading(null);
-    }
+    await accept(requestId);
   };
 
   const handleReject = async (requestId: string) => {
-    setActionLoading(requestId);
-    try {
-      const { data, error } = await gateway
-        .from('friends')
-        .update({ status: 'rejected' })
-        .eq('id', requestId)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (!data) {
-        throw new Error('Request could not be rejected');
-      }
-
-      setRequests(prev => prev.filter(r => r.id !== requestId));
-      toast({
-        title: 'Friend request rejected',
-      });
-    } catch (error: any) {
-      console.error('[reject] failed:', error?.message, error?.code, error?.details);
-      toast({
-        title: 'Error',
-        description: 'Failed to reject friend request.',
-        variant: 'destructive',
-      });
-    } finally {
-      setActionLoading(null);
-    }
+    await reject(requestId);
   };
 
   return (

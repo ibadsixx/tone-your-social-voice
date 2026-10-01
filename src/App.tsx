@@ -12,6 +12,8 @@ import { IncomingCallModal, ActiveCallWindow } from "@/components/calls";
 import { PresenceHeartbeat } from "@/components/presence/PresenceHeartbeat";
 import { UnreadBadgeProvider } from "@/hooks/useUnreadConversationCount";
 import { OnlineFriendsProvider } from "@/hooks/useOnlineFriends";
+import { NotificationsProvider } from "@/hooks/useNotifications";
+import { PendingFriendRequestsProvider } from "@/hooks/usePendingFriendRequests";
 import Layout from "@/components/Layout";
 import Home from "@/pages/Home";
 import RequireAuth from "@/components/RequireAuth";
@@ -78,6 +80,33 @@ const App = () => (
             the SAME shared ref-counted `user:<myId>` SSE channel the unread badge
             already holds open, and it polls nothing. */}
         <OnlineFriendsProvider>
+        {/* The unread Notifications count had the same shape of defect as the
+            Messages badge, one level up: `useNotifications` was a plain hook whose
+            state lived inside the components that called it, and the only two were
+            `NotificationsPage` and the desktop `NotificationsDropdown`. On mobile
+            the header renders a bare <Bell> button instead of the dropdown, so a
+            phone computed the count ONLY while the notifications page was mounted -
+            i.e. the header depended on whether the page had been opened first.
+
+            Same reasoning as the badge, same answer: one provider above the router,
+            read by the desktop dropdown, the notifications page AND the mobile bell.
+            It also deletes duplication that already existed (opening the page on
+            desktop used to mount the hook twice), and it runs the app's existing
+            fetch / 15 s visible-only interval / postgres_changes channel exactly
+            once instead of once per consumer. */}
+        <NotificationsProvider>
+        {/* Pending incoming friend requests had NO global state at all: the desktop
+            dropdown and the /friends/requests page each ran their own copy of the
+            same query with their own accept/reject that mutated only their own
+            array. On mobile neither renders unless you navigate there, so the count
+            existed nowhere else. One provider now, and the two existing consumers
+            plus the mobile icon all read it - which is also what makes "accept a
+            request" drop the count everywhere at once instead of in one view.
+
+            The count is pending INCOMING REQUESTS, read from `friends`, not the
+            notifications those requests generated (do.md §2). Refresh comes from the
+            existing `useFriendRequestLiveUpdates`; no new poll or subscription. */}
+        <PendingFriendRequestsProvider>
         <CallProvider>
           <PageSwitchProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
@@ -173,6 +202,8 @@ const App = () => (
           </ThemeProvider>
           </PageSwitchProvider>
         </CallProvider>
+        </PendingFriendRequestsProvider>
+        </NotificationsProvider>
         </OnlineFriendsProvider>
         </UnreadBadgeProvider>
       </AuthProvider>
