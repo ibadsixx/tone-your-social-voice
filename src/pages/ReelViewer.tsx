@@ -1,14 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { gateway } from '@/lib/gateway';
-import { useReelInteractions } from '@/hooks/useReelInteractions';
-import { Heart, MessageCircle, Send, MoreVertical, X, Bookmark, Volume2, VolumeX, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useReactions } from '@/hooks/useReactions';
+import { useComments } from '@/hooks/useComments';
+import { useSavedPosts } from '@/hooks/useSavedPosts';
+import { useSeeLessPreference } from '@/hooks/useSeeLessPreference';
+import { useAuth } from '@/hooks/useAuth';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
-import ReelCommentsModal from '@/components/reels/ReelCommentsModal';
-import ReelShareModal from '@/components/reels/ReelShareModal';
-import ReelMoreMenu from '@/components/reels/ReelMoreMenu';
+import ReactionPicker from '@/components/ReactionPicker';
+import PostMoreMenu from '@/components/PostMoreMenu';
+import PostCommentsPanel from '@/components/PostCommentsPanel';
+import { SendPostModal } from '@/components/modals/SendPostModal';
+import { SharePostModal } from '@/components/modals/SharePostModal';
+import ReelFeedbackModal from '@/components/reels/ReelFeedbackModal';
+import ReelEmbedModal from '@/components/reels/ReelEmbedModal';
+import { isGuestSafePublicContent } from '@/lib/contentAudience';
+import { Heart, MessageCircle, Send, Share2, X, Bookmark, Volume2, VolumeX, ChevronLeft, ChevronRight, MoreVertical, EyeOff, Bug, Code } from 'lucide-react';
 
 interface ReelData {
   id: string;
@@ -21,10 +30,12 @@ interface ReelData {
   music_start: number;
   music_video_id: string | null;
   content: string | null;
-  likes_count: number;
-  comments_count: number;
-  share_count: number;
   created_at: string;
+  audience_type?: string | null;
+  visibility?: string | null;
+  status?: string | null;
+  /** Authoritative comment total, same aggregate shape Explore reads. */
+  comments?: { count: number }[] | null;
   profiles: {
     username: string;
     display_name: string;
@@ -32,11 +43,38 @@ interface ReelData {
   };
 }
 
+/**
+ * Fullscreen reel viewer for `/reels/:id`.
+ *
+ * A reel is a `posts` row (`type = 'reel'`) — not a separate content type — so
+ * every action here is the *same* action the feed's `Post` card performs, on the
+ * same backend records:
+ *
+ *   reaction → useReactions  → `reactions` + the Gateway aggregate
+ *   comments → useComments   → `comments` (replies, comment reactions, edit)
+ *   save     → useSavedPosts → `saved_posts`
+ *   send     → SendPostModal
+ *   share    → SharePostModal, which records via lib/postShares
+ *   more     → PostMoreMenu  (save/copy/notify/owner edit+delete/mute/report)
+ *
+ * This file previously drove its own private copy of all of that
+ * (`useReelInteractions` + `ReelCommentsModal` + `ReelShareModal` +
+ * `ReelMoreMenu`) against a parallel pair of tables, `reels_likes` and
+ * `reels_comments`. That is why a like here did not show up on the post, and
+ * vice versa: they were writing different rows. The owner also could not edit
+ * or delete their own reel from its own page, because the reel menu had no such
+ * entries.
+ *
+ * State stays in step with the feed because all three hooks above publish through
+ * `lib/postActionCache`, keyed by (viewer, post). See that file for why the
+ * cache exists and why it is not a second source of truth.
+ */
 const ReelViewer = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
-  
+
   const [reel, setReel] = useState<ReelData | null>(null);
   const [reelsList, setReelsList] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -45,22 +83,36 @@ const ReelViewer = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
   const [showComments, setShowComments] = useState(false);
-  const [isShareOpen, setIsShareOpen] = useState(false);
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
-  
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [showEmbedModal, setShowEmbedModal] = useState(false);
+
   const lastTapRef = useRef<number>(0);
   const heartTimeoutRef = useRef<NodeJS.Timeout>();
-  
+
+  // The same hooks the post card uses. `postOwnerId` is what makes a reaction
+  // notify the author — the reel's private implementation never did.
   const {
-    likesCount,
-    commentsCount,
-    sharesCount,
-    isLikedByCurrentUser,
-    isSavedByCurrentUser,
-    toggleLike,
-    toggleSave,
-    shareReel
-  } = useReelInteractions(id || '', { loadCommentsOnMount: false });
+    userReaction,
+    reactionsCount,
+    toggleReaction,
+  } = useReactions(id || '', reel?.user_id);
+
+  // The comment *list* belongs to PostCommentsPanel, which owns the single
+  // `useComments` instance and publishes the total. Reading it here with
+  // `enabled: false` keeps this badge in step without a second fetch of every
+  // comment plus its reaction aggregate.
+  const { commentsCount } = useComments(id || '', { enabled: false });
+
+  const { isSaved, toggleSave } = useSavedPosts(id || '');
+  const { hideReel, isLoading: isHidingReel } = useSeeLessPreference();
+
+  // Derived from the row itself, replacing the hardcoded `isPublic={true}` that
+  // let the reel menu offer Embed on a friends-only reel.
+  const isPublicContent = isGuestSafePublicContent(reel);
+
+  const commentTotal = reel?.comments?.[0]?.count ?? commentsCount ?? 0;
 
   // Fetch list of all reels for navigation
   useEffect(() => {
@@ -74,10 +126,10 @@ const ReelViewer = () => {
           .limit(100);
 
         if (error) throw error;
-        
+
         const ids = (data || []).map(r => r.id);
         setReelsList(ids);
-        
+
         // Find current index
         if (id) {
           const idx = ids.indexOf(id);
@@ -85,7 +137,7 @@ const ReelViewer = () => {
             setCurrentIndex(idx);
           }
         }
-        
+
         console.log('[REEL_NAV] Loaded reels list, count=' + ids.length);
       } catch (err) {
         console.error('[REEL_NAV] Error fetching reels list:', err);
@@ -105,7 +157,9 @@ const ReelViewer = () => {
     }
   }, [id, reelsList]);
 
-  // Fetch reel data
+  // Fetch reel data. The read goes through the same Gateway list route as the
+  // feed, which is the single choke point that filters posts by audience — so
+  // this cannot be used to reach a reel the viewer may not see.
   useEffect(() => {
     const fetchReel = async () => {
       if (!id) {
@@ -129,10 +183,11 @@ const ReelViewer = () => {
             music_start,
             music_video_id,
             content,
-            likes_count,
-            comments_count,
-            share_count,
             created_at,
+            audience_type,
+            visibility,
+            status,
+            comments (count),
             profiles:user_id (
               username,
               display_name,
@@ -140,6 +195,7 @@ const ReelViewer = () => {
             )
           `)
           .eq('id', id)
+          .eq('type', 'reel')
           .single();
 
         if (fetchError) throw fetchError;
@@ -152,16 +208,13 @@ const ReelViewer = () => {
         const formattedReel: ReelData = {
           ...data,
           media_type: data.media_type as 'image' | 'video',
-          likes_count: data.likes_count || 0,
-          comments_count: data.comments_count || 0,
-          share_count: data.share_count || 0,
           profiles: Array.isArray(data.profiles) ? data.profiles[0] : data.profiles
         };
 
         console.log('[REEL_VIEWER] Loaded reel:', formattedReel.id);
         setReel(formattedReel);
       } catch (err: any) {
-        console.error('[REEL_VIEWER] Error fetching reel:', err);
+        console.error('[REEL_VIEWER] Error loading reel:', err);
         setError(err.message || 'Failed to load reel');
       } finally {
         setLoading(false);
@@ -195,7 +248,7 @@ const ReelViewer = () => {
   // Navigate to next reel
   const goToNextReel = useCallback(() => {
     if (reelsList.length === 0) return;
-    
+
     const nextIndex = currentIndex + 1;
     if (nextIndex < reelsList.length) {
       const nextId = reelsList[nextIndex];
@@ -207,7 +260,7 @@ const ReelViewer = () => {
   // Navigate to previous reel
   const goToPrevReel = useCallback(() => {
     if (reelsList.length === 0) return;
-    
+
     const prevIndex = currentIndex - 1;
     if (prevIndex >= 0) {
       const prevId = reelsList[prevIndex];
@@ -219,24 +272,19 @@ const ReelViewer = () => {
   // Handle keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (showComments || isShareOpen) return; // Don't navigate when other modals are open
+      if (showComments || showShareModal || showSendModal) return; // Don't navigate when other modals are open
 
       switch (e.key) {
         case 'Escape':
-          if (showMoreMenu) {
-            setShowMoreMenu(false);
-            return;
-          }
           handleClose();
           break;
         case 'ArrowRight':
-          if (!showMoreMenu) goToNextReel();
+          goToNextReel();
           break;
         case 'ArrowLeft':
-          if (!showMoreMenu) goToPrevReel();
+          goToPrevReel();
           break;
         case ' ':
-          if (showMoreMenu) return;
           e.preventDefault();
           if (videoRef.current) {
             if (videoRef.current.paused) {
@@ -251,27 +299,28 @@ const ReelViewer = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleClose, goToNextReel, goToPrevReel, showComments, isShareOpen, showMoreMenu]);
+  }, [handleClose, goToNextReel, goToPrevReel, showComments, showShareModal, showSendModal]);
 
-  // Double tap to like
+  // Double tap to like. 'ok' is the plain Like reaction, matching what a tap on
+  // the picker's default does. Guarded so a double tap on an existing reaction
+  // does not toggle it off, which is what the old `if (!isLikedByCurrentUser)`
+  // check was for.
   const handleTap = useCallback(() => {
     const now = Date.now();
     const timeDiff = now - lastTapRef.current;
 
     if (timeDiff < 300 && timeDiff > 0) {
-      // Double tap detected
-      if (!isLikedByCurrentUser) {
-        toggleLike();
+      if (!userReaction) {
+        void toggleReaction('ok');
       }
-      
-      // Show heart animation
+
       setShowHeart(true);
       if (heartTimeoutRef.current) clearTimeout(heartTimeoutRef.current);
       heartTimeoutRef.current = setTimeout(() => setShowHeart(false), 1000);
     }
 
     lastTapRef.current = now;
-  }, [isLikedByCurrentUser, toggleLike]);
+  }, [userReaction, toggleReaction]);
 
   // Toggle mute
   const handleToggleMute = (e: React.MouseEvent) => {
@@ -282,26 +331,7 @@ const ReelViewer = () => {
     }
   };
 
-  const handleLikeClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    toggleLike();
-  };
-
-  const handleCommentsClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setShowComments(true);
-  };
-
-  const handleShareClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    console.log(`[SHARE_MODAL] opened reel_id=${id}`);
-    setIsShareOpen(true);
-  };
-
-  const handleSaveClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    toggleSave();
-  };
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
 
   const canGoNext = currentIndex < reelsList.length - 1;
   const canGoPrev = currentIndex > 0;
@@ -366,7 +396,7 @@ const ReelViewer = () => {
       )}
 
       {/* Video container */}
-      <div 
+      <div
         className="relative h-full flex items-center justify-center"
         style={{ aspectRatio: '9 / 16', maxHeight: '100vh' }}
         onClick={handleTap}
@@ -391,8 +421,8 @@ const ReelViewer = () => {
         {/* Double-tap heart animation */}
         {showHeart && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-            <Heart 
-              className="w-32 h-32 text-white fill-white animate-pulse" 
+            <Heart
+              className="w-32 h-32 text-white fill-white animate-pulse"
               strokeWidth={1}
             />
           </div>
@@ -413,8 +443,12 @@ const ReelViewer = () => {
           </button>
         )}
 
-        {/* Right sidebar with actions */}
-        <div className="absolute right-4 bottom-24 flex flex-col gap-4 z-10">
+        {/* Right sidebar with actions.
+            A guest sees Comment and Share only — the same two the post card
+            offers an unauthenticated visitor. Like, Send, Save and the options
+            menu are account actions and are not rendered without a session,
+            rather than rendered as buttons that fail. */}
+        <div className="absolute right-4 bottom-24 flex flex-col items-center gap-4 z-10">
           {/* Profile avatar */}
           <div className="flex flex-col items-center">
             <Avatar className="w-12 h-12 border-2 border-white">
@@ -425,28 +459,23 @@ const ReelViewer = () => {
             </Avatar>
           </div>
 
-          {/* Like button */}
-          <button
-            onClick={handleLikeClick}
-            className="flex flex-col items-center gap-1 transition-transform active:scale-90"
-            aria-label={isLikedByCurrentUser ? 'Unlike' : 'Like'}
-          >
-            <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center">
-              <Heart 
-                className={cn(
-                  "w-7 h-7 transition-colors",
-                  isLikedByCurrentUser ? "fill-red-500 text-red-500" : "text-white"
-                )} 
+          {/* Reaction — the shared picker, over the Gateway aggregate. */}
+          {user && (
+            <div onClick={stop}>
+              <ReactionPicker
+                isLiked={!!userReaction}
+                selectedReaction={userReaction}
+                likesCount={reactionsCount}
+                onDark
+                onReact={(key) => void toggleReaction(key)}
+                onLike={() => void toggleReaction('ok')}
               />
             </div>
-            <span className="text-white text-xs font-semibold drop-shadow-lg">
-              {likesCount > 0 ? likesCount.toLocaleString() : ''}
-            </span>
-          </button>
+          )}
 
           {/* Comment button */}
           <button
-            onClick={handleCommentsClick}
+            onClick={(e) => { stop(e); setShowComments(true); }}
             className="flex flex-col items-center gap-1 transition-transform active:scale-90"
             aria-label="Comments"
           >
@@ -454,62 +483,102 @@ const ReelViewer = () => {
               <MessageCircle className="w-7 h-7 text-white" />
             </div>
             <span className="text-white text-xs font-semibold drop-shadow-lg">
-              {commentsCount > 0 ? commentsCount.toLocaleString() : ''}
+              {commentTotal > 0 ? commentTotal.toLocaleString() : ''}
             </span>
           </button>
 
-          {/* Share button */}
+          {/* Send */}
+          {user && (
+            <button
+              onClick={(e) => { stop(e); setShowSendModal(true); }}
+              className="flex flex-col items-center transition-transform active:scale-90"
+              aria-label="Send"
+            >
+              <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center">
+                <Send className="w-6 h-6 text-white" />
+              </div>
+            </button>
+          )}
+
+          {/* Share */}
           <button
-            onClick={handleShareClick}
-            className="flex flex-col items-center gap-1 transition-transform active:scale-90"
+            onClick={(e) => { stop(e); setShowShareModal(true); }}
+            className="flex flex-col items-center transition-transform active:scale-90"
             aria-label="Share"
           >
             <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center">
-              <Send className="w-6 h-6 text-white" />
+              <Share2 className="w-6 h-6 text-white" />
             </div>
-            <span className="text-white text-xs font-semibold drop-shadow-lg">
-              {sharesCount > 0 ? sharesCount.toLocaleString() : ''}
-            </span>
           </button>
 
-          {/* Save button */}
-          <button
-            onClick={handleSaveClick}
-            className="flex flex-col items-center gap-1 transition-transform active:scale-90"
-            aria-label={isSavedByCurrentUser ? 'Unsave' : 'Save'}
-          >
-            <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center">
-              <Bookmark 
-                className={cn(
-                  "w-6 h-6 transition-colors",
-                  isSavedByCurrentUser ? "fill-white text-white" : "text-white"
-                )} 
+          {/* Save */}
+          {user && (
+            <button
+              onClick={(e) => { stop(e); void toggleSave(); }}
+              className="flex flex-col items-center transition-transform active:scale-90"
+              aria-label={isSaved ? 'Unsave' : 'Save'}
+            >
+              <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center">
+                <Bookmark
+                  className={cn(
+                    "w-6 h-6 transition-colors",
+                    isSaved ? "fill-white text-white" : "text-white"
+                  )}
+                />
+              </div>
+            </button>
+          )}
+
+          {/* More options — the shared menu, so owner edit/delete and mute/report
+              behave here exactly as they do on the post card. The reel-only
+              entries are passed in as extras rather than reimplemented. */}
+          {user && (
+            <div onClick={stop}>
+              <PostMoreMenu
+                postId={reel.id}
+                postOwnerId={reel.user_id}
+                ownerDisplayName={reel.profiles?.display_name}
+                postContent={reel.content}
+                onDeleted={handleClose}
+                trigger={
+                  <button
+                    className="flex flex-col items-center transition-transform active:scale-90"
+                    aria-label="More options"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center">
+                      <MoreVertical className="w-6 h-6 text-white" />
+                    </div>
+                  </button>
+                }
+                extraItems={[
+                  {
+                    id: 'seeless',
+                    label: 'See less',
+                    icon: EyeOff,
+                    disabled: isHidingReel,
+                    onSelect: () => hideReel(reel.id),
+                  },
+                  {
+                    id: 'feedback',
+                    label: "Something isn't working",
+                    icon: Bug,
+                    onSelect: () => setShowFeedbackModal(true),
+                  },
+                  // Only offered for genuinely public content. Embedding a
+                  // friends-only reel would publish it, so this is gated on the
+                  // row's own audience rather than a hardcoded true.
+                  ...(isPublicContent
+                    ? [{
+                        id: 'embed',
+                        label: 'Embed',
+                        icon: Code,
+                        onSelect: () => setShowEmbedModal(true),
+                      }]
+                    : []),
+                ]}
               />
             </div>
-          </button>
-
-          {/* More options */}
-          <ReelMoreMenu
-            reelId={reel.id}
-            reelOwnerId={reel.user_id}
-            isPublic={true}
-            isOpen={showMoreMenu}
-            onOpenChange={setShowMoreMenu}
-            trigger={
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMoreMenu(true);
-                }}
-                className="flex flex-col items-center transition-transform active:scale-90"
-                aria-label="More options"
-              >
-                <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center">
-                  <MoreVertical className="w-6 h-6 text-white" />
-                </div>
-              </button>
-            }
-          />
+          )}
         </div>
 
         {/* Bottom info overlay */}
@@ -544,23 +613,43 @@ const ReelViewer = () => {
         )}
       </div>
 
-      {/* Comments Modal */}
-      {id && (
-        <ReelCommentsModal
-          reelId={id}
-          isOpen={showComments}
-          onClose={() => setShowComments(false)}
-        />
-      )}
+      {/* Comments — the shared list, on the shared `comments` table. */}
+      <PostCommentsPanel
+        postId={reel.id}
+        postOwnerId={reel.user_id}
+        open={showComments}
+        onClose={() => setShowComments(false)}
+      />
 
-      {/* Share Modal */}
-      {id && (
-        <ReelShareModal
-          reelId={id}
-          isOpen={isShareOpen}
-          onClose={() => setIsShareOpen(false)}
-        />
-      )}
+      {/* Send Modal */}
+      <SendPostModal
+        isOpen={showSendModal}
+        onClose={() => setShowSendModal(false)}
+        postId={reel.id}
+        postContent={reel.content}
+      />
+
+      {/* Share Modal — records through lib/postShares, same as the post card. */}
+      <SharePostModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        postId={reel.id}
+        postContent={reel.content}
+      />
+
+      <ReelFeedbackModal
+        isOpen={showFeedbackModal}
+        onClose={() => setShowFeedbackModal(false)}
+        postId={reel.id}
+        postType="reel"
+        postOwnerId={reel.user_id}
+      />
+
+      <ReelEmbedModal
+        reelId={reel.id}
+        isOpen={showEmbedModal}
+        onClose={() => setShowEmbedModal(false)}
+      />
     </div>
   );
 };

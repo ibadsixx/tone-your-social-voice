@@ -1,10 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { gateway } from '@/lib/gateway';
 import type { ReactionViewerRow } from '@/lib/gateway';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { createNotification } from '@/hooks/useNotifications';
 import { useMentions } from '@/hooks/useMentions';
+import {
+  nextPostActionOrigin,
+  subscribePostActions,
+  writePostActions,
+} from '@/lib/postActionCache';
 
 interface CommentReaction {
   id: string;
@@ -53,6 +58,86 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
   const { toast } = useToast();
   const { user } = useAuth();
   const { saveMentionsAndHashtags } = useMentions();
+
+  const originRef = useRef<string>('');
+  if (!originRef.current) originRef.current = nextPostActionOrigin('comments');
+
+  /**
+   * The comment total published by whichever surface has the list loaded.
+   *
+   * The count is what a *collapsed* surface shows — the "N comments" link on the
+   * feed card, the badge on the reel viewer. Without a shared value, adding a
+   * comment in one place left the other showing a stale total until it remounted.
+   *
+   * Carried with the order it was published at, because a hook must not be shown
+   * its own earlier number: after posting a comment, the surface that posted it
+   * still holds the count it fetched *before* the write, and preferring that would
+   * leave the badge one comment behind on the very surface the user just acted on.
+   */
+  const [peerCommentsCount, setPeerCommentsCount] = useState<{
+    version: number;
+    count: number;
+  } | null>(null);
+
+  /**
+   * Version of the total this hook last published.
+   *
+   * Its own writes advance this, so a newer peer write is what makes the shared
+   * value win.
+   */
+  const localVersionRef = useRef(0);
+
+  /**
+   * Bumped whenever the total moves somewhere other than here: a comment added,
+   * deleted or edited on the other surface. A list load that started before such a
+   * write describes the past, so the total it would publish is dropped — the list
+   * itself still loads, only the number is left to the newer write.
+   */
+  const writeSeqRef = useRef(0);
+
+  useEffect(() => {
+    if (!postId) return;
+    let seenVersion = -1;
+    return subscribePostActions(user?.id, postId, originRef.current, (state) => {
+      // Only the comments group's order counts here: a reaction or bookmark write
+      // is not a comment change, and treating it as one would drop a good
+      // in-flight list load.
+      const version = state.versions.comments;
+      if (version !== seenVersion) {
+        seenVersion = version;
+        if (state.commentsCount !== null) writeSeqRef.current += 1;
+      }
+      if (state.commentsCount === null) {
+        setPeerCommentsCount(null);
+        return;
+      }
+      setPeerCommentsCount(prev =>
+        prev && prev.version === version && prev.count === state.commentsCount
+          ? prev
+          : { version, count: state.commentsCount }
+      );
+    });
+  }, [user?.id, postId]);
+
+  /** Republish the total this hook currently holds. */
+  const publishCount = (total: number) => {
+    writeSeqRef.current += 1;
+    localVersionRef.current = writePostActions(
+      user?.id,
+      postId,
+      { commentsCount: total },
+      originRef.current
+    );
+  };
+
+  /**
+   * The total to render: the shared one when it is newer than this hook's own,
+   * otherwise what this hook holds.
+   */
+  const settledCommentsCount =
+    peerCommentsCount !== null && peerCommentsCount.version > localVersionRef.current
+      ? peerCommentsCount.count
+      : comments.length;
 
   // Reaction identities are fetched only by the dedicated modal endpoint. The
   // comments list uses this aggregate/state projection so a large comment does
@@ -120,8 +205,12 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+      const seqAtStart = writeSeqRef.current;
       const commentRows = (data || []) as Comment[];
       setComments(await withCommentReactionSummaries(commentRows));
+      // A comment added or removed on the other surface while this list was
+      // loading makes its length describe the past.
+      if (writeSeqRef.current === seqAtStart) publishCount(commentRows.length);
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -166,7 +255,11 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
       const newComment = applySummary(data as unknown as Comment);
 
       // Add the new comment to the local state
-      setComments(prev => [...prev, newComment]);
+      setComments(prev => {
+        const next = [...prev, newComment];
+        publishCount(next.length);
+        return next;
+      });
       
       // Save mentions and hashtags
       await saveMentionsAndHashtags('comment', data.id, content);
@@ -232,7 +325,11 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
       const newReply = applySummary(data as unknown as Comment);
 
       // Add the new reply to the local state
-      setComments(prev => [...prev, newReply]);
+      setComments(prev => {
+        const next = [...prev, newReply];
+        publishCount(next.length);
+        return next;
+      });
       
       // Save mentions and hashtags
       await saveMentionsAndHashtags('comment', data.id, content);
@@ -311,7 +408,11 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
 
       if (error) throw error;
 
-      setComments(prev => prev.filter(comment => comment.id !== commentId));
+      setComments(prev => {
+        const next = prev.filter(comment => comment.id !== commentId);
+        publishCount(next.length);
+        return next;
+      });
       
       toast({
         title: 'Success',
@@ -488,6 +589,17 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
     comments,
     loading,
     submitting,
+    /**
+     * Comment total for a surface that shows a count but not the list.
+     *
+     * The shared cache wins when it holds a value, for the same reason as the
+     * reaction and save hooks: it is the only total both surfaces read, so a
+     * surface that resolved its own older list first would otherwise contradict
+     * the one where the comment was just added or deleted. This hook's own length
+     * is the fallback for a surface whose list loaded before anything was
+     * published. `null` means nobody has loaded the list yet.
+     */
+    commentsCount: settledCommentsCount,
     addComment,
     addReply,
     editComment,

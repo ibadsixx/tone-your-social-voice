@@ -29,6 +29,7 @@ vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/hooks/useNotifications', () => ({ createNotification: vi.fn() }));
 
 const { useReactions } = await import('@/hooks/useReactions');
+const { clearAllPostActions } = await import('@/lib/postActionCache');
 
 const AGG = {
   reaction_count: 3,
@@ -38,6 +39,11 @@ const AGG = {
 };
 
 beforeEach(() => {
+  // The shared action cache is module-level and keyed on (viewer, post). Every
+  // case here uses the same post id, so without this the count published by one
+  // test would be the settled value the next one adopts — correct behaviour, and
+  // exactly what makes these cases independent of each other's order.
+  clearAllPostActions();
   postReactionUsers.mockReset();
   postReactionCount.mockReset();
   postReactionUsers.mockResolvedValue({ data: AGG, error: null });
@@ -84,10 +90,30 @@ describe('useReactions defers its read until the caller says the card is worth r
     const { result } = renderHook(() => useReactions('p1', 'owner', { enabled: false }));
     await act(async () => { await Promise.resolve(); });
 
-    // A deferred card must not render a spinner or a phantom count.
+    // A deferred card must not render a spinner or a phantom count. Zero is what
+    // it reports when nothing has been settled for this post — the other case, a
+    // count the reel viewer already resolved, is the next test.
     expect(result.current.loading).toBe(false);
     expect(result.current.reactionsCount).toBe(0);
     expect(result.current.reactionCounts).toEqual([]);
+  });
+
+  it('shows the count the other surface settled, rather than a wrong zero', async () => {
+    // The reel viewer for this post, mounted and read.
+    const viewer = renderHook(() => useReactions('p1', 'owner', { enabled: true }));
+    await waitFor(() => expect(viewer.result.current.reactionsCount).toBe(3));
+
+    // A feed card for the same post that has not been scrolled near yet. It has
+    // read nothing, so all it can honestly show is what the other surface already
+    // knows — reporting 0 here is how a post's Like button came to contradict the
+    // reel's, and 0 is a number the reader can see and believe.
+    const card = renderHook(() => useReactions('p1', 'owner', { enabled: false }));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(card.result.current.reactionsCount).toBe(3);
+    expect(card.result.current.loading).toBe(false);
+    // Still no read of its own: it adopted, it did not fetch.
+    expect(postReactionUsers).toHaveBeenCalledTimes(1);
   });
 
   it('defaults to reading, so callers that opt out are unaffected', async () => {

@@ -3,6 +3,7 @@ import { gateway } from '@/lib/gateway';
 import { profilesApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 import { endPresenceSession } from '@/hooks/usePresence';
+import { clearPostActionsForUser } from '@/lib/postActionCache';
 
 interface GatewayUser {
   id: string;
@@ -280,6 +281,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // lands after it. Without that, a heartbeat dispatched moments before sign-out
     // would put the green dot straight back for another 150 seconds.
     await endPresenceSession();
+
+    // Reaction, save and comment state is cached per (viewer, post) so a card in
+    // the feed and the reel viewer at `/reels/:id` cannot disagree. That cache is
+    // held for the length of a session, so without this the next person to sign
+    // in on this device would briefly see the previous account's likes and
+    // bookmarks on every post. It is dropped before the session is destroyed, and
+    // regardless of whether the gateway call below succeeds: what is on screen
+    // belongs to the account that is signing out either way.
+    clearPostActionsForUser(user?.id);
 
     try {
       const { error } = await gateway.auth.signOut();

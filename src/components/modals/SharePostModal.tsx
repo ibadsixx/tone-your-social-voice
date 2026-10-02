@@ -7,6 +7,7 @@ import { User, Users, Hash, Instagram, Link2, MessageCircle, Twitter, Facebook, 
 import { motion } from 'framer-motion';
 import { useGroups } from '@/hooks/useGroups';
 import { gateway } from '@/lib/gateway';
+import { recordPostShare } from '@/lib/postShares';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { SendPostModal } from './SendPostModal';
@@ -28,6 +29,32 @@ export const SharePostModal = ({ isOpen, onClose, postId, postContent }: SharePo
 
   const { getJoinedGroups, getManagedGroups } = useGroups();
 
+  /**
+   * Record that this post was shared.
+   *
+   * `post_shares` had exactly one writer in the whole app — the reel viewer's
+   * private `ReelShareModal` — even though `src/lib/exploreRanking.ts` reads
+   * `post_shares[0].count` as the authoritative share total. This modal, the
+   * canonical post path, recorded nothing. Now both surfaces go through
+   * `lib/postShares`, so a share is counted wherever it is made.
+   *
+   * Failures are logged rather than surfaced: the share itself has already
+   * happened by this point (the `shared_post` row is written), and refusing to
+   * claim success because a counter did not move would be a worse lie. The
+   * counter is derived data and will catch up on the next share.
+   */
+  const recordShare = async (message?: string | null) => {
+    if (!user?.id) return;
+    const result = await recordPostShare({
+      postId,
+      userId: user.id,
+      message: message ?? null,
+    });
+    if (!result.ok) {
+      console.warn('[SHARE] post_shares insert failed:', result.counterError);
+    }
+  };
+
   const shareToProfile = async (customContent?: string) => {
     if (!user?.id) return;
     
@@ -39,6 +66,8 @@ export const SharePostModal = ({ isOpen, onClose, postId, postContent }: SharePo
         type: 'shared_post',
         shared_post_id: postId
       });
+
+      await recordShare(customContent);
       
       toast({
         title: "Shared to your profile!",
@@ -70,6 +99,8 @@ export const SharePostModal = ({ isOpen, onClose, postId, postContent }: SharePo
         type: 'shared_post',
         shared_post_id: postId
       });
+
+      await recordShare();
       
       toast({
         title: "Shared to group!",
@@ -99,6 +130,8 @@ export const SharePostModal = ({ isOpen, onClose, postId, postContent }: SharePo
         type: 'shared_post',
         shared_post_id: postId
       });
+
+      await recordShare();
       
       toast({
         title: "Shared to page!",

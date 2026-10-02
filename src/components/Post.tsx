@@ -4,9 +4,10 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { MessageCircle, Share2, MoreHorizontal, Send, Trash2, Repeat2, MapPin, Bookmark, Link2, Edit3, BellOff, BellRing, Flag, VolumeX, Play } from 'lucide-react';
+import { MessageCircle, Share2, MoreHorizontal, Send, Repeat2, MapPin, Play } from 'lucide-react';
 import ReactionPicker from '@/components/ReactionPicker';
 import ReactionsCounter from '@/components/ReactionsCounter';
+import PostMoreMenu from '@/components/PostMoreMenu';
 import { useReactions } from '@/hooks/useReactions';
 import { useNearViewport } from '@/hooks/useNearViewport';
 import type { ReactionKey } from '@/lib/reactions';
@@ -15,34 +16,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useComments } from '@/hooks/useComments';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
-import { useSavedPosts } from '@/hooks/useSavedPosts';
-import { useMutedUsers } from '@/hooks/useMutedUsers';
-import { usePostNotifications } from '@/hooks/usePostNotifications';
-import { postsApi } from '@/api';
 import { gateway } from '@/lib/gateway';
 import { mediaAppUrl } from '@/lib/mediaUrl';
 import { SendPostModal } from '@/components/modals/SendPostModal';
 import { SharePostModal } from '@/components/modals/SharePostModal';
-import { EditPostDialog } from '@/components/EditPostDialog';
-import { ReportPostDialog } from '@/components/ReportPostDialog';
 import ReactionUsersModal from '@/components/ReactionUsersModal';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { SharedPost } from '@/components/SharedPost';
 import { AudienceSummary, type AudienceSelection } from '@/components/AudienceSelector';
@@ -175,9 +153,6 @@ const Post = ({
   const [newComment, setNewComment] = useState('');
   const [showSendModal, setShowSendModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [showReportDialog, setShowReportDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showEditDialog, setShowEditDialog] = useState(false);
   const [showReactionUsers, setShowReactionUsers] = useState(false);
   const { 
     comments: fetchedComments, 
@@ -193,10 +168,10 @@ const Post = ({
     getReplyCount
   } = useComments(id, { enabled: showComments });
   
-  const { isSaved, isLoading: isSaveLoading, toggleSave } = useSavedPosts(id);
-  const { isMuted, isLoading: isMuteLoading, toggleMute } = useMutedUsers(user_id);
-  const { isEnabled: notificationsEnabled, isLoading: isNotifLoading, toggleNotifications } = usePostNotifications(id);
-  
+  // Save, mute, notification-toggle, edit, delete and report now live in
+  // `PostMoreMenu`, which the reel viewer renders too. Keeping a second copy
+  // here is exactly the divergence this shared component exists to remove.
+
   // Reactions are only asked for once the card is on its way into view. The Feed
   // renders a card per post, so reading on mount made this an N+1 that grew with
   // the feed whether or not the reader ever scrolled that far (do.md §16).
@@ -248,48 +223,12 @@ const Post = ({
     setShowComments(!showComments);
   };
 
-
-  const handleCopyLink = async () => {
-    const postUrl = `${window.location.origin}/post/${id}`;
-    try {
-      await navigator.clipboard.writeText(postUrl);
-      toast({
-        title: "Link copied",
-        description: "Post link copied to clipboard",
-      });
-    } catch (error) {
-      toast({
-        title: "Failed to copy",
-        description: "Could not copy link to clipboard",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleDeletePost = async () => {
-    try {
-      const { error } = await postsApi.deletePost(id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Post deleted",
-        description: "Your post has been deleted successfully",
-      });
-      setShowDeleteDialog(false);
-      // Trigger refresh or remove post from UI
-      window.location.reload();
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete post",
-        variant: "destructive",
-      });
-    }
-  };
-
+  /**
+   * After the owner edits or deletes the post, this card's copy of the content is
+   * gone. The menu calls back here rather than reloading the document itself, so
+   * a fullscreen reel viewer can navigate away instead of reloading the tab.
+   */
   const handlePostUpdated = () => {
-    // Refresh the page or trigger parent refresh
     window.location.reload();
   };
 
@@ -444,75 +383,18 @@ const Post = ({
                 </div>
               </Link>
             </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <PostMoreMenu
+              postId={id}
+              postOwnerId={user_id}
+              ownerDisplayName={profiles?.display_name}
+              postContent={content}
+              trigger={
                 <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                {user && (
-                  <DropdownMenuItem onClick={toggleSave} disabled={isSaveLoading}>
-                    <Bookmark className="mr-2 h-4 w-4" />
-                    <span>{isSaved ? 'Unsave post' : 'Save post'}</span>
-                  </DropdownMenuItem>
-                )}
-                
-                <DropdownMenuItem onClick={handleCopyLink}>
-                  <Link2 className="mr-2 h-4 w-4" />
-                  <span>Copy link</span>
-                </DropdownMenuItem>
-
-                {user && (
-                  <DropdownMenuItem onClick={toggleNotifications} disabled={isNotifLoading}>
-                    {notificationsEnabled ? (
-                      <BellOff className="mr-2 h-4 w-4" />
-                    ) : (
-                      <BellRing className="mr-2 h-4 w-4" />
-                    )}
-                    <span>
-                      {notificationsEnabled ? 'Turn off notifications' : 'Turn on notifications'}
-                    </span>
-                  </DropdownMenuItem>
-                )}
-
-                {isOwner && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setShowEditDialog(true)}>
-                      <Edit3 className="mr-2 h-4 w-4" />
-                      <span>Edit post</span>
-                    </DropdownMenuItem>
-                    
-                    <DropdownMenuItem 
-                      onClick={() => setShowDeleteDialog(true)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      <span>Delete post</span>
-                    </DropdownMenuItem>
-                  </>
-                )}
-
-                {!isOwner && user && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={toggleMute} disabled={isMuteLoading}>
-                      <VolumeX className="mr-2 h-4 w-4" />
-                      <span>{isMuted ? 'Unmute' : 'Mute'} {profiles?.display_name || 'Unknown'}</span>
-                    </DropdownMenuItem>
-                    
-                    <DropdownMenuItem 
-                      onClick={() => setShowReportDialog(true)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Flag className="mr-2 h-4 w-4" />
-                      <span>Report post</span>
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              }
+              onDeleted={handlePostUpdated}
+            />
           </div>
         </CardHeader>
         
@@ -803,39 +685,6 @@ const Post = ({
         onClose={() => setShowShareModal(false)}
         postId={id}
         postContent={content}
-      />
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete post?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. Your post will be permanently deleted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeletePost} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Edit Post Dialog */}
-      <EditPostDialog
-        open={showEditDialog}
-        onOpenChange={setShowEditDialog}
-        post={{ id, content: content || '' }}
-        onPostUpdated={handlePostUpdated}
-      />
-
-      {/* Report Post Dialog */}
-      <ReportPostDialog
-        open={showReportDialog}
-        onOpenChange={setShowReportDialog}
-        postId={id}
       />
 
       {/* Reaction users — the count above is a separate permission from the
