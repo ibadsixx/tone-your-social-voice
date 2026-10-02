@@ -595,8 +595,13 @@ const ReelViewer = () => {
                   {reel.profiles?.display_name?.[0] || 'U'}
                 </AvatarFallback>
               </Avatar>
+              {/* The owner label is the display name, exactly as the post card
+                  renders it (`src/components/Post.tsx`), so the two surfaces
+                  agree. The username is not shown here and never was — it stays
+                  on the row for anything that needs to route or be addressed by
+                  handle. Falls back the same way too, rather than to a bare `@`. */}
               <span className="text-white font-semibold drop-shadow-lg">
-                @{reel.profiles?.username || 'user'}
+                {reel.profiles?.display_name || 'Unknown'}
               </span>
             </div>
             {reel.content && (

@@ -171,8 +171,11 @@ describe('the reel viewer prints no position counter', () => {
     renderViewer();
     await loaded();
 
-    // Author, caption, mute, and the action rail all still render.
-    await waitFor(() => expect(document.body.textContent).toContain('@owner'));
+    // Author, caption, mute, and the action rail all still render. The author
+    // label is the display name now — that change is covered by
+    // `reelOwnerDisplayName.test.tsx`; here it is only proving the element
+    // itself is still on screen.
+    await waitFor(() => expect(document.body.textContent).toContain('Owner'));
     expect(document.body.textContent).toContain('my reel');
     await screen.findByLabelText('Mute');
     await screen.findByLabelText('Close');
