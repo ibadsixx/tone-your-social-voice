@@ -606,15 +606,6 @@ const ReelViewer = () => {
             )}
           </div>
         </div>
-
-        {/* Reel position indicator */}
-        {reelsList.length > 1 && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-3 py-1 rounded-full bg-black/50 backdrop-blur-sm">
-            <span className="text-white text-sm font-medium">
-              {currentIndex + 1} / {reelsList.length}
-            </span>
-          </div>
-        )}
       </div>
 
       {/* Comments — the shared list, on the shared `comments` table. */}
