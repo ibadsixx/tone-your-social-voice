@@ -195,7 +195,7 @@ export const saveProfileImage = async (
   if (error) {
     throw new PhotoUpdateError(
       'profile',
-      'The image uploaded, but saving it to your profile failed. Please try again.',
+      profileSaveMessage(error, label),
       error
     );
   }
