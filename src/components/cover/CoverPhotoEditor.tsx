@@ -7,7 +7,13 @@ import { useAuth } from '@/hooks/useAuth';
 import { gateway } from '@/lib/gateway';
 import PhotoLibraryModal from './PhotoLibraryModal';
 import CoverRepositionModal from './CoverRepositionModal';
-import { createPhotoUpdatePost } from '@/hooks/usePhotoUpload';
+import {
+  createPhotoUpdatePost,
+  photoErrorMessage,
+  saveProfileImage,
+  uploadPhotoToStorage,
+  validatePhotoFile,
+} from '@/hooks/usePhotoUpload';
 import { POST_CREATED_EVENT } from '@/hooks/useHomeFeed';
 
 interface CoverPhotoEditorProps {
@@ -32,7 +38,19 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
 
   const handleFileUpload = async (file: File) => {
     if (!user?.id) return;
-    
+
+    try {
+      validatePhotoFile(file, 'cover photo');
+    } catch (validationError) {
+      console.error('[CoverPhotoEditor] rejected cover file:', validationError);
+      toast({
+        title: 'Error',
+        description: photoErrorMessage(validationError, 'cover photo'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setUploading(true);
     try {
       // Resize image to max 1920px width for performance
@@ -64,30 +82,14 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
         }, 'image/jpeg', 0.9);
       });
 
-      // Upload to Supabase storage
-      const fileExt = 'jpg';
-      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-      
-      const { error: uploadError } = await gateway.storage
-        .from('covers')
-        .upload(fileName, blob);
+      // Upload + profile write go through the same shared helpers the
+      // profile-picture path uses, so the two surfaces cannot drift apart
+      // again (do.md §2). The canvas output is always a JPEG.
+      const { publicUrl } = await uploadPhotoToStorage(blob, 'covers', user.id, 'jpg');
 
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = gateway.storage
-        .from('covers')
-        .getPublicUrl(fileName);
-
-      // Update profile
-      const { error: updateError } = await gateway
-        .from('profiles')
-        .update({ 
-          cover_pic: publicUrl,
-          cover_position_y: 0 // Reset position for new cover
-        })
-        .eq('id', user.id);
-
-      if (updateError) throw updateError;
+      await saveProfileImage(user.id, 'cover_pic', publicUrl, {
+        cover_position_y: 0, // Reset position for new cover
+      });
 
       // Automatic cover-photo-change post — only after the upload AND profile
       // update have succeeded. The insert reuses the composer's canonical
@@ -112,10 +114,15 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
       }
 
       onProfileUpdate?.();
-    } catch {
+    } catch (error) {
+      // Never swallow the cause: this bare `catch {}` reported the same
+      // "Failed to upload cover photo" for a decode failure, an oversized body
+      // and a Cloudinary outage alike, with nothing in the console to
+      // distinguish them (do.md §7).
+      console.error('[CoverPhotoEditor] cover photo update failed:', error);
       toast({
         title: 'Error',
-        description: 'Failed to upload cover photo',
+        description: photoErrorMessage(error, 'cover photo'),
         variant: 'destructive'
       });
     } finally {

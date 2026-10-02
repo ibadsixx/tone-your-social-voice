@@ -1104,8 +1104,25 @@ class GatewayStorageBucket {
         body: formData,
       });
       if (!res.ok) {
-        const errBody = await res.json().catch(() => ({ message: res.statusText }));
-        return { data: null, error: { message: errBody.message || res.statusText } };
+        // The platform's own rejections do not speak JSON. A Vercel body over
+        // the ~4.5MB cap answers `413` with plain text
+        // ("Request Entity Too Large / FUNCTION_PAYLOAD_TOO_LARGE"), so
+        // `res.json()` threw, the catch substituted `statusText`, and the real
+        // cause was discarded before any caller could report it. Read the body
+        // once and keep whichever form it arrived in.
+        const raw = await res.text().catch(() => '');
+        let message = '';
+        try {
+          const parsed = raw ? JSON.parse(raw) : {};
+          message =
+            parsed?.message ||
+            (typeof parsed?.error === 'string' ? parsed.error : '') ||
+            parsed?.error?.message ||
+            '';
+        } catch {
+          message = raw.trim();
+        }
+        return { data: null, error: { message: message || res.statusText } };
       }
       const json = await res.json();
       const url = typeof json?.url === 'string' ? json.url : '';
