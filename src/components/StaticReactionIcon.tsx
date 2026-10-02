@@ -29,6 +29,20 @@ const StaticReactionIcon = memo(({
 }: StaticReactionIconProps) => {
   const config = reactionKey ? getReactionConfig(reactionKey) : null;
   const showCount = count !== undefined && (count > 0 || showZero);
+
+  /**
+   * The unselected state's appearance.
+   *
+   * `/emoji/1f44c.png` is a *yellow* hand, so "not selected" has to be painted
+   * on or it reads as a selection. Whether it is painted depended on `onDark`,
+   * which is a statement about the background, not about the viewer: on the
+   * fullscreen reel viewer (`onDark`) the unselected hand therefore rendered
+   * yellow — the same reaction, two different colours, on two surfaces of the
+   * same post. Grayscale is legible on a dark background, so it is applied
+   * regardless; only the extra fade stays light-background-only, since on a dark
+   * overlay it would leave this icon dimmer than the white icons beside it.
+   */
+  const unselectedClass = isActive ? '' : onDark ? 'grayscale' : 'grayscale opacity-60';
   
   // No reaction selected - show default 👌 (ok hand) icon
   if (!config) {
@@ -37,7 +51,7 @@ const StaticReactionIcon = memo(({
         <img
           src="/emoji/1f44c.png"
           alt="Like"
-          className={`${imgSizes[size]} object-contain ${!isActive && !onDark ? 'grayscale opacity-60' : ''}`}
+          className={`${imgSizes[size]} object-contain ${unselectedClass}`}
           loading="lazy"
           draggable={false}
         />

@@ -11,47 +11,104 @@ interface ReactionPickerProps {
   selectedReaction?: ReactionKey | string | null;
   likesCount: number;
   onDark?: boolean;
+  /**
+   * How the trigger is drawn.
+   *
+   * `inline` is the post card's action row. `overlay` is the fullscreen viewer's
+   * right-hand rail, where this button sits in a column beside Comment, Send,
+   * Share and Save and has to be the same size as all of them.
+   *
+   * Only the trigger's presentation differs. The reaction state, the set of
+   * reactions offered, and what choosing one does are identical in both — which
+   * is why this is a variant of the one picker rather than a reel-only button.
+   */
+  variant?: 'inline' | 'overlay';
   onReact: (reactionKey: ReactionKey) => void;
   onLike: () => void;
 }
 
-const ReactionPicker = ({ isLiked, selectedReaction, likesCount, onDark = false, onReact, onLike }: ReactionPickerProps) => {
+/**
+ * The rail's own measurements, so this component matches the buttons it sits
+ * beside rather than the other way round. `w-12 h-12` circle over a `w-6 h-6`
+ * glyph is what Comment, Send, Share, Save and More already use on `/reels/:id`
+ * and in the explore viewer; do.md asks for this button to match them, not for
+ * them to grow.
+ */
+const RAIL_TRIGGER =
+  'flex flex-col items-center gap-1 transition-transform active:scale-90';
+const RAIL_CIRCLE =
+  'w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center';
+const RAIL_COUNT = 'text-white text-xs font-semibold drop-shadow-lg';
+
+const ReactionPicker = ({
+  isLiked,
+  selectedReaction,
+  likesCount,
+  onDark = false,
+  variant = 'inline',
+  onReact,
+  onLike,
+}: ReactionPickerProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [hoveredReaction, setHoveredReaction] = useState<ReactionKey | null>(null);
 
   const currentReaction = selectedReaction ? getReactionConfig(selectedReaction) : null;
+  const isActive = isLiked || !!currentReaction;
 
   const handleReaction = (reactionKey: ReactionKey) => {
     onReact(reactionKey);
     setIsOpen(false);
   };
 
+  const openOnHover = { onMouseEnter: () => setIsOpen(true) };
+  const reactIfClosed = {
+    onClick: () => {
+      if (!isOpen) onLike();
+    },
+  };
+
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className={`flex items-center space-x-2 transition-colors ${
-            isLiked || currentReaction 
-              ? (currentReaction?.color || 'text-primary') + ' hover:opacity-80' 
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={(e) => {
-            if (!isOpen) {
-              onLike();
-            }
-          }}
-          onMouseEnter={() => setIsOpen(true)}
-        >
-          <StaticReactionIcon 
-            reactionKey={selectedReaction || null}
+        {variant === 'overlay' ? (
+          <button
+            type="button"
+            aria-label="Like"
+            className={RAIL_TRIGGER}
+            {...reactIfClosed}
+            {...openOnHover}
+          >
+            <span className={RAIL_CIRCLE}>
+              <StaticReactionIcon
+                reactionKey={selectedReaction || null}
+                size="lg"
+                isActive={isActive}
+                onDark={onDark}
+              />
+            </span>
+            <span className={RAIL_COUNT}>{likesCount > 0 ? likesCount.toLocaleString() : ''}</span>
+          </button>
+        ) : (
+          <Button
+            variant="ghost"
             size="sm"
-            count={likesCount}
-            isActive={isLiked || !!currentReaction}
-            onDark={onDark}
-          />
-        </Button>
+            className={`flex items-center space-x-2 transition-colors ${
+              isActive
+                ? (currentReaction?.color || 'text-primary') + ' hover:opacity-80'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            {...reactIfClosed}
+            {...openOnHover}
+          >
+            <StaticReactionIcon
+              reactionKey={selectedReaction || null}
+              size="sm"
+              count={likesCount}
+              isActive={isActive}
+              onDark={onDark}
+            />
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent 
         className="w-auto p-2 bg-popover border border-border shadow-lg rounded-full"

@@ -459,7 +459,10 @@ const ReelViewer = () => {
             </Avatar>
           </div>
 
-          {/* Reaction — the shared picker, over the Gateway aggregate. */}
+          {/* Reaction — the shared picker, over the Gateway aggregate. `overlay`
+              draws the trigger in this rail's own measurements (48px circle, 24px
+              glyph, count beneath) so it matches the buttons above and below it
+              instead of arriving at the post card's smaller inline size. */}
           {user && (
             <div onClick={stop}>
               <ReactionPicker
@@ -467,6 +470,7 @@ const ReelViewer = () => {
                 selectedReaction={userReaction}
                 likesCount={reactionsCount}
                 onDark
+                variant="overlay"
                 onReact={(key) => void toggleReaction(key)}
                 onLike={() => void toggleReaction('ok')}
               />
