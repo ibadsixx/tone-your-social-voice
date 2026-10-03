@@ -99,7 +99,18 @@ export const photoErrorMessage = (
   error: unknown,
   label: 'profile picture' | 'cover photo'
 ): string => {
-  if (error instanceof PhotoUpdateError) return error.message;
+  if (error instanceof PhotoUpdateError) {
+    const msg = error.message;
+    if (msg && msg.trim() && msg !== 'Please try again.') return msg;
+    const base = label === 'cover photo' ? 'cover photo' : 'profile picture';
+    if (error.stage === 'profile') {
+      return `Your ${base} was uploaded, but saving it to your profile failed. Please try again.`;
+    }
+    if (error.stage === 'upload') {
+      return `Could not upload the ${base} image. Please try again.`;
+    }
+    return msg || 'Please try again.';
+  }
   if (import.meta.env.DEV) return describeStorageFailure(error, label);
   return 'Please try again.';
 };
