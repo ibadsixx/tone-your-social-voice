@@ -161,6 +161,15 @@ export const uploadPhotoToStorage = async (
       upsert: false,
     });
 
+  if (import.meta.env.DEV) {
+    console.debug('[usePhotoUpload] storage.upload result:', {
+      bucket,
+      fileName,
+      hasError: !!error,
+      error: error ? (error as any).message : undefined,
+    });
+  }
+
   if (error) {
     throw new PhotoUpdateError(
       'upload',
@@ -170,7 +179,11 @@ export const uploadPhotoToStorage = async (
   }
 
   const { data } = gateway.storage.from(bucket).getPublicUrl(fileName);
-  return { publicUrl: data.publicUrl, fileName };
+  const publicUrl = data.publicUrl;
+  if (import.meta.env.DEV) {
+    console.debug('[usePhotoUpload] getPublicUrl:', { bucket, fileName, publicUrl });
+  }
+  return { publicUrl, fileName };
 };
 
 /**

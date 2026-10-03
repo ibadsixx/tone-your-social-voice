@@ -240,6 +240,9 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
         ref={fileInputRef}
         onChange={(e) => {
           const file = e.target.files?.[0];
+          if (import.meta.env.DEV) {
+            console.debug('[CoverPhotoEditor] file selected:', file ? { name: file.name, size: file.size, type: file.type } : null);
+          }
           if (file) {
             handleFileUpload(file);
           }
