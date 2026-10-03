@@ -320,6 +320,10 @@ export const usePhotoUpload = () => {
         window.dispatchEvent(new CustomEvent('profile:updated', { detail: { userId, type, publicUrl } }));
       }
 
+      if (import.meta.env.DEV) {
+        console.debug(`[usePhotoUpload] ${label} uploadPhoto completed successfully, returning publicUrl:`, publicUrl);
+      }
+
       return publicUrl;
     } catch (error) {
       // The real reason is always logged, and `photoErrorMessage` decides how
