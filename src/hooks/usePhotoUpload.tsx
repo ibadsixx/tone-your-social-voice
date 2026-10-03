@@ -303,6 +303,10 @@ export const usePhotoUpload = () => {
         });
       }
 
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('profile:updated', { detail: { userId, type, publicUrl } }));
+      }
+
       return publicUrl;
     } catch (error) {
       // The real reason is always logged, and `photoErrorMessage` decides how

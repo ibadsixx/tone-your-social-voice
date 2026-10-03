@@ -80,8 +80,19 @@ export const useProfile = (profileId?: string) => {
       )
       .subscribe();
 
+    const handleProfileUpdated = () => {
+      fetchProfile();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('profile:updated', handleProfileUpdated);
+    }
+
     return () => {
       gateway.removeChannel(channel);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('profile:updated', handleProfileUpdated);
+      }
     };
   }, [user?.id, profileId]);
 

@@ -283,6 +283,9 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
               });
             }
 
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('profile:updated', { detail: { userId: user.id, type: 'cover', publicUrl: photoUrl } }));
+            }
             onProfileUpdate?.();
             setShowPhotoLibrary(false);
           } catch {
@@ -316,6 +319,9 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
               description: 'Cover position updated'
             });
 
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('profile:updated', { detail: { userId: user.id, type: 'cover-position' } }));
+            }
             onProfileUpdate?.();
             setShowReposition(false);
           } catch {
