@@ -124,6 +124,7 @@ vi.mock('@/hooks/useReactions', () => ({
 }));
 vi.mock('@/components/CommentItem', () => ({ CommentItem: () => null }));
 vi.mock('@/components/MentionText', () => ({ MentionText: () => null }));
+vi.mock('@/components/MentionHashtagText', () => ({ MentionHashtagText: () => null }));
 vi.mock('@/components/LocationChip', () => ({ LocationChip: () => null }));
 vi.mock('@/components/SharedPost', () => ({ SharedPost: () => null }));
 vi.mock('@/components/ReactionUsersModal', () => ({ default: () => null }));

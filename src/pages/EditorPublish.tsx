@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import PageContainer from '@/components/PageContainer';
 import { useAuth } from '@/hooks/useAuth';
+import { useMentions } from '@/hooks/useMentions';
 import { gateway } from '@/lib/gateway';
 import { toast } from '@/hooks/use-toast';
 import { EditorProject } from '@/hooks/useEditorProject';
@@ -82,6 +83,10 @@ export default function EditorPublish() {
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('projectId');
   const { user } = useAuth();
+  // Same helper the feed composer uses (NewPost.tsx), so a post published from
+  // the Editor registers its @mentions and #hashtags exactly as one typed in the
+  // composer does. `saveMentionsAndHashtags` is a no-op when the text has neither.
+  const { saveMentionsAndHashtags } = useMentions();
 
   const [project, setProject] = useState<EditorProject | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -483,6 +488,26 @@ export default function EditorPublish() {
       }
 
       console.log('[EditorPublish] PUBLISHED POST:', postResult);
+
+      // Register the caption's @mentions and #hashtags. The caption is the
+      // Editor's equivalent of a composer's post body (`postData.content` above),
+      // and this is the same call NewPost.tsx makes once its post id exists, so
+      // both entry points write identical rows to `mentions`, `hashtags` and
+      // `hashtag_links`. Only reached once the post row exists, and only after
+      // `postResult` is confirmed — both branches above throw on error, so
+      // reaching here means the id is real.
+      //
+      // A failure here must not undo a successful publish: the post is already
+      // live, and the publish path continues to the story/posted-project writes
+      // below. So it is awaited inside its own try rather than allowed to throw.
+      const publishedId = postResult?.id;
+      if (publishedId && typeof publishedId === 'string') {
+        try {
+          await saveMentionsAndHashtags('post', publishedId, settings.caption || '');
+        } catch (hashtagError) {
+          console.error('[EditorPublish] Hashtag/mention save failed:', hashtagError);
+        }
+      }
 
       // Handle story posting if enabled
       if (settings.postToStory && postResult) {

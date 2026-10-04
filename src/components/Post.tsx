@@ -26,7 +26,7 @@ import { SharedPost } from '@/components/SharedPost';
 import { AudienceSummary, type AudienceSelection } from '@/components/AudienceSelector';
 import { LocationChip } from '@/components/LocationChip';
 import { CommentItem } from '@/components/CommentItem';
-import { MentionText } from '@/components/MentionText';
+import { MentionHashtagText } from '@/components/MentionHashtagText';
 
 interface PostMedia {
   id: string;
@@ -402,7 +402,7 @@ const Post = ({
           {/* Sharer's content (if any) */}
           {shared_post_id && content && (
             <p className="text-sm leading-relaxed text-foreground">
-              <MentionText text={content} />
+              <MentionHashtagText text={content} />
             </p>
           )}
 
@@ -419,7 +419,7 @@ const Post = ({
             <>
               {content && (
                 <p className="text-sm leading-relaxed text-foreground">
-                  <MentionText text={content} />
+                  <MentionHashtagText text={content} />
                 </p>
               )}
               
