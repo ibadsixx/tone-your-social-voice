@@ -66,6 +66,10 @@ vi.mock('@/lib/gateway', () => ({
       const q: Record<string, unknown> = {
         select: () => q,
         eq: () => q,
+        // `loadFriendIds` reads the viewer's accepted friendships with an `or`
+        // over requester/receiver before the audience check. It reads only, so
+        // the "no persistence of its own" assertions are unaffected.
+        or: () => q,
         insert: () => q,
         update: () => q,
         delete: () => q,

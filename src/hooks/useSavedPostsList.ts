@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { isPostVisibleToViewer, loadFriendIds, type PostVisibilityFields } from '@/lib/postVisibility';
 
 interface Post {
   id: string;
@@ -97,6 +98,9 @@ export const useSavedPostsList = () => {
 
       if (error) throw error;
 
+      // Resolve the viewer's accepted friends once for the audience check below.
+      const friendIds = await loadFriendIds(user.id);
+
       // Extract posts from the nested structure and map types
       const savedPosts = (data || [])
         .map((item: any) => item.posts)
@@ -105,7 +109,12 @@ export const useSavedPostsList = () => {
           ...post,
           media_type: post.media_type as 'image' | 'video' | null,
           shared_post: post.shared_post
-        }));
+        }))
+        // Defense in depth: the Gateway filters every `posts` read by audience,
+        // but a save is the viewer's own bookmark row — never let a post whose
+        // audience has since been tightened (or whose author blocked them back)
+        // keep rendering from the saved list.
+        .filter((post: PostVisibilityFields) => isPostVisibleToViewer(post, user.id, friendIds));
 
       setPosts(savedPosts);
     } catch (error: any) {

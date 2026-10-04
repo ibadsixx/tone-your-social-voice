@@ -38,6 +38,8 @@ let reel: Record<string, unknown> = {};
 const writes: string[] = [];
 /** Every table the viewer read from. */
 const reads: string[] = [];
+/** The rows the navigation-list read answers with. Overridden per test. */
+let navRows: Array<Record<string, unknown>> = [];
 
 function serveReel(overrides: Record<string, unknown> = {}) {
   reel = {
@@ -77,7 +79,10 @@ const postsQuery = (filters: Record<string, unknown>) => {
       ),
     then: (onDone: (v: unknown) => unknown) => {
       reads.push('posts');
-      return onDone({ data: [{ id: REEL_ID }], error: null });
+      // The navigation list. It carries the audience columns because the viewer
+      // filters it with the same rule as every other surface — a reel the viewer
+      // may not open must not be one arrow-key away.
+      return onDone({ data: navRows.map(r => ({ id: REEL_ID, ...r })), error: null });
     },
   };
   return self;
@@ -87,6 +92,9 @@ const postsQuery = (filters: Record<string, unknown>) => {
  * Every other table the shared hooks touch: reads answer "nothing here", writes are
  * recorded so a test can assert the viewer invented no persistence of its own.
  */
+/** Accepted friendships `loadFriendIds` resolves to. Overridden per test. */
+let friendRows: Array<{ requester_id: string; receiver_id: string }> = [];
+
 const tableQuery = (table: string) => {
   const record = (verb: string) => {
     writes.push(`${table}.${verb}`);
@@ -95,6 +103,10 @@ const tableQuery = (table: string) => {
   const self: Record<string, unknown> = {
     select: () => self,
     eq: () => self,
+    // `loadFriendIds` resolves the viewer's accepted friends with an `or` over
+    // requester/receiver before the audience check, so the builder has to accept
+    // it. Reading `friends` records no write, so the persistence assertions hold.
+    or: () => self,
     order: () => self,
     limit: () => self,
     insert: () => record('insert'),
@@ -104,7 +116,9 @@ const tableQuery = (table: string) => {
     single: () => Promise.resolve({ data: null, error: null }),
     then: (onDone: (v: unknown) => unknown) => {
       reads.push(table);
-      return onDone({ data: [], error: null });
+      // `friends` is the one table with real rows: the viewer resolves its
+      // accepted friendships from it to evaluate `friends` audience content.
+      return onDone({ data: table === 'friends' ? friendRows : [], error: null });
     },
   };
   return self;
@@ -190,6 +204,10 @@ beforeEach(() => {
   reads.length = 0;
   currentUser = { id: OWNER_ID };
   serveReel();
+  navRows = [
+    { id: REEL_ID, user_id: OWNER_ID, audience_type: 'public', visibility: 'public', status: 'published' },
+  ];
+  friendRows = [];
 });
 
 describe('the viewer renders the shared action components', () => {
@@ -352,6 +370,70 @@ describe('embed is offered only for content that is genuinely public', () => {
     await openMenu();
 
     expect(screen.queryByText('Embed')).toBeNull();
+  });
+});
+
+describe('the navigation list is filtered by audience', () => {
+  it('keeps a friends-only reel the viewer is actually friends with', async () => {
+    navRows = [
+      { id: REEL_ID, user_id: OWNER_ID, audience_type: 'public', visibility: 'public', status: 'published' },
+      { id: '22222222-2222-2222-2222-222222222222', user_id: 'friend-author', audience_type: 'friends', visibility: 'public', status: 'published' },
+    ];
+    friendRows = [{ requester_id: OWNER_ID, receiver_id: 'friend-author' }];
+    await renderLoadedViewer();
+
+    // The direction is only offered when the list holds more than this reel, so
+    // its presence is the assertion: the friends-only entry survived the filter.
+    // The three "drops" tests below assert its absence for the same list shape.
+    expect(await screen.findByLabelText('Next reel')).toBeTruthy();
+  });
+
+  it('drops a friends-only reel the viewer is not friends with', async () => {
+    // `friends` answers empty, so nobody is an accepted friend and the reel must
+    // not be reachable by the arrow.
+    navRows = [
+      { id: REEL_ID, user_id: OWNER_ID, audience_type: 'public', visibility: 'public', status: 'published' },
+      { id: '33333333-3333-3333-3333-333333333333', user_id: 'stranger', audience_type: 'friends', visibility: 'public', status: 'published' },
+    ];
+    await renderLoadedViewer();
+
+    // Only this reel survives the filter, so there is no next direction at all.
+    await waitFor(() => expect(reads).toContain('posts'));
+    expect(screen.queryByLabelText('Next reel')).toBeNull();
+  });
+
+  it('drops an only_me reel that belongs to someone else', async () => {
+    navRows = [
+      { id: REEL_ID, user_id: OWNER_ID, audience_type: 'public', visibility: 'public', status: 'published' },
+      { id: '44444444-4444-4444-4444-444444444444', user_id: 'stranger', audience_type: 'only_me', visibility: 'only_me', status: 'published' },
+    ];
+    await renderLoadedViewer();
+
+    await waitFor(() => expect(reads).toContain('posts'));
+    expect(screen.queryByLabelText('Next reel')).toBeNull();
+  });
+
+  it("drops someone else's draft from a viewer's list", async () => {
+    navRows = [
+      { id: REEL_ID, user_id: OWNER_ID, audience_type: 'public', visibility: 'public', status: 'published' },
+      { id: '55555555-5555-5555-5555-555555555555', user_id: 'stranger', audience_type: 'public', visibility: 'public', status: 'draft' },
+    ];
+    await renderLoadedViewer();
+
+    await waitFor(() => expect(reads).toContain('posts'));
+    expect(screen.queryByLabelText('Next reel')).toBeNull();
+  });
+
+  it('keeps the viewer their own only_me reel', async () => {
+    // The owner always sees their own content, in every audience — a private
+    // reel of their own must stay reachable or they cannot review it.
+    navRows = [
+      { id: REEL_ID, user_id: OWNER_ID, audience_type: 'public', visibility: 'public', status: 'published' },
+      { id: '66666666-6666-6666-6666-666666666666', user_id: OWNER_ID, audience_type: 'only_me', visibility: 'only_me', status: 'published' },
+    ];
+    await renderLoadedViewer();
+
+    expect(await screen.findByLabelText('Next reel')).toBeTruthy();
   });
 });
 

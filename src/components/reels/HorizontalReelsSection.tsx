@@ -5,6 +5,8 @@ import { Film, Play, ChevronRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useHiddenContent } from '@/hooks/useHiddenContent';
+import { useAuth } from '@/hooks/useAuth';
+import { isPostVisibleToViewer, loadFriendIds, type PostVisibilityFields } from '@/lib/postVisibility';
 
 interface Reel {
   id: string;
@@ -87,6 +89,7 @@ const HorizontalReelsSection = () => {
   const [loading, setLoading] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { shouldShowContent } = useHiddenContent();
+  const { user } = useAuth();
 
   // Filter out hidden reels (by content_id or profile_id)
   const filteredReels = useMemo(() => {
@@ -97,6 +100,10 @@ const HorizontalReelsSection = () => {
   const fetchReels = useCallback(async () => {
     try {
       setLoading(true);
+
+      // Resolve the viewer's accepted friends once, so friends-only reels are
+      // filtered by the same rule everywhere rather than guessed at.
+      const friendIds = await loadFriendIds(user?.id);
 
       const { data, error } = await gateway
         .from('posts')
@@ -110,6 +117,8 @@ const HorizontalReelsSection = () => {
           likes_count,
           comments_count,
           created_at,
+          audience_type,
+          visibility,
           profiles:user_id (
             username,
             display_name,
@@ -124,13 +133,21 @@ const HorizontalReelsSection = () => {
 
       if (error) throw error;
 
-      const formattedReels = (data || []).map((reel) => ({
-        ...reel,
-        media_type: 'video' as const,
-        likes_count: reel.likes_count || 0,
-        comments_count: reel.comments_count || 0,
-        profiles: Array.isArray(reel.profiles) ? reel.profiles[0] : reel.profiles,
-      })) as Reel[];
+      const fetched = (data || []) as unknown as Array<PostVisibilityFields & Omit<Reel, 'media_type'>>;
+
+      const formattedReels = fetched
+        // Defense in depth: the Gateway filters every `posts` read by audience,
+        // so a friends/only_me reel can never reach this rail in the first
+        // place. Keep the check client-side anyway — this rail renders a
+        // thumbnail that fetches the media URL.
+        .filter(reel => isPostVisibleToViewer(reel, user?.id || '', friendIds))
+        .map((reel) => ({
+          ...reel,
+          media_type: 'video' as const,
+          likes_count: reel.likes_count || 0,
+          comments_count: reel.comments_count || 0,
+          profiles: Array.isArray(reel.profiles) ? reel.profiles[0] : reel.profiles,
+        })) as Reel[];
 
       console.log(
         `[REELS_HORIZONTAL] fetched=${formattedReels.length} reels`
@@ -142,7 +159,7 @@ const HorizontalReelsSection = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     fetchReels();

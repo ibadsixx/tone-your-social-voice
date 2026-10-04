@@ -17,6 +17,7 @@ import { SharePostModal } from '@/components/modals/SharePostModal';
 import ReelFeedbackModal from '@/components/reels/ReelFeedbackModal';
 import ReelEmbedModal from '@/components/reels/ReelEmbedModal';
 import { isGuestSafePublicContent } from '@/lib/contentAudience';
+import { isPostVisibleToViewer, loadFriendIds } from '@/lib/postVisibility';
 import { Heart, MessageCircle, Send, Share2, X, Bookmark, Volume2, VolumeX, ChevronLeft, ChevronRight, MoreVertical, EyeOff, Bug, Code } from 'lucide-react';
 
 interface ReelData {
@@ -118,16 +119,32 @@ const ReelViewer = () => {
   useEffect(() => {
     const fetchReelsList = async () => {
       try {
+        // Resolve the viewer's accepted friends once, so a friends-only reel the
+        // viewer IS allowed to open is still in the navigation list.
+        const friendIds = await loadFriendIds(user?.id);
+
         const { data, error } = await gateway
           .from('posts')
-          .select('id')
+          .select('id, user_id, audience_type, visibility, status')
           .eq('type', 'reel')
           .order('created_at', { ascending: false })
           .limit(100);
 
         if (error) throw error;
 
-        const ids = (data || []).map(r => r.id);
+        // This list is a navigation source: an unauthorized reel in it is one
+        // arrow-key away. The Gateway already filters `posts` reads by audience,
+        // but keep the client check so the list can never widen past what this
+        // viewer may see — including a draft of someone else's reel.
+        const ids = ((data || []) as Array<{
+          id: string;
+          user_id: string;
+          audience_type?: string | null;
+          visibility?: string | null;
+          status?: string | null;
+        }>)
+          .filter(r => isPostVisibleToViewer(r, user?.id || '', friendIds))
+          .map(r => r.id);
         setReelsList(ids);
 
         // Find current index
@@ -145,7 +162,7 @@ const ReelViewer = () => {
     };
 
     fetchReelsList();
-  }, []);
+  }, [user?.id]);
 
   // Update current index when id changes
   useEffect(() => {

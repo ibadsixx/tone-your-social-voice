@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { gateway } from '@/lib/gateway';
 import { useAuth } from './useAuth';
+import { isPostVisibleToViewer, loadFriendIds, type PostVisibilityFields } from '@/lib/postVisibility';
 
 export interface MentionItem {
   id: string;
@@ -102,21 +103,33 @@ export const useMentionsFeed = (targetUserId?: string) => {
       const postIds = postMentions.map(m => m.source_id);
       let postsWithAuthors: any[] = [];
       if (postIds.length > 0) {
+        // Resolve the viewer's accepted friends once, so a friends-only post
+        // the viewer IS allowed to read is not filtered away below.
+        const friendIds = await loadFriendIds(user?.id);
+
         const { data: postsData, error: postsError } = await gateway
           .from('posts')
-          .select('id, content, user_id, created_at')
+          .select('id, content, user_id, created_at, audience_type, visibility')
           .in('id', postIds);
 
         if (postsError) throw postsError;
 
         if (postsData && postsData.length > 0) {
-          const postUserIds = postsData.map(p => p.user_id);
+          // Defense in depth: the Gateway already filters every `posts` read by
+          // audience (gateway/src/features/contentVisibility.ts), but a mention
+          // row is not a content read — the client must not re-surface a
+          // friends/only_me post to someone who may not see it.
+          const visiblePosts = (postsData as unknown as PostVisibilityFields[]).filter(
+            post => isPostVisibleToViewer(post, user?.id || '', friendIds)
+          );
+
+          const postUserIds = visiblePosts.map(p => p.user_id);
           const { data: postAuthors } = await gateway
             .from('profiles')
             .select('id, username, display_name, profile_pic')
             .in('id', postUserIds);
 
-          postsWithAuthors = postsData.map(post => ({
+          postsWithAuthors = visiblePosts.map(post => ({
             ...post,
             author: postAuthors?.find(a => a.id === post.user_id),
           }));
