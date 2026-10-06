@@ -5,6 +5,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
 import { User } from 'lucide-react';
 import { mediaAppUrl } from '@/lib/mediaUrl';
+import { MentionHashtagText } from '@/components/MentionHashtagText';
 
 interface SharedPostData {
   id: string;
@@ -78,10 +79,12 @@ export const SharedPost = ({ sharedPost, onClick }: SharedPostProps) => {
             </div>
           </div>
 
-          {/* Original Post Content */}
+          {/* Original Post Content. Rendered through the shared renderer so a
+              hashtag or @mention in the shared body is a link here too; the
+              card's own onClick still fires for every other tap. */}
           {sharedPost.content && (
             <p className="text-sm text-foreground mb-3 leading-relaxed">
-              {sharedPost.content}
+              <MentionHashtagText text={sharedPost.content} />
             </p>
           )}
 
