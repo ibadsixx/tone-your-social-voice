@@ -3,7 +3,7 @@ import { useMentionsFeed } from '@/hooks/useMentionsFeed';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MentionText } from '@/components/MentionText';
+import { MentionHashtagText } from '@/components/MentionHashtagText';
 import { formatDistanceToNow } from 'date-fns';
 import { AtSign, MessageSquare, FileText } from 'lucide-react';
 import PageContainer from '@/components/PageContainer';
@@ -115,7 +115,7 @@ const Mentions = ({ targetUserId }: { targetUserId?: string }) => {
                         <MessageSquare className="w-4 h-4 mt-1 text-muted-foreground shrink-0" />
                       )}
                       <div className="text-sm text-foreground/80 line-clamp-3">
-                        <MentionText text={content.content || ''} />
+                        <MentionHashtagText text={content.content || ''} />
                       </div>
                     </div>
                   </div>
