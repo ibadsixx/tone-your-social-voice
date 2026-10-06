@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { postsApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
+import { useMentions } from '@/hooks/useMentions';
 import { Loader2 } from 'lucide-react';
 
 interface EditPostDialogProps {
@@ -20,6 +21,7 @@ export const EditPostDialog = ({ open, onOpenChange, post, onPostUpdated }: Edit
   const [content, setContent] = useState(post.content);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { saveMentionsAndHashtags } = useMentions();
 
   useEffect(() => {
     setContent(post.content);
@@ -40,6 +42,18 @@ export const EditPostDialog = ({ open, onOpenChange, post, onPostUpdated }: Edit
       const { error } = await postsApi.updatePost(post.id, { content: content.trim() });
 
       if (error) throw error;
+
+      // The row is saved; now synchronize its hashtags (and mentions) with the
+      // new body, exactly as the composer and the Editor do on create. This is
+      // the step that was missing: without it an edit that added `#POV` never
+      // reached `hashtags` / `hashtag_links`, so the tag never appeared in the
+      // hashtag system. The post is already live, so a helper failure must not
+      // turn a successful edit into a visible error - it is logged instead.
+      try {
+        await saveMentionsAndHashtags('post', post.id, content.trim());
+      } catch (syncError) {
+        console.error('[EditPostDialog] Hashtag/mention save failed:', syncError);
+      }
 
       toast({
         title: "Success",

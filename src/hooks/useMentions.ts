@@ -37,7 +37,16 @@ export const useMentions = () => {
     return data || [];
   };
 
-  // Save mentions to database
+  // Save mentions to database.
+  //
+  // This runs again when an existing post is edited (the EDIT POST flow calls
+  // `saveMentionsAndHashtags`, the same helper a create uses). The `mentions`
+  // table has no unique constraint and every insert notifies the mentioned user,
+  // so a plain re-insert would duplicate rows AND re-notify people who were
+  // already mentioned. Filtering against what the source already links to keeps
+  // a repeated save idempotent: only genuinely new mentions are inserted and
+  // notified. Obsolete-mention removal is deliberately not added here - it is
+  // outside this fix's scope and would change behavior creates rely on.
   const saveMentions = async (
     sourceType: 'post' | 'comment',
     sourceId: string,
@@ -49,8 +58,29 @@ export const useMentions = () => {
     if (usernames.length === 0) return;
 
     const mentionedUsers = await getUserIdsFromUsernames(usernames);
-    
-    const mentionsToInsert = mentionedUsers.map(mentionedUser => ({
+
+    const { data: existingMentions, error: existingError } = await gateway
+      .from('mentions')
+      .select('mentioned_user_id')
+      .eq('source_type', sourceType)
+      .eq('source_id', sourceId);
+
+    if (existingError) {
+      console.error('Error reading mentions:', existingError);
+      return;
+    }
+
+    const existingIds = new Set<string>(
+      ((existingMentions as Array<{ mentioned_user_id: string }> | null) || []).map(
+        row => row.mentioned_user_id
+      )
+    );
+
+    const newlyMentioned = mentionedUsers.filter(
+      mentionedUser => !existingIds.has(mentionedUser.id)
+    );
+
+    const mentionsToInsert = newlyMentioned.map(mentionedUser => ({
       source_type: sourceType,
       source_id: sourceId,
       mentioned_user_id: mentionedUser.id,
@@ -67,8 +97,8 @@ export const useMentions = () => {
         return;
       }
 
-      // Create notifications for each mentioned user
-      for (const mentionedUser of mentionedUsers) {
+      // Create notifications for each newly mentioned user only.
+      for (const mentionedUser of newlyMentioned) {
         const message = sourceType === 'post' 
           ? `${user.user_metadata?.display_name || user.email} mentioned you in a post`
           : `${user.user_metadata?.display_name || user.email} mentioned you in a comment`;
