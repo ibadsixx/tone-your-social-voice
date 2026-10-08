@@ -23,7 +23,7 @@ import { applyNoIndexSeo, applySeo, buildContentJsonLd, buildContentSeo } from '
 const PublicContentPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { post, loading, notFound } = usePost(id);
+  const { post, loading, notFound, error, refetch } = usePost(id);
   const { user } = useAuth();
 
   // Head tags are written from the loaded content, and the canonical is derived
@@ -85,6 +85,26 @@ const PublicContentPage = () => {
             <Skeleton className="h-64 w-full" />
           </div>
         </PageContainer>
+      </div>
+    );
+  }
+
+  // A transient read failure is NOT an availability verdict: the post may be
+  // perfectly public and just have been unreachable for a moment. This state is
+  // deliberately separate from `notFound`, so the effect above never reaches
+  // `applyNoIndexSeo` because of it, and the URL is never de-indexed by a blip.
+  if (error && !notFound) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <h1 className="text-4xl font-bold text-foreground">
+            We couldn't load this post
+          </h1>
+          <p className="text-muted-foreground">
+            Something went wrong while loading it. This may be temporary.
+          </p>
+          <Button onClick={() => refetch()}>Try again</Button>
+        </div>
       </div>
     );
   }

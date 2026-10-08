@@ -55,64 +55,119 @@ interface Post {
   comments?: { id: string; content: string; profiles: { display_name: string } }[];
 }
 
+// A transient read failure - a dropped connection, a timeout, a Gateway 5xx, a
+// temporarily unreadable/malformed body, a blip on the database behind the
+// Gateway - does NOT prove that the requested post is missing. `usePost` must
+// never turn one into `notFound`: PublicContentPage pairs `notFound` with
+// `applyNoIndexSeo`, so a single failed render would de-index a post that is
+// genuinely public. One short, bounded retry gives a one-off blip a chance to
+// clear before the failure is surfaced (separately from `notFound`).
+const TRANSIENT_MAX_ATTEMPTS = 2;
+const TRANSIENT_RETRY_DELAY_MS = 250;
+
+const waitForRetry = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const errorMessage = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
+
 export const usePost = (postId?: string) => {
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  // A transient read failure, kept deliberately separate from `notFound`. It is
+  // a recoverable "could not load" state, never an indexability decision.
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
 
   const fetchPost = async () => {
+    // No id at all is a confirmed absence, not a transient failure.
     if (!postId) {
+      setPost(null);
+      setNotFound(true);
+      setError(null);
       setLoading(false);
       return;
     }
 
-    try {
-      setLoading(true);
-      setNotFound(false);
+    setLoading(true);
+    setNotFound(false);
+    setError(null);
 
-      const { data, error } = await postsApi.getPostById(postId);
+    for (let attempt = 1; attempt <= TRANSIENT_MAX_ATTEMPTS; attempt++) {
+      let data: Post | null = null;
+      let apiError: { message: string; code?: string } | null = null;
 
-      if (error) throw error;
+      try {
+        ({ data, error: apiError } = await postsApi.getPostById(postId));
+      } catch (thrown: unknown) {
+        // A thrown transport error is the same class as a returned one.
+        apiError = { message: errorMessage(thrown) };
+      }
+
+      if (apiError) {
+        // Transient. Retry once, then surface the failure as `error` - never as
+        // `notFound`, so a public post is never de-indexed by a failed fetch.
+        if (attempt < TRANSIENT_MAX_ATTEMPTS) {
+          await waitForRetry(TRANSIENT_RETRY_DELAY_MS);
+          continue;
+        }
+        console.error('Error fetching post:', apiError);
+        setPost(null);
+        setError(apiError.message || 'Failed to load post');
+        toast({
+          title: 'Error',
+          description: 'Failed to load post',
+          variant: 'destructive'
+        });
+        setLoading(false);
+        return;
+      }
+
+      // The authorized read succeeded and returned no row. That is a *confirmed*
+      // absence: the post does not exist for this viewer, or the Gateway
+      // withheld it because it is not accessible. Only this is `notFound`.
+      if (!data) {
+        setPost(null);
+        setNotFound(true);
+        setError(null);
+        setLoading(false);
+        return;
+      }
 
       // Defense in depth for the direct `/post/:id` surface, which previously
-      // applied no audience check at all. The Gateway now refuses a row the
-      // viewer may not see (404) and the RLS policy enforces it for direct
-      // Supabase reads; this keeps a friends-only post from rendering if any
-      // other caller ever returns the row. An unauthorized post is reported as
-      // not found so the page does not confirm that a private post exists.
+      // applied no audience check at all. The Gateway refuses a row the viewer
+      // may not see and the RLS policy enforces it for direct Supabase reads;
+      // this keeps a friends-only post from rendering if any other caller ever
+      // returns the row. An unauthorized post is reported as not found so the
+      // page does not confirm that a private post exists.
       const viewerId = user?.id || '';
       const friendIds = await loadFriendIds(viewerId);
-      if (data && !isPostVisibleToViewer(data, viewerId, friendIds)) {
-        setNotFound(true);
+      if (!isPostVisibleToViewer(data, viewerId, friendIds)) {
         setPost(null);
-      } else if (!data) {
         setNotFound(true);
-        setPost(null);
-      } else {
-        const postWithTypedMedia = {
-          ...data,
-          media_type: data.media_type as 'image' | 'video' | null,
-          // The API returns `duration` as whatever Postgres inferred for the
-          // numeric column, which may arrive as a string. The VideoObject
-          // duration must be a number, so coerce it here - once - rather than
-          // guarding for it in every consumer.
-          duration: typeof data.duration === 'number' ? data.duration : null,
-          shared_post: data.shared_post
-        };
-        setPost(postWithTypedMedia);
+        setError(null);
+        setLoading(false);
+        return;
       }
-    } catch (error: any) {
-      console.error('Error fetching post:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load post',
-        variant: 'destructive'
-      });
-      setNotFound(true);
-    } finally {
+
+      const postWithTypedMedia = {
+        ...data,
+        media_type: data.media_type as 'image' | 'video' | null,
+        // The API returns `duration` as whatever Postgres inferred for the
+        // numeric column, which may arrive as a string. The VideoObject
+        // duration must be a number, so coerce it here - once - rather than
+        // guarding for it in every consumer.
+        duration: typeof data.duration === 'number' ? data.duration : null,
+        shared_post: data.shared_post
+      };
+      setPost(postWithTypedMedia);
+      setError(null);
       setLoading(false);
+      return;
     }
   };
 
@@ -124,6 +179,7 @@ export const usePost = (postId?: string) => {
     post,
     loading,
     notFound,
+    error,
     refetch: fetchPost
   };
 };

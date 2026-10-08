@@ -384,6 +384,24 @@ describe('guest access to public content pages (§1, §4, §13)', () => {
     expect(screen.queryByTestId('auth-page')).toBeNull();
   });
 
+  it('A2. a transient read error is recoverable and NEVER emits noindex', async () => {
+    // Regression guard: a fetch failure is not an availability verdict. If the
+    // page treated `error` like `notFound`, a momentary Gateway 5xx would add
+    // `noindex,follow` to a public URL and drop it from the index.
+    mockUsePost.mockReturnValue({
+      post: null,
+      loading: false,
+      notFound: false,
+      error: 'Failed to load post',
+    });
+    renderAt(`/post/${UUID}`);
+
+    expect(await screen.findByText(/couldn't load this post/i)).toBeTruthy();
+    expect(head('meta[name="robots"]')).toBeNull();
+    expect(screen.queryByText(/isn't available/i)).toBeNull();
+    expect(document.getElementById('tone-route-jsonld')).toBeNull();
+  });
+
   it('B. renders a public reel on /reel/:id and canonicalises to /reel/', async () => {
     mockUsePost.mockReturnValue({
       post: content({ type: 'reel', media_type: 'video', media_url: 'https://cdn.test/v.mp4', duration: 8 }),
