@@ -105,7 +105,7 @@ export async function getCallHistoryById(id: string): Promise<ApiResult<CallHist
 }
 
 export async function getCallHistoryByUser(userId: string): Promise<ApiResult<CallHistory[]>> {
-  return gateway.from('call_history').select('*').or(`caller_id=eq.${userId},receiver_id=eq.${userId}`).order('created_at', { ascending: false }) as Promise<ApiResult<CallHistory[]>>;
+  return gateway.from('call_history').select('*').or(`caller_id.eq.${userId},receiver_id.eq.${userId}`).order('created_at', { ascending: false }) as Promise<ApiResult<CallHistory[]>>;
 }
 
 export async function updateCallHistory(id: string, data: Partial<CallHistory>): Promise<ApiResult<null>> {
@@ -325,7 +325,13 @@ export async function getFriendById(id: string): Promise<ApiResult<Friend>> {
 }
 
 export async function getFriendsByUser(userId: string): Promise<ApiResult<Friend[]>> {
-  return gateway.from('friends').select('*').or(`requester_id=eq.${userId},receiver_id=eq.${userId}`).eq('status', 'accepted').order('created_at', { ascending: false }) as Promise<ApiResult<Friend[]>>;
+  // `or=(...)` is a PostgREST logic tree: every condition inside it MUST use
+  // `column.operator.value` (dot) notation. Writing `requester_id=eq.<id>` here
+  // (the top-level filter form) makes the Gateway's `.or(...)` pass an
+  // unparseable tree to Supabase; the query 400s, the route swallows the error
+  // and answers `[]`, so callers silently saw no friends. The proven Friends
+  // page (`useFriendsList`/`useFriends`) uses the dot form below.
+  return gateway.from('friends').select('*').or(`requester_id.eq.${userId},receiver_id.eq.${userId}`).eq('status', 'accepted').order('created_at', { ascending: false }) as Promise<ApiResult<Friend[]>>;
 }
 
 export async function getPendingFriendRequests(userId: string): Promise<ApiResult<Friend[]>> {
@@ -351,7 +357,7 @@ export async function getFriendshipById(id: string): Promise<ApiResult<Friendshi
 }
 
 export async function getFriendshipsByUser(userId: string): Promise<ApiResult<Friendship[]>> {
-  return gateway.from('friendships').select('*').or(`sender_id=eq.${userId},receiver_id=eq.${userId}`).order('created_at', { ascending: false }) as Promise<ApiResult<Friendship[]>>;
+  return gateway.from('friendships').select('*').or(`sender_id.eq.${userId},receiver_id.eq.${userId}`).order('created_at', { ascending: false }) as Promise<ApiResult<Friendship[]>>;
 }
 
 export async function updateFriendship(id: string, data: Partial<Friendship>): Promise<ApiResult<null>> {
@@ -611,7 +617,7 @@ export async function getPokeById(id: string): Promise<ApiResult<Poke>> {
 }
 
 export async function getPokesByUser(userId: string): Promise<ApiResult<Poke[]>> {
-  return gateway.from('pokes').select('*').or(`poking_user_id=eq.${userId},poked_user_id=eq.${userId}`).order('created_at', { ascending: false }) as Promise<ApiResult<Poke[]>>;
+  return gateway.from('pokes').select('*').or(`poking_user_id.eq.${userId},poked_user_id.eq.${userId}`).order('created_at', { ascending: false }) as Promise<ApiResult<Poke[]>>;
 }
 
 export async function getPokesReceived(userId: string): Promise<ApiResult<Poke[]>> {
@@ -1131,7 +1137,7 @@ export async function getMultipleUsers(userIds: string[]): Promise<ApiResult<{ i
 
 export async function searchUsers(query: string, limit: number = 20): Promise<ApiResult<{ id: string; username: string; display_name: string; profile_pic: string | null }[]>> {
   const term = query.trim().replace(/^@/, '');
-  return gateway.from('profiles').select('id, username, display_name, profile_pic').or(`display_name=ilike.%${term}%,username=ilike.%${term}%`).limit(limit) as Promise<ApiResult<{ id: string; username: string; display_name: string; profile_pic: string | null }[]>>;
+  return gateway.from('profiles').select('id, username, display_name, profile_pic').or(`display_name.ilike.%${term}%,username.ilike.%${term}%`).limit(limit) as Promise<ApiResult<{ id: string; username: string; display_name: string; profile_pic: string | null }[]>>;
 }
 
 export async function getUserStats(userId: string): Promise<ApiResult<{ posts: number; followers: number; following: number; friends: number }>> {
@@ -1139,7 +1145,7 @@ export async function getUserStats(userId: string): Promise<ApiResult<{ posts: n
     gateway.from('posts').select('id', { count: 'exact', head: true }).eq('user_id', userId) as Promise<ApiResult<null>>,
     gateway.from('followers').select('id', { count: 'exact', head: true }).eq('following_id', userId) as Promise<ApiResult<null>>,
     gateway.from('followers').select('id', { count: 'exact', head: true }).eq('follower_id', userId) as Promise<ApiResult<null>>,
-    gateway.from('friends').select('id', { count: 'exact', head: true }).or(`requester_id=eq.${userId},receiver_id=eq.${userId}`).eq('status', 'accepted') as Promise<ApiResult<null>>,
+    gateway.from('friends').select('id', { count: 'exact', head: true }).or(`requester_id.eq.${userId},receiver_id.eq.${userId}`).eq('status', 'accepted') as Promise<ApiResult<null>>,
   ]);
   
   return {

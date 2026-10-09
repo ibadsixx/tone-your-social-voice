@@ -32,6 +32,7 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
@@ -39,19 +40,26 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
     if (!open) {
       setSelected(new Set());
       setSearch('');
+      setError(null);
     }
   }, [open, user]);
 
   const fetchFriends = async () => {
     if (!user) return;
     setLoading(true);
+    setError(null);
     try {
       // The Friends API already constrains this to accepted friendships; the
       // `status` guard keeps that invariant even if a pending/rejected row ever
       // leaks through. The search below only ever filters this list — it never
       // falls back to a global user search.
       const { data: friendsData, error: friendsError } = await usersApi.getFriendsByUser(user.id);
-      if (friendsError || !friendsData) {
+      if (friendsError) {
+        setFriends([]);
+        setError(friendsError.message || 'Could not load your friends.');
+        return;
+      }
+      if (!friendsData) {
         setFriends([]);
         return;
       }
@@ -67,17 +75,21 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
         return;
       }
 
-      // Fetch profiles for each eligible friend ID
-      const profiles = await Promise.all(
-        friendIds.map(async (id: string) => {
-          const { data } = await profilesApi.getProfileById(id);
-          return data;
-        })
-      );
+      // Batch the profile read exactly the way the Friends page does
+      // (`useFriendsList`): one `id=in.(...)` request instead of N reads, and
+      // the same proven columns. The UI just maps id/username/display_name/pic.
+      const { data: profilesData, error: profilesError } = await profilesApi.getProfilesByIds(friendIds);
+      if (profilesError) {
+        setFriends([]);
+        setError(profilesError.message || 'Could not load your friends.');
+        return;
+      }
 
-      setFriends(profiles.filter(Boolean) as Friend[]);
-    } catch (err) {
+      setFriends((profilesData || []).filter(Boolean) as Friend[]);
+    } catch (err: any) {
       console.error('Failed to fetch friends:', err);
+      setFriends([]);
+      setError(err?.message || 'Could not load your friends.');
     } finally {
       setLoading(false);
     }
@@ -159,6 +171,10 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-muted-foreground">Loading friends...</p>
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center h-full px-4">
+              <p className="text-sm text-destructive text-center">{error}</p>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex items-center justify-center h-full">

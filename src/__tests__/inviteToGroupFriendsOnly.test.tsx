@@ -24,7 +24,7 @@ const authState = vi.hoisted(() => ({ user: { id: 'viewer-1' } as { id: string }
 
 const api = vi.hoisted(() => ({
   getFriendsByUser: vi.fn(),
-  getProfileById: vi.fn(),
+  getProfilesByIds: vi.fn(),
   addGroupMembersSecure: vi.fn(),
   // Kept so the tests can prove the dialog never reaches for a global user
   // search or a follower list.
@@ -41,7 +41,7 @@ vi.mock('@/api', () => ({
     getFollowersByUser: (...a: unknown[]) => api.getFollowersByUser(...a),
   },
   profilesApi: {
-    getProfileById: (...a: unknown[]) => api.getProfileById(...a),
+    getProfilesByIds: (...a: unknown[]) => api.getProfilesByIds(...a),
   },
   groupsApi: {
     addGroupMembersSecure: (...a: unknown[]) => api.addGroupMembersSecure(...a),
@@ -87,9 +87,11 @@ const searchBox = () => screen.getByPlaceholderText('Choose friends');
 beforeEach(() => {
   toastSpy.mockReset();
   api.getFriendsByUser.mockReset().mockResolvedValue({ data: FRIEND_ROWS, error: null });
-  api.getProfileById
+  api.getProfilesByIds
     .mockReset()
-    .mockImplementation((id: string) => Promise.resolve({ data: PROFILES[id] ?? null, error: null }));
+    .mockImplementation((ids: string[]) =>
+      Promise.resolve({ data: ids.map((id) => PROFILES[id]).filter(Boolean), error: null })
+    );
   api.addGroupMembersSecure
     .mockReset()
     .mockResolvedValue({ data: { status: 'ok', added: 1 }, error: null });
@@ -165,6 +167,27 @@ describe('InviteToGroupDialog friends-only list', () => {
     renderDialog();
 
     await screen.findByText('You have no eligible friends to invite');
+  });
+
+  it('loads the eligible friends\' profiles in a single batched read', async () => {
+    renderDialog();
+    await screen.findByText('Ada Lovelace');
+
+    // The already-member friendship (fr-3) is excluded before the profile fetch,
+    // so only the two eligible ids reach the proven `.in('id', ...)` read.
+    expect(api.getProfilesByIds).toHaveBeenCalledTimes(1);
+    expect(api.getProfilesByIds).toHaveBeenCalledWith(['friend-ada', 'friend-grace']);
+  });
+
+  it('surfaces a failed friends request instead of silently showing an empty list', async () => {
+    api.getFriendsByUser.mockResolvedValue({
+      data: null,
+      error: { message: 'failed to parse logic tree' },
+    });
+    renderDialog();
+
+    await screen.findByText('failed to parse logic tree');
+    expect(screen.queryByText('You have no eligible friends to invite')).toBeNull();
   });
 
   it('shows a no-matching-friends message when the search has no hits', async () => {
