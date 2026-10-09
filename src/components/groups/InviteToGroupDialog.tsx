@@ -46,22 +46,28 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
     if (!user) return;
     setLoading(true);
     try {
+      // The Friends API already constrains this to accepted friendships; the
+      // `status` guard keeps that invariant even if a pending/rejected row ever
+      // leaks through. The search below only ever filters this list — it never
+      // falls back to a global user search.
       const { data: friendsData, error: friendsError } = await usersApi.getFriendsByUser(user.id);
       if (friendsError || !friendsData) {
         setFriends([]);
         return;
       }
 
+      const memberIdSet = new Set(existingMemberIds);
       const friendIds = friendsData
+        .filter((f: any) => f.status === 'accepted')
         .map((f: any) => (f.requester_id === user.id ? f.receiver_id : f.requester_id))
-        .filter((id: string) => id && !existingMemberIds.includes(id));
+        .filter((id: string) => id && id !== user.id && !memberIdSet.has(id));
 
       if (friendIds.length === 0) {
         setFriends([]);
         return;
       }
 
-      // Fetch profiles for each friend ID
+      // Fetch profiles for each eligible friend ID
       const profiles = await Promise.all(
         friendIds.map(async (id: string) => {
           const { data } = await profilesApi.getProfileById(id);
@@ -113,7 +119,13 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
       onOpenChange(false);
     } catch (err: any) {
       console.error('Failed to send invites:', err);
-      toast({ title: 'Error', description: 'Failed to send invites.', variant: 'destructive' });
+      // Surface the Gateway's own message (e.g. the friends-only rejection) so a
+      // bypassed/edge invitation explains itself instead of a generic error.
+      toast({
+        title: 'Error',
+        description: err?.message || 'Failed to send invites.',
+        variant: 'destructive',
+      });
     } finally {
       setSending(false);
     }
@@ -151,12 +163,14 @@ const InviteToGroupDialog = ({ open, onOpenChange, groupId, existingMemberIds, o
           ) : filtered.length === 0 ? (
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-muted-foreground">
-                {friends.length === 0 ? 'No friends to invite' : 'No results found'}
+                {friends.length === 0
+                  ? 'You have no eligible friends to invite'
+                  : 'No matching friends found'}
               </p>
             </div>
           ) : (
             <div className="px-4">
-              <p className="text-xs font-semibold text-muted-foreground py-2 uppercase tracking-wide">Suggested</p>
+              <p className="text-xs font-semibold text-muted-foreground py-2 uppercase tracking-wide">Friends</p>
               {filtered.map(friend => (
                 <label
                   key={friend.id}
