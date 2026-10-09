@@ -1,3 +1,5 @@
 node_modules
 dist
 PROJECT_REVIEW.md
+test-results
+playwright-report

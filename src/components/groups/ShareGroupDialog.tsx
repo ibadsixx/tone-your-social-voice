@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Link2, Users, User } from 'lucide-react';
@@ -142,99 +142,119 @@ const ShareGroupDialog = ({ isOpen, onClose, groupId, groupName }: ShareGroupDia
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
+      {/*
+        Layout constraints that keep the modal inside the viewport:
+        - `w-[calc(100%-2rem)]` keeps a 1rem gutter on each side (never 100vw edge-to-edge).
+        - `max-w-md` caps the desktop width.
+        - `flex flex-col` (replacing the primitive's `grid`) stops a wide child (the
+          horizontal friend strip) from widening the whole panel — in a single auto
+          grid column that strip's min-content width used to expand the panel past
+          the viewport, clipping the right edge and the "Share now" button.
+        - `max-h-[90vh]` + an inner `overflow-y-auto` body keeps it usable on short screens.
+      */}
+      <DialogContent className="flex max-h-[90vh] w-[calc(100%-2rem)] max-w-md flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="p-4 pb-0">
           <DialogTitle className="text-center">Share</DialogTitle>
         </DialogHeader>
 
-        {/* Share to feed section */}
-        <div className="px-4 pt-3 pb-2">
-          <div className="flex items-center gap-3 mb-3">
-            <Avatar className="h-10 w-10">
-              {profile?.profile_pic && <AvatarImage src={profile.profile_pic} />}
-              <AvatarFallback className="bg-primary/10 text-primary">
-                {(profile?.display_name || profile?.username || user?.email || 'U').charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="font-semibold text-sm">{profile?.display_name || profile?.username || user?.email?.split('@')[0] || 'You'}</p>
-              <span className="text-xs text-muted-foreground">Feed · Public</span>
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+          {/* Share to feed section */}
+          <div className="min-w-0 px-4 pt-3 pb-2">
+            <div className="flex items-center gap-3 mb-3">
+              <Avatar className="h-10 w-10 shrink-0">
+                {profile?.profile_pic && <AvatarImage src={profile.profile_pic} />}
+                <AvatarFallback className="bg-primary/10 text-primary">
+                  {(profile?.display_name || profile?.username || user?.email || 'U').charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-sm">{profile?.display_name || profile?.username || user?.email?.split('@')[0] || 'You'}</p>
+                <span className="text-xs text-muted-foreground">Feed · Public</span>
+              </div>
+            </div>
+            <Textarea
+              placeholder="Say something about this..."
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              className="min-h-[60px] w-full border-none shadow-none resize-none bg-transparent p-0 focus-visible:ring-0 text-sm"
+            />
+            <div className="flex justify-end mt-2">
+              <Button
+                onClick={shareToFeed}
+                disabled={sharing}
+                className="rounded-full px-6"
+              >
+                Share now
+              </Button>
             </div>
           </div>
-          <Textarea
-            placeholder="Say something about this..."
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            className="min-h-[60px] border-none shadow-none resize-none bg-transparent p-0 focus-visible:ring-0 text-sm"
-          />
-          <div className="flex justify-end mt-2">
-            <Button
-              onClick={shareToFeed}
-              disabled={sharing}
-              className="rounded-full px-6"
-            >
-              Share now
-            </Button>
-          </div>
-        </div>
 
-        <Separator />
+          <Separator />
 
-        {/* Send to section */}
-        <div className="px-4 py-3">
-          <h4 className="font-semibold text-sm mb-3">Send to</h4>
-          {friends.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No friends to send to yet.</p>
-          ) : (
-            <ScrollArea className="w-full">
-              <div className="flex gap-4 pb-2">
-                {friends.map((friend) => (
-                    <button
-                      key={friend.id}
-                      className="flex flex-col items-center gap-1 min-w-[64px] hover:opacity-80 transition-opacity"
-                      onClick={() => {
-                        toast({ title: 'Sent!', description: `Shared with ${friend.display_name || friend.username}` });
-                      }}
-                    >
-                      <Avatar className="h-14 w-14">
-                        {friend.profile_pic && <AvatarImage src={friend.profile_pic} />}
-                        <AvatarFallback className="bg-muted text-muted-foreground">
-                          {(friend.display_name || friend.username)?.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-xs text-center line-clamp-2 max-w-[64px]">
-                        {friend.display_name || friend.username}
-                      </span>
-                    </button>
-                ))}
+          {/* Send to section */}
+          <div className="min-w-0 px-4 py-3">
+            <h4 className="font-semibold text-sm mb-3">Send to</h4>
+            {friends.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No friends to send to yet.</p>
+            ) : (
+              <div className="relative min-w-0">
+                <ScrollArea className="w-full min-w-0">
+                  <div className="flex w-max gap-4 pb-2">
+                    {friends.map((friend) => (
+                        <button
+                          key={friend.id}
+                          className="flex shrink-0 flex-col items-center gap-1 min-w-[64px] hover:opacity-80 transition-opacity"
+                          onClick={() => {
+                            toast({ title: 'Sent!', description: `Shared with ${friend.display_name || friend.username}` });
+                          }}
+                        >
+                          <Avatar className="h-14 w-14">
+                            {friend.profile_pic && <AvatarImage src={friend.profile_pic} />}
+                            <AvatarFallback className="bg-muted text-muted-foreground">
+                              {(friend.display_name || friend.username)?.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-xs text-center line-clamp-2 max-w-[64px] break-words">
+                            {friend.display_name || friend.username}
+                          </span>
+                        </button>
+                    ))}
+                  </div>
+                  <ScrollBar orientation="horizontal" />
+                </ScrollArea>
+                {/* Subtle cue that the strip continues horizontally */}
+                <div
+                  className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background to-transparent"
+                  aria-hidden="true"
+                />
               </div>
-            </ScrollArea>
-          )}
-        </div>
-        <Separator />
+            )}
+          </div>
+          <Separator />
 
-        {/* Share to section */}
-        <div className="px-4 py-3 pb-4">
-          <h4 className="font-semibold text-sm mb-3">Share to</h4>
-          <div className="flex gap-4 flex-wrap">
-            {[
-              { id: 'whatsapp', label: 'WhatsApp', icon: <WhatsAppIcon className="h-7 w-7" />, action: () => shareExternal('whatsapp') },
-              { id: 'copy', label: 'Copy link', icon: <Link2 className="h-5 w-5" />, action: copyLink },
-              { id: 'group', label: 'Group', icon: <Users className="h-5 w-5" />, action: () => toast({ title: 'Coming soon', description: 'Share to group coming soon' }) },
-              { id: 'profile', label: "Friend's profile", icon: <User className="h-5 w-5" />, action: () => toast({ title: 'Coming soon', description: 'Share to friend coming soon' }) },
-              { id: 'x', label: 'X', icon: <XIcon className="h-5 w-5" />, action: () => shareExternal('x') },
-            ].map((item) => (
-              <button
-                key={item.id}
-                className="flex flex-col items-center gap-2 min-w-[60px] hover:opacity-80 transition-opacity"
-                onClick={item.action}
-              >
-                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-                  {item.icon}
-                </div>
-                <span className="text-xs text-center max-w-[60px]">{item.label}</span>
-              </button>
-            ))}
+          {/* Share to section */}
+          <div className="min-w-0 px-4 py-3 pb-4">
+            <h4 className="font-semibold text-sm mb-3">Share to</h4>
+            <div className="flex flex-wrap gap-4">
+              {[
+                { id: 'whatsapp', label: 'WhatsApp', icon: <WhatsAppIcon className="h-7 w-7" />, action: () => shareExternal('whatsapp') },
+                { id: 'copy', label: 'Copy link', icon: <Link2 className="h-5 w-5" />, action: copyLink },
+                { id: 'group', label: 'Group', icon: <Users className="h-5 w-5" />, action: () => toast({ title: 'Coming soon', description: 'Share to group coming soon' }) },
+                { id: 'profile', label: "Friend's profile", icon: <User className="h-5 w-5" />, action: () => toast({ title: 'Coming soon', description: 'Share to friend coming soon' }) },
+                { id: 'x', label: 'X', icon: <XIcon className="h-5 w-5" />, action: () => shareExternal('x') },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  className="flex shrink-0 flex-col items-center gap-2 min-w-[60px] hover:opacity-80 transition-opacity"
+                  onClick={item.action}
+                >
+                  <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                    {item.icon}
+                  </div>
+                  <span className="w-[60px] text-xs text-center break-words">{item.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </DialogContent>
