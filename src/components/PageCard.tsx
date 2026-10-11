@@ -56,13 +56,9 @@ export const PageCard = ({ page, onFollow, onUnfollow, variant = 'default', load
               className="w-full h-full object-cover"
              loading="lazy" decoding="async" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center">
-                <span className="text-primary font-bold text-lg">
-                  {page.name.charAt(0).toUpperCase()}
-                </span>
-              </div>
-            </div>
+            // Neutral cover fallback; the page's identity is carried by the
+            // profile-picture thumbnail below rather than a duplicated initial.
+            <div className="w-full h-full bg-gradient-to-br from-primary/15 to-purple-500/15" />
           )}
           
           {/* Category Badge */}
@@ -83,6 +79,23 @@ export const PageCard = ({ page, onFollow, onUnfollow, variant = 'default', load
               {page.category}
             </Badge>
           )}
+
+          {/* The page's own profile picture (pages.profile_pic), shown as a
+              circular thumbnail over the cover — never the cover image or the
+              viewer's own avatar. Radix falls back to the initial when the URL
+              is missing or fails to load. */}
+          <Avatar className="absolute bottom-3 left-4 h-16 w-16 border-2 border-background shadow-md">
+            {page.profile_pic ? (
+              <AvatarImage
+                src={page.profile_pic}
+                alt={`${page.name} profile`}
+                className="object-cover"
+              />
+            ) : null}
+            <AvatarFallback className="bg-primary/10 text-lg font-semibold text-primary">
+              {page.name?.charAt(0)?.toUpperCase() || '?'}
+            </AvatarFallback>
+          </Avatar>
         </div>
 
         <CardHeader className="pb-3">
@@ -93,7 +106,7 @@ export const PageCard = ({ page, onFollow, onUnfollow, variant = 'default', load
               </h3>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Users className="h-3 w-3" />
-                <span>{page.follower_count || 0} followers</span>
+                <span>{page.follower_count ?? 0} followers</span>
                 {variant === 'following' && page.followed_at && (
                   <>
                     <span>•</span>

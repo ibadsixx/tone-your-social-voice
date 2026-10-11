@@ -1,35 +1,42 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, TrendingUp, Clock, Heart, User, Loader2 } from 'lucide-react';
-import { usePages, Page } from '@/hooks/usePages';
+import { Button } from '@/components/ui/button';
+import { FileText, TrendingUp, Clock, Heart, User, Loader2, AlertCircle } from 'lucide-react';
+import { usePages, Page, PageListType } from '@/hooks/usePages';
 import { PageCard } from '@/components/PageCard';
 import { CreatePageDialog } from '@/components/CreatePageDialog';
 import { motion } from 'framer-motion';
+import { useAuth } from '@/hooks/useAuth';
 import PageContainer from '@/components/PageContainer';
 
 const Pages = () => {
-  const [activeTab, setActiveTab] = useState('suggested');
+  const [activeTab, setActiveTab] = useState<PageListType>('suggested');
   const [pages, setPages] = useState<Page[]>([]);
-  const { loading, fetchPages, followPage, unfollowPage } = usePages();
+  const { user } = useAuth();
+  const { loading, error, counts, fetchPages, followPage, unfollowPage } = usePages();
 
-  const loadPages = async (type: 'suggested' | 'interactive' | 'new' | 'following' | 'owned') => {
+  const loadPages = async (type: PageListType) => {
     const data = await fetchPages(type);
     setPages(data);
   };
 
+  // Refetch when the tab changes, and also when auth finishes resolving so the
+  // Following/Your Pages lists and their counts are not computed against a
+  // not-yet-loaded viewer.
   useEffect(() => {
-    loadPages(activeTab as any);
-  }, [activeTab]);
+    loadPages(activeTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, user?.id]);
 
   const handleFollow = async (pageId: string) => {
     await followPage(pageId);
-    loadPages(activeTab as any);
+    loadPages(activeTab);
   };
 
   const handleUnfollow = async (pageId: string) => {
     await unfollowPage(pageId);
-    loadPages(activeTab as any);
+    loadPages(activeTab);
   };
 
   const handlePageCreated = () => {
@@ -41,7 +48,7 @@ const Pages = () => {
   };
 
   const EmptyState = ({ icon: Icon, title, description }: { 
-    icon: React.ComponentType<any>, 
+    icon: React.ComponentType<{ className?: string }>, 
     title: string, 
     description: string 
   }) => (
@@ -61,6 +68,36 @@ const Pages = () => {
   const LoadingState = () => (
     <div className="flex items-center justify-center py-12">
       <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
+
+  // A failed fetch must never be rendered as a legitimate empty list ("You
+  // haven't created any pages yet"). This surfaces the real error with a retry.
+  const ErrorState = ({ message, onRetry }: { message: string; onRetry: () => void }) => (
+    <Card className="border-destructive/40">
+      <CardContent className="py-12 text-center space-y-3">
+        <AlertCircle className="h-10 w-10 mx-auto text-destructive/70" />
+        <p className="font-medium">We couldn't load pages</p>
+        <p className="text-sm text-muted-foreground">{message}</p>
+        <Button variant="outline" onClick={onRetry}>
+          Try again
+        </Button>
+      </CardContent>
+    </Card>
+  );
+
+  const renderPages = (variant?: 'default' | 'following' | 'owned') => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {pages.map((page) => (
+        <PageCard
+          key={page.id}
+          page={page}
+          onFollow={handleFollow}
+          onUnfollow={handleUnfollow}
+          variant={variant}
+          loading={loading}
+        />
+      ))}
     </div>
   );
 
@@ -85,7 +122,7 @@ const Pages = () => {
       </motion.div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PageListType)} className="w-full">
         <TabsList className="grid w-full grid-cols-5 mb-6">
           <TabsTrigger value="suggested" className="flex items-center gap-2">
             <Heart className="h-4 w-4" />
@@ -102,10 +139,12 @@ const Pages = () => {
           <TabsTrigger value="following" className="flex items-center gap-2">
             <User className="h-4 w-4" />
             <span className="hidden sm:inline">Following</span>
+            <span>({counts.following})</span>
           </TabsTrigger>
           <TabsTrigger value="owned" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Your Pages</span>
+            <span>({counts.owned})</span>
           </TabsTrigger>
         </TabsList>
 
@@ -122,6 +161,8 @@ const Pages = () => {
             
             {loading ? (
               <LoadingState />
+            ) : error ? (
+              <ErrorState message={error} onRetry={() => loadPages('suggested')} />
             ) : pages.length === 0 ? (
               <EmptyState
                 icon={Heart}
@@ -129,17 +170,7 @@ const Pages = () => {
                 description="Start following pages and interacting with content to get personalized suggestions!"
               />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {pages.map((page) => (
-                  <PageCard
-                    key={page.id}
-                    page={page}
-                    onFollow={handleFollow}
-                    onUnfollow={handleUnfollow}
-                    loading={loading}
-                  />
-                ))}
-              </div>
+              renderPages()
             )}
           </motion.div>
         </TabsContent>
@@ -157,6 +188,8 @@ const Pages = () => {
             
             {loading ? (
               <LoadingState />
+            ) : error ? (
+              <ErrorState message={error} onRetry={() => loadPages('interactive')} />
             ) : pages.length === 0 ? (
               <EmptyState
                 icon={TrendingUp}
@@ -164,17 +197,7 @@ const Pages = () => {
                 description="Active pages will appear here as they gain engagement!"
               />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {pages.map((page) => (
-                  <PageCard
-                    key={page.id}
-                    page={page}
-                    onFollow={handleFollow}
-                    onUnfollow={handleUnfollow}
-                    loading={loading}
-                  />
-                ))}
-              </div>
+              renderPages()
             )}
           </motion.div>
         </TabsContent>
@@ -192,6 +215,8 @@ const Pages = () => {
             
             {loading ? (
               <LoadingState />
+            ) : error ? (
+              <ErrorState message={error} onRetry={() => loadPages('new')} />
             ) : pages.length === 0 ? (
               <EmptyState
                 icon={Clock}
@@ -199,17 +224,7 @@ const Pages = () => {
                 description="New pages will appear here as they're created!"
               />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {pages.map((page) => (
-                  <PageCard
-                    key={page.id}
-                    page={page}
-                    onFollow={handleFollow}
-                    onUnfollow={handleUnfollow}
-                    loading={loading}
-                  />
-                ))}
-              </div>
+              renderPages()
             )}
           </motion.div>
         </TabsContent>
@@ -227,6 +242,8 @@ const Pages = () => {
             
             {loading ? (
               <LoadingState />
+            ) : error ? (
+              <ErrorState message={error} onRetry={() => loadPages('following')} />
             ) : pages.length === 0 ? (
               <EmptyState
                 icon={User}
@@ -234,18 +251,7 @@ const Pages = () => {
                 description="Start following pages to see them here!"
               />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {pages.map((page) => (
-                  <PageCard
-                    key={page.id}
-                    page={page}
-                    onFollow={handleFollow}
-                    onUnfollow={handleUnfollow}
-                    variant="following"
-                    loading={loading}
-                  />
-                ))}
-              </div>
+              renderPages('following')
             )}
           </motion.div>
         </TabsContent>
@@ -263,6 +269,8 @@ const Pages = () => {
             
             {loading ? (
               <LoadingState />
+            ) : error ? (
+              <ErrorState message={error} onRetry={() => loadPages('owned')} />
             ) : pages.length === 0 ? (
               <EmptyState
                 icon={FileText}
@@ -270,18 +278,7 @@ const Pages = () => {
                 description="Create your first page to start building your community!"
               />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {pages.map((page) => (
-                  <PageCard
-                    key={page.id}
-                    page={page}
-                    onFollow={handleFollow}
-                    onUnfollow={handleUnfollow}
-                    variant="owned"
-                    loading={loading}
-                  />
-                ))}
-              </div>
+              renderPages('owned')
             )}
           </motion.div>
         </TabsContent>
