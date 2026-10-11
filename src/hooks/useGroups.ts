@@ -33,13 +33,17 @@ const dedupeGroups = (list: Group[]): Group[] => {
 export const useGroups = () => {
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
+  // A failed list request must surface as an error, never as a legitimate
+  // "no groups" result (an API failure used to leave `groups` empty and the UI
+  // rendered "You haven't joined any groups yet").
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
 
   const fetchGroups = async () => {
     try {
       setLoading(true);
-
+      setError(null);
       // The pinned-group rows only need the viewer's own id, and the group list
       // does not need them, so these two were awaited one after the other for no
       // reason. Issue them together; a pin failure must not hide the group list.
@@ -99,9 +103,11 @@ export const useGroups = () => {
       setGroups(dedupeGroups(groupsWithMemberInfo));
     } catch (error: any) {
       console.error('[useGroups] Failed to load groups:', error);
+      const message = error?.message || 'Failed to load groups';
+      setError(message);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load groups',
+        description: message,
         variant: 'destructive'
       });
     } finally {
@@ -109,17 +115,27 @@ export const useGroups = () => {
     }
   };
 
+  // Joining/leaving MUST go through the Gateway's authorized
+  // /api/v1/groups/:id/members routes. The generic /api/group_members
+  // insert/delete routes are blocked server-side (a bare membership write would
+  // bypass the owner/moderator authorization), so the previous
+  // `groupsApi.joinGroup` call always failed and no membership row was created —
+  // which is why the Joined tab stayed empty.
   const joinGroup = async (groupId: string) => {
     if (!user) return;
 
     try {
-      const { error } = await groupsApi.joinGroup(groupId, user.id);
+      const { error } = await groupsApi.joinGroupSecure(groupId, user.id);
       if (error) throw error;
 
       toast({ title: 'Success', description: 'Joined group successfully!' });
-      fetchGroups();
+      await fetchGroups();
     } catch (error: any) {
-      toast({ title: 'Error', description: 'Failed to join group', variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: error?.message || 'Failed to join group',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -127,13 +143,17 @@ export const useGroups = () => {
     if (!user) return;
 
     try {
-      const { error } = await groupsApi.leaveGroup(groupId, user.id);
+      const { error } = await groupsApi.leaveGroupSecure(groupId, user.id);
       if (error) throw error;
 
       toast({ title: 'Success', description: 'Left group successfully!' });
-      fetchGroups();
+      await fetchGroups();
     } catch (error: any) {
-      toast({ title: 'Error', description: 'Failed to leave group', variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: error?.message || 'Failed to leave group',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -187,6 +207,7 @@ export const useGroups = () => {
   return {
     groups,
     loading,
+    error,
     fetchGroups,
     joinGroup,
     leaveGroup,

@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, Sparkles, TrendingUp, Calendar, UserCheck, Crown } from 'lucide-react';
+import { Users, Sparkles, TrendingUp, Calendar, UserCheck, Crown, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useGroups } from '@/hooks/useGroups';
 import { GroupCard } from '@/components/groups/GroupCard';
@@ -26,11 +26,29 @@ const GroupGridSkeleton = () => (
   </div>
 );
 
+// A failed fetch must never look like a legitimate empty list. This surfaces the
+// real error with a way to retry instead of showing "You haven't joined any
+// groups yet".
+const GroupsErrorState = ({ message, onRetry }: { message: string; onRetry: () => void }) => (
+  <Card className="border-destructive/40">
+    <CardContent className="py-12 text-center space-y-3">
+      <AlertCircle className="h-10 w-10 mx-auto text-destructive/70" />
+      <p className="font-medium">We couldn't load your groups</p>
+      <p className="text-sm text-muted-foreground">{message}</p>
+      <Button variant="outline" onClick={onRetry}>
+        Try again
+      </Button>
+    </CardContent>
+  </Card>
+);
+
 const Groups = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const {
     loading,
+    error,
+    fetchGroups,
     joinGroup,
     leaveGroup,
     createGroup,
@@ -70,7 +88,18 @@ const Groups = () => {
         )}
       </motion.div>
 
-      <Tabs defaultValue="suggested" className="w-full">
+      <Tabs
+        defaultValue="suggested"
+        className="w-full"
+        // Membership can change after the page first loaded (another tab, a
+        // join elsewhere), so re-fetch whenever the membership-driven tabs are
+        // opened instead of trusting a stale list.
+        onValueChange={(value) => {
+          if (value === 'joined' || value === 'managed') {
+            void fetchGroups();
+          }
+        }}
+      >
         <TabsList className="w-full justify-start mb-6">
           <TabsTrigger value="suggested" className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
@@ -101,6 +130,8 @@ const Groups = () => {
           </div>
           {loading ? (
             <GroupGridSkeleton />
+          ) : error ? (
+            <GroupsErrorState message={error} onRetry={fetchGroups} />
           ) : suggestedGroups.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {suggestedGroups.map((group, index) => (
@@ -134,6 +165,8 @@ const Groups = () => {
           </div>
           {loading ? (
             <GroupGridSkeleton />
+          ) : error ? (
+            <GroupsErrorState message={error} onRetry={fetchGroups} />
           ) : activeGroups.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {activeGroups.map((group, index) => (
@@ -167,6 +200,8 @@ const Groups = () => {
           </div>
           {loading ? (
             <GroupGridSkeleton />
+          ) : error ? (
+            <GroupsErrorState message={error} onRetry={fetchGroups} />
           ) : newGroups.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {newGroups.map((group, index) => (
@@ -200,6 +235,8 @@ const Groups = () => {
           </div>
           {loading ? (
             <GroupGridSkeleton />
+          ) : error ? (
+            <GroupsErrorState message={error} onRetry={fetchGroups} />
           ) : joinedGroups.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {joinedGroups.map((group, index) => (
@@ -236,6 +273,8 @@ const Groups = () => {
           </div>
           {loading ? (
             <GroupGridSkeleton />
+          ) : error ? (
+            <GroupsErrorState message={error} onRetry={fetchGroups} />
           ) : managedGroups.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {managedGroups.map((group, index) => (

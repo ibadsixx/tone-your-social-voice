@@ -20,6 +20,9 @@ vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: toastSpy }) }));
 const groupFns = vi.hoisted(() => ({
   getGroupsWithMembers: vi.fn(),
   getUserPinnedGroups: vi.fn(),
+  joinGroupSecure: vi.fn(),
+  leaveGroupSecure: vi.fn(),
+  createGroupSecure: vi.fn(),
 }));
 vi.mock('@/api/groups', () => ({ ...groupFns }));
 const groupsApi = groupFns;
@@ -82,8 +85,12 @@ beforeEach(() => {
   toastSpy.mockClear();
   groupsApi.getGroupsWithMembers.mockReset();
   groupsApi.getUserPinnedGroups.mockReset();
+  groupsApi.joinGroupSecure.mockReset();
+  groupsApi.leaveGroupSecure.mockReset();
   groupsApi.getGroupsWithMembers.mockResolvedValue({ data: GROUP_ROWS, error: null });
   groupsApi.getUserPinnedGroups.mockResolvedValue({ data: [], error: null });
+  groupsApi.joinGroupSecure.mockResolvedValue({ data: { status: 'ok' }, error: null });
+  groupsApi.leaveGroupSecure.mockResolvedValue({ data: { status: 'ok' }, error: null });
 });
 
 afterEach(() => {
@@ -143,6 +150,43 @@ describe('useGroups: real counts, cover and ownership', () => {
 
     const managedIds = result.current.getManagedGroups().map((g) => g.id);
     expect(managedIds).not.toContain('g2');
+  });
+});
+
+describe('useGroups: join/leave go through the authorized Gateway routes', () => {
+  it('joins through the secure endpoint (never the blocked generic insert)', async () => {
+    const { result } = renderGroups();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await result.current.joinGroup('g2');
+
+    expect(groupsApi.joinGroupSecure).toHaveBeenCalledWith('g2', VIEWER);
+    // The list is refreshed so the new membership is reflected immediately.
+    expect(groupsApi.getGroupsWithMembers.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it('leaves through the secure endpoint and surfaces a join failure', async () => {
+    groupsApi.leaveGroupSecure.mockResolvedValueOnce({ data: null, error: new Error('Leave failed') });
+    const { result } = renderGroups();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await result.current.leaveGroup('g2');
+    expect(groupsApi.leaveGroupSecure).toHaveBeenCalledWith('g2', VIEWER);
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Leave failed', variant: 'destructive' })
+    );
+  });
+});
+
+describe('useGroups: a failed fetch is surfaced, not shown as empty', () => {
+  it('exposes the API error instead of silently returning an empty list', async () => {
+    groupsApi.getGroupsWithMembers.mockResolvedValueOnce({ data: null, error: new Error('Network down') });
+    const { result } = renderGroups();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.error).toBe('Network down');
+    expect(result.current.getJoinedGroups()).toEqual([]);
+    expect(result.current.groups).toEqual([]);
   });
 });
 
