@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { groupsApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -39,6 +39,12 @@ export const useGroups = () => {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
+  // The signed-in viewer as of the latest render. `fetchGroups` is async and
+  // several calls overlap while auth resolves, so a fetch that started with
+  // `user === null` must not resolve membership against that stale value (see
+  // the comment where it is read).
+  const userRef = useRef(user);
+  userRef.current = user;
 
   const fetchGroups = async () => {
     try {
@@ -55,7 +61,7 @@ export const useGroups = () => {
       // "Cannot destructure property 'data' of '(intermediate value)' as it is
       // null" every time a guest opened a profile that had a post to render
       // (each Post card mounts SharePostModal, which mounts this hook).
-      const pinsRequest = user ? groupsApi.getUserPinnedGroups(user.id) : null;
+      const pinsRequest = userRef.current ? groupsApi.getUserPinnedGroups(userRef.current.id) : null;
 
       const { data, error } = await groupsApi.getGroupsWithMembers();
 
@@ -75,13 +81,23 @@ export const useGroups = () => {
       }
       const pinnedIds = new Set(pinRows.map(r => r.group_id));
 
+      // Resolve membership against the LATEST viewer, not the `user` captured
+      // when this fetch started. Auth resolves asynchronously, so several
+      // `fetchGroups` calls overlap: on a full page load the first one runs with
+      // `user === null` and a later one runs with the signed-in user. If the
+      // null-user response resolves last it recomputes every `is_member` as
+      // false and overwrites the good result — the Joined tab then shows
+      // "Joined (0)" for a user who is genuinely a member. Reading the viewer
+      // from a ref at resolution time makes the outcome independent of which
+      // response lands last.
+      const viewer = userRef.current;
       const groupsWithMemberInfo = data?.map(group => {
         const members = group.group_members || [];
         // Count distinct members: a duplicated membership row must not inflate
         // the count, and pending invitations / join requests never live in
         // `group_members`, so they are excluded by construction.
         const memberCount = new Set(members.map((m: GroupMember) => m.user_id)).size;
-        const userMembership = user ? members.find((m: GroupMember) => m.user_id === user.id) : null;
+        const userMembership = viewer ? members.find((m: GroupMember) => m.user_id === viewer.id) : null;
 
         return {
           id: group.id,

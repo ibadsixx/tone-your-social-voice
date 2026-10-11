@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { renderHook } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { useGroups } from '@/hooks/useGroups';
 import { GroupCard } from '@/components/groups/GroupCard';
@@ -175,6 +175,38 @@ describe('useGroups: join/leave go through the authorized Gateway routes', () =>
     expect(toastSpy).toHaveBeenCalledWith(
       expect.objectContaining({ description: 'Leave failed', variant: 'destructive' })
     );
+  });
+});
+
+describe('useGroups: membership resolves against the latest viewer', () => {
+  // On a real page load the hook fetches while auth is still resolving, so an
+  // early call starts with `user === null` and a later call starts with the
+  // signed-in viewer. If the signed-out call resolves last it used to recompute
+  // every `is_member` as false and wipe the Joined list — even though the API
+  // returned the membership rows. The fix reads the viewer at resolution time.
+  it('does not let an earlier signed-out fetch overwrite the joined list', async () => {
+    const resolvers: Array<(value: { data: unknown; error: null }) => void> = [];
+    groupsApi.getGroupsWithMembers.mockImplementation(
+      () => new Promise((resolve) => { resolvers.push(resolve); })
+    );
+    authState.user = null;
+
+    const { result, rerender } = renderGroups();
+    await waitFor(() => expect(resolvers.length).toBe(1));
+
+    // Auth resolves and a second fetch starts with the viewer.
+    authState.user = { id: VIEWER };
+    rerender();
+    await waitFor(() => expect(resolvers.length).toBe(2));
+
+    // The viewer-aware response lands first…
+    await act(async () => { resolvers[1]({ data: GROUP_ROWS, error: null }); });
+    await waitFor(() => expect(result.current.getJoinedGroups().map((g) => g.id)).toEqual(['g2']));
+
+    // …then the stale signed-out fetch resolves last and must not clear it.
+    await act(async () => { resolvers[0]({ data: GROUP_ROWS, error: null }); });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.getJoinedGroups().map((g) => g.id)).toEqual(['g2']);
   });
 });
 
