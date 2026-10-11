@@ -438,10 +438,42 @@ function parseJoinSpec(entry: string, currentTable: string): JoinSpec | null {
       tablePart = tablePart.slice(colonIdx + 1).trim();
     }
 
-    const prefix = `${currentTable}_`;
     const suffix = '_fkey';
+
+    // Foreign-key constraint names in this schema use the Postgres defaults,
+    // "<referencing_table>_<column>_fkey", and `!fkName` is used in two
+    // directions:
+    //
+    //  - Many-to-one: the FK lives on the *current* table and points at the
+    //    related one, so the constraint name starts with the current table's
+    //    name — e.g. `profiles!posts_user_id_fkey` while reading `posts`.
+    //  - One-to-many: the FK lives on the *related* table and points back at the
+    //    current one, so the constraint name starts with the *related* table's
+    //    name — e.g. `group_members!group_members_group_id_fkey` while reading
+    //    `groups` (every group_member whose group_id is this group).
+    //
+    // The old code only stripped the current-table prefix, so a reverse embed
+    // left `group_members_group_id` as the "local" column — a column that does
+    // not exist on `groups` — and every key lookup came up empty. The resolved
+    // field was therefore dropped and the UI showed 0 members / no memberships.
+    const currentPrefix = `${currentTable}_`;
+    const relatedPrefix = `${tablePart}_`;
+
+    // Check the current-table prefix first so a self-referential many-to-one
+    // (`profiles!profiles_manager_id_fkey`) still wins if both could match.
+    if (fkName.startsWith(currentPrefix)) {
+      let localCol = fkName.slice(currentPrefix.length);
+      if (localCol.endsWith(suffix)) localCol = localCol.slice(0, -suffix.length);
+      return { resultKey: alias || tablePart, relatedTable: tablePart, localCol, relatedCol: 'id', columns, kind: 'one' };
+    }
+
+    if (tablePart !== currentTable && fkName.startsWith(relatedPrefix)) {
+      let relatedCol = fkName.slice(relatedPrefix.length);
+      if (relatedCol.endsWith(suffix)) relatedCol = relatedCol.slice(0, -suffix.length);
+      return { resultKey: alias || tablePart, relatedTable: tablePart, localCol: 'id', relatedCol, columns, kind: 'many' };
+    }
+
     let localCol = fkName;
-    if (localCol.startsWith(prefix)) localCol = localCol.slice(prefix.length);
     if (localCol.endsWith(suffix)) localCol = localCol.slice(0, -suffix.length);
     return { resultKey: alias || tablePart, relatedTable: tablePart, localCol, relatedCol: 'id', columns, kind: 'one' };
   }

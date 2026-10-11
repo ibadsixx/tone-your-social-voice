@@ -1,0 +1,195 @@
+// The Groups listing page must show real numbers: distinct member counts, the
+// groups the viewer actually joined, and the groups the viewer owns
+// (`groups.created_by`). These tests pin the hook's mapping and the card's
+// cover behaviour, including the duplicate-membership and duplicate-row cases
+// the task calls out.
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { useGroups } from '@/hooks/useGroups';
+import { GroupCard } from '@/components/groups/GroupCard';
+
+const authState = vi.hoisted(() => ({ user: null as { id: string } | null }));
+const toastSpy = vi.fn();
+
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authState }));
+vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: toastSpy }) }));
+
+const groupFns = vi.hoisted(() => ({
+  getGroupsWithMembers: vi.fn(),
+  getUserPinnedGroups: vi.fn(),
+}));
+vi.mock('@/api/groups', () => ({ ...groupFns }));
+const groupsApi = groupFns;
+
+const VIEWER = 'u1';
+
+const GROUP_ROWS = [
+  {
+    id: 'g1',
+    name: 'Owned with members',
+    description: 'mine',
+    privacy: 'public',
+    created_by: VIEWER,
+    cover_image: 'https://cdn.example/cover-g1.jpg',
+    created_at: '2026-01-03',
+    group_members: [
+      { group_id: 'g1', user_id: VIEWER, role: 'admin' },
+      { group_id: 'g1', user_id: 'u2', role: 'member' },
+      // Duplicate membership row for u2: must count once.
+      { group_id: 'g1', user_id: 'u2', role: 'member' },
+      { group_id: 'g1', user_id: 'u3', role: 'member' },
+    ],
+  },
+  {
+    id: 'g2',
+    name: 'Joined group',
+    description: 'their group',
+    privacy: 'public',
+    created_by: 'u2',
+    cover_image: null,
+    cover_image_unused: null,
+    group_members: [
+      { group_id: 'g2', user_id: VIEWER, role: 'member' },
+      { group_id: 'g2', user_id: 'u4', role: 'member' },
+    ],
+  },
+  // Same group returned twice by the API: must be listed and counted once.
+  {
+    id: 'g2',
+    name: 'Owned with members',
+    description: 'duplicate row',
+    privacy: 'public',
+    created_by: VIEWER,
+    cover_image: null,
+    group_members: [],
+  },
+  {
+    id: 'g3',
+    name: 'Owned empty',
+    description: null,
+    privacy: 'private',
+    created_by: VIEWER,
+    cover_image: null,
+    group_members: [],
+  },
+];
+
+beforeEach(() => {
+  authState.user = { id: VIEWER };
+  toastSpy.mockClear();
+  groupsApi.getGroupsWithMembers.mockReset();
+  groupsApi.getUserPinnedGroups.mockReset();
+  groupsApi.getGroupsWithMembers.mockResolvedValue({ data: GROUP_ROWS, error: null });
+  groupsApi.getUserPinnedGroups.mockResolvedValue({ data: [], error: null });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+function renderGroups() {
+  return renderHook(() => useGroups(), {
+    wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+  });
+}
+
+describe('useGroups: real counts, cover and ownership', () => {
+  it('counts distinct members and never inflates from duplicate rows', async () => {
+    const { result } = renderGroups();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const byId = new Map(result.current.groups.map((g) => [g.id, g]));
+    expect(byId.get('g1')?.member_count).toBe(3); // u1, u2, u3 — not 4
+    expect(byId.get('g2')?.member_count).toBe(2);
+    expect(byId.get('g3')?.member_count).toBe(0); // genuinely empty stays 0
+  });
+
+  it('dedupes groups returned twice by the API', async () => {
+    const { result } = renderGroups();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.groups.map((g) => g.id)).toEqual(['g1', 'g2', 'g3']);
+  });
+
+  it('maps cover_image and created_by from the API rows', async () => {
+    const { result } = renderGroups();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const byId = new Map(result.current.groups.map((g) => [g.id, g]));
+    expect(byId.get('g1')?.cover_image).toBe('https://cdn.example/cover-g1.jpg');
+    expect(byId.get('g1')?.created_by).toBe(VIEWER);
+    expect(byId.get('g3')?.cover_image).toBeNull();
+  });
+
+  it('lists joined groups by membership, excluding admin-owned groups', async () => {
+    const { result } = renderGroups();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.getJoinedGroups().map((g) => g.id)).toEqual(['g2']);
+  });
+
+  it('lists owned groups by created_by, not by membership', async () => {
+    const { result } = renderGroups();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.getManagedGroups().map((g) => g.id)).toEqual(['g1', 'g3']);
+  });
+
+  it('does not treat a viewer who is only a member as an owner', async () => {
+    const { result } = renderGroups();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const managedIds = result.current.getManagedGroups().map((g) => g.id);
+    expect(managedIds).not.toContain('g2');
+  });
+});
+
+describe('GroupCard cover thumbnail', () => {
+  const baseGroup = {
+    id: 'g1',
+    name: 'Ada Fans',
+    description: 'desc',
+    privacy: 'public',
+    cover_image: 'https://cdn.example/cover.jpg',
+    created_by: 'u1',
+    created_at: '2026-01-01',
+    member_count: 3,
+    is_member: false,
+  };
+
+  it('renders the actual cover URL with object-cover', () => {
+    render(
+      <MemoryRouter>
+        <GroupCard group={baseGroup} />
+      </MemoryRouter>
+    );
+
+    const img = screen.getByAltText('Ada Fans cover') as HTMLImageElement;
+    expect(img).toBeTruthy();
+    expect(img.getAttribute('src')).toBe('https://cdn.example/cover.jpg');
+    expect(img.className).toContain('object-cover');
+  });
+
+  it('shows a neutral fallback when there is no cover image', () => {
+    render(
+      <MemoryRouter>
+        <GroupCard group={{ ...baseGroup, cover_image: null }} />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByAltText('Ada Fans cover')).toBeNull();
+  });
+
+  it('falls back instead of showing a broken image when the URL fails', () => {
+    render(
+      <MemoryRouter>
+        <GroupCard group={baseGroup} />
+      </MemoryRouter>
+    );
+
+    fireEvent.error(screen.getByAltText('Ada Fans cover'));
+    expect(screen.queryByAltText('Ada Fans cover')).toBeNull();
+  });
+});

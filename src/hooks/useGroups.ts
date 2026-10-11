@@ -10,6 +10,8 @@ export interface Group {
   description: string | null;
   privacy: string;
   rules_enabled?: boolean;
+  cover_image: string | null;
+  created_by: string | null;
   created_at: string;
   member_count?: number;
   is_member?: boolean;
@@ -17,6 +19,16 @@ export interface Group {
   joined_at?: string;
   is_pinned?: boolean;
 }
+
+/** A group must be listed and counted once even if the API returns it twice. */
+const dedupeGroups = (list: Group[]): Group[] => {
+  const seen = new Set<string>();
+  return list.filter((group) => {
+    if (seen.has(group.id)) return false;
+    seen.add(group.id);
+    return true;
+  });
+};
 
 export const useGroups = () => {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -61,7 +73,10 @@ export const useGroups = () => {
 
       const groupsWithMemberInfo = data?.map(group => {
         const members = group.group_members || [];
-        const memberCount = members.length;
+        // Count distinct members: a duplicated membership row must not inflate
+        // the count, and pending invitations / join requests never live in
+        // `group_members`, so they are excluded by construction.
+        const memberCount = new Set(members.map((m: GroupMember) => m.user_id)).size;
         const userMembership = user ? members.find((m: GroupMember) => m.user_id === user.id) : null;
 
         return {
@@ -69,6 +84,9 @@ export const useGroups = () => {
           name: group.name,
           description: group.description,
           privacy: group.privacy || 'public',
+          rules_enabled: group.rules_enabled,
+          cover_image: group.cover_image ?? null,
+          created_by: group.created_by ?? null,
           created_at: group.created_at,
           member_count: memberCount,
           is_member: !!userMembership,
@@ -78,7 +96,7 @@ export const useGroups = () => {
         };
       }) || [];
 
-      setGroups(groupsWithMemberInfo);
+      setGroups(dedupeGroups(groupsWithMemberInfo));
     } catch (error: any) {
       console.error('[useGroups] Failed to load groups:', error);
       toast({
@@ -152,8 +170,15 @@ export const useGroups = () => {
     .sort((a, b) => (b.member_count || 0) - (a.member_count || 0)).slice(0, 6);
   const sortPinnedFirst = (list: Group[]) =>
     [...list].sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0));
-  const getJoinedGroups = () => sortPinnedFirst(groups.filter(g => g.is_member && g.role !== 'admin'));
-  const getManagedGroups = () => sortPinnedFirst(groups.filter(g => g.is_member && g.role === 'admin'));
+  const getJoinedGroups = () => sortPinnedFirst(dedupeGroups(
+    groups.filter(g => g.is_member && g.role !== 'admin')
+  ));
+  // Ownership is `groups.created_by`, not membership. The creator's owner
+  // membership row (role 'admin') is the legacy fallback for groups whose
+  // `created_by` was never backfilled.
+  const getManagedGroups = () => sortPinnedFirst(dedupeGroups(
+    groups.filter(g => (!!user && g.created_by === user.id) || (g.is_member && g.role === 'admin'))
+  ));
 
   useEffect(() => {
     fetchGroups();

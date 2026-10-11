@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Users, UserMinus, Settings, FileText, Lock, Globe, EyeOff } from 'lucide-react';
 import { Group } from '@/hooks/useGroups';
 import { motion } from 'framer-motion';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface GroupCardProps {
@@ -15,6 +16,11 @@ interface GroupCardProps {
 
 export const GroupCard = ({ group, onJoin, onLeave, showManageButtons }: GroupCardProps) => {
   const navigate = useNavigate();
+  // A stored URL that no longer resolves must fall back to the neutral cover
+  // instead of a broken-image icon.
+  const [coverFailed, setCoverFailed] = useState(false);
+  const showCover = !!group.cover_image && !coverFailed;
+
   const handleJoinClick = () => {
     if (onJoin) onJoin(group.id);
   };
@@ -29,7 +35,26 @@ export const GroupCard = ({ group, onJoin, onLeave, showManageButtons }: GroupCa
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      <Card className="h-full hover:shadow-elegant transition-shadow duration-300">
+      <Card className="h-full overflow-hidden hover:shadow-elegant transition-shadow duration-300">
+        <div className="relative h-28 w-full overflow-hidden bg-muted sm:h-32">
+          {showCover ? (
+            <img
+              src={group.cover_image as string}
+              alt={`${group.name} cover`}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
+              onError={() => setCoverFailed(true)}
+            />
+          ) : (
+            <div
+              className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/15 via-muted to-muted"
+              aria-hidden="true"
+            >
+              <Users className="h-8 w-8 text-primary/40" />
+            </div>
+          )}
+        </div>
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="flex-1">
