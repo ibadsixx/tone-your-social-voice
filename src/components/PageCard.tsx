@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Heart, Users, Calendar, Settings, Edit, PlusCircle, Archive } from 'lucide-react';
+import { Heart, Settings, PlusCircle } from 'lucide-react';
 import { Page } from '@/hooks/usePages';
 import { motion } from 'framer-motion';
 
@@ -15,6 +14,14 @@ interface PageCardProps {
   variant?: 'default' | 'owned' | 'following';
   loading?: boolean;
 }
+
+// Compact display for list-sized counts: 248 stays "248", 12_500 becomes "12.5K".
+// The number is still the real count from the API — only its rendering is brief.
+const formatCount = (value: number): string => {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
+  return String(value);
+};
 
 export const PageCard = ({ page, onFollow, onUnfollow, variant = 'default', loading }: PageCardProps) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -30,67 +37,29 @@ export const PageCard = ({ page, onFollow, onUnfollow, variant = 'default', load
     setIsLoading(false);
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
+  const followerCount = page.follower_count ?? 0;
+  const postCount = page.post_count ?? 0;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      whileHover={{ y: -4 }}
+      whileHover={{ y: -2 }}
       className="h-full"
     >
       <Card className="h-full border-border/50 shadow-sm hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm">
-        {/* Cover Image */}
-        <div className="relative h-32 bg-gradient-to-br from-primary/10 to-purple-500/10 rounded-t-lg overflow-hidden">
-          {page.cover_image ? (
-            <img 
-              src={page.cover_image} 
-              alt={`${page.name} cover`}
-              className="w-full h-full object-cover"
-             loading="lazy" decoding="async" />
-          ) : (
-            // Neutral cover fallback; the page's identity is carried by the
-            // profile-picture thumbnail below rather than a duplicated initial.
-            <div className="w-full h-full bg-gradient-to-br from-primary/15 to-purple-500/15" />
-          )}
-          
-          {/* Category Badge */}
-          {page.archived && (
-            <Badge 
-              variant="secondary" 
-              className="absolute top-2 left-2 bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30"
-            >
-              <Archive className="h-3 w-3 mr-1" />
-              Archived
-            </Badge>
-          )}
-          {page.category && !page.archived && (
-            <Badge 
-              variant="secondary" 
-              className="absolute top-2 left-2 bg-background/80 backdrop-blur-sm"
-            >
-              {page.category}
-            </Badge>
-          )}
-
-          {/* The page's own profile picture (pages.profile_pic), shown as a
-              circular thumbnail over the cover — never the cover image or the
-              viewer's own avatar. Radix falls back to the initial when the URL
-              is missing or fails to load. Wrapped in a link so the picture is
-              an equally valid way to open the page's detail route. */}
+        <CardContent className="flex min-h-[104px] items-center gap-3 p-4">
+          {/* The page's actual profile picture (pages.profile_pic) as the card
+              thumbnail — never the cover image or the viewer's own avatar. Radix
+              keeps the initial as a fallback when the URL is missing or fails to
+              load. The picture is itself a link to the detail route. */}
           <Link
             to={`/pages/${page.id}`}
             aria-label={`Open ${page.name}`}
-            className="absolute bottom-3 left-4 block h-16 w-16 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
-            <Avatar className="h-16 w-16 border-2 border-background shadow-md">
+            <Avatar className="h-14 w-14 border border-border shadow-sm">
               {page.profile_pic ? (
                 <AvatarImage
                   src={page.profile_pic}
@@ -103,93 +72,72 @@ export const PageCard = ({ page, onFollow, onUnfollow, variant = 'default', load
               </AvatarFallback>
             </Avatar>
           </Link>
-        </div>
 
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between">
-            <div className="flex-1 min-w-0">
-              {/* The page name navigates to the existing /pages/:id detail
-                  route using the page's real id (same identifier PageDetail
-                  reads via useParams and the Manage/Post buttons already use).
-                  A real <Link> gives a proper href, pointer cursor, hover
-                  state and middle-click/open-in-new-tab; it is a sibling of
-                  the Follow/Share buttons, never wrapping them. */}
-              <h3 className="font-semibold text-foreground truncate mb-1">
-                <Link
-                  to={`/pages/${page.id}`}
-                  title={`Open ${page.name}`}
-                  className="block truncate rounded-sm transition-colors cursor-pointer hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  {page.name}
-                </Link>
-              </h3>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Users className="h-3 w-3" />
-                <span>{page.follower_count ?? 0} followers</span>
-                {variant === 'following' && page.followed_at && (
-                  <>
-                    <span>•</span>
-                    <Calendar className="h-3 w-3" />
-                    <span>Followed {formatDate(page.followed_at)}</span>
-                  </>
-                )}
-              </div>
-              {page.user_role && (
-                <Badge variant="outline" className="mt-2 text-xs">
-                  {page.user_role}
-                </Badge>
+          <div className="min-w-0 flex-1">
+            {/* Name sits immediately beside the thumbnail, with the category in
+                parentheses right after it. The whole line truncates as one unit,
+                so a long name (or category) can never reflow or overflow the
+                compact card, and the name always keeps its space ahead of the
+                category. */}
+            <h3 className="min-w-0 truncate text-[15px] font-semibold leading-tight text-foreground">
+              <Link
+                to={`/pages/${page.id}`}
+                title={`Open ${page.name}`}
+                className="rounded-sm transition-colors cursor-pointer hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {page.name}
+              </Link>
+              {page.category && (
+                <span className="font-normal text-muted-foreground"> ({page.category})</span>
               )}
-            </div>
-          </div>
-        </CardHeader>
+            </h3>
 
-        <CardContent className="pt-0">
-          {page.description && (
-            <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-              {page.description}
+            {/* Real follower and post counts, derived from page_followers and
+                page_posts. */}
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {formatCount(followerCount)} {followerCount === 1 ? 'follower' : 'followers'}
+              <span className="px-1 text-muted-foreground/60" aria-hidden="true">·</span>
+              {formatCount(postCount)} {postCount === 1 ? 'post' : 'posts'}
             </p>
-          )}
+          </div>
 
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-muted-foreground">
-              Created {formatDate(page.created_at)}
-            </div>
-
-            <div className="flex gap-2">
-              {variant === 'owned' ? (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8"
-                    onClick={() => navigate(`/pages/${page.id}`)}
-                  >
-                    <Settings className="h-3 w-3 mr-1" />
-                    Manage
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8"
-                    onClick={() => navigate(`/pages/${page.id}`)}
-                  >
-                    <PlusCircle className="h-3 w-3 mr-1" />
-                    Post
-                  </Button>
-                </>
-              ) : (
+          {/* Card actions are siblings of the navigation links, never wrapped by
+              them, so following/unfollowing or managing never triggers a
+              navigation. */}
+          <div className="flex shrink-0 items-center gap-2">
+            {variant === 'owned' ? (
+              <>
                 <Button
-                  variant={page.is_following ? "secondary" : "default"}
+                  variant="outline"
                   size="sm"
-                  onClick={handleFollowClick}
-                  disabled={isLoading || loading}
-                  className="h-8"
+                  className="h-8 px-2.5"
+                  onClick={() => navigate(`/pages/${page.id}`)}
                 >
-                  <Heart className={`h-3 w-3 mr-1 ${page.is_following ? 'fill-current' : ''}`} />
-                  {page.is_following ? 'Following' : 'Follow'}
+                  <Settings className="h-3 w-3" />
+                  Manage
                 </Button>
-              )}
-            </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2.5"
+                  onClick={() => navigate(`/pages/${page.id}`)}
+                >
+                  <PlusCircle className="h-3 w-3" />
+                  Post
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant={page.is_following ? 'secondary' : 'default'}
+                size="sm"
+                className="h-8 px-2.5"
+                onClick={handleFollowClick}
+                disabled={isLoading || loading}
+              >
+                <Heart className={`h-3 w-3 ${page.is_following ? 'fill-current' : ''}`} />
+                {page.is_following ? 'Following' : 'Follow'}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

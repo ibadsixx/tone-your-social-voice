@@ -36,13 +36,17 @@ interface Result {
 const state = vi.hoisted(() => ({
   pages: { data: [] as unknown[], error: null as Error | null },
   page_followers: { data: [] as unknown[], error: null as Error | null },
+  page_posts: { data: [] as unknown[], error: null as Error | null },
   writes: [] as Array<{ table: string; op: string; row?: unknown }>,
   gate: null as null | { promise: Promise<void>; release: () => void },
 }));
 
 vi.mock('@/lib/gateway', () => {
-  const resultFor = (table: string): Result =>
-    table === 'pages' ? state.pages : state.page_followers;
+  const resultFor = (table: string): Result => {
+    if (table === 'pages') return state.pages;
+    if (table === 'page_posts') return state.page_posts;
+    return state.page_followers;
+  };
 
   interface Chain {
     select: () => Chain;
@@ -139,11 +143,20 @@ const FOLLOW_ROWS = [
   { page_id: 'p2', user_id: VIEWER, role: 'follower', followed_at: '2026-01-02' },
 ];
 
+const PAGE_POST_ROWS = [
+  { id: 'pp1', page_id: 'p1', post_id: 'post-a' },
+  { page_id: 'p1', post_id: 'post-b' },
+  // Duplicate link to post-b: must not inflate p1's post count.
+  { page_id: 'p1', post_id: 'post-b' },
+  { page_id: 'p2', post_id: 'post-c' },
+];
+
 beforeEach(() => {
   authState.user = { id: VIEWER };
   toastSpy.mockClear();
   state.pages = { data: PAGE_ROWS, error: null };
   state.page_followers = { data: FOLLOW_ROWS, error: null };
+  state.page_posts = { data: PAGE_POST_ROWS, error: null };
   state.writes = [];
   state.gate = null;
 });
@@ -181,6 +194,23 @@ describe('usePages: real follower counts from page_followers', () => {
   it('dedupes pages returned twice by the API', async () => {
     const { list } = await fetchList('new');
     expect(list.map((p) => p.id)).toEqual(['p1', 'p2', 'p3']);
+  });
+
+  it('derives the real post count from page_posts without double counting', async () => {
+    const { list } = await fetchList('new');
+    const byId = new Map(list.map((p) => [p.id, p]));
+    expect(byId.get('p1')?.post_count).toBe(2); // post-a + post-b, duplicate link ignored
+    expect(byId.get('p2')?.post_count).toBe(1);
+    expect(byId.get('p3')?.post_count).toBe(0); // a page with no posts stays 0
+  });
+});
+
+describe('usePages: a failing page_posts read is a real error', () => {
+  it('surfaces the page_posts error rather than reporting 0 posts', async () => {
+    state.page_posts = { data: [], error: new Error('Posts down') };
+    const { result, list } = await fetchList('new');
+    expect(result.current.error).toBe('Posts down');
+    expect(list).toEqual([]);
   });
 });
 
@@ -270,6 +300,7 @@ describe('PageCard profile thumbnail', () => {
     admin_id: 'u1',
     created_at: '2026-01-01',
     follower_count: 3,
+    post_count: 5,
     is_following: false,
   };
 
@@ -293,9 +324,25 @@ describe('PageCard profile thumbnail', () => {
     expect(screen.getByText('A')).toBeTruthy();
   });
 
-  it('keeps rendering the cover image when one exists', () => {
+  it('never renders a cover image, even when the page has one', () => {
     renderCard({ ...basePage, cover_image: 'https://cdn.example/cover.jpg' });
-    const cover = screen.getByAltText('Ada Fans cover') as HTMLImageElement;
-    expect(cover.getAttribute('src')).toBe('https://cdn.example/cover.jpg');
+    expect(screen.queryByAltText('Ada Fans cover')).toBeNull();
+    expect(document.querySelector('img[src="https://cdn.example/cover.jpg"]')).toBeNull();
+  });
+
+  it('shows the real follower and post counts', () => {
+    renderCard(basePage);
+    expect(screen.getByText(/3 followers/)).toBeTruthy();
+    expect(screen.getByText(/5 posts/)).toBeTruthy();
+  });
+
+  it('shows the category in parentheses beside the name', () => {
+    renderCard({ ...basePage, category: 'Media/News Company' });
+    expect(screen.getByText('(Media/News Company)')).toBeTruthy();
+  });
+
+  it('omits the category entirely when the page has none', () => {
+    renderCard({ ...basePage, category: null });
+    expect(screen.queryByText(/^\(/)).toBeNull();
   });
 });

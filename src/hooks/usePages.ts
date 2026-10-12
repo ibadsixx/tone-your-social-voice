@@ -13,6 +13,7 @@ export interface Page {
   created_at: string;
   admin_id: string;
   follower_count?: number;
+  post_count?: number;
   is_following?: boolean;
   user_role?: 'follower' | 'admin' | 'editor';
   followed_at?: string;
@@ -32,6 +33,11 @@ interface PageFollowerRow {
   user_id: string;
   role?: 'follower' | 'admin' | 'editor';
   followed_at?: string;
+}
+
+interface PagePostRow {
+  page_id: string;
+  post_id: string;
 }
 
 interface PageRow {
@@ -70,21 +76,25 @@ export const usePages = () => {
       setLoading(true);
       setError(null);
 
-      // The `pages` table has no follower_count column — the real follower count
-      // lives in `page_followers`. Read both tables in parallel and derive the
-      // per-page counts and the viewer's own follow state from the same rows, so
-      // a list and its badge can never disagree. A followers read failure is a
-      // real error: turning it into an empty list would look like "0 followers"
-      // or "not following anything".
-      const [pagesRes, followersRes] = await Promise.all([
+      // The `pages` table has neither a follower_count nor a post_count column —
+      // follower relationships live in `page_followers` and a page's posts live
+      // in `page_posts` (the same table PageDetail reads). Read all three in
+      // parallel and derive the per-page counts and the viewer's own follow state
+      // from the same rows, so a list and its badge can never disagree. Either
+      // read failure is a real error: turning it into an empty list would look
+      // like "0 followers" / "0 posts" or "not following anything".
+      const [pagesRes, followersRes, pagePostsRes] = await Promise.all([
         gateway.from('pages').select('*'),
         gateway.from('page_followers').select('*'),
+        gateway.from('page_posts').select('*'),
       ]);
 
       if (pagesRes.error) throw pagesRes.error;
       if (followersRes.error) throw followersRes.error;
+      if (pagePostsRes.error) throw pagePostsRes.error;
 
       const allFollowers: PageFollowerRow[] = (followersRes.data as PageFollowerRow[] | null) || [];
+      const allPagePosts: PagePostRow[] = (pagePostsRes.data as PagePostRow[] | null) || [];
 
       // Count distinct (page_id, user_id) follow relationships. The primary key
       // already prevents duplicates, but the Set keeps a duplicated row from
@@ -105,6 +115,21 @@ export const usePages = () => {
         if (viewer && userId === viewer.id) viewerFollowByPage.set(pageId, follow);
       }
 
+      // Count the distinct posts belonging to each page. Distinct post_id per
+      // page keeps a post that a page shares more than once (or a duplicated API
+      // row) from inflating the count.
+      const postCountByPage = new Map<string, number>();
+      const countedPosts = new Set<string>();
+      for (const pagePost of allPagePosts) {
+        const pageId = pagePost?.page_id;
+        const postId = pagePost?.post_id;
+        if (!pageId || !postId) continue;
+        const pair = `${pageId}:${postId}`;
+        if (countedPosts.has(pair)) continue;
+        countedPosts.add(pair);
+        postCountByPage.set(pageId, (postCountByPage.get(pageId) || 0) + 1);
+      }
+
       // A page must appear (and count) once even if the API returns it twice.
       const seenPages = new Set<string>();
       const pagesWithFollowerInfo: Page[] = [];
@@ -122,6 +147,7 @@ export const usePages = () => {
           created_at: page.created_at,
           admin_id: page.admin_id,
           follower_count: followerCountByPage.get(page.id) || 0,
+          post_count: postCountByPage.get(page.id) || 0,
           is_following: !!viewerFollow,
           user_role: viewerFollow?.role,
           followed_at: viewerFollow?.followed_at,
