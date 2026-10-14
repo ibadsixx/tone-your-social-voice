@@ -451,7 +451,12 @@ export const useHomeFeed = () => {
     feeling?: { type: string; emoji: string; text: string; targetText?: string; targetId?: string },
     scheduledAt?: Date,
     location?: { name: string; address: string; lat: number; lng: number; provider: string; provider_place_id?: string },
-    preUploadedMedia?: { url: string; mediaType: 'image' | 'video' }[]
+    preUploadedMedia?: { url: string; mediaType: 'image' | 'video' }[],
+    // When the viewer is publishing "as a Page" the caller passes that page's
+    // id here. The post is then associated with the page through the existing
+    // `page_posts` join table (the same table the page detail reads), so a post
+    // published while acting as a page shows up on that page.
+    pageId?: string
   ): Promise<string | undefined> => {
     if (!user || (!content.trim() && !media?.length && !preUploadedMedia?.length)) return;
 
@@ -638,10 +643,34 @@ export const useHomeFeed = () => {
         }
       }
 
-      toast({
-        title: 'Success',
-        description: scheduledAt ? 'Post scheduled successfully' : 'Post created successfully'
-      });
+      // Associate a post published while acting as a Page with that Page. The
+      // Gateway validates that the authenticated user is the page's admin and
+      // stamps `shared_by`, so this can only ever link the caller's own posts
+      // to a page they manage. The link is best-effort: the post itself is
+      // already published, so a failed association is reported without losing
+      // the post.
+      let pageLinked = true;
+      if (pageId && postId && !scheduledAt) {
+        const { error: pageLinkError } = await gateway
+          .from('page_posts')
+          .insert({ page_id: pageId, post_id: postId, shared_by: user.id });
+        if (pageLinkError) {
+          pageLinked = false;
+          console.error('[createPost] Failed to link post to page:', pageLinkError);
+        }
+      }
+
+      toast(pageLinked
+        ? {
+            title: 'Success',
+            description: scheduledAt ? 'Post scheduled successfully' : 'Post created successfully'
+          }
+        : {
+            title: 'Published, but not added to the page',
+            description: 'The post was created but could not be added to the page.',
+            variant: 'destructive'
+          }
+      );
 
       if (!scheduledAt) {
         window.dispatchEvent(new CustomEvent(POST_CREATED_EVENT));

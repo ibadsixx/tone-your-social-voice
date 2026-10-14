@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { Loader2, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useHomeFeed } from '@/hooks/useHomeFeed';
+import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import Post from '@/components/Post';
 import NewPost from '@/components/NewPost';
 import Stories from '@/components/Stories';
@@ -20,6 +21,9 @@ import PageContainer from '@/components/PageContainer';
 const Home = () => {
   const { user } = useAuth();
   const { posts, loading, error, hasMore, loadMore, refresh, createPost, toggleLike } = useHomeFeed();
+  // When the viewer has switched to acting as a Page, the composer shows that
+  // page's identity; the published post must be associated with the same page.
+  const { actingPage } = usePageSwitch();
   const navigate = useNavigate();
   const isGuest = !user;
   // Only surface a feed error once the feed has actually given up — a failed
@@ -82,7 +86,7 @@ const Home = () => {
 
   const handleCreatePost = async (content: string, media?: File[], taggedUsers?: any[], audience?: any, feeling?: any, scheduledAt?: Date, location?: any, preUploadedMedia?: { url: string; mediaType: 'image' | 'video' }[]) => {
     if (!content.trim() && !media?.length && !preUploadedMedia?.length) return;
-    const postId = await createPost(content, media, taggedUsers, audience, feeling, scheduledAt, location, preUploadedMedia);
+    const postId = await createPost(content, media, taggedUsers, audience, feeling, scheduledAt, location, preUploadedMedia, actingPage?.id);
     return postId;
   };
 

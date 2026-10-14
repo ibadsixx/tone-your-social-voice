@@ -4,10 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import NewPost from '@/components/NewPost';
 import { AudienceSummary, AudienceSelector, type AudienceSelection } from '@/components/AudienceSelector';
 import { useHomeFeed } from '@/hooks/useHomeFeed';
+import { usePageSwitch } from '@/contexts/PageSwitchContext';
 
 const CreatePost = () => {
   const navigate = useNavigate();
   const { createPost } = useHomeFeed();
+  const { actingPage } = usePageSwitch();
   const [audience, setAudience] = useState<AudienceSelection>({ type: 'friends' });
   const [showAudienceSelector, setShowAudienceSelector] = useState(false);
 
@@ -21,7 +23,7 @@ const CreatePost = () => {
     location?: any,
     preUploadedMedia?: { url: string; mediaType: 'image' | 'video' }[]
   ) => {
-    const postId = await createPost(content, media, taggedUsers, audience, feeling, scheduledAt, location, preUploadedMedia);
+    const postId = await createPost(content, media, taggedUsers, audience, feeling, scheduledAt, location, preUploadedMedia, actingPage?.id);
     navigate('/', { replace: true });
     return postId;
   };

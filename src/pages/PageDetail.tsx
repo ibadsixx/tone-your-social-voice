@@ -496,19 +496,27 @@ const PageDetail = () => {
     feeling?: any,
     scheduledAt?: Date,
     location?: any,
+    preUploadedMedia?: { url: string; mediaType: 'image' | 'video' }[],
   ) => {
     if (!id || !user) return undefined;
     try {
-      const postId = await createPost(content, media, taggedUsers, audience, feeling, scheduledAt, location);
-      if (postId) {
-        const { error } = await gateway.from('page_posts').insert({
-          page_id: id,
-          post_id: postId,
-          shared_by: user.id,
-        });
-        if (error) throw error;
-        fetchPagePosts();
-      }
+      // `createPost` owns the page association: when `id` (the page being
+      // viewed) is supplied it writes the existing `page_posts` join row, so
+      // the post shows up here even though its author is the page admin's user
+      // account. Forwarding `preUploadedMedia` avoids re-uploading media that
+      // the composer already uploaded.
+      const postId = await createPost(
+        content,
+        media,
+        taggedUsers,
+        audience,
+        feeling,
+        scheduledAt,
+        location,
+        preUploadedMedia,
+        id,
+      );
+      if (postId) fetchPagePosts();
       return postId;
     } catch (err: any) {
       toast({ title: 'Error', description: err.message ?? 'Failed to post', variant: 'destructive' });
