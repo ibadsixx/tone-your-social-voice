@@ -1005,7 +1005,7 @@ const PageDetail = () => {
 
               {/* Right: composer + posts */}
               <section className="md:col-span-3 space-y-4">
-                {isAdmin && <NewPost onCreatePost={handlePagePost} />}
+                {isAdmin && <NewPost onCreatePost={handlePagePost} pagePost />}
                 {searchOpen && (
                   <Input
                     autoFocus

@@ -123,7 +123,7 @@ const Home = () => {
             >
               {user ? (
                 <Card className="hidden md:block p-6 bg-card/80 backdrop-blur-sm border-border/50 shadow-tone">
-                  <NewPost onCreatePost={handleCreatePost} />
+                  <NewPost onCreatePost={handleCreatePost} pagePost={!!actingPage} />
                 </Card>
               ) : (
                 <Card className="p-6 bg-card/80 backdrop-blur-sm border-border/50 shadow-tone">

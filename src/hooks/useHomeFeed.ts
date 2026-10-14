@@ -508,8 +508,20 @@ export const useHomeFeed = () => {
           }
         }
       }
-      // Prepare audience data
-      const audienceData = audience ? {
+      // Prepare audience data. A post published while acting as a Page belongs
+      // to that Page, and a Page is public by design — the Gateway serves
+      // `pages` and `page_posts` to guests. The composer's personal audience
+      // (its default is `friends`) therefore does NOT apply to a page post: a
+      // page post is public. Persisting the personal `friends` default here is
+      // what previously made every page post invisible to everyone but the
+      // admin, because the Gateway's audience enforcement hid it from the
+      // page's viewers and PageDetail dropped the unmatched `page_posts` link.
+      const audienceData = pageId ? {
+        audience_type: 'public',
+        audience_user_ids: null,
+        audience_excluded_user_ids: null,
+        audience_list_id: null
+      } : audience ? {
         audience_type: audience.type,
         audience_user_ids: audience.userIds || null,
         audience_excluded_user_ids: audience.excludedUserIds || null,

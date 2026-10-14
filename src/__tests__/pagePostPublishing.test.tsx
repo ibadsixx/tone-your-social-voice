@@ -62,7 +62,7 @@ beforeEach(() => {
   createPostSpy.mockResolvedValue({ data: { id: 'post-1' }, error: null });
 });
 
-async function callCreatePost(pageId?: string) {
+async function callCreatePost(pageId?: string, audience: { type: string; [key: string]: unknown } = { type: 'public' }) {
   const { result } = renderHook(() => useHomeFeed());
   await waitFor(() => expect(result.current.loading).toBe(false));
   await act(async () => {
@@ -70,7 +70,7 @@ async function callCreatePost(pageId?: string) {
       'Hello from a page',
       undefined,
       undefined,
-      { type: 'public' },
+      audience,
       undefined,
       undefined,
       undefined,
@@ -99,7 +99,28 @@ describe('publishing as a page links the post through page_posts', () => {
     expect(createPostSpy).toHaveBeenCalledTimes(1);
     expect(createPostSpy.mock.calls[0][0]).toMatchObject({
       content: 'Hello from a page',
-      user_id: 'admin-uuid',
+      type: 'normal_post',
     });
+  });
+});
+
+describe('a post published as a page is public, not the composer default', () => {
+  // The composer's default audience is `friends`. Persisting that on a page post
+  // made the Gateway hide it from every viewer but the admin, so the page showed
+  // no posts. A page post must be public (a Page is public by design), so the
+  // shared creation path overrides the personal audience when a page id is given.
+  it('overrides the composer default with public when publishing as a page', async () => {
+    await callCreatePost('page-1', { type: 'friends' });
+    expect(createPostSpy.mock.calls[0][0]).toMatchObject({
+      audience_type: 'public',
+      audience_user_ids: null,
+      audience_excluded_user_ids: null,
+      audience_list_id: null,
+    });
+  });
+
+  it('does not override a personal post audience (no page id)', async () => {
+    await callCreatePost(undefined, { type: 'friends' });
+    expect(createPostSpy.mock.calls[0][0]).toMatchObject({ audience_type: 'friends' });
   });
 });

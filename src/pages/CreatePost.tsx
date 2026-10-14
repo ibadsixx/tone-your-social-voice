@@ -12,6 +12,10 @@ const CreatePost = () => {
   const { actingPage } = usePageSwitch();
   const [audience, setAudience] = useState<AudienceSelection>({ type: 'friends' });
   const [showAudienceSelector, setShowAudienceSelector] = useState(false);
+  // A page post is public (a Page is public by design), so the personal
+  // audience control is replaced by a static "Public" while acting as a page.
+  const isPagePublication = !!actingPage;
+  const effectiveAudience: AudienceSelection = isPagePublication ? { type: 'public' } : audience;
 
   const handleCreatePost = async (
     content: string,
@@ -42,22 +46,24 @@ const CreatePost = () => {
           <h1 className="font-semibold text-base">Create Post</h1>
         </div>
         <AudienceSummary
-          audience={audience}
-          className="cursor-pointer hover:bg-accent/50 px-2 py-1 rounded-md transition-colors text-xs"
-          onClick={() => setShowAudienceSelector(true)}
+          audience={effectiveAudience}
+          className={isPagePublication
+            ? "px-2 py-1 rounded-md text-xs"
+            : "cursor-pointer hover:bg-accent/50 px-2 py-1 rounded-md transition-colors text-xs"}
+          onClick={isPagePublication ? undefined : () => setShowAudienceSelector(true)}
         />
       </header>
       <main className="flex-1 p-4">
-        <NewPost autoExpand stickyFooter audience={audience} onAudienceChange={setAudience} onCreatePost={handleCreatePost} />
+        <NewPost autoExpand stickyFooter audience={audience} onAudienceChange={setAudience} onCreatePost={handleCreatePost} pagePost={isPagePublication} />
       </main>
       <AudienceSelector
-        open={showAudienceSelector}
+        open={showAudienceSelector && !isPagePublication}
         onOpenChange={setShowAudienceSelector}
         onSelect={(newAudience) => {
           setAudience(newAudience);
           setShowAudienceSelector(false);
         }}
-        currentSelection={audience}
+        currentSelection={effectiveAudience}
       />
     </div>
   );

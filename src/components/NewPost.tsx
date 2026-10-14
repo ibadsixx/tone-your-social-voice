@@ -61,9 +61,17 @@ interface NewPostProps {
   audience?: AudienceSelection;
   onAudienceChange?: (audience: AudienceSelection) => void;
   stickyFooter?: boolean;
+  /**
+   * True when this composer publishes on behalf of a Page (Home / Page detail /
+   * Create Post while acting as a page). A Page is public by design, so a page
+   * post is always public and the personal audience control does not apply.
+   * GroupDetail does NOT set this even when a page is active, because a group
+   * post is not a page post.
+   */
+  pagePost?: boolean;
 }
 
-const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudience, onAudienceChange, stickyFooter }: NewPostProps) => {
+const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudience, onAudienceChange, stickyFooter, pagePost }: NewPostProps) => {
   const { user } = useAuth();
   const { profile } = useProfile();
   const { actingPage } = usePageSwitch();
@@ -84,6 +92,13 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
   const [internalAudience, setInternalAudience] = useState<AudienceSelection>({ type: 'friends' });
   const audience = externalAudience ?? internalAudience;
   const setAudience = onAudienceChange ?? setInternalAudience;
+  // A post published while acting as a Page belongs to the Page, and a Page is
+  // public by design (the Gateway serves `pages` and `page_posts` to guests).
+  // The personal audience therefore does not apply: a page post is always
+  // public, and the personal audience control is not offered. `createPost` also
+  // enforces this at the write, so this only keeps the composer honest.
+  const isPagePublication = !!pagePost;
+  const effectiveAudience: AudienceSelection = isPagePublication ? { type: 'public' } : audience;
   const [showAudienceSelector, setShowAudienceSelector] = useState(false);
   const [feeling, setFeeling] = useState<FeelingData | null>(null);
   const [showFeelingPicker, setShowFeelingPicker] = useState(false);
@@ -290,7 +305,7 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
     
     setIsCreating(true);
     try {
-      const postId = await onCreatePost?.(content, selectedFiles, taggedUsers, audience, feeling || undefined, scheduledAt || undefined, location || undefined, mediaItems.filter(m => m.url).map(m => ({ url: m.url!, mediaType: m.mediaType })));
+      const postId = await onCreatePost?.(content, selectedFiles, taggedUsers, effectiveAudience, feeling || undefined, scheduledAt || undefined, location || undefined, mediaItems.filter(m => m.url).map(m => ({ url: m.url!, mediaType: m.mediaType })));
       
       // Save mentions and hashtags if post was created successfully
       if (postId && typeof postId === 'string') {
@@ -328,7 +343,8 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
     { icon: Smile, label: 'Feeling/Activity', color: 'text-yellow-500', onClick: () => setShowFeelingPicker(true) },
     { icon: Tag, label: 'Tag people', color: 'text-blue-500', onClick: () => setShowTagModal(true) },
     { icon: Clock, label: 'Schedule post', color: 'text-green-500', onClick: () => setShowScheduleModal(true) },
-    { icon: Users, label: 'Audience', color: 'text-purple-500', onClick: () => setShowAudienceSelector(true) },
+    // A page post is always public, so there is no personal audience to choose.
+    ...(isPagePublication ? [] : [{ icon: Users, label: 'Audience', color: 'text-purple-500', onClick: () => setShowAudienceSelector(true) }]),
   ];
 
   return (
@@ -611,9 +627,11 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
               <div className="flex items-center gap-2 md:gap-3">
                 {!externalAudience && (
                   <AudienceSummary 
-                    audience={audience} 
-                    className="cursor-pointer hover:bg-accent/50 px-1.5 md:px-2 py-1 rounded-md transition-colors text-xs md:text-sm"
-                    onClick={() => setShowAudienceSelector(true)}
+                    audience={effectiveAudience} 
+                    className={isPagePublication
+                      ? "px-1.5 md:px-2 py-1 rounded-md text-xs md:text-sm"
+                      : "cursor-pointer hover:bg-accent/50 px-1.5 md:px-2 py-1 rounded-md transition-colors text-xs md:text-sm"}
+                    onClick={isPagePublication ? undefined : () => setShowAudienceSelector(true)}
                   />
                 )}
                 {!stickyFooter && (
@@ -703,10 +721,10 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
 
       {/* Audience Selector */}
       <AudienceSelector
-        open={showAudienceSelector}
+        open={showAudienceSelector && !isPagePublication}
         onOpenChange={setShowAudienceSelector}
         onSelect={setAudience}
-        currentSelection={audience}
+        currentSelection={effectiveAudience}
       />
 
       {/* Feeling Picker */}
