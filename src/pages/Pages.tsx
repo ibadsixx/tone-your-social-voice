@@ -86,19 +86,25 @@ const Pages = () => {
     </Card>
   );
 
+  // Pages are rendered with the same Card/CardContent list the personal profile
+  // lists use (see FriendsTab): one full-width row per profile card, separated by
+  // the row's own bottom border. This replaces the old 3-column card grid so a
+  // page reads exactly like a person's profile card.
   const renderPages = (variant?: 'default' | 'following' | 'owned') => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {pages.map((page) => (
-        <PageCard
-          key={page.id}
-          page={page}
-          onFollow={handleFollow}
-          onUnfollow={handleUnfollow}
-          variant={variant}
-          loading={loading}
-        />
-      ))}
-    </div>
+    <Card>
+      <CardContent className="p-0">
+        {pages.map((page) => (
+          <PageCard
+            key={page.id}
+            page={page}
+            onFollow={handleFollow}
+            onUnfollow={handleUnfollow}
+            variant={variant}
+            loading={loading}
+          />
+        ))}
+      </CardContent>
+    </Card>
   );
 
   return (
