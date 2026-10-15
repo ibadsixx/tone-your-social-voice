@@ -243,6 +243,40 @@ describe('usePages: a failed read is surfaced, not shown as empty', () => {
   });
 });
 
+describe('usePages: the public /pages list survives the auth-only follow read', () => {
+  // `/pages` is a public route, but `page_followers` is authentication-scoped
+  // (the Gateway answers 403 to a guest). Reading it unconditionally and treating
+  // that 403 as fatal blanked the whole route for every logged-out visitor —
+  // "all pages have disappeared". The follow read is enrichment: an auth error
+  // must degrade to "no follow data", never to an empty page list.
+  it('still returns pages for a guest when page_followers is 403 (auth required)', async () => {
+    authState.user = null;
+    state.page_followers = {
+      data: null,
+      error: Object.assign(new Error('Authentication required to view this content'), { code: '403' }),
+    };
+
+    const { result, list } = await fetchList('new');
+
+    expect(result.current.error).toBeNull();
+    expect(list.map((p) => p.id)).toEqual(['p1', 'p2', 'p3']);
+    expect(list.every((p) => p.is_following === false)).toBe(true);
+    expect(result.current.counts.following).toBe(0);
+    expect(result.current.counts.owned).toBe(0);
+  });
+
+  it('still surfaces a non-auth page_followers failure', async () => {
+    authState.user = null;
+    state.page_followers = {
+      data: null,
+      error: Object.assign(new Error('Upstream error'), { code: '500' }),
+    };
+    const { result, list } = await fetchList('new');
+    expect(result.current.error).toBe('Upstream error');
+    expect(list).toEqual([]);
+  });
+});
+
 describe('usePages: membership resolves against the latest viewer', () => {
   it('does not let a signed-out fetch wipe the following list', async () => {
     authState.user = null;

@@ -52,6 +52,16 @@ interface PageRow {
   archived?: boolean;
 }
 
+// `page_followers` is authentication-scoped at the Gateway: it answers 401/403
+// when there is no session (only `pages`/`page_posts` are public-by-design).
+// Such a response means "this viewer may not read follow data", not "the page
+// list is broken", so it must not blank the public `/pages` route. `code` is the
+// HTTP status string the Gateway client sets on its error object.
+function isAuthRequiredError(error: { message?: string; code?: string }): boolean {
+  if (error?.code === '401' || error?.code === '403') return true;
+  return /authentication required/i.test(error?.message ?? '');
+}
+
 export const usePages = () => {
   const [loading, setLoading] = useState(true);
   // A failed list/followers read must surface as an error and must never be
@@ -80,9 +90,7 @@ export const usePages = () => {
       // follower relationships live in `page_followers` and a page's posts live
       // in `page_posts` (the same table PageDetail reads). Read all three in
       // parallel and derive the per-page counts and the viewer's own follow state
-      // from the same rows, so a list and its badge can never disagree. Either
-      // read failure is a real error: turning it into an empty list would look
-      // like "0 followers" / "0 posts" or "not following anything".
+      // from the same rows, so a list and its badge can never disagree.
       const [pagesRes, followersRes, pagePostsRes] = await Promise.all([
         gateway.from('pages').select('*'),
         gateway.from('page_followers').select('*'),
@@ -90,7 +98,16 @@ export const usePages = () => {
       ]);
 
       if (pagesRes.error) throw pagesRes.error;
-      if (followersRes.error) throw followersRes.error;
+      // `page_followers` is authentication-scoped, but `/pages` is a PUBLIC route
+      // (it is not behind RequireAuth). Before the listing change this read was
+      // only issued for a signed-in viewer and degraded to "no follow state", so a
+      // guest still saw the pages. Reading it unconditionally and treating the
+      // 401/403 as fatal made a guest's whole `/pages` view collapse to "We
+      // couldn't load pages" — the reported "all pages have disappeared". An auth
+      // error means "no follow data for this viewer"; any OTHER failure (e.g. a
+      // 500) is still surfaced so it can never masquerade as "not following
+      // anything" or "0 followers".
+      if (followersRes.error && !isAuthRequiredError(followersRes.error)) throw followersRes.error;
       if (pagePostsRes.error) throw pagePostsRes.error;
 
       const allFollowers: PageFollowerRow[] = (followersRes.data as PageFollowerRow[] | null) || [];
