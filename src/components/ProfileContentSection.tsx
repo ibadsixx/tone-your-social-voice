@@ -6,7 +6,7 @@ import ProfilePhotosGrid from './ProfilePhotosGrid';
 import ProfileReelsGrid from './ProfileReelsGrid';
 import { useProfileContent } from '@/hooks/useProfileContent';
 import { useInfiniteScrollSentinel } from '@/hooks/useInfiniteScrollSentinel';
-import type { ProfileContentKind } from '@/api/profileContent';
+import type { ProfileContentFetcher, ProfileContentKind } from '@/api/profileContent';
 
 /**
  * One Profile content section (Posts, Photos, Reels or Shared), paged one item
@@ -30,6 +30,17 @@ interface ProfileContentSectionProps {
   enabled: boolean;
   active: boolean;
   coverPic?: string | null;
+  /**
+   * Pluggable paged reader. Defaults to the personal-profile content endpoint;
+   * a Page supplies an adapter so the same section renders a page feed.
+   */
+  fetcher?: ProfileContentFetcher;
+  /**
+   * When the items belong to a Page, the owning Page identity. Passed straight
+   * to `Post` so the card shows the page (and links back to `/pages/:id`) just
+   * like the page's own composer feed.
+   */
+  postPage?: { id: string; name: string; cover_image: string | null; profile_pic?: string | null } | null;
 }
 
 const EMPTY_LABEL: Record<ProfileContentSectionProps['variant'], string> = {
@@ -46,11 +57,13 @@ export function ProfileContentSection({
   enabled,
   active,
   coverPic,
+  fetcher,
+  postPage,
 }: ProfileContentSectionProps) {
   const { items, loading, loadingMore, error, hasMore, done, loadMore, retry } = useProfileContent(
     profileId,
     kind,
-    { enabled }
+    { enabled, fetcher }
   );
 
   const { sentinelRef } = useInfiniteScrollSentinel({
@@ -139,6 +152,7 @@ export function ProfileContentSection({
                 shared_post_id={post.shared_post_id}
                 profiles={post.profiles}
                 shared_post={post.shared_post}
+                page={post.page ?? postPage ?? null}
               />
             ))
           )}

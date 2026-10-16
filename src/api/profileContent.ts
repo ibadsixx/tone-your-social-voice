@@ -72,6 +72,12 @@ export interface ProfileContentPost {
   visibility?: string | null;
   profiles: ProfileContentAuthor;
   shared_post: ProfileContentSharedPost | null;
+  /**
+   * Set only for Page content: the owning Page, so the shared `Post` card
+   * renders the page identity (and links to `/pages/:id`) exactly as it does on
+   * the page's own feed.
+   */
+  page?: { id: string; name: string; cover_image: string | null; profile_pic?: string | null } | null;
 }
 
 export interface ProfileContentPage {
@@ -83,6 +89,19 @@ export interface ProfileContentPage {
   /** True when served by the whole-table fallback rather than the Gateway cursor. */
   degraded: boolean;
 }
+
+/**
+ * The shape of the paged reader a content section consumes. The personal
+ * profile uses `getProfileContentPage`; a Page supplies its own adapter (see
+ * `api/pageContent.ts`) so it can reuse the very same section/feed component
+ * over the `page_posts` link table instead of a second feed implementation.
+ */
+export type ProfileContentFetcher = (
+  kind: ProfileContentKind,
+  cursor: string | null,
+  limit: number,
+  signal?: AbortSignal
+) => Promise<ApiResult<ProfileContentPage>>;
 
 const KIND_PARAM: Record<ProfileContentKind, string> = {
   posts: 'posts',

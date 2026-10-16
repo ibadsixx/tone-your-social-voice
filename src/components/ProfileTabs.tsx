@@ -1,8 +1,6 @@
-import { useState } from 'react';
+import { ReactNode, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Skeleton } from '@/components/ui/skeleton';
 import AboutSection from './AboutSection';
-import Post from './Post';
 import ScheduledPostsTab from './ScheduledPostsTab';
 import FilteredPostsLayout from './FilteredPostsLayout';
 import FriendsTab from './FriendsTab';
@@ -11,6 +9,15 @@ import { useAuth } from '@/hooks/useAuth';
 import type { ProfileSectionFilter } from '@/lib/profileSections';
 import type { AboutSectionId } from '@/lib/profileAbout';
 
+/**
+ * The tabbed body of a Profile.
+ *
+ * A Page renders through this SAME component: `profileKind="page"` swaps the
+ * tab set (Posts / Mentions / About / Followers) and lets the caller supply the
+ * tab bodies (`postsContent`, `aboutContent`, `followersContent`,
+ * `mentionsContent`). The personal profile keeps its own tab set and default
+ * bodies, so nothing about it changes.
+ */
 interface ProfileTabsProps {
   profileId: string;
   isOwnProfile: boolean;
@@ -25,6 +32,16 @@ interface ProfileTabsProps {
   onTabChange?: (tab: string) => void;
   aboutSection?: AboutSectionId;
   onAboutSectionChange?: (section: AboutSectionId) => void;
+  /** 'person' (default) renders the personal-profile tab set. */
+  profileKind?: 'person' | 'page';
+  /** Page mode: body of the Posts tab. */
+  postsContent?: ReactNode;
+  /** Page mode: body of the About tab. */
+  aboutContent?: ReactNode;
+  /** Page mode: body of the Followers tab. */
+  followersContent?: ReactNode;
+  /** Page mode: body of the Mentions tab (shown to signed-in viewers). */
+  mentionsContent?: ReactNode;
 }
 
 const ProfileTabs = ({
@@ -37,6 +54,11 @@ const ProfileTabs = ({
   onTabChange,
   aboutSection,
   onAboutSectionChange,
+  profileKind = 'person',
+  postsContent,
+  aboutContent,
+  followersContent,
+  mentionsContent,
 }: ProfileTabsProps) => {
   const [internalTab, setInternalTab] = useState('posts');
   const activeTab = controlledTab ?? internalTab;
@@ -45,6 +67,59 @@ const ProfileTabs = ({
     onTabChange?.(tab);
   };
   const { user } = useAuth();
+
+  if (profileKind === 'page') {
+    const cols = user ? 'grid-cols-4' : 'grid-cols-3';
+    return (
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="mt-6">
+        <TabsList className={`w-full grid h-9 md:h-10 ${cols}`}>
+          <TabsTrigger value="posts" className="px-1 md:px-3" aria-label="Posts">
+            <span className="md:hidden">P</span>
+            <span className="hidden md:inline text-sm">Posts</span>
+          </TabsTrigger>
+          {user && (
+            <TabsTrigger value="mentions" className="px-1 md:px-3" aria-label="Mentions">
+              <span className="md:hidden">@</span>
+              <span className="hidden md:inline text-sm">Mentions</span>
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="about" className="px-1 md:px-3" aria-label="About">
+            <span className="md:hidden">A</span>
+            <span className="hidden md:inline text-sm">About</span>
+          </TabsTrigger>
+          <TabsTrigger value="followers" className="px-1 md:px-3" aria-label="Followers">
+            <span className="md:hidden">F</span>
+            <span className="hidden md:inline text-sm">Followers</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="posts" className="mt-6">
+          {postsContent ?? (
+            <FilteredPostsLayout
+              profileId={profileId}
+              coverPic={coverPic}
+              activeFilter={activeFilter}
+              onFilterChange={onFilterChange}
+            />
+          )}
+        </TabsContent>
+
+        {user && (
+          <TabsContent value="mentions" className="mt-6">
+            {mentionsContent}
+          </TabsContent>
+        )}
+
+        <TabsContent value="about" className="mt-6">
+          {aboutContent}
+        </TabsContent>
+
+        <TabsContent value="followers" className="mt-6">
+          {followersContent}
+        </TabsContent>
+      </Tabs>
+    );
+  }
 
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="mt-6">
@@ -70,7 +145,7 @@ const ProfileTabs = ({
           <span className="hidden md:inline text-sm">Friends</span>
         </TabsTrigger>
       </TabsList>
-      
+
       <TabsContent value="posts" className="mt-6">
         {/* No `posts`/`loading` props: each of the four sections now reads its
             own page, one item per request, from the profile content endpoint. */}
@@ -81,7 +156,7 @@ const ProfileTabs = ({
           onFilterChange={onFilterChange}
         />
       </TabsContent>
-      
+
       {isOwnProfile && (
         <TabsContent value="scheduled" className="mt-6">
           <ScheduledPostsTab profileId={profileId} />
@@ -93,7 +168,7 @@ const ProfileTabs = ({
           <Mentions targetUserId={profileId} />
         </TabsContent>
       )}
-      
+
       <TabsContent value="about" className="mt-6">
         <AboutSection
           profileId={profileId}
@@ -102,7 +177,7 @@ const ProfileTabs = ({
           onSectionChange={onAboutSectionChange}
         />
       </TabsContent>
-      
+
       <TabsContent value="friends" className="mt-6">
         <FriendsTab profileId={profileId} isOwnProfile={isOwnProfile} />
       </TabsContent>

@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getProfileContentPage,
+  type ProfileContentFetcher,
   type ProfileContentKind,
   type ProfileContentPost,
 } from '@/api/profileContent';
@@ -54,9 +55,17 @@ export interface UseProfileContentResult {
 export function useProfileContent(
   profileId: string | undefined,
   kind: ProfileContentKind,
-  options: { enabled?: boolean } = {}
+  options: { enabled?: boolean; fetcher?: ProfileContentFetcher } = {}
 ): UseProfileContentResult {
   const enabled = options.enabled !== false;
+
+  // The data source is a seam. The personal profile reads the Gateway's
+  // authorization-gated `/api/profiles/:id/content`; a Page passes its own
+  // adapter over the `page_posts` link table so the SAME section component
+  // renders a page feed. Held in a ref so an inline adapter cannot churn the
+  // request callback and re-fire the feed on every render.
+  const fetcherRef = useRef<ProfileContentFetcher | undefined>(options.fetcher);
+  fetcherRef.current = options.fetcher;
 
   const [items, setItems] = useState<ProfileContentPost[]>([]);
   const [loading, setLoading] = useState(false);
@@ -126,11 +135,14 @@ export function useProfileContent(
         // public content waited below it. So the loop keeps asking here, inside
         // the request the visitor already made, and stops as soon as it has an
         // item to show.
+        const fetcher = fetcherRef.current;
         for (;;) {
-          const { data, error: requestError } = await getProfileContentPage(profileId, kind, {
-            cursor: cursorRef.current,
-            limit: PROFILE_ITEMS_PER_REQUEST,
-          });
+          const { data, error: requestError } = fetcher
+            ? await fetcher(kind, cursorRef.current, PROFILE_ITEMS_PER_REQUEST)
+            : await getProfileContentPage(profileId, kind, {
+                cursor: cursorRef.current,
+                limit: PROFILE_ITEMS_PER_REQUEST,
+              });
           // A response that arrives after the section was switched or unmounted
           // belongs to a feed nobody is looking at any more.
           if (generation !== generationRef.current) return;

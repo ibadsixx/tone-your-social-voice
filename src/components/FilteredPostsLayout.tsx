@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import { ProfileContentSection } from './ProfileContentSection';
 import { Image, Video, Share2, Grid3X3 } from 'lucide-react';
 import type { ProfileSectionFilter } from '@/lib/profileSections';
-import type { ProfileContentKind } from '@/api/profileContent';
+import type { ProfileContentFetcher, ProfileContentKind } from '@/api/profileContent';
 
 interface FilteredPostsLayoutProps {
   profileId: string;
@@ -14,6 +14,11 @@ interface FilteredPostsLayoutProps {
   // which keeps it usable on its own.
   activeFilter?: ProfileSectionFilter;
   onFilterChange?: (filter: ProfileSectionFilter) => void;
+  // A Page reuses this exact layout over its own data source: `fetcher` reads
+  // the `page_posts` link table and `postPage` stamps the page identity onto
+  // each card. Both are optional, so the personal profile is unchanged.
+  fetcher?: ProfileContentFetcher;
+  postPage?: { id: string; name: string; cover_image: string | null; profile_pic?: string | null } | null;
 }
 
 const FILTER_KIND: Record<ProfileSectionFilter, ProfileContentKind> = {
@@ -28,6 +33,8 @@ const FilteredPostsLayout = ({
   coverPic,
   activeFilter: controlledFilter,
   onFilterChange,
+  fetcher,
+  postPage,
 }: FilteredPostsLayoutProps) => {
   const [internalFilter, setInternalFilter] = useState<ProfileSectionFilter>('all');
   const activeFilter = controlledFilter ?? internalFilter;
@@ -114,6 +121,8 @@ const FilteredPostsLayout = ({
           active={activeFilter === filter.id}
           enabled={activeFilter === filter.id}
           coverPic={coverPic}
+          fetcher={fetcher}
+          postPage={postPage}
         />
       ))}
     </div>

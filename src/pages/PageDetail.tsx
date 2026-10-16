@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
@@ -62,7 +62,11 @@ import {
   FileText,
 } from 'lucide-react';
 import NewPost from '@/components/NewPost';
-import Post from '@/components/Post';
+import ProfileHeader from '@/components/ProfileHeader';
+import ProfileTabs from '@/components/ProfileTabs';
+import FilteredPostsLayout from '@/components/FilteredPostsLayout';
+import PageCoverPhotoEditor from '@/components/PageCoverPhotoEditor';
+import { createPageContentFetcher } from '@/api/pageContent';
 import { useHomeFeed } from '@/hooks/useHomeFeed';
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { useCall } from '@/contexts/CallContext';
@@ -218,10 +222,9 @@ const PageDetail = () => {
   const isAboutPath = pathParts.includes('about');
   const [activeTab, setActiveTab] = useState(isAboutPath ? 'about' : 'posts');
   const [aboutSection, setAboutSection] = useState(isAboutPath && aboutPathSection !== 'about' ? aboutPathSection : 'contact');
-  const [pagePosts, setPagePosts] = useState<any[]>([]);
-  const [postsLoading, setPostsLoading] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  // Bumped after publishing a page post so the shared page feed remounts and
+  // re-reads its content source (the feed owns its own cursor/state).
+  const [postsVersion, setPostsVersion] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [followers, setFollowers] = useState<any[]>([]);
@@ -286,6 +289,45 @@ const PageDetail = () => {
   // Backwards-compatible alias used throughout the editing UI
   const isAdmin = actingAsPage;
 
+  // The page's content, read through the SHARED profile content feed. The
+  // adapter (api/pageContent.ts) targets the `page_posts` link table; the
+  // section/feed components themselves are the personal-profile ones, so a
+  // page feed is not a second implementation.
+  const pageContentFetcher = useMemo(
+    () =>
+      page
+        ? createPageContentFetcher({
+            id: page.id,
+            name: page.name,
+            cover_image: page.cover_image,
+            profile_pic: page.profile_pic ?? null,
+          })
+        : undefined,
+    [page?.id, page?.name, page?.cover_image, page?.profile_pic],
+  );
+
+  // Top-level tab selection stays URL-backed for Posts/About (so /pages/:id and
+  // /pages/:id/about/:section deep-link and survive refresh); Followers and
+  // Mentions are local, exactly like their in-page nature.
+  useEffect(() => {
+    setActiveTab(isAboutPath ? 'about' : 'posts');
+  }, [isAboutPath]);
+
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    if (tab === 'about') navigate(`/pages/${id}/about/${aboutSection}`, { replace: true });
+    else if (tab === 'posts') navigate(`/pages/${id}`, { replace: true });
+  };
+
+  const handleMessagePage = async () => {
+    if (!user || !page) return;
+    const convId = await getOrCreateDM(page.admin_id);
+    if (convId) {
+      await gateway.from('conversations').update({ page_id: page.id }).eq('id', convId).maybeSingle();
+      navigate(`/messages/${convId}`);
+    }
+  };
+
   useEffect(() => {
     if (!id) return;
     (async () => {
@@ -325,53 +367,6 @@ const PageDetail = () => {
       setFollowerCount((followerData as any[])?.length ?? 0);
     })();
   }, [id, navigate, toast]);
-
-  const fetchPagePosts = async () => {
-    if (!id) return;
-    setPostsLoading(true);
-    const { data: postsData } = await gateway
-      .from('page_posts')
-      .select('*')
-      .eq('page_id', id)
-      .order('created_at', { ascending: false });
-
-    if (!postsData || postsData.length === 0) {
-      setPagePosts([]);
-      setPostsLoading(false);
-      return;
-    }
-
-    const postIds = [...new Set((postsData as any[]).map((pp: any) => pp.post_id).filter(Boolean))];
-    let postsMap: Record<string, any> = {};
-    if (postIds.length > 0) {
-      const { data: basePosts } = await gateway.from('posts').select('*').in('id', postIds);
-      for (const p of (basePosts as any[]) || []) {
-        postsMap[p.id] = { ...p, profiles: null, likes: [], comments: [] };
-      }
-    }
-
-    const userIds = [...new Set(Object.values(postsMap).map((p: any) => p.user_id).filter(Boolean))];
-    if (userIds.length > 0) {
-      const { data: profiles } = await gateway.from('profiles').select('id, username, display_name, profile_pic').in('id', userIds);
-      for (const prof of (profiles as any[]) || []) {
-        for (const p of Object.values(postsMap)) {
-          if ((p as any).user_id === prof.id) (p as any).profiles = prof;
-        }
-      }
-    }
-
-    const enriched = (postsData as any[]).map(pp => ({
-      ...pp,
-      post: postsMap[pp.post_id] || null,
-    }));
-
-    setPagePosts(enriched);
-    setPostsLoading(false);
-  };
-
-  useEffect(() => {
-    if (id) fetchPagePosts();
-  }, [id]);
 
   // Fetch followers list + admin profile for transparency
   useEffect(() => {
@@ -516,7 +511,7 @@ const PageDetail = () => {
         preUploadedMedia,
         id,
       );
-      if (postId) fetchPagePosts();
+      if (postId) setPostsVersion((v) => v + 1);
       return postId;
     } catch (err: any) {
       toast({ title: 'Error', description: err.message ?? 'Failed to post', variant: 'destructive' });
@@ -779,270 +774,108 @@ const PageDetail = () => {
     year: 'numeric',
   });
 
-  return (
-    <PageContainer size="lg" className="pb-10">
-      <div className="px-0 pt-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/pages')}>
-          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Pages
-        </Button>
-      </div>
+  const pageProfile = {
+    id: page.id,
+    username: page.id,
+    display_name: page.name,
+    bio: page.description,
+    profile_pic: page.profile_pic ?? null,
+    cover_pic: page.cover_image,
+    created_at: page.created_at,
+  };
 
-      {/* Cover + Header (Facebook-style) */}
-      <Card className="overflow-hidden mt-3 mx-4 rounded-xl">
-        {page.archived && (
-          <div className="bg-amber-500/15 border-b border-amber-500/30 px-6 py-3 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
-            <Archive className="h-4 w-4 shrink-0" />
-            <span>This page is archived. Only you can see it.</span>
-          </div>
-        )}
-        <div className="relative h-56 md:h-72 bg-gradient-to-br from-primary/20 to-purple-500/20">
-          {page.cover_image && (
-            <img src={page.cover_image} alt={page.name} className="w-full h-full object-cover"  loading="eager" decoding="async" />
-          )}
-          {isAdmin && (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="absolute bottom-3 right-3"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-            >
-              {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Camera className="h-4 w-4 mr-2" />}
-              {uploading ? 'Uploading...' : 'Edit cover'}
+  // Page action cluster. Rendered into the SHARED ProfileHeader's `actions`
+  // slot: this is the page-specific counterpart of the personal-profile action
+  // buttons, not a replacement header.
+  const actionsContent = (
+    <>
+      {!isAdmin && user && (
+        <>
+          {page.button_type ? (
+            <Button variant="default" onClick={handleButtonClick}>
+              {(() => {
+                const bt = BUTTON_TYPES.find((t) => t.value === page.button_type);
+                const Icon = bt?.icon || PlusSquare;
+                return <Icon className="h-4 w-4 mr-2" />;
+              })()}
+              {BUTTON_TYPES.find((t) => t.value === page.button_type)?.label || page.button_type}
+            </Button>
+          ) : (
+            <Button variant="default" onClick={handleMessagePage}>
+              <MessageCircle className="h-4 w-4 mr-2" /> Message
             </Button>
           )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleCoverUpload(f);
-              e.target.value = '';
-            }}
-          />
-        </div>
+          <Button onClick={toggleFollow} disabled={followBusy} variant="outline">
+            <Heart className={`h-4 w-4 mr-2 ${isFollowing ? 'fill-current' : ''}`} />
+            {isFollowing ? 'Following' : 'Follow'}
+          </Button>
+        </>
+      )}
+      {isAdmin && (
+        <Button
+          onClick={() => navigate(`/pages/${page.id}/manage`, { state: { id: page.id, name: page.name, profile_pic: page.profile_pic } })}
+          variant="default"
+        >
+          Manage Page
+        </Button>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="icon">
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          {isAdmin ? (
+            <>
+              <DropdownMenuItem onClick={() => navigate(`/pages/${page.id}/status`, { state: { id: page.id, name: page.name, profile_pic: page.profile_pic } })}>
+                <ToggleLeft className="h-4 w-4 mr-2" />
+                Page status
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => {
+                setSelectedButtonType(page.button_type || 'message');
+                setButtonUrl(page.button_url || '');
+                setAddButtonOpen(true);
+              }}>
+                <PlusSquare className="h-4 w-4 mr-2" />
+                Add button
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => navigate(`/pages/${page.id}/archive`, { state: { id: page.id, name: page.name, profile_pic: page.profile_pic, archived: page.archived } })}>
+                <Archive className="h-4 w-4 mr-2" />
+                {page.archived ? 'Unarchive' : 'Archive'}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate(`/pages/${page.id}/activity-log`, { state: { id: page.id, name: page.name, profile_pic: page.profile_pic } })}>
+                <HashIcon className="h-4 w-4 mr-2" />
+                Posts/tags
+              </DropdownMenuItem>
+            </>
+          ) : (
+            <>
+              <DropdownMenuItem onClick={() => {
+                navigator.clipboard.writeText(window.location.href);
+                toast({ title: 'Link copied', description: 'Page link copied to clipboard' });
+              }}>
+                <Link2 className="h-4 w-4 mr-2" />
+                Copy link
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => toast({ title: 'Share', description: 'Coming soon' })}>
+                <Share2 className="h-4 w-4 mr-2" />
+                Share
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => toast({ title: 'Report', description: 'Coming soon' })}>
+                <ShieldCheck className="h-4 w-4 mr-2" />
+                Report page
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
 
-        <div className="px-6 pt-4 pb-4 border-b">
-          <div className="flex flex-col md:flex-row md:items-end gap-4">
-            <div className="relative">
-              <Avatar className="h-32 w-32 -mt-20 border-4 border-background shadow-md">
-                <AvatarImage src={page.profile_pic || ''} />
-                <AvatarFallback className="bg-primary/10 text-primary text-4xl font-bold">
-                  {page.name.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              {isAdmin && (
-                <div className="absolute bottom-0 right-0">
-                  <Button
-                    size="sm"
-                    className="rounded-full h-10 w-10 p-0"
-                    onClick={() => avatarFileInputRef.current?.click()}
-                    disabled={uploading}
-                  >
-                    <Camera className="h-4 w-4" />
-                  </Button>
-                  <input
-                    ref={avatarFileInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="hidden"
-                    onChange={handleAvatarUpload}
-                  />
-                </div>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-3xl font-bold text-foreground truncate">{page.name}</h1>
-              <div className="text-sm text-muted-foreground mt-1">
-                {followerCount} followers · {page.category || 'Page'}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {!isAdmin && user && (
-                <>
-                  {page.button_type ? (
-                    <Button variant="default" onClick={handleButtonClick}>
-                      {(() => {
-                        const bt = BUTTON_TYPES.find((t) => t.value === page.button_type);
-                        const Icon = bt?.icon || PlusSquare;
-                        return <Icon className="h-4 w-4 mr-2" />;
-                      })()}
-                      {BUTTON_TYPES.find((t) => t.value === page.button_type)?.label || page.button_type}
-                    </Button>
-                  ) : (
-                    <Button variant="default">
-                      <MessageCircle className="h-4 w-4 mr-2" /> Message
-                    </Button>
-                  )}
-                  <Button
-                    onClick={toggleFollow}
-                    disabled={followBusy}
-                    variant="outline"
-                  >
-                    <Heart className={`h-4 w-4 mr-2 ${isFollowing ? 'fill-current' : ''}`} />
-                    {isFollowing ? 'Following' : 'Follow'}
-                  </Button>
-                  <Button variant="outline" onClick={() => setSearchOpen((v) => !v)}>
-                    <Search className="h-4 w-4 mr-2" /> Search
-                  </Button>
-                </>
-              )}
-              {isAdmin && (
-                <>
-                  <Button onClick={() => navigate(`/pages/${page.id}/manage`, { state: { id: page.id, name: page.name, profile_pic: page.profile_pic } })} variant="default">
-                    Manage Page
-                  </Button>
-                  <Button variant="outline" onClick={() => setSearchOpen((v) => !v)}>
-                    <Search className="h-4 w-4 mr-2" /> Search
-                  </Button>
-                </>
-              )}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  {isAdmin ? (
-                    <>
-                      <DropdownMenuItem onClick={() => navigate(`/pages/${page.id}/status`, { state: { id: page.id, name: page.name, profile_pic: page.profile_pic } })}>
-                        <ToggleLeft className="h-4 w-4 mr-2" />
-                        Page status
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => {
-                        setSelectedButtonType(page.button_type || 'message');
-                        setButtonUrl(page.button_url || '');
-                        setAddButtonOpen(true);
-                      }}>
-                        <PlusSquare className="h-4 w-4 mr-2" />
-                        Add button
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => navigate(`/pages/${page.id}/archive`, { state: { id: page.id, name: page.name, profile_pic: page.profile_pic, archived: page.archived } })}>
-                        <Archive className="h-4 w-4 mr-2" />
-                        {page.archived ? 'Unarchive' : 'Archive'}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => navigate(`/pages/${page.id}/activity-log`, { state: { id: page.id, name: page.name, profile_pic: page.profile_pic } })}>
-                        <HashIcon className="h-4 w-4 mr-2" />
-                        Posts/tags
-                      </DropdownMenuItem>
-                    </>
-                  ) : (
-                    <>
-                      <DropdownMenuItem onClick={() => {
-                        navigator.clipboard.writeText(window.location.href);
-                        toast({ title: 'Link copied', description: 'Page link copied to clipboard' });
-                      }}>
-                        <Link2 className="h-4 w-4 mr-2" />
-                        Copy link
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => toast({ title: 'Share', description: 'Coming soon' })}>
-                        <Share2 className="h-4 w-4 mr-2" />
-                        Share
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => toast({ title: 'Report', description: 'Coming soon' })}>
-                        <ShieldCheck className="h-4 w-4 mr-2" />
-                        Report page
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs bar */}
-        <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); if (v === 'about') navigate(`/pages/${id}/about/${aboutSection}`, { replace: true }); else navigate(`/pages/${id}`, { replace: true }); }} className="w-full">
-          <div className="px-2">
-            <TabsList className="bg-transparent h-12 p-0 gap-1">
-              <TabsTrigger value="posts" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Posts</TabsTrigger>
-              <TabsTrigger value="about" className="data-[state=active]:bg-accent rounded-md px-4 h-10">About</TabsTrigger>
-              <TabsTrigger value="mentions" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Mentions</TabsTrigger>
-              <TabsTrigger value="reviews" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Reviews</TabsTrigger>
-              <TabsTrigger value="followers" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Followers</TabsTrigger>
-              <TabsTrigger value="photos" className="data-[state=active]:bg-accent rounded-md px-4 h-10">Photos</TabsTrigger>
-            </TabsList>
-          </div>
-
-          {/* Posts tab — Facebook-style two-column */}
-          <TabsContent value="posts" className="m-0">
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4">
-              {/* Left: Intro + admin switcher */}
-              <aside className="md:col-span-2 space-y-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Intro</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3 text-sm">
-                    {page.description ? (
-                      <p className="text-foreground whitespace-pre-wrap text-center">{page.description}</p>
-                    ) : (
-                      <p className="text-muted-foreground text-center">No description yet.</p>
-                    )}
-                    {page.category && (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Tag className="h-4 w-4" /> <span>{page.category}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Globe className="h-4 w-4" /> <span>Public page</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Calendar className="h-4 w-4" /> <span>Created {createdAt}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Users className="h-4 w-4" /> <span>{followerCount} followers</span>
-                    </div>
-
-                  </CardContent>
-                </Card>
-              </aside>
-
-              {/* Right: composer + posts */}
-              <section className="md:col-span-3 space-y-4">
-                {isAdmin && <NewPost onCreatePost={handlePagePost} pagePost />}
-                {searchOpen && (
-                  <Input
-                    autoFocus
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search posts on this page..."
-                  />
-                )}
-                {postsLoading ? (
-                  <div className="flex justify-center py-10">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                  </div>
-                ) : pagePosts.length === 0 ? (
-                  <Card>
-                    <CardContent className="py-10 text-center text-muted-foreground">
-                      {isAdmin ? 'No posts yet. Share your first post above.' : 'This page has no posts yet.'}
-                    </CardContent>
-                  </Card>
-                ) : (
-                  pagePosts
-                    .filter((pp) => {
-                      if (!searchQuery.trim()) return true;
-                      const q = searchQuery.toLowerCase();
-                      return (pp.post?.content || '').toLowerCase().includes(q);
-                    })
-                    .map((pp) =>
-                      pp.post ? (
-                        <Post key={pp.id} {...pp.post} page={{ id: page.id, name: page.name, cover_image: page.cover_image }} onDelete={() => fetchPagePosts()} />
-                      ) : null,
-                    )
-                )}
-              </section>
-            </div>
-          </TabsContent>
-
-          {/* About — Facebook-style with sub-nav + sections */}
-          <TabsContent value="about" className="m-0 p-4">
+  const aboutContent = (
             <Card>
               <CardContent className="p-0">
                 <div className="grid grid-cols-1 md:grid-cols-4">
@@ -1776,51 +1609,9 @@ const PageDetail = () => {
                 </div>
               </CardContent>
             </Card>
+  );
 
-            {/* Followers preview */}
-            <Card className="mt-4">
-              <CardHeader>
-                <CardTitle className="text-lg">Followers</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  {followerCount} {followerCount === 1 ? 'person follows' : 'people follow'} this page.
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Photos preview */}
-            <Card className="mt-4">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-lg">Photos</CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => setActiveTab('photos')}>See all</Button>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <ImageIcon className="h-4 w-4" /> <span>No photos yet.</span>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="mentions" className="m-0 p-4">
-            <Card>
-              <CardContent className="py-10 text-center text-muted-foreground">
-                No mentions yet.
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="reviews" className="m-0 p-4">
-            <Card>
-              <CardContent className="py-10 text-center text-muted-foreground">
-                <Star className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                Not yet rated · 0 Reviews
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="followers" className="m-0 p-4">
+  const followersContent = (
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Followers</CardTitle>
@@ -1862,18 +1653,106 @@ const PageDetail = () => {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+  );
 
-          <TabsContent value="photos" className="m-0 p-4">
+  const mentionsContent = (
             <Card>
               <CardContent className="py-10 text-center text-muted-foreground">
-                Photos shared on this page will appear here.
+                No mentions yet.
               </CardContent>
             </Card>
-          </TabsContent>
+  );
 
-      </Tabs>
+  return (
+    <PageContainer size="md" className="space-y-4 md:space-y-6 pb-10">
+      {!isPageAdmin && (
+        <Button variant="ghost" size="sm" onClick={() => navigate('/pages')}>
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Pages
+        </Button>
+      )}
+
+      {/* The SHARED personal-profile header template; the page supplies its own
+          cover editor and action cluster through explicit slots. */}
+      <Card className="overflow-hidden">
+        {page.archived && (
+          <div className="bg-amber-500/15 border-b border-amber-500/30 px-6 py-3 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+            <Archive className="h-4 w-4 shrink-0" />
+            <span>This page is archived. Only you can see it.</span>
+          </div>
+        )}
+        <ProfileHeader
+          profile={pageProfile}
+          isOwnProfile={isPageAdmin}
+          profileKind="page"
+          hideBio
+          hideJoined
+          cover={
+            <PageCoverPhotoEditor
+              pageId={page.id}
+              coverImage={page.cover_image}
+              canEdit={isAdmin}
+              onUploaded={(url) => setPage((prev) => (prev ? { ...prev, cover_image: url } : prev))}
+            />
+          }
+          avatarEditor={
+            isAdmin ? (
+              <div className="absolute bottom-0 right-0">
+                <Button
+                  size="sm"
+                  className="rounded-full h-10 w-10 p-0"
+                  onClick={() => avatarFileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  <Camera className="h-4 w-4" />
+                </Button>
+                <input
+                  ref={avatarFileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={handleAvatarUpload}
+                />
+              </div>
+            ) : undefined
+          }
+          subtitle={
+            <p className="text-muted-foreground">
+              {page.category || 'Page'} · {followerCount} {followerCount === 1 ? 'follower' : 'followers'}
+            </p>
+          }
+          extraDetails={
+            page.description ? (
+              <p className="text-sm max-w-2xl whitespace-pre-wrap">{page.description}</p>
+            ) : undefined
+          }
+          actions={actionsContent}
+        />
       </Card>
+
+      {/* The SHARED personal-profile tabbed body; posts reuse the shared feed. */}
+      <ProfileTabs
+        profileId={page.id}
+        isOwnProfile={isPageAdmin}
+        coverPic={page.cover_image}
+        profileKind="page"
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        postsContent={
+          <div className="space-y-4">
+            {isAdmin && <NewPost onCreatePost={handlePagePost} pagePost />}
+            <FilteredPostsLayout
+              key={postsVersion}
+              profileId={page.id}
+              coverPic={page.cover_image}
+              fetcher={pageContentFetcher}
+              postPage={{ id: page.id, name: page.name, cover_image: page.cover_image, profile_pic: page.profile_pic ?? null }}
+            />
+          </div>
+        }
+        aboutContent={aboutContent}
+        followersContent={followersContent}
+        mentionsContent={mentionsContent}
+      />
 
       <Dialog open={addButtonOpen} onOpenChange={setAddButtonOpen}>
         <DialogContent className="sm:max-w-md">

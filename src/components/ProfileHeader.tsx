@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -36,13 +36,46 @@ interface ProfileHeaderProps {
   profile: Profile;
   isOwnProfile: boolean;
   onProfileUpdate?: () => void;
+  /**
+   * 'person' (default) keeps the personal-profile header exactly as it is.
+   * 'page' reuses the identical template for a Page, which supplies its own
+   * cover editor, avatar editor and action buttons through the slots below
+   * (page identity/actions differ, the visual template does not).
+   */
+  profileKind?: 'person' | 'page';
+  /** Cover area. Defaults to the personal CoverPhotoEditor; pages pass their own. */
+  cover?: ReactNode;
+  /** Avatar edit control shown to the owner. Defaults to the photo upload dialog. */
+  avatarEditor?: ReactNode;
+  /** Action button cluster. Person builds its own; pages pass their own. */
+  actions?: ReactNode;
+  /** Replaces the `@username` line (pages show category/followers here). */
+  subtitle?: ReactNode;
+  /** Extra detail rows rendered after the joined date (pages show description etc.). */
+  extraDetails?: ReactNode;
+  /** Suppress the bio line. */
+  hideBio?: boolean;
+  /** Suppress the "Joined …" line. */
+  hideJoined?: boolean;
+  /** Suppress the owner "Edit bio" control. */
+  hideEditBio?: boolean;
 }
 
 const ProfileHeader = ({ 
   profile, 
   isOwnProfile, 
-  onProfileUpdate
+  onProfileUpdate,
+  profileKind = 'person',
+  cover,
+  avatarEditor,
+  actions,
+  subtitle,
+  extraDetails,
+  hideBio = false,
+  hideJoined = false,
+  hideEditBio = false,
 }: ProfileHeaderProps) => {
+  const isPage = profileKind === 'page';
   const { user } = useAuth();
   const { toast } = useToast();
   const { uploadPhoto, uploading } = usePhotoUpload();
@@ -205,19 +238,22 @@ const ProfileHeader = ({
 
   return (
     <div className="relative">
-      {/* Cover Photo */}
-      <CoverPhotoEditor
-        profile={profile}
-        isOwnProfile={isOwnProfile}
-        onProfileUpdate={onProfileUpdate}
-      />
+      {/* Cover Photo — the personal editor by default; a Page supplies its own
+          cover editor through the `cover` slot so the template is shared. */}
+      {cover ?? (
+        <CoverPhotoEditor
+          profile={profile}
+          isOwnProfile={isOwnProfile}
+          onProfileUpdate={onProfileUpdate}
+        />
+      )}
 
       {/* Profile Info */}
       <div className="relative px-6 pb-6">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between -mt-16 md:-mt-20">
           {/* Avatar */}
           <div className="relative mb-4 md:mb-0">
-            {hasActiveStories ? (
+            {!isPage && hasActiveStories ? (
               <div className="inline-flex p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 overflow-hidden">
                 <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background ring-0">
                   <AvatarImage src={profile.profile_pic || ''} />
@@ -235,29 +271,34 @@ const ProfileHeader = ({
               </Avatar>
             )}
             {isOwnProfile && (
-              <div className="absolute bottom-0 right-0">
-                <PhotoUploadDialog
-                  type="profile"
-                  onUpload={(file, text) => handlePhotoUpload(file, 'profile', text)}
-                  isUploading={uploading}
-                >
-                  <Button 
-                    size="sm" 
-                    className="rounded-full h-10 w-10 p-0"
-                    disabled={uploading}
+              avatarEditor !== undefined ? (
+                avatarEditor
+              ) : (
+                <div className="absolute bottom-0 right-0">
+                  <PhotoUploadDialog
+                    type="profile"
+                    onUpload={(file, text) => handlePhotoUpload(file, 'profile', text)}
+                    isUploading={uploading}
                   >
-                    <Camera className="h-4 w-4" />
-                  </Button>
-                </PhotoUploadDialog>
-              </div>
+                    <Button 
+                      size="sm" 
+                      className="rounded-full h-10 w-10 p-0"
+                      disabled={uploading}
+                    >
+                      <Camera className="h-4 w-4" />
+                    </Button>
+                  </PhotoUploadDialog>
+                </div>
+              )
             )}
           </div>
 
           {/* Action Buttons — guests see public profile content only (do.md):
               no Add Friend / Follow / Message / Report / more-menu for an
-              unauthenticated visitor; buttons are simply not rendered. */}
+              unauthenticated visitor; buttons are simply not rendered.
+              A Page supplies its own action cluster through `actions`. */}
           <div className="flex flex-wrap gap-2">
-            {!isOwnProfile && user && (
+            {actions !== undefined ? actions : (!isPage && !isOwnProfile && user && (
               <>
                 {/* Friendship Button */}
                 {renderFriendshipButton()}
@@ -310,7 +351,7 @@ const ProfileHeader = ({
                   </DropdownMenuContent>
                 </DropdownMenu>
               </>
-            )}
+            ))}
           </div>
         </div>
 
@@ -323,19 +364,19 @@ const ProfileHeader = ({
               if (words.length === 2) return 'text-xl md:text-2xl';
               return 'text-lg md:text-xl';
             })()}`}>{profile.display_name}</h1>
-            {!isOwnProfile && friendship.status === 'ACCEPTED' && !blockStatus.isBlocked && !blockStatus.isBlockedBy && (
+            {!isPage && !isOwnProfile && friendship.status === 'ACCEPTED' && !blockStatus.isBlocked && !blockStatus.isBlockedBy && (
               <Badge variant="secondary">Friends</Badge>
             )}
-            {!isOwnProfile && followStatus.isFollowing && !blockStatus.isBlocked && !blockStatus.isBlockedBy && (
+            {!isPage && !isOwnProfile && followStatus.isFollowing && !blockStatus.isBlocked && !blockStatus.isBlockedBy && (
               <Badge variant="outline">Following</Badge>
             )}
-            {!isOwnProfile && blockStatus.isBlockedBy && (
+            {!isPage && !isOwnProfile && blockStatus.isBlockedBy && (
               <Badge variant="destructive">Blocked you</Badge>
             )}
-            {!isOwnProfile && blockStatus.isBlocked && (
+            {!isPage && !isOwnProfile && blockStatus.isBlocked && (
               <Badge variant="outline" className="text-muted-foreground">Blocked</Badge>
             )}
-            {isOwnProfile && (
+            {!isPage && isOwnProfile && !hideEditBio && (
               <div className="ml-auto">
                 <EditBioDialog
                   currentBio={profile.bio}
@@ -347,7 +388,7 @@ const ProfileHeader = ({
           </div>
           
           {/* Other Names shown at top */}
-          {topOtherNames.length > 0 && (
+          {!isPage && topOtherNames.length > 0 && (
           <div className="flex gap-2">
               {topOtherNames.map((otherName) => (
                 <Badge key={otherName.id} variant="outline" className="text-xs">
@@ -357,13 +398,16 @@ const ProfileHeader = ({
             </div>
           )}
           
-          <p className="text-muted-foreground">@{profile.username}</p>
-          {profile.bio && (
+          {subtitle ?? <p className="text-muted-foreground">@{profile.username}</p>}
+          {!hideBio && profile.bio && (
             <p className="text-sm max-w-2xl">{profile.bio}</p>
           )}
-          <p className="text-xs text-muted-foreground">
-            Joined {new Date(profile.created_at).toLocaleDateString()}
-          </p>
+          {!hideJoined && (
+            <p className="text-xs text-muted-foreground">
+              Joined {new Date(profile.created_at).toLocaleDateString()}
+            </p>
+          )}
+          {extraDetails}
         </div>
       </div>
     </div>
