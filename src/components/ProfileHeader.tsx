@@ -251,53 +251,108 @@ const ProfileHeader = ({
       {/* Profile Info */}
       <div className="relative px-6 pb-6">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between -mt-16 md:-mt-20">
-          {/* Avatar */}
-          <div className="relative mb-4 md:mb-0">
-            {!isPage && hasActiveStories ? (
-              <div className="inline-flex p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 overflow-hidden">
-                <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background ring-0">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+            {/* Avatar */}
+            <div className="relative mb-4 md:mb-0 flex-shrink-0">
+              {!isPage && hasActiveStories ? (
+                <div className="inline-flex p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 overflow-hidden">
+                  <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background ring-0">
+                    <AvatarImage src={profile.profile_pic || ''} />
+                    <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
+                      {profile.display_name.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
+              ) : (
+                <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background shadow-lg">
                   <AvatarImage src={profile.profile_pic || ''} />
                   <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
                     {profile.display_name.charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-              </div>
-            ) : (
-              <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background shadow-lg">
-                <AvatarImage src={profile.profile_pic || ''} />
-                <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
-                  {profile.display_name.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-            )}
-            {isOwnProfile && (
-              avatarEditor !== undefined ? (
-                avatarEditor
-              ) : (
-                <div className="absolute bottom-0 right-0">
-                  <PhotoUploadDialog
-                    type="profile"
-                    onUpload={(file, text) => handlePhotoUpload(file, 'profile', text)}
-                    isUploading={uploading}
-                  >
-                    <Button 
-                      size="sm" 
-                      className="rounded-full h-10 w-10 p-0"
-                      disabled={uploading}
+              )}
+              {isOwnProfile && (
+                avatarEditor !== undefined ? (
+                  avatarEditor
+                ) : (
+                  <div className="absolute bottom-0 right-0">
+                    <PhotoUploadDialog
+                      type="profile"
+                      onUpload={(file, text) => handlePhotoUpload(file, 'profile', text)}
+                      isUploading={uploading}
                     >
-                      <Camera className="h-4 w-4" />
-                    </Button>
-                  </PhotoUploadDialog>
+                      <Button 
+                        size="sm" 
+                        className="rounded-full h-10 w-10 p-0"
+                        disabled={uploading}
+                      >
+                        <Camera className="h-4 w-4" />
+                      </Button>
+                    </PhotoUploadDialog>
+                  </div>
+                )
+              )}
+            </div>
+
+            {/* Name and profile information */}
+            <div className="space-y-2 mb-4 md:mb-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className={`font-bold ${(() => {
+                  const words = profile.display_name.trim().split(/\s+/);
+                  if (words.length === 1) return 'text-2xl md:text-3xl';
+                  if (words.length === 2) return 'text-xl md:text-2xl';
+                  return 'text-lg md:text-xl';
+                })()}`}>{profile.display_name}</h1>
+                {!isPage && !isOwnProfile && friendship.status === 'ACCEPTED' && !blockStatus.isBlocked && !blockStatus.isBlockedBy && (
+                  <Badge variant="secondary">Friends</Badge>
+                )}
+                {!isPage && !isOwnProfile && followStatus.isFollowing && !blockStatus.isBlocked && !blockStatus.isBlockedBy && (
+                  <Badge variant="outline">Following</Badge>
+                )}
+                {!isPage && !isOwnProfile && blockStatus.isBlockedBy && (
+                  <Badge variant="destructive">Blocked you</Badge>
+                )}
+                {!isPage && !isOwnProfile && blockStatus.isBlocked && (
+                  <Badge variant="outline" className="text-muted-foreground">Blocked</Badge>
+                )}
+                {!isPage && isOwnProfile && !hideEditBio && (
+                  <EditBioDialog
+                    currentBio={profile.bio}
+                    userId={profile.id}
+                    onBioUpdate={() => onProfileUpdate?.()}
+                  />
+                )}
+              </div>
+              
+              {/* Other Names shown at top */}
+              {!isPage && topOtherNames.length > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                  {topOtherNames.map((otherName) => (
+                    <Badge key={otherName.id} variant="outline" className="text-xs">
+                      {otherName.name} • {formatNameType(otherName.type)}
+                    </Badge>
+                  ))}
                 </div>
-              )
-            )}
+              )}
+              
+              {subtitle ?? <p className="text-muted-foreground">@{profile.username}</p>}
+              {!hideBio && profile.bio && (
+                <p className="text-sm max-w-2xl">{profile.bio}</p>
+              )}
+              {!hideJoined && (
+                <p className="text-xs text-muted-foreground">
+                  Joined {new Date(profile.created_at).toLocaleDateString()}
+                </p>
+              )}
+              {extraDetails}
+            </div>
           </div>
 
           {/* Action Buttons — guests see public profile content only (do.md):
               no Add Friend / Follow / Message / Report / more-menu for an
               unauthenticated visitor; buttons are simply not rendered.
               A Page supplies its own action cluster through `actions`. */}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 self-start md:self-end">
             {actions !== undefined ? actions : (!isPage && !isOwnProfile && user && (
               <>
                 {/* Friendship Button */}
@@ -355,60 +410,7 @@ const ProfileHeader = ({
           </div>
         </div>
 
-        {/* Profile Details */}
-        <div className="mt-4 space-y-2">
-          <div className="flex items-center gap-2">
-            <h1 className={`font-bold ${(() => {
-              const words = profile.display_name.trim().split(/\s+/);
-              if (words.length === 1) return 'text-2xl md:text-3xl';
-              if (words.length === 2) return 'text-xl md:text-2xl';
-              return 'text-lg md:text-xl';
-            })()}`}>{profile.display_name}</h1>
-            {!isPage && !isOwnProfile && friendship.status === 'ACCEPTED' && !blockStatus.isBlocked && !blockStatus.isBlockedBy && (
-              <Badge variant="secondary">Friends</Badge>
-            )}
-            {!isPage && !isOwnProfile && followStatus.isFollowing && !blockStatus.isBlocked && !blockStatus.isBlockedBy && (
-              <Badge variant="outline">Following</Badge>
-            )}
-            {!isPage && !isOwnProfile && blockStatus.isBlockedBy && (
-              <Badge variant="destructive">Blocked you</Badge>
-            )}
-            {!isPage && !isOwnProfile && blockStatus.isBlocked && (
-              <Badge variant="outline" className="text-muted-foreground">Blocked</Badge>
-            )}
-            {!isPage && isOwnProfile && !hideEditBio && (
-              <div className="ml-auto">
-                <EditBioDialog
-                  currentBio={profile.bio}
-                  userId={profile.id}
-                  onBioUpdate={() => onProfileUpdate?.()}
-                />
-              </div>
-            )}
-          </div>
-          
-          {/* Other Names shown at top */}
-          {!isPage && topOtherNames.length > 0 && (
-          <div className="flex gap-2">
-              {topOtherNames.map((otherName) => (
-                <Badge key={otherName.id} variant="outline" className="text-xs">
-                  {otherName.name} • {formatNameType(otherName.type)}
-                </Badge>
-              ))}
-            </div>
-          )}
-          
-          {subtitle ?? <p className="text-muted-foreground">@{profile.username}</p>}
-          {!hideBio && profile.bio && (
-            <p className="text-sm max-w-2xl">{profile.bio}</p>
-          )}
-          {!hideJoined && (
-            <p className="text-xs text-muted-foreground">
-              Joined {new Date(profile.created_at).toLocaleDateString()}
-            </p>
-          )}
-          {extraDetails}
-        </div>
+
       </div>
     </div>
   );
