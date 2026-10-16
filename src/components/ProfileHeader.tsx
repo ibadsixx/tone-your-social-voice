@@ -251,9 +251,9 @@ const ProfileHeader = ({
       {/* Profile Info */}
       <div className="relative px-6 pb-6">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between -mt-16 md:-mt-20">
-          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+          <div className="flex flex-row items-start sm:items-end gap-4">
             {/* Avatar */}
-            <div className="relative mb-4 md:mb-0 flex-shrink-0">
+            <div className="relative flex-shrink-0">
               {!isPage && hasActiveStories ? (
                 <div className="inline-flex p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 overflow-hidden">
                   <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background ring-0">
@@ -295,7 +295,7 @@ const ProfileHeader = ({
             </div>
 
             {/* Name and profile information */}
-            <div className="space-y-2 mb-4 md:mb-0">
+            <div className="space-y-2 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className={`font-bold ${(() => {
                   const words = profile.display_name.trim().split(/\s+/);
@@ -352,7 +352,7 @@ const ProfileHeader = ({
               no Add Friend / Follow / Message / Report / more-menu for an
               unauthenticated visitor; buttons are simply not rendered.
               A Page supplies its own action cluster through `actions`. */}
-          <div className="flex flex-wrap gap-2 self-start md:self-end">
+          <div className="flex flex-wrap gap-2 mt-4 md:mt-0 md:self-end">
             {actions !== undefined ? actions : (!isPage && !isOwnProfile && user && (
               <>
                 {/* Friendship Button */}
