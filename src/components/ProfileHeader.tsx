@@ -250,10 +250,12 @@ const ProfileHeader = ({
 
       {/* Profile Info */}
       <div className="relative px-6 pb-6">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between -mt-16 md:-mt-20">
-          <div className="flex flex-row items-start sm:items-end gap-4">
-            {/* Avatar */}
-            <div className="relative flex-shrink-0">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div className="flex flex-row items-start gap-4 min-w-0">
+            {/* Avatar — the negative top margin lives on the avatar alone, so it
+                keeps its overlap with the cover while the name block beside it
+                starts under the cover's bottom edge instead of on top of it. */}
+            <div className="relative flex-shrink-0 -mt-16 md:-mt-20">
               {!isPage && hasActiveStories ? (
                 <div className="inline-flex p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 overflow-hidden">
                   <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background ring-0">
@@ -297,7 +299,7 @@ const ProfileHeader = ({
             {/* Name and profile information */}
             <div className="space-y-2 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className={`font-bold ${(() => {
+                <h1 className={`font-bold text-foreground ${(() => {
                   const words = profile.display_name.trim().split(/\s+/);
                   if (words.length === 1) return 'text-2xl md:text-3xl';
                   if (words.length === 2) return 'text-xl md:text-2xl';
@@ -315,20 +317,13 @@ const ProfileHeader = ({
                 {!isPage && !isOwnProfile && blockStatus.isBlocked && (
                   <Badge variant="outline" className="text-muted-foreground">Blocked</Badge>
                 )}
-                {!isPage && isOwnProfile && !hideEditBio && (
-                  <EditBioDialog
-                    currentBio={profile.bio}
-                    userId={profile.id}
-                    onBioUpdate={() => onProfileUpdate?.()}
-                  />
-                )}
               </div>
               
               {/* Other Names shown at top */}
               {!isPage && topOtherNames.length > 0 && (
               <div className="flex gap-2 flex-wrap">
                   {topOtherNames.map((otherName) => (
-                    <Badge key={otherName.id} variant="outline" className="text-xs">
+                    <Badge key={otherName.id} variant="outline" className="text-xs text-muted-foreground">
                       {otherName.name} • {formatNameType(otherName.type)}
                     </Badge>
                   ))}
@@ -336,9 +331,6 @@ const ProfileHeader = ({
               )}
               
               {subtitle ?? <p className="text-muted-foreground">@{profile.username}</p>}
-              {!hideBio && profile.bio && (
-                <p className="text-sm max-w-2xl">{profile.bio}</p>
-              )}
               {!hideJoined && (
                 <p className="text-xs text-muted-foreground">
                   Joined {new Date(profile.created_at).toLocaleDateString()}
@@ -352,7 +344,7 @@ const ProfileHeader = ({
               no Add Friend / Follow / Message / Report / more-menu for an
               unauthenticated visitor; buttons are simply not rendered.
               A Page supplies its own action cluster through `actions`. */}
-          <div className="flex flex-wrap gap-2 mt-4 md:mt-0 md:self-end">
+          <div className="flex flex-wrap gap-2 md:self-start">
             {actions !== undefined ? actions : (!isPage && !isOwnProfile && user && (
               <>
                 {/* Friendship Button */}
@@ -410,7 +402,22 @@ const ProfileHeader = ({
           </div>
         </div>
 
-
+        {/* Bio — its own readable section under the avatar. The owner's edit
+            pencil lives here beside the bio, not beside the primary name. */}
+        {!hideBio && (profile.bio || (isOwnProfile && !hideEditBio)) && (
+          <div className="mt-4 flex items-start gap-2">
+            <p className="text-sm text-muted-foreground max-w-2xl whitespace-pre-wrap">
+              {profile.bio || 'No bio yet.'}
+            </p>
+            {isOwnProfile && !hideEditBio && (
+              <EditBioDialog
+                currentBio={profile.bio}
+                userId={profile.id}
+                onBioUpdate={() => onProfileUpdate?.()}
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
