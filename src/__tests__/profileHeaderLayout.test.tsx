@@ -32,8 +32,12 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: authUser }) }));
 
 vi.mock('@/hooks/usePhotoUpload', () => ({ usePhotoUpload: () => ({ uploadPhoto: vi.fn(), uploading: false }) }));
 
-const OTHER_NAMES = [{ id: 'n1', user_id: 'u1', type: 'nickname', name: 'Dowmaster', show_at_top: true, visibility: 'public', created_at: '', updated_at: '' }];
-vi.mock('@/hooks/useOtherNames', () => ({ useOtherNames: () => ({ otherNames: OTHER_NAMES }) }));
+type OtherNameRow = { id: string; user_id: string; type: string; name: string; show_at_top: boolean; visibility: string; created_at: string; updated_at: string };
+const DOWMASTER: OtherNameRow = { id: 'n1', user_id: 'u1', type: 'nickname', name: 'Dowmaster', show_at_top: true, visibility: 'public', created_at: '', updated_at: '' };
+// Swappable so the suite can cover both "profile WITH an Other Name" and
+// "profile WITHOUT one" (do.md: no separators or blank space when empty).
+let otherNamesRows: OtherNameRow[] = [DOWMASTER];
+vi.mock('@/hooks/useOtherNames', () => ({ useOtherNames: () => ({ otherNames: otherNamesRows }) }));
 
 vi.mock('@/hooks/useFriendship', () => ({
   useFriendship: () => ({ friendship: { status: null, loading: false, isSender: false }, sendRequest: vi.fn(), cancelRequest: vi.fn(), acceptRequest: vi.fn(), rejectRequest: vi.fn(), unfriend: vi.fn() }),
@@ -79,6 +83,7 @@ describe('ProfileHeader identity layout (name beside avatar, under the cover)', 
   beforeEach(() => {
     cleanup();
     authUser = { id: 'viewer-1' };
+    otherNamesRows = [DOWMASTER];
   });
 
   it('renders the name block as a sibling of the avatar in one horizontal row', () => {
@@ -110,13 +115,56 @@ describe('ProfileHeader identity layout (name beside avatar, under the cover)', 
     expect(row.className).not.toMatch(/-mt-/);
   });
 
-  it('gives the primary name a foreground colour and the nickname a distinct muted colour', () => {
+  it('gives the primary name a foreground colour and the Other Names value a subtle muted one', () => {
     renderHeader();
     const h1 = screen.getByRole('heading', { level: 1 });
     expect(h1.className).toContain('text-foreground');
 
-    const nickname = screen.getByText(/Dowmaster/);
-    expect(nickname.className).toContain('text-muted-foreground');
+    // The muted colour now lives on the inline group holding the value.
+    const otherName = screen.getByText('Dowmaster');
+    expect(otherName.closest('.text-muted-foreground')).toBeTruthy();
+  });
+
+  // do.md: "Display the primary profile name and the value of Other Names on the
+  // same horizontal line … Do not display labels such as Nickname … Do not place
+  // Other Names on a separate line below the primary name."
+  it('shows Other Names inline beside the primary name with no type label', () => {
+    renderHeader();
+    const h1 = screen.getByRole('heading', { level: 1 });
+    const nameRow = h1.parentElement as HTMLElement;
+    const otherName = screen.getByText('Dowmaster');
+
+    // Beside, not beneath: the value sits inside the very same flex row as the h1.
+    expect(nameRow.contains(otherName)).toBe(true);
+
+    // The real `other_names` value with the separator flush against it (do.md's
+    // `Badsi Islam •Badsi`), no "Nickname"/type label, exactly one separator.
+    expect(otherName.textContent).toBe('•Dowmaster');
+    expect(screen.queryByText(/Nickname/)).toBeNull();
+    expect(screen.queryByText(/Other Name/)).toBeNull();
+    expect(nameRow.textContent.replace(/\s+/g, '')).toBe('BadsiIslam•Dowmaster');
+  });
+
+  // do.md: "If Other Names is empty or unavailable, display only the primary name
+  // without empty parentheses, extra separators, or blank space."
+  it('shows only the primary name when the profile has no Other Names', () => {
+    otherNamesRows = [];
+    renderHeader();
+    const h1 = screen.getByRole('heading', { level: 1 });
+    const nameRow = h1.parentElement as HTMLElement;
+
+    expect(screen.queryByText('Dowmaster')).toBeNull();
+    expect(nameRow.textContent.replace(/\s+/g, '')).toBe('BadsiIslam');
+  });
+
+  it('separates several Other Names with bullets, still inline and unlabeled', () => {
+    otherNamesRows = [DOWMASTER, { ...DOWMASTER, id: 'n2', name: 'Dow Islam', type: 'birth_name' }];
+    renderHeader();
+    const h1 = screen.getByRole('heading', { level: 1 });
+    const nameRow = h1.parentElement as HTMLElement;
+
+    expect(screen.queryByText(/Birth name/)).toBeNull();
+    expect(nameRow.textContent.replace(/\s+/g, '')).toBe('BadsiIslam•Dowmaster•DowIslam');
   });
 
   it('keeps the bio edit pencil OUT of the name row and INSIDE the Bio section below the avatar', () => {

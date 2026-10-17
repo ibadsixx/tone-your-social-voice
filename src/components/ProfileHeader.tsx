@@ -89,21 +89,6 @@ const ProfileHeader = ({
   // Filter other names that should show at top
   const topOtherNames = otherNames.filter(name => name.show_at_top);
 
-  const formatNameType = (type: string) => {
-    switch (type) {
-      case 'birth_name':
-        return 'Birth name';
-      case 'married_name':
-        return 'Married name';
-      case 'nickname':
-        return 'Nickname';
-      case 'other':
-        return 'Other';
-      default:
-        return type;
-    }
-  };
-
   const handleSendFriendRequest = async () => {
     await sendRequest();
     followStatus.refetch();
@@ -305,6 +290,25 @@ const ProfileHeader = ({
                   if (words.length === 2) return 'text-xl md:text-2xl';
                   return 'text-lg md:text-xl';
                 })()}`}>{profile.display_name}</h1>
+                {/* Other Names — inline beside the primary name (same horizontal
+                    line), with no type/category label. The value comes straight
+                    from the same `other_names` rows the other-names dialog reads
+                    and edits; when nothing is flagged `show_at_top`, no separator
+                    or blank space is rendered. `text-[11px]` below `sm` and the
+                    separator sitting flush against the value (do.md's `•Badsi`)
+                    keep the pair narrow enough to stay on the SAME line as the
+                    name at phone widths; both step up from `sm` on. */}
+                {!isPage && topOtherNames.length > 0 && (
+                  <span className="flex flex-wrap items-baseline gap-x-1.5 text-[11px] sm:text-sm font-normal text-muted-foreground">
+                    {topOtherNames.map((otherName) => (
+                      <span key={otherName.id} className="whitespace-nowrap">
+                        {/* Separator between the primary name and the Other Name */}
+                        <span aria-hidden="true" className="select-none">•</span>
+                        {otherName.name}
+                      </span>
+                    ))}
+                  </span>
+                )}
                 {!isPage && !isOwnProfile && friendship.status === 'ACCEPTED' && !blockStatus.isBlocked && !blockStatus.isBlockedBy && (
                   <Badge variant="secondary">Friends</Badge>
                 )}
@@ -318,17 +322,6 @@ const ProfileHeader = ({
                   <Badge variant="outline" className="text-muted-foreground">Blocked</Badge>
                 )}
               </div>
-              
-              {/* Other Names shown at top */}
-              {!isPage && topOtherNames.length > 0 && (
-              <div className="flex gap-2 flex-wrap">
-                  {topOtherNames.map((otherName) => (
-                    <Badge key={otherName.id} variant="outline" className="text-xs text-muted-foreground">
-                      {otherName.name} • {formatNameType(otherName.type)}
-                    </Badge>
-                  ))}
-                </div>
-              )}
               
               {subtitle ?? <p className="text-muted-foreground">@{profile.username}</p>}
               {!hideJoined && (
