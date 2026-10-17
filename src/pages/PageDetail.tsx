@@ -1692,6 +1692,11 @@ const PageDetail = () => {
               coverImage={page.cover_image}
               canEdit={isAdmin}
               onUploaded={(url) => setPage((prev) => (prev ? { ...prev, cover_image: url } : prev))}
+              // Bump the feed version only once the cover post is LINKED to the
+              // page: `onUploaded` fires first (the header must update even if
+              // the post fails), so refetching there would read `page_posts`
+              // before the new row exists and miss the post.
+              onPostCreated={() => setPostsVersion((v) => v + 1)}
             />
           }
           avatarEditor={
