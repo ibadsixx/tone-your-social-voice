@@ -224,14 +224,18 @@ const ProfileHeader = ({
   return (
     <div className="relative">
       {/* Cover Photo — the personal editor by default; a Page supplies its own
-          cover editor through the `cover` slot so the template is shared. */}
-      {cover ?? (
+          cover editor through the `cover` slot so the template is shared. A
+          Page must NEVER fall back to the personal editor: it writes the
+          viewer's own `profiles.cover_pic` and posts a `cover_photo_update`
+          authored by that user, which is how a Page change used to land on the
+          owner's personal profile. */}
+      {cover ?? (isPage ? null : (
         <CoverPhotoEditor
           profile={profile}
           isOwnProfile={isOwnProfile}
           onProfileUpdate={onProfileUpdate}
         />
-      )}
+      ))}
 
       {/* Profile Info */}
       <div className="relative px-6 pb-6">
@@ -261,7 +265,13 @@ const ProfileHeader = ({
               {isOwnProfile && (
                 avatarEditor !== undefined ? (
                   avatarEditor
-                ) : (
+                ) : isPage ? null : (
+                  // Personal profiles only. On a Page a missing editor must
+                  // render NOTHING rather than the personal upload dialog: that
+                  // dialog writes the viewer's own `profiles.profile_pic` and
+                  // creates a `profile_picture_update` authored by the viewer,
+                  // which is how a Page avatar change used to publish to (and
+                  // overwrite) the owner's personal profile.
                   <div className="absolute bottom-0 right-0">
                     <PhotoUploadDialog
                       type="profile"
