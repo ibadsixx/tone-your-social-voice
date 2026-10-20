@@ -85,6 +85,13 @@ interface PostProps {
     media_url: string | null;
     type: string;
     created_at: string;
+    /** Present when the original post was published as a Page. */
+    page?: {
+      id: string;
+      name: string;
+      cover_image: string | null;
+      profile_pic?: string | null;
+    } | null;
     profiles: {
       username: string;
       display_name: string;

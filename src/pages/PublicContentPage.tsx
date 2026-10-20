@@ -167,6 +167,7 @@ const PublicContentPage = () => {
           location_provider={post.location_provider}
           profiles={post.profiles}
           shared_post={post.shared_post}
+          page={post.page ?? null}
           likes={post.likes}
           comments={post.comments}
         />

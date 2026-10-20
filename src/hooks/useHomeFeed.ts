@@ -56,6 +56,17 @@ export interface HomeFeedPost {
   thumbnail?: string | null;
   group_name?: string | null;
   group_id?: string | null;
+  /**
+   * The owning Page when this post was published "as a Page". The Gateway
+   * resolves it from the `page_posts` link and attaches it, so the shared card
+   * renders the Page's name/image instead of the admin's personal identity.
+   */
+  page?: {
+    id: string;
+    name: string;
+    cover_image: string | null;
+    profile_pic?: string | null;
+  } | null;
   audience_type?: string | null;
   audience_user_ids?: string[] | null;
   audience_excluded_user_ids?: string[] | null;
@@ -75,6 +86,13 @@ export interface HomeFeedPost {
     media_type?: string | null;
     type: string;
     created_at: string;
+    /** Present when the original post was published as a Page. */
+    page?: {
+      id: string;
+      name: string;
+      cover_image: string | null;
+      profile_pic?: string | null;
+    } | null;
     profiles: {
       username: string;
       display_name: string;
@@ -106,6 +124,7 @@ export const POST_CREATED_EVENT = 'tone:post-created';
 interface RawFeedPost {
   media_type?: string | null;
   shared_post?: HomeFeedPost['shared_post'];
+  page?: HomeFeedPost['page'];
   group_posts?: Array<{ groups?: { id?: string; name?: string } | null }>;
   [key: string]: unknown;
 }
@@ -124,6 +143,9 @@ function mapFeedPosts(
     shared_post: post.shared_post,
     group_name: post.group_posts?.[0]?.groups?.name || null,
     group_id: post.group_posts?.[0]?.groups?.id || null,
+    // The owning Page, when the Gateway attributed this row to one. Passed
+    // straight through to `Post` so a page post shows the Page, not the admin.
+    page: post.page ?? null,
   })) as unknown as HomeFeedPost[]).filter(p =>
     (!p.group_id || !unfollowedGroupIds.includes(p.group_id)) &&
     // A guest is NOT a friend: filtering is applied for guests too, so a

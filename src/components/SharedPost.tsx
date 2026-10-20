@@ -19,6 +19,13 @@ interface SharedPostData {
     display_name: string;
     profile_pic: string | null;
   };
+  /** Present when the shared (original) post was published as a Page. */
+  page?: {
+    id: string;
+    name: string;
+    cover_image: string | null;
+    profile_pic?: string | null;
+  } | null;
 }
 
 interface SharedPostProps {
@@ -64,14 +71,14 @@ export const SharedPost = ({ sharedPost, onClick }: SharedPostProps) => {
           {/* Original Author Header */}
           <div className="flex items-center space-x-3 mb-3">
             <Avatar className="w-8 h-8 border border-border/50">
-              <AvatarImage src={sharedPost.profiles?.profile_pic || undefined} />
+              <AvatarImage src={sharedPost.page ? (sharedPost.page.profile_pic || sharedPost.page.cover_image || undefined) : (sharedPost.profiles?.profile_pic || undefined)} />
               <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                {sharedPost.profiles?.display_name?.charAt(0)?.toUpperCase() || <User className="w-3 h-3" />}
+                {(sharedPost.page ? sharedPost.page.name : sharedPost.profiles?.display_name)?.charAt(0)?.toUpperCase() || <User className="w-3 h-3" />}
               </AvatarFallback>
             </Avatar>
             <div>
               <p className="font-semibold text-sm text-foreground">
-                {sharedPost.profiles?.display_name || 'Unknown'}
+                {sharedPost.page ? sharedPost.page.name : sharedPost.profiles?.display_name || 'Unknown'}
               </p>
               <p className="text-xs text-muted-foreground">
                 {formatDistanceToNow(new Date(sharedPost.created_at), { addSuffix: true })}

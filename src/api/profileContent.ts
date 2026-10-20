@@ -38,6 +38,13 @@ export interface ProfileContentSharedPost {
   media_type: string | null;
   type: string | null;
   created_at: string | null;
+  /** Present when the original post was published as a Page. */
+  page?: {
+    id: string;
+    name: string;
+    cover_image: string | null;
+    profile_pic?: string | null;
+  } | null;
   profiles: ProfileContentAuthor;
 }
 

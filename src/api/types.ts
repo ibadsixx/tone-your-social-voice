@@ -44,6 +44,18 @@ export interface Post {
   product_details: unknown;
   created_at: string;
   updated_at?: string;
+  /**
+   * The owning Page when this post was published "as a Page" (do.md "Page Posts
+   * Must Display the Page Name"). Resolved by the Gateway from the existing
+   * `page_posts` link and attached to the row; `user_id` remains the personal
+   * admin for auth/ownership. Null/absent for a personal post.
+   */
+  page?: {
+    id: string;
+    name: string;
+    cover_image: string | null;
+    profile_pic?: string | null;
+  } | null;
   [key: string]: unknown;
 }
 

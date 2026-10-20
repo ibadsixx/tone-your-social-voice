@@ -16,6 +16,16 @@ interface Post {
   // VideoObject with a real `duration`; absent on non-reel posts.
   duration?: number | null;
   shared_post_id?: string | null;
+  /**
+   * The owning Page when this post was published "as a Page"; the Gateway
+   * attaches it from the `page_posts` link. Absent for a personal post.
+   */
+  page?: {
+    id: string;
+    name: string;
+    cover_image: string | null;
+    profile_pic?: string | null;
+  } | null;
   audience_type?: string;
   visibility?: string | null;
   status?: string | null;
