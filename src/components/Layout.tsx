@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { HeaderAvatarMenuProvider, useHeaderAvatarMenu } from '@/contexts/HeaderAvatarMenuContext';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
+import { resolveIdentityAvatar } from '@/utils/publishingIdentityAvatar';
 import { useEffect, useState } from 'react';
 import { gateway } from '@/lib/gateway';
 import { Badge } from '@/components/ui/badge';
@@ -103,7 +104,7 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
           <div className="space-y-1">
             <div className="flex items-center gap-2 px-2 py-1.5">
               <Avatar className="h-8 w-8">
-                {actingPage.profile_pic && <AvatarImage src={actingPage.profile_pic} className="object-cover" />}
+                {(actingPage.profile_pic || actingPage.cover_image) && <AvatarImage src={(actingPage.profile_pic || actingPage.cover_image) as string} className="object-cover" />}
                 <AvatarFallback className="bg-primary/10 text-primary text-[11px] font-bold">
                   {actingPage.name.charAt(0).toUpperCase()}
                 </AvatarFallback>
@@ -292,6 +293,9 @@ const Layout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
+  // Header identity avatar: the active Page's own picture when posting as a
+  // Page, the personal picture otherwise (never the admin's for a Page).
+  const headerIdentityAvatar = resolveIdentityAvatar(actingPage, profile);
   const [reelDialogOpen, setReelDialogOpen] = useState(false);
 
   // Global unread Messages badge (do.md "Fix the Messages unread notification
@@ -462,9 +466,9 @@ const Layout = () => {
                   <Popover>
                     <PopoverTrigger asChild>
                       <Avatar className="h-8 w-8 border-2 border-tone-purple/20 ring-2 ring-transparent hover:ring-tone-purple/30 transition-all cursor-pointer">
-                        <AvatarImage src={actingPage?.profile_pic || profile?.profile_pic || '/default-avatar.png'} className="object-cover" />
+                        <AvatarImage src={headerIdentityAvatar.src || '/default-avatar.png'} className="object-cover" />
                         <AvatarFallback className="bg-tone-gradient text-white">
-                          {actingPage ? actingPage.name.charAt(0).toUpperCase() : profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0).toUpperCase()}
+                          {headerIdentityAvatar.initial}
                         </AvatarFallback>
                       </Avatar>
                     </PopoverTrigger>
@@ -562,7 +566,7 @@ const Layout = () => {
         displayName={profile?.display_name}
         email={user?.email}
         actingPageName={actingPage?.name}
-        actingPagePic={actingPage?.profile_pic}
+        actingPagePic={actingPage ? headerIdentityAvatar.src : undefined}
         avatarMenu={isGuest ? undefined : <HeaderAvatar profile={profile} user={user} onSignOut={handleSignOut} />}
       />
 

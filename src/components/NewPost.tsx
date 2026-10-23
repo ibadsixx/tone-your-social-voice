@@ -25,6 +25,7 @@ import { useStatusVisibility } from '@/hooks/useStatusVisibility';
 import { useAutoUpload } from '@/hooks/useAutoUpload';
 import { useHasActiveStories } from '@/hooks/useHasActiveStories';
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
+import { resolveIdentityAvatar } from '@/utils/publishingIdentityAvatar';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import TagPeopleModal from './TagPeopleModal';
@@ -115,6 +116,11 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
   const { disableAutoUploads } = useStatusVisibility();
   const { upload: autoUpload } = useAutoUpload();
   const hasActiveStories = useHasActiveStories(user?.id);
+
+  // The avatar follows the active publishing identity: the Page's own picture
+  // when posting as a Page, the personal picture otherwise. See
+  // utils/publishingIdentityAvatar.ts for why a Page never borrows the admin's.
+  const identityAvatar = resolveIdentityAvatar(actingPage, profile);
 
   useEffect(() => {
     if (autoExpand) {
@@ -363,17 +369,17 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
             {hasActiveStories ? (
               <div className="p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600">
                 <Avatar className="w-10 h-10 md:w-12 md:h-12 border-4 border-background ring-0">
-                  <AvatarImage src={actingPage?.profile_pic || profile?.profile_pic || undefined} />
+                  <AvatarImage src={identityAvatar.src} />
                   <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                    {actingPage ? actingPage.name.charAt(0).toUpperCase() : profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+                    {identityAvatar.initial}
                   </AvatarFallback>
                 </Avatar>
               </div>
             ) : (
               <Avatar className="w-10 h-10 md:w-12 md:h-12 border-2 border-primary/20">
-                <AvatarImage src={actingPage?.profile_pic || profile?.profile_pic || undefined} />
+                <AvatarImage src={identityAvatar.src} />
                 <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                  {actingPage ? actingPage.name.charAt(0).toUpperCase() : profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+                  {identityAvatar.initial}
                 </AvatarFallback>
               </Avatar>
             )}
