@@ -8,7 +8,8 @@ import { Separator } from '@/components/ui/separator';
 import { Link2, Users, User } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { profilesApi, usersApi, postsApi } from '@/api';
+import { profilesApi, usersApi, postsApi, groupsApi, conversationsApi } from '@/api';
+import { encodeGroupShareContent } from '@/lib/groupShare';
 
 interface ShareGroupDialogProps {
   isOpen: boolean;
@@ -117,6 +118,66 @@ const ShareGroupDialog = ({ isOpen, onClose, groupId, groupName }: ShareGroupDia
     }
   };
 
+  const shareToDM = async (friend: Friend) => {
+    if (!user) return;
+    setSharing(true);
+    try {
+      // 1. Resolve or create the 1:1 DM conversation with the recipient.
+      const dmResult = await conversationsApi.getOrCreateDM(user.id, friend.id);
+      if (dmResult.error || !dmResult.data) {
+        throw new Error(dmResult.error?.message || 'Failed to resolve conversation');
+      }
+      const conversationId = dmResult.data;
+
+      // 2. Fetch the full group record so we can include image + description.
+      const groupResult = await groupsApi.getGroupById(groupId);
+      if (groupResult.error || !groupResult.data) {
+        throw new Error(groupResult.error?.message || 'Failed to load group details');
+      }
+      const group = groupResult.data;
+
+      // 3. Build the group-share payload and send it as a real DM message.
+      const senderName = profile?.display_name || profile?.username || user?.email?.split('@')[0] || 'You';
+      const sharePayload = encodeGroupShareContent({
+        group_id: group.id,
+        group_name: group.name,
+        group_image: group.cover_image ?? null,
+        group_description: group.description ?? null,
+        shared_by: user.id,
+        shared_by_name: senderName,
+        shared_at: new Date().toISOString(),
+      });
+
+      const sendResult = await conversationsApi.sendMessage({
+        conversation_id: conversationId,
+        sender_id: user.id,
+        receiver_id: friend.id,
+        content: sharePayload,
+        message_type: 'text',
+      });
+
+      if (sendResult.error || !sendResult.data) {
+        throw new Error(sendResult.error?.message || 'Failed to send group share');
+      }
+
+      // 4. Only toast success after the backend confirms the message was persisted.
+      toast({
+        title: 'Sent!',
+        description: `Shared ${group.name} with ${friend.display_name || friend.username}`,
+      });
+      onClose();
+      setMessage('');
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Failed to share group',
+        variant: 'destructive',
+      });
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(groupUrl);
@@ -204,9 +265,7 @@ const ShareGroupDialog = ({ isOpen, onClose, groupId, groupName }: ShareGroupDia
                         <button
                           key={friend.id}
                           className="flex shrink-0 flex-col items-center gap-1 min-w-[64px] hover:opacity-80 transition-opacity"
-                          onClick={() => {
-                            toast({ title: 'Sent!', description: `Shared with ${friend.display_name || friend.username}` });
-                          }}
+                          onClick={() => shareToDM(friend)}
                         >
                           <Avatar className="h-14 w-14">
                             {friend.profile_pic && <AvatarImage src={friend.profile_pic} />}

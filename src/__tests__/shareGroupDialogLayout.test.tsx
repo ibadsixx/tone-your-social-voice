@@ -37,6 +37,9 @@ const api = vi.hoisted(() => ({
   getFriendsByUser: vi.fn(),
   getProfileById: vi.fn(),
   createPost: vi.fn(),
+  getOrCreateDM: vi.fn(),
+  getGroupById: vi.fn(),
+  sendMessage: vi.fn(),
 }));
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authState }));
@@ -45,6 +48,11 @@ vi.mock('@/api', () => ({
   usersApi: { getFriendsByUser: (...a: unknown[]) => api.getFriendsByUser(...a) },
   profilesApi: { getProfileById: (...a: unknown[]) => api.getProfileById(...a) },
   postsApi: { createPost: (...a: unknown[]) => api.createPost(...a) },
+  groupsApi: { getGroupById: (...a: unknown[]) => api.getGroupById(...a) },
+  conversationsApi: {
+    getOrCreateDM: (...a: unknown[]) => api.getOrCreateDM(...a),
+    sendMessage: (...a: unknown[]) => api.sendMessage(...a),
+  },
 }));
 
 import ShareGroupDialog from '@/components/groups/ShareGroupDialog';
@@ -81,6 +89,18 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation((id: string) => Promise.resolve({ data: PROFILES[id] ?? null, error: null }));
   api.createPost.mockReset().mockResolvedValue({ data: { id: 'post-1' }, error: null });
+  api.getOrCreateDM.mockReset().mockResolvedValue({ data: 'conv-1', error: null });
+  api.getGroupById.mockReset().mockResolvedValue({
+    data: {
+      id: 'group-1',
+      name: 'Test Group',
+      description: 'A test group',
+      cover_image: null,
+      created_by: VIEWER,
+    },
+    error: null,
+  });
+  api.sendMessage.mockReset().mockResolvedValue({ data: { id: 'msg-1' }, error: null });
 
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
@@ -178,9 +198,22 @@ describe('ShareGroupDialog behaviour', () => {
     await screen.findByText('Ada Lovelace');
 
     fireEvent.click(screen.getByText('Ada Lovelace').closest('button')!);
-    expect(toastSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ description: 'Shared with Ada Lovelace' })
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'Shared Test Group with Ada Lovelace' })
+      )
     );
+    expect(api.getOrCreateDM).toHaveBeenCalledWith('viewer-1', 'friend-ada');
+    expect(api.getGroupById).toHaveBeenCalledWith('group-1');
+    expect(api.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversation_id: 'conv-1',
+        sender_id: 'viewer-1',
+        receiver_id: 'friend-ada',
+        message_type: 'text',
+      })
+    );
+    expect(onClose).toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Share now' }));
     await screen.findByText('Ada Lovelace'); // flush effects

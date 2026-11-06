@@ -47,6 +47,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { gateway } from '@/lib/gateway';
 import { mediaAppUrl } from '@/lib/mediaUrl';
+import { parseGroupShareContent } from '@/lib/groupShare';
 import { MessageLinkPreview } from './MessageLinkPreview';
 import { voicePlaybackUrl, toConvertedUrl, audioCanPlay, formatAudioTime } from '@/lib/audioPlayback';
 import {
@@ -178,6 +179,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   // Edited channel posts render the local override (ChatWindow keeps the map);
   // unedited messages fall through to the server content.
   const displayContent = editedContent !== undefined ? editedContent : message.content;
+
+  // Detect group-share messages: content is a JSON envelope { __group_share: true, ... }
+  const groupShare = parseGroupShareContent(message.content);
 
   // Channel posts are text-editable only when the current user can moderate the
   // channel (owner or moderator). Media/attachments stay immutable.
@@ -930,8 +934,48 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               </div>
               ) : (
               <>
+                {/* Group-share card */}
+                {groupShare && (
+                  <div
+                    className="mt-2 p-3 rounded-xl border border-border bg-muted/50 flex items-start gap-3 cursor-pointer hover:bg-muted/80 transition-colors"
+                    onClick={() => window.location.assign(`/groups/${groupShare.group_id}`)}
+                  >
+                    {groupShare.group_image ? (
+                      <img
+                        src={groupShare.group_image}
+                        alt={groupShare.group_name}
+                        className="w-16 h-16 rounded-lg object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <span className="text-primary font-bold text-xl">
+                          {groupShare.group_name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate">
+                        {groupShare.group_name}
+                      </p>
+                      {groupShare.group_description && (
+                        <p className="text-xs text-muted-foreground truncate mt-1">
+                          {groupShare.group_description}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground mt-2 truncate">
+                        Group ID: {groupShare.group_id}
+                      </p>
+                    </div>
+                    <div className="shrink-0 mt-1">
+                      <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
+                        Open group
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Text content */}
-                {displayContent && message.message_type !== 'poll' && (
+                {!groupShare && displayContent && message.message_type !== 'poll' && (
                   editing ? (
                     <div className={cn(
                       "flex flex-col gap-2",
