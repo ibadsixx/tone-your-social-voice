@@ -22,7 +22,7 @@ import { ReportMessageModal } from './ReportMessageModal';
 import { useToast } from '@/hooks/use-toast';
 import { EmojiAsset } from '@/components/EmojiAsset';
 import { gateway } from '@/lib/gateway';
-import { blockingApi } from '@/api';
+import { blockingApi, groupsApi } from '@/api';
 import { deleteCachedConversationKey } from '@/lib/conversationEncryption';
 import {
   Dialog,
@@ -698,11 +698,14 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     if (!conversationId || !memberToRemove) return;
     setRemoving(true);
     try {
-      const { error } = await gateway.rpc('remove_group_member', {
-        p_conversation_id: conversationId,
-        p_member_id: memberToRemove.user_id,
-      });
-      if (error) throw error;
+      const { data, error } = await groupsApi.removeGroupMemberSecure(
+        conversationId,
+        memberToRemove.user_id,
+        ''
+      );
+      if (error || !data || data.status !== 'ok') {
+        throw new Error(error?.message || data?.message || 'Failed to remove member');
+      }
 
       setGroupMembers(prev => (prev || []).filter(m => m.user_id !== memberToRemove.user_id));
       toast({
