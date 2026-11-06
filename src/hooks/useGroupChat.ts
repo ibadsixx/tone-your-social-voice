@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { gateway } from '@/lib/gateway';
+import { groupsApi } from '@/api';
 
 interface GroupMember {
   user_id: string;
@@ -13,20 +13,17 @@ interface GroupMember {
 export const useGroupChat = (conversationId?: string) => {
   const addMember = useCallback(async (newMemberId: string) => {
     if (!conversationId) return { error: 'No conversation ID' };
-    const { error } = await gateway.rpc('add_group_member', {
-      p_conversation_id: conversationId,
-      p_new_member_id: newMemberId,
-    });
+    const { error } = await groupsApi.addGroupMembersSecure(conversationId, [newMemberId]);
     return { error };
   }, [conversationId]);
 
   const removeMember = useCallback(async (memberId: string) => {
     if (!conversationId) return { error: 'No conversation ID' };
-    const { error } = await gateway.rpc('remove_group_member', {
-      p_conversation_id: conversationId,
-      p_member_id: memberId,
-    });
-    return { error };
+    const { data, error } = await groupsApi.removeGroupMemberSecure(conversationId, memberId, '');
+    if (error || !data || data.status !== 'ok') {
+      return { error: error?.message || data?.message || 'Failed to remove member' };
+    }
+    return { error: null };
   }, [conversationId]);
 
   const updateRole = useCallback(async (memberId: string, role: 'member' | 'admin') => {
