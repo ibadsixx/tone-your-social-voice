@@ -9,6 +9,7 @@ import { gateway } from '@/lib/gateway';
 import { getMessageRealtime } from '@/lib/messageRealtime';
 import { useCall } from '@/contexts/CallContext';
 import { parseCallLog, callLogLabel, formatCallDuration } from '@/lib/callLog';
+import { parseGroupShareContent } from '@/lib/groupShare';
 import { ensureMessageRequest } from '@/lib/messageRequests';
 import { usePresencePrivacy } from '@/hooks/usePresencePrivacy';
 
@@ -235,6 +236,8 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
               );
             }
             const isMine = msg.sender_id === currentUserId;
+            // Detect group-share messages: content is a JSON envelope { __group_share: true, ... }
+            const groupShare = parseGroupShareContent(msg.content);
             return (
               <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                 {!isMine && (
@@ -243,24 +246,63 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
                     <AvatarFallback className="text-[10px] bg-muted">{user.display_name.charAt(0)}</AvatarFallback>
                   </Avatar>
                 )}
-                <div
-                  className={`max-w-[70%] w-fit px-3 py-1.5 rounded-2xl text-sm ${
-                    isMine
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-foreground'
-                  }`}
-                >
-                  {msg.content && <p className="break-words">{msg.content}</p>}
-                  {msg.gif_url && (
-                    <img src={msg.gif_url} alt="" className="max-w-full rounded-lg mt-1"  loading="lazy" decoding="async" />
-                  )}
-                  {msg.image_url && (
-                    <img src={msg.image_url} alt="" className="max-w-full rounded-lg mt-1"  loading="lazy" decoding="async" />
-                  )}
-                  {msg.media_url && (
-                    <video src={msg.media_url} className="max-w-full rounded-lg mt-1" controls preload="metadata" />
-                  )}
-                </div>
+                {groupShare ? (
+                  <div
+                    className="max-w-[70%] w-fit px-3 py-1.5 rounded-2xl border border-border bg-muted/50 flex items-start gap-3 cursor-pointer"
+                    onClick={() => window.location.assign(`/groups/${groupShare.group_id}`)}
+                  >
+                    {groupShare.group_image ? (
+                      <img
+                        src={groupShare.group_image}
+                        alt={groupShare.group_name}
+                        className="w-12 h-12 rounded-lg object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <span className="text-primary font-bold text-sm">
+                          {groupShare.group_name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate">
+                        {groupShare.group_name}
+                      </p>
+                      {groupShare.group_description && (
+                        <p className="text-xs text-muted-foreground truncate mt-1">
+                          {groupShare.group_description}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground mt-1 truncate">
+                        Group ID: {groupShare.group_id}
+                      </p>
+                    </div>
+                    <div className="shrink-0 mt-1">
+                      <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                        Open group
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className={`max-w-[70%] w-fit px-3 py-1.5 rounded-2xl text-sm ${
+                      isMine
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-foreground'
+                    }`}
+                  >
+                    {msg.content && <p className="break-words">{msg.content}</p>}
+                    {msg.gif_url && (
+                      <img src={msg.gif_url} alt="" className="max-w-full rounded-lg mt-1" loading="lazy" decoding="async" />
+                    )}
+                    {msg.image_url && (
+                      <img src={msg.image_url} alt="" className="max-w-full rounded-lg mt-1" loading="lazy" decoding="async" />
+                    )}
+                    {msg.media_url && (
+                      <video src={msg.media_url} className="max-w-full rounded-lg mt-1" controls preload="metadata" />
+                    )}
+                  </div>
+                )}
               </div>
             );
           })
