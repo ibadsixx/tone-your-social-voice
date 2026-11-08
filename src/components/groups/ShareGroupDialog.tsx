@@ -9,7 +9,7 @@ import { Link2, Users, User } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { profilesApi, usersApi, postsApi, groupsApi, conversationsApi } from '@/api';
-import { encodeGroupShareContent } from '@/lib/groupShare';
+import { encodeGroupShareContent, sanitizeImageUrl } from '@/lib/groupShare';
 
 interface ShareGroupDialogProps {
   isOpen: boolean;
@@ -141,7 +141,7 @@ const ShareGroupDialog = ({ isOpen, onClose, groupId, groupName }: ShareGroupDia
       const sharePayload = encodeGroupShareContent({
         group_id: group.id,
         group_name: group.name,
-        group_image: group.cover_image ?? null,
+        group_image: sanitizeImageUrl(group.cover_image ?? null),
         group_description: group.description ?? null,
         shared_by: user.id,
         shared_by_name: senderName,
