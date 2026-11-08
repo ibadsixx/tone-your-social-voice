@@ -13,6 +13,23 @@ export interface GroupShareInfo {
   shared_at: string;
 }
 
+/**
+ * Strip Markdown link wrapping from a URL string.
+ *
+ * Some callers or stored values may contain Markdown image links like
+ * `[https://example.com/image.png](https://example.com/image.png)` instead of
+ * a plain URL. This extracts the bare URL so it can be used as an `img src`.
+ *
+ * Returns the input unchanged when it is not a Markdown-wrapped URL.
+ */
+export function sanitizeImageUrl(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string') return value;
+  const m = value.match(/^\[([^\]]+)\]\((.+?)\)\s*$/);
+  return m ? m[2] : value;
+}
+
 export function encodeGroupShareContent(info: Omit<GroupShareInfo, '__group_share'>): string {
   return JSON.stringify({ __group_share: true, ...info });
 }
@@ -25,17 +42,16 @@ export function parseGroupShareContent(content?: string | null): GroupShareInfo 
   if (!content || !content.startsWith('{')) return null;
   try {
     const parsed = JSON.parse(content);
-    const info = parsed?.__group_share;
-    if (!info || info !== true) return null;
+    if (!parsed || parsed.__group_share !== true) return null;
     return {
       __group_share: true,
-      group_id: optString(info.group_id) ?? '',
-      group_name: optString(info.group_name) ?? '',
-      group_image: optString(info.group_image) ?? null,
-      group_description: optString(info.group_description) ?? null,
-      shared_by: optString(info.shared_by) ?? '',
-      shared_by_name: optString(info.shared_by_name) ?? '',
-      shared_at: optString(info.shared_at) ?? '',
+      group_id: optString(parsed.group_id) ?? '',
+      group_name: optString(parsed.group_name) ?? '',
+      group_image: sanitizeImageUrl(optString(parsed.group_image)) ?? null,
+      group_description: optString(parsed.group_description) ?? null,
+      shared_by: optString(parsed.shared_by) ?? '',
+      shared_by_name: optString(parsed.shared_by_name) ?? '',
+      shared_at: optString(parsed.shared_at) ?? '',
     };
   } catch {
     return null;

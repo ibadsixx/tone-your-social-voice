@@ -266,16 +266,18 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm truncate">
-                        {groupShare.group_name}
+                        {groupShare.group_name || 'Group'}
                       </p>
                       {groupShare.group_description && (
                         <p className="text-xs text-muted-foreground truncate mt-1">
                           {groupShare.group_description}
                         </p>
                       )}
-                      <p className="text-[10px] text-muted-foreground mt-1 truncate">
-                        Group ID: {groupShare.group_id}
-                      </p>
+                      {groupShare.group_id && (
+                        <p className="text-[10px] text-muted-foreground mt-1 truncate">
+                          Group ID: {groupShare.group_id}
+                        </p>
+                      )}
                     </div>
                     <div className="shrink-0 mt-1">
                       <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">
