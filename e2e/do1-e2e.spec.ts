@@ -1,33 +1,26 @@
 // do1.md - Local Runtime Verification: Group Share in DM
-// Sign in with existing accounts, share group, verify card renders
+// End-to-end test: sign in as recipient via UI, open DM, verify group-share card renders
 
 import { test, expect } from '@playwright/test';
 
-const RECIPIENT_EMAIL = 'dx-test-recipient@example.com';
+const RECIPIENT_EMAIL = 'dx-do1-recipient-1794134612@example.com';
 const RECIPIENT_PASSWORD = 'testpass123';
-const CONVERSATION_ID = 'b1ce29eb-fed5-4267-91fd-c0df711473fc';
+const CONVERSATION_ID = '1ad74613-e3b7-479d-93a9-05283c4c4d2f';
+const GROUP_NAME = 'DX Test Group';
+const GROUP_DESCRIPTION = 'A group for DX verification';
 
-test.describe('Group Share DM - Live Runtime Test', () => {
-  test('sign in as recipient and verify group-share card', async ({ page }) => {
+test.describe('Group Share in DM - Live Runtime Verification', () => {
+  test('sign in as recipient and verify group-share card renders', async ({ page }) => {
     await page.goto('http://localhost:8080/', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
-    // Click Sign In tab
-    const signInTab = page.getByRole('tab', { name: 'Sign In' });
-    if (await signInTab.isVisible()) {
-      await signInTab.click();
-      await page.waitForTimeout(500);
-    }
+    await page.getByRole('tab', { name: 'Sign In' }).click();
+    await page.waitForTimeout(500);
 
-    // Fill in credentials
     await page.getByPlaceholder('Enter your email').fill(RECIPIENT_EMAIL);
     await page.getByPlaceholder('Enter your password').fill(RECIPIENT_PASSWORD);
     await page.getByRole('button', { name: 'Sign In' }).click();
     await page.waitForTimeout(5000);
-
-    // Check if signed in - look for navigation to messages or dashboard
-    const currentUrl = page.url();
-    console.log('Current URL after sign-in:', currentUrl);
 
     // Navigate to the DM conversation
     await page.goto(`http://localhost:8080/messages/${CONVERSATION_ID}`, {
@@ -36,14 +29,14 @@ test.describe('Group Share DM - Live Runtime Test', () => {
     await page.waitForTimeout(5000);
 
     // Check if group-share card renders
-    const groupCard = page.locator('[role="button"]').filter({ hasText: 'DX Test Group' });
+    const groupCard = page.locator('[role="button"]').filter({ hasText: GROUP_NAME });
     const cardCount = await groupCard.count();
-    console.log('Group card count:', cardCount);
+    console.log(`Group card count: ${cardCount}`);
 
     if (cardCount > 0) {
       await expect(groupCard.first()).toBeVisible();
-      await expect(page.getByText('DX Test Group')).toBeVisible();
-      await expect(page.getByText('A group for DX verification')).toBeVisible();
+      await expect(page.getByText(GROUP_NAME)).toBeVisible();
+      await expect(page.getByText(GROUP_DESCRIPTION)).toBeVisible();
       console.log('SUCCESS: Group-share card renders correctly!');
     } else {
       console.log('WARNING: Group-share card not found');
@@ -51,6 +44,7 @@ test.describe('Group Share DM - Live Runtime Test', () => {
       console.log('Body text (first 1000):', bodyText?.substring(0, 1000));
     }
 
-    await page.screenshot({ path: '/tmp/do1-final-screenshot.png', fullPage: true });
+    await page.screenshot({ path: '/tmp/do1-final-verification.png', fullPage: true });
+    console.log('Screenshot saved to /tmp/do1-final-verification.png');
   });
 });

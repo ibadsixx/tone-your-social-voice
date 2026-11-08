@@ -179,9 +179,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   // Edited channel posts render the local override (ChatWindow keeps the map);
   // unedited messages fall through to the server content.
   const displayContent = editedContent !== undefined ? editedContent : message.content;
-
   // Detect group-share messages: content is a JSON envelope { __group_share: true, ... }
   const groupShare = parseGroupShareContent(message.content);
+
+
 
   // Channel posts are text-editable only when the current user can moderate the
   // channel (owner or moderator). Media/attachments stay immutable.
