@@ -10,7 +10,7 @@ const CreatePost = () => {
   const navigate = useNavigate();
   const { createPost } = useHomeFeed();
   const { actingPage } = usePageSwitch();
-  const [audience, setAudience] = useState<AudienceSelection>({ type: 'friends' });
+  const [audience, setAudience] = useState<AudienceSelection>({ type: 'public' });
   const [showAudienceSelector, setShowAudienceSelector] = useState(false);
   // A page post is public (a Page is public by design), so the personal
   // audience control is replaced by a static "Public" while acting as a page.
