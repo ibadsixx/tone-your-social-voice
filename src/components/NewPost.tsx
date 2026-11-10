@@ -21,6 +21,7 @@ import {
 import { gateway } from '@/lib/gateway';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
+import { usersApi } from '@/api';
 import { useStatusVisibility } from '@/hooks/useStatusVisibility';
 import { useAutoUpload } from '@/hooks/useAutoUpload';
 import { useHasActiveStories } from '@/hooks/useHasActiveStories';
@@ -74,7 +75,7 @@ interface NewPostProps {
 
 const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudience, onAudienceChange, stickyFooter, pagePost }: NewPostProps) => {
   const { user } = useAuth();
-  const { profile, updateProfile } = useProfile();
+  const { profile } = useProfile();
   const { actingPage } = usePageSwitch();
   const { audienceToDbFormat } = useAudience();
   const { saveMentionsAndHashtags } = useMentions();
@@ -93,34 +94,52 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
   const [internalAudience, setInternalAudience] = useState<AudienceSelection>({ type: 'public' });
   const audience = externalAudience ?? internalAudience;
 
-  // Persist the user's explicitly selected audience to their profile so it
-  // survives composer re-opens and browser sessions (do1.md §2, §3, §9).
-  const persistAudience = useCallback((newAudience: AudienceSelection) => {
+  // Persist the user's explicitly selected audience preference to the
+  // privacy_settings table (setting_name = 'default_post_audience'), NOT to
+  // profile.privacy which controls account privacy. Changing the post audience
+  // must never modify account privacy or previously published posts.
+  const persistAudience = useCallback(async (newAudience: AudienceSelection) => {
     setInternalAudience(newAudience);
     if (
       newAudience.type === 'public' ||
       newAudience.type === 'friends' ||
       newAudience.type === 'only_me'
     ) {
-      updateProfile({ privacy: newAudience.type }).catch(() => {
-        // Non-fatal: the in-memory selection still applies to this session.
-      });
+      if (user) {
+        await usersApi.upsertPrivacySetting(
+          user.id,
+          'default_post_audience',
+          newAudience.type
+        ).catch(() => {
+          // Non-fatal: the in-memory selection still applies to this session.
+        });
+      }
     }
-  }, [updateProfile]);
+  }, [user]);
 
   const setAudience = useCallback((newAudience: AudienceSelection) => {
     persistAudience(newAudience);
     onAudienceChange?.(newAudience);
   }, [onAudienceChange, persistAudience]);
 
-  // Load the user's saved audience preference from their profile on mount.
+  // Load the user's saved default post audience preference from
+  // privacy_settings (setting_name = 'default_post_audience') on mount.
   // If no preference exists, the default stays 'public' (do1.md §1, §9).
+  // This does NOT read or modify profile.privacy (account privacy).
   useEffect(() => {
-    const savedPrivacy = profile?.privacy;
-    if (savedPrivacy === 'public' || savedPrivacy === 'friends' || savedPrivacy === 'only_me') {
-      setInternalAudience({ type: savedPrivacy as 'public' | 'friends' | 'only_me' });
-    }
-  }, [profile?.privacy]);
+    if (!user) return;
+    usersApi
+      .getPrivacySettingByName(user.id, 'default_post_audience')
+      .then(({ data }) => {
+        const saved = data?.setting_value;
+        if (saved === 'public' || saved === 'friends' || saved === 'only_me') {
+          setInternalAudience({ type: saved as 'public' | 'friends' | 'only_me' });
+        }
+      })
+      .catch(() => {
+        // Non-fatal: default 'public' applies.
+      });
+  }, [user]);
   // A post published while acting as a Page belongs to the Page, and a Page is
   // public by design (the Gateway serves `pages` and `page_posts` to guests).
   // The personal audience therefore does not apply: a page post is always

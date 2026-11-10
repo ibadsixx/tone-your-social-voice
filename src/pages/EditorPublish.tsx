@@ -24,6 +24,7 @@ import {
 import PageContainer from '@/components/PageContainer';
 import { useAuth } from '@/hooks/useAuth';
 import { useMentions } from '@/hooks/useMentions';
+import { usersApi } from '@/api';
 import { gateway } from '@/lib/gateway';
 import { toast } from '@/hooks/use-toast';
 import { EditorProject } from '@/hooks/useEditorProject';
@@ -135,6 +136,21 @@ export default function EditorPublish() {
       console.log('[EditorPublish] Project loaded:', data.id);
       setProject(data as EditorProject);
 
+      // Load the user's saved default post audience preference from
+      // privacy_settings (setting_name = 'default_post_audience'). This is used
+      // only when no draft settings exist, so the user's preferred audience
+      // carries over to new Reels without touching profile.privacy.
+      let savedAudience: AudienceType = 'public';
+      if (user) {
+        const { data: savedSetting } = await usersApi
+          .getPrivacySettingByName(user.id, 'default_post_audience')
+          .catch(() => ({ data: null }));
+        const saved = savedSetting?.setting_value;
+        if (saved === 'public' || saved === 'friends' || saved === 'only_me') {
+          savedAudience = saved;
+        }
+      }
+
       // The video preview, the header and every stat come from the project row, so
       // the page stops waiting here. The settings form below is hydrated from the
       // draft-post read that follows, and the Publish button stays disabled until
@@ -191,8 +207,8 @@ export default function EditorPublish() {
         setSettings({ ...restored, audience: normalizeAudience(restored.audience) });
         console.log('[EditorPublish] Restored settings from project JSON');
       } else {
-        setSettings({ ...defaultPublishSettings, caption: data.title || '' });
-        console.log('[EditorPublish] Using default settings');
+        setSettings({ ...defaultPublishSettings, caption: data.title || '', audience: savedAudience });
+        console.log('[EditorPublish] Using default settings with saved audience:', savedAudience);
       }
     } catch (err) {
       console.error('[EditorPublish] Failed to load project:', err);
@@ -233,11 +249,22 @@ export default function EditorPublish() {
   }, [project, projectId]);
 
   // Update settings with auto-save
-  const updateSettings = useCallback((updates: Partial<PublishSettings>) => {
+  const updateSettings = useCallback(async (updates: Partial<PublishSettings>) => {
     const newSettings = { ...settings, ...updates };
     setSettings(newSettings);
-    saveSettings(newSettings);
-  }, [settings, saveSettings]);
+    await saveSettings(newSettings);
+
+    // Persist the audience preference to privacy_settings so it carries over
+    // to future Reels and to the text/image composer (NewPost.tsx). This does
+    // NOT touch profile.privacy (account privacy).
+    if (updates.audience && user) {
+      await usersApi
+        .upsertPrivacySetting(user.id, 'default_post_audience', updates.audience)
+        .catch(() => {
+          // Non-fatal: the in-memory selection still applies to this session.
+        });
+    }
+  }, [settings, saveSettings, user]);
 
   const handleBack = () => {
     navigate(`/editor?projectId=${projectId}`);
