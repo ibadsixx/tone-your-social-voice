@@ -5,7 +5,6 @@ import { profilesApi } from '@/api';
 import type { Profile } from '@/api/profiles';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import ProfileHeader from '@/components/ProfileHeader';
 import ProfileTabs from '@/components/ProfileTabs';
@@ -179,14 +178,6 @@ const ProfilePage = () => {
 
   return (
     <PageContainer size="md" className="space-y-4 md:space-y-6">
-      {/* Back Button */}
-      {!isOwnProfile && (
-        <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          Back
-        </Button>
-      )}
-
       {/* Profile Header */}
       <Card className="overflow-hidden">
         <ProfileHeader
