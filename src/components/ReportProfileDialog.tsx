@@ -16,6 +16,8 @@ interface ReportProfileDialogProps {
   reportedUserName: string;
   isAlreadyReported: boolean;
   onReportSubmitted: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 const REPORT_REASONS: Record<ReportReason, string> = {
@@ -29,9 +31,10 @@ export const ReportProfileDialog = ({
   reportedUserId, 
   reportedUserName, 
   isAlreadyReported,
-  onReportSubmitted 
+  onReportSubmitted,
+  open,
+  onOpenChange
 }: ReportProfileDialogProps) => {
-  const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<ReportReason | ''>('');
   const [description, setDescription] = useState('');
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
@@ -98,22 +101,11 @@ export const ReportProfileDialog = ({
   };
 
   if (isAlreadyReported) {
-    return (
-      <Button variant="outline" size="sm" disabled className="opacity-50">
-        <Flag className="w-4 h-4 mr-2" />
-        Already Reported
-      </Button>
-    );
+    return null;
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="text-destructive border-destructive/50 hover:bg-destructive/10">
-          <Flag className="w-4 h-4 mr-2" />
-          Report
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Report Profile</DialogTitle>

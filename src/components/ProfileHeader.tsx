@@ -85,6 +85,7 @@ const ProfileHeader = ({
   const { blockStatus, blockUser, unblockUser } = useBlocks(profile.id, user?.id);
   const { hasReported, refreshReportStatus } = useProfileReports(isOwnProfile ? undefined : profile.id);
   const hasActiveStories = useHasActiveStories(profile.id);
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
 
   // Filter other names that should show at top
   const topOtherNames = otherNames.filter(name => name.show_at_top);
@@ -366,14 +367,6 @@ const ProfileHeader = ({
                   />
                 )}
 
-                {/* Report Button */}
-                <ReportProfileDialog
-                  reportedUserId={profile.id}
-                  reportedUserName={profile.username}
-                  isAlreadyReported={hasReported}
-                  onReportSubmitted={refreshReportStatus}
-                />
-
                 {/* More Menu */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -386,7 +379,15 @@ const ProfileHeader = ({
                       <Link className="h-4 w-4 mr-2" />
                       Copy profile link
                     </DropdownMenuItem>
-                    <DropdownMenuSeparator />
+                    {!hasReported && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive" onClick={() => setReportDialogOpen(true)}>
+                          <Flag className="h-4 w-4 mr-2" />
+                          Report
+                        </DropdownMenuItem>
+                      </>
+                    )}
                     {blockStatus.isBlocked ? (
                       <DropdownMenuItem onClick={unblockUser}>
                         <UserCheck className="h-4 w-4 mr-2" />
@@ -422,6 +423,18 @@ const ProfileHeader = ({
           </div>
         )}
       </div>
+
+      {/* Report Profile Dialog */}
+      {!hasReported && (
+        <ReportProfileDialog
+          reportedUserId={profile.id}
+          reportedUserName={profile.username}
+          isAlreadyReported={hasReported}
+          onReportSubmitted={refreshReportStatus}
+          open={reportDialogOpen}
+          onOpenChange={setReportDialogOpen}
+        />
+      )}
     </div>
   );
 };
