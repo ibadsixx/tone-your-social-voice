@@ -15,6 +15,11 @@ import {
   validatePhotoFile,
 } from '@/hooks/usePhotoUpload';
 import { POST_CREATED_EVENT } from '@/hooks/useHomeFeed';
+import {
+  normalizeCoverPosition,
+  getCoverBackgroundPosition,
+  getCoverMaxMovement,
+} from '@/lib/coverPosition';
 
 interface CoverPhotoEditorProps {
   profile: {
@@ -36,16 +41,19 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
   const [showReposition, setShowReposition] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const coverContainerRef = useRef<HTMLDivElement>(null);
-  // background-position percentage for the cover image (50% = vertically centered).
-  const [coverBgPosition, setCoverBgPosition] = useState('center 50%');
+  // Normalized cover position (0-100, 50 = center). Shared with the
+  // repositioning modal so preview and final render match exactly.
+  const [coverPositionPercent, setCoverPositionPercent] = useState(() =>
+    normalizeCoverPosition(profile.cover_position_y)
+  );
 
   // Recalculate the cover's background-position whenever the cover image,
-  // saved position, or container dimensions change. This keeps the image
-  // covering the container under background-size: cover and treats
-  // cover_position_y = 0 as vertically centered.
+  // saved position, or container dimensions change. Uses the same shared
+  // calculation as the repositioning modal, so preview and final render
+  // show identical image composition regardless of container size.
   useEffect(() => {
     if (!profile.cover_pic || !coverContainerRef.current) {
-      setCoverBgPosition('center 50%');
+      setCoverPositionPercent(normalizeCoverPosition(profile.cover_position_y));
       return;
     }
 
@@ -58,25 +66,26 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
       const img = new Image();
       img.src = profile.cover_pic;
       img.onload = () => {
-        // background-size: cover scales to the smallest size that covers both dimensions.
-        const scale = Math.max(
-          containerWidth / img.naturalWidth,
-          containerHeight / img.naturalHeight
+        // background-size: cover scales to cover both dimensions.
+        const maxMovement = getCoverMaxMovement(
+          img.naturalWidth,
+          img.naturalHeight,
+          containerWidth,
+          containerHeight
         );
-        const scaledHeight = img.naturalHeight * scale;
-        const overflowY = Math.max(0, scaledHeight - containerHeight);
-        const maxMovement = overflowY / 2;
 
-        const clampedPosition = Math.max(
+        // Clamp the stored position to the valid range for this container,
+        // then express it as a normalized percentage (0-100).
+        const clampedPx = Math.max(
           -maxMovement,
-          Math.min(maxMovement, profile.cover_position_y || 0)
+          Math.min(maxMovement, positionPercentToPxRaw(profile.cover_position_y || 0, maxMovement))
         );
         const percent = maxMovement > 0
-          ? 50 + (clampedPosition / maxMovement) * 50
+          ? 50 + (clampedPx / maxMovement) * 50
           : 50;
-        setCoverBgPosition(`center ${percent}%`);
+        setCoverPositionPercent(Math.max(0, Math.min(100, percent)));
       };
-      img.onerror = () => setCoverBgPosition('center 50%');
+      img.onerror = () => setCoverPositionPercent(normalizeCoverPosition(profile.cover_position_y));
     };
 
     const observer = new ResizeObserver(() => {
@@ -88,6 +97,24 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
 
     return () => observer.disconnect();
   }, [profile.cover_pic, profile.cover_position_y]);
+
+  // Helper: convert a raw stored position (legacy pixels or new %) to a
+  // pixel offset for clamping against the current container's max movement.
+  function positionPercentToPxRaw(
+    storedValue: number,
+    maxMovement: number
+  ): number {
+    // Legacy default: 0 meant center (0 pixel offset).
+    if (storedValue === 0) {
+      return 0;
+    }
+    // If already a 0-100 percentage, convert back to pixels.
+    if (storedValue > 0 && storedValue <= 100) {
+      return ((storedValue - 50) / 50) * maxMovement;
+    }
+    // Legacy pixel value: use directly.
+    return storedValue;
+  }
 
   const handleFileUpload = async (file: File) => {
     if (!user?.id) return;
@@ -214,7 +241,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
 
   const coverStyle = profile.cover_pic ? {
     backgroundImage: `url(${profile.cover_pic})`,
-    backgroundPosition: coverBgPosition,
+    backgroundPosition: getCoverBackgroundPosition(coverPositionPercent),
     backgroundSize: 'cover',
     backgroundRepeat: 'no-repeat'
   } : {

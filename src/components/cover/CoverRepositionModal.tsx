@@ -3,13 +3,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
+import {
+  normalizeCoverPosition,
+  getCoverBackgroundPosition,
+  getCoverMaxMovement,
+  pxToPositionPercent,
+  positionPercentToPx,
+} from '@/lib/coverPosition';
 
 interface CoverRepositionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   coverUrl: string | null;
-  currentPosition: number;
-  onPositionSave: (position: number) => void;
+  currentPosition: number; // stored cover_position_y (legacy pixels or new 0-100%)
+  onPositionSave: (positionPercent: number) => void;
 }
 
 const CoverRepositionModal = ({ 
@@ -19,7 +26,10 @@ const CoverRepositionModal = ({
   currentPosition, 
   onPositionSave 
 }: CoverRepositionModalProps) => {
-  const [position, setPosition] = useState(currentPosition);
+  // Normalized position (0-100, 50 = center) read from the stored value.
+  const [positionPercent, setPositionPercent] = useState(() =>
+    normalizeCoverPosition(currentPosition)
+  );
   const [maxMovement, setMaxMovement] = useState(0);
   const [boundsReady, setBoundsReady] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -41,27 +51,22 @@ const CoverRepositionModal = ({
     const img = new Image();
     img.src = coverUrl;
     img.onload = () => {
-      // background-size: cover scales to the smallest size that covers both dimensions.
       const scale = Math.max(
         containerWidth / img.naturalWidth,
         containerHeight / img.naturalHeight
       );
       const scaledHeight = img.naturalHeight * scale;
       const overflowY = Math.max(0, scaledHeight - containerHeight);
-      // Half the overflow is the max shift from center in either direction.
       setMaxMovement(overflowY / 2);
       setBoundsReady(true);
     };
     img.onerror = () => {
-      // If the image can't be probed, fall back to a safe default range so
-      // the slider is never stuck disabled.
       setMaxMovement(100);
       setBoundsReady(true);
     };
   }, [coverUrl]);
 
-  // Recalculate bounds whenever the modal opens, the cover URL changes,
-  // or the preview container is resized.
+  // Recalculate bounds when the modal opens, URL changes, or container resizes.
   useEffect(() => {
     if (!open || !coverUrl || !containerRef.current) return;
 
@@ -73,46 +78,37 @@ const CoverRepositionModal = ({
 
     calculateBounds();
 
-    // Fallback: if bounds haven't been resolved after 2s, mark ready so
-    // the slider uses the default range and is never stuck disabled.
     const timer = setTimeout(() => setBoundsReady(true), 2000);
-
     return () => {
       observer.disconnect();
       clearTimeout(timer);
     };
   }, [open, coverUrl, calculateBounds]);
 
-  // Position 0 = vertically centered. Reset to the saved position when opening.
+  // Reset to the stored position when opening.
   useEffect(() => {
     if (open) {
-      setPosition(currentPosition);
+      setPositionPercent(normalizeCoverPosition(currentPosition));
       setBoundsReady(false);
     }
   }, [open, currentPosition]);
 
-  // Effective range for the slider. Falls back to ±100px when bounds
-  // can't be calculated so the slider is always usable.
+  // Effective slider range. Falls back to ±100px so the slider is never stuck.
   const effectiveMax = boundsReady ? Math.max(1, maxMovement) : 100;
 
-  // Clamp to the valid range so the image always covers the container.
-  const clampedPosition = Math.max(-effectiveMax, Math.min(effectiveMax, position));
+  // Current slider pixel position (for the UI), derived from normalized %.
+  const positionPx = positionPercentToPx(positionPercent, effectiveMax);
 
-  // Convert a pixel offset from center into a background-position percentage:
-  //   -effectiveMax -> 0%   (top-aligned)
-  //    0            -> 50%  (centered)
-  //   +effectiveMax -> 100% (bottom-aligned)
-  const backgroundPositionY = 50 + (clampedPosition / effectiveMax) * 50;
-
+  // Preview uses the normalized percentage directly — container-agnostic.
   const previewStyle = coverUrl ? {
     backgroundImage: `url(${coverUrl})`,
-    backgroundPosition: `center ${backgroundPositionY}%`,
+    backgroundPosition: getCoverBackgroundPosition(positionPercent),
     backgroundSize: 'cover',
     backgroundRepeat: 'no-repeat'
   } : {};
 
   const handleSave = () => {
-    onPositionSave(clampedPosition);
+    onPositionSave(positionPercent);
   };
 
   return (
@@ -143,11 +139,12 @@ const CoverRepositionModal = ({
           {coverUrl && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Vertical Position: {Math.round(clampedPosition)}px</Label>
+                <Label>Vertical Position: {Math.round(positionPx)}px</Label>
                 <Slider
-                  value={[clampedPosition]}
+                  value={[positionPx]}
                   onValueChange={(value) => {
-                    setPosition(Math.max(-effectiveMax, Math.min(effectiveMax, value[0])));
+                    const percent = pxToPositionPercent(value[0], effectiveMax);
+                    setPositionPercent(percent);
                   }}
                   min={-effectiveMax}
                   max={effectiveMax}
@@ -168,7 +165,7 @@ const CoverRepositionModal = ({
             <Button 
               variant="outline" 
               onClick={() => {
-                setPosition(currentPosition);
+                setPositionPercent(normalizeCoverPosition(currentPosition));
                 onOpenChange(false);
               }}
             >
