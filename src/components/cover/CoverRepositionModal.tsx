@@ -21,19 +21,20 @@ const CoverRepositionModal = ({
 }: CoverRepositionModalProps) => {
   const [position, setPosition] = useState(currentPosition);
   const [maxMovement, setMaxMovement] = useState(0);
+  const [boundsReady, setBoundsReady] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Calculate the maximum vertical shift (in px) from center that still
   // keeps the image covering the container under background-size: cover.
   const calculateBounds = useCallback(() => {
     if (!coverUrl || !containerRef.current) {
-      setMaxMovement(0);
+      setBoundsReady(true);
       return;
     }
 
     const { clientWidth: containerWidth, clientHeight: containerHeight } = containerRef.current;
     if (containerWidth === 0 || containerHeight === 0) {
-      setMaxMovement(0);
+      setBoundsReady(true);
       return;
     }
 
@@ -49,8 +50,14 @@ const CoverRepositionModal = ({
       const overflowY = Math.max(0, scaledHeight - containerHeight);
       // Half the overflow is the max shift from center in either direction.
       setMaxMovement(overflowY / 2);
+      setBoundsReady(true);
     };
-    img.onerror = () => setMaxMovement(0);
+    img.onerror = () => {
+      // If the image can't be probed, fall back to a safe default range so
+      // the slider is never stuck disabled.
+      setMaxMovement(100);
+      setBoundsReady(true);
+    };
   }, [coverUrl]);
 
   // Recalculate bounds whenever the modal opens, the cover URL changes,
@@ -66,26 +73,36 @@ const CoverRepositionModal = ({
 
     calculateBounds();
 
-    return () => observer.disconnect();
+    // Fallback: if bounds haven't been resolved after 2s, mark ready so
+    // the slider uses the default range and is never stuck disabled.
+    const timer = setTimeout(() => setBoundsReady(true), 2000);
+
+    return () => {
+      observer.disconnect();
+      clearTimeout(timer);
+    };
   }, [open, coverUrl, calculateBounds]);
 
   // Position 0 = vertically centered. Reset to the saved position when opening.
   useEffect(() => {
     if (open) {
       setPosition(currentPosition);
+      setBoundsReady(false);
     }
   }, [open, currentPosition]);
 
+  // Effective range for the slider. Falls back to ±100px when bounds
+  // can't be calculated so the slider is always usable.
+  const effectiveMax = boundsReady ? Math.max(1, maxMovement) : 100;
+
   // Clamp to the valid range so the image always covers the container.
-  const clampedPosition = Math.max(-maxMovement, Math.min(maxMovement, position));
+  const clampedPosition = Math.max(-effectiveMax, Math.min(effectiveMax, position));
 
   // Convert a pixel offset from center into a background-position percentage:
-  //   -maxMovement -> 0%   (top-aligned)
-  //    0           -> 50%  (centered)
-  //   +maxMovement -> 100% (bottom-aligned)
-  const backgroundPositionY = maxMovement > 0
-    ? 50 + (clampedPosition / maxMovement) * 50
-    : 50;
+  //   -effectiveMax -> 0%   (top-aligned)
+  //    0            -> 50%  (centered)
+  //   +effectiveMax -> 100% (bottom-aligned)
+  const backgroundPositionY = 50 + (clampedPosition / effectiveMax) * 50;
 
   const previewStyle = coverUrl ? {
     backgroundImage: `url(${coverUrl})`,
@@ -130,27 +147,19 @@ const CoverRepositionModal = ({
                 <Slider
                   value={[clampedPosition]}
                   onValueChange={(value) => {
-                    if (maxMovement === 0) return;
-                    setPosition(Math.max(-maxMovement, Math.min(maxMovement, value[0])));
+                    setPosition(Math.max(-effectiveMax, Math.min(effectiveMax, value[0])));
                   }}
-                  min={-maxMovement}
-                  max={maxMovement}
+                  min={-effectiveMax}
+                  max={effectiveMax}
                   step={5}
                   className="w-full"
-                  disabled={maxMovement === 0}
                 />
               </div>
 
-              {maxMovement === 0 ? (
-                <div className="text-sm text-muted-foreground">
-                  The cover photo fits the container exactly — no repositioning available.
-                </div>
-              ) : (
-                <div className="text-sm text-muted-foreground">
-                  Drag the slider to adjust the vertical position of your cover photo.
-                  Negative values move the image up, positive values move it down.
-                </div>
-              )}
+              <div className="text-sm text-muted-foreground">
+                Drag the slider to adjust the vertical position of your cover photo.
+                Negative values move the image up, positive values move it down.
+              </div>
             </div>
           )}
 
@@ -167,7 +176,7 @@ const CoverRepositionModal = ({
             </Button>
             <Button 
               onClick={handleSave}
-              disabled={!coverUrl || maxMovement === 0}
+              disabled={!coverUrl}
             >
               Save Position
             </Button>
