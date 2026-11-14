@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Camera, Image as ImageIcon, Move, Trash2, Plus } from 'lucide-react';
@@ -35,6 +35,59 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
   const [showPhotoLibrary, setShowPhotoLibrary] = useState(false);
   const [showReposition, setShowReposition] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const coverContainerRef = useRef<HTMLDivElement>(null);
+  // background-position percentage for the cover image (50% = vertically centered).
+  const [coverBgPosition, setCoverBgPosition] = useState('center 50%');
+
+  // Recalculate the cover's background-position whenever the cover image,
+  // saved position, or container dimensions change. This keeps the image
+  // covering the container under background-size: cover and treats
+  // cover_position_y = 0 as vertically centered.
+  useEffect(() => {
+    if (!profile.cover_pic || !coverContainerRef.current) {
+      setCoverBgPosition('center 50%');
+      return;
+    }
+
+    const container = coverContainerRef.current;
+
+    const updateCoverPosition = () => {
+      const { clientWidth: containerWidth, clientHeight: containerHeight } = container;
+      if (containerWidth === 0 || containerHeight === 0) return;
+
+      const img = new Image();
+      img.src = profile.cover_pic;
+      img.onload = () => {
+        // background-size: cover scales to the smallest size that covers both dimensions.
+        const scale = Math.max(
+          containerWidth / img.naturalWidth,
+          containerHeight / img.naturalHeight
+        );
+        const scaledHeight = img.naturalHeight * scale;
+        const overflowY = Math.max(0, scaledHeight - containerHeight);
+        const maxMovement = overflowY / 2;
+
+        const clampedPosition = Math.max(
+          -maxMovement,
+          Math.min(maxMovement, profile.cover_position_y || 0)
+        );
+        const percent = maxMovement > 0
+          ? 50 + (clampedPosition / maxMovement) * 50
+          : 50;
+        setCoverBgPosition(`center ${percent}%`);
+      };
+      img.onerror = () => setCoverBgPosition('center 50%');
+    };
+
+    const observer = new ResizeObserver(() => {
+      updateCoverPosition();
+    });
+    observer.observe(container);
+
+    updateCoverPosition();
+
+    return () => observer.disconnect();
+  }, [profile.cover_pic, profile.cover_position_y]);
 
   const handleFileUpload = async (file: File) => {
     if (!user?.id) return;
@@ -161,7 +214,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
 
   const coverStyle = profile.cover_pic ? {
     backgroundImage: `url(${profile.cover_pic})`,
-    backgroundPosition: `center ${profile.cover_position_y || 0}px`,
+    backgroundPosition: coverBgPosition,
     backgroundSize: 'cover',
     backgroundRepeat: 'no-repeat'
   } : {
@@ -171,6 +224,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
   return (
     <>
       <div 
+        ref={coverContainerRef}
         className="relative w-full h-36 md:h-56 overflow-hidden group cursor-pointer"
         style={coverStyle}
         onMouseEnter={() => setIsHovered(true)}
