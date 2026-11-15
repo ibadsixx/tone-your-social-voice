@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { Camera, UserPlus, UserMinus, MessageCircle, Edit3, UserCheck, Clock, ChevronDown, MoreHorizontal, UserX, Flag, Link, Settings, Users, UserCheck2 } from 'lucide-react';
+import { Camera, UserPlus, UserMinus, MessageCircle, Edit3, UserCheck, Clock, ChevronDown, MoreHorizontal, UserX, Flag, Link as LucideLink, Settings, Users, UserCheck2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import PhotoUploadDialog from './PhotoUploadDialog';
 import { usePhotoUpload } from '@/hooks/usePhotoUpload';
@@ -248,34 +248,32 @@ const ProfileHeader = ({
                 starts under the cover's bottom edge instead of on top of it. */}
             <div className="relative flex-shrink-0 -mt-16 md:-mt-20">
               {/* Avatar click opens the same post image viewer (/media/:id → MediaViewer).
-                  Wrapping in Link reuses the exact viewer component post images use. */}
-              {profile.profile_pic ? (
-                <Link to={mediaAppUrl(profile.profile_pic)}>
-                  {!isPage && hasActiveStories ? (
-                    <div className="inline-flex p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 overflow-hidden">
-                      <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background ring-0">
-                        <AvatarImage src={profile.profile_pic || ''} />
-                        <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
-                          {profile.display_name.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                    </div>
-                  ) : (
-                    <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background shadow-lg">
+                  Uses programmatic navigation via mediaAppUrl, same as post images. */}
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (profile.profile_pic) window.location.href = mediaAppUrl(profile.profile_pic);
+                }}
+                className="cursor-pointer"
+              >
+                {!isPage && hasActiveStories ? (
+                  <div className="inline-flex p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 overflow-hidden">
+                    <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background ring-0">
                       <AvatarImage src={profile.profile_pic || ''} />
                       <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
                         {profile.display_name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                  )}
-                </Link>
-              ) : (
-                <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background shadow-lg">
-                  <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
-                    {profile.display_name.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-              )}
+                  </div>
+                ) : (
+                  <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background shadow-lg">
+                    <AvatarImage src={profile.profile_pic || ''} />
+                    <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
+                      {profile.display_name.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+              </div>
               {isOwnProfile && (
                 avatarEditor !== undefined ? (
                   avatarEditor
@@ -392,7 +390,7 @@ const ProfileHeader = ({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="bg-background border-border z-50">
                     <DropdownMenuItem onClick={copyProfileLink}>
-                      <Link className="h-4 w-4 mr-2" />
+                      <LucideLink className="h-4 w-4 mr-2" />
                       Copy profile link
                     </DropdownMenuItem>
                     {!hasReported && (
