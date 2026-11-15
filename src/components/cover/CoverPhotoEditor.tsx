@@ -20,6 +20,7 @@ import {
   getCoverBackgroundPosition,
   getCoverMaxMovement,
 } from '@/lib/coverPosition';
+import { mediaAppUrl } from '@/lib/mediaUrl';
 
 interface CoverPhotoEditorProps {
   profile: {
@@ -256,6 +257,10 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
         style={coverStyle}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (profile.cover_pic) window.location.href = mediaAppUrl(profile.cover_pic);
+        }}
       >
         {/* Hover Overlay */}
         {isOwnProfile && (
@@ -267,7 +272,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
             {profile.cover_pic ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="secondary" disabled={uploading}>
+                  <Button variant="secondary" disabled={uploading} onClick={(e) => e.stopPropagation()}>
                     <Camera className="h-4 w-4 mr-2" />
                     {uploading ? 'Uploading...' : 'Edit Cover'}
                   </Button>
