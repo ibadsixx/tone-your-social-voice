@@ -22,6 +22,7 @@ interface ProfileTabsProps {
   profileId: string;
   isOwnProfile: boolean;
   coverPic?: string | null;
+  profilePic?: string | null;
   activeFilter?: ProfileSectionFilter;
   onFilterChange?: (filter: ProfileSectionFilter) => void;
   // The selected top-level tab is controlled by the URL (posts/scheduled/
@@ -48,6 +49,7 @@ const ProfileTabs = ({
   profileId,
   isOwnProfile,
   coverPic,
+  profilePic,
   activeFilter,
   onFilterChange,
   activeTab: controlledTab,
@@ -98,6 +100,7 @@ const ProfileTabs = ({
             <FilteredPostsLayout
               profileId={profileId}
               coverPic={coverPic}
+              profilePic={profilePic}
               activeFilter={activeFilter}
               onFilterChange={onFilterChange}
             />
@@ -152,6 +155,7 @@ const ProfileTabs = ({
         <FilteredPostsLayout
           profileId={profileId}
           coverPic={coverPic}
+          profilePic={profilePic}
           activeFilter={activeFilter}
           onFilterChange={onFilterChange}
         />

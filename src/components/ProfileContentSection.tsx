@@ -30,6 +30,7 @@ interface ProfileContentSectionProps {
   enabled: boolean;
   active: boolean;
   coverPic?: string | null;
+  profilePic?: string | null;
   /**
    * Pluggable paged reader. Defaults to the personal-profile content endpoint;
    * a Page supplies an adapter so the same section renders a page feed.
@@ -57,6 +58,7 @@ export function ProfileContentSection({
   enabled,
   active,
   coverPic,
+  profilePic,
   fetcher,
   postPage,
 }: ProfileContentSectionProps) {
@@ -91,7 +93,7 @@ export function ProfileContentSection({
     <div className="flex-1" data-testid={`profile-section-body-${variant}`}>
       {variant === 'photos' ? (
         <>
-          <ProfilePhotosGrid posts={items} loading={showSkeleton} coverPic={coverPic} />
+          <ProfilePhotosGrid posts={items} loading={showSkeleton} coverPic={coverPic} profilePic={profilePic} />
           <SectionFooter
             sentinelRef={sentinelRef}
             hasItems={items.length > 0}

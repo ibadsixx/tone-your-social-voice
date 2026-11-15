@@ -93,31 +93,47 @@ export function countPhotos(albums: PhotoAlbum[]): number {
 }
 
 export const PROFILE_COVER_ALBUM_ID = 'profile-cover';
+export const PROFILE_AVATAR_ALBUM_ID = 'profile-avatar';
 
-// Builds the Photos gallery including the profile's current cover photo. The
-// cover comes from `profiles.cover_pic` (the same value the header renders), so
-// it shows up even when no automatic "changed their cover photo" post exists.
-// It is skipped when the exact image already appears as one of the posts,
-// which keeps a cover-photo post from producing a duplicate tile.
+// Builds the Photos gallery including the profile's current cover photo and
+// avatar. The cover comes from `profiles.cover_pic`; the avatar comes from
+// `profiles.profile_pic`. Both use the same value the header renders, so they
+// show up even when no automatic "changed their cover photo" post exists.
+// Each is skipped when the exact image already appears as one of the posts,
+// which keeps a cover/avatar photo post from producing a duplicate tile.
 export function buildProfilePhotos(
   posts: PhotoSourcePost[] | null | undefined,
-  coverPic?: string | null
+  coverPic?: string | null,
+  profilePic?: string | null
 ): PhotoAlbum[] {
   const albums = extractPhotoAlbums(posts);
   const cover = coverPic?.trim();
-  if (!cover) return albums;
+  if (cover) {
+    const alreadyPresent = albums.some((album) =>
+      album.images.some((image) => image.url.trim() === cover)
+    );
+    if (!alreadyPresent) {
+      albums.unshift({
+        id: PROFILE_COVER_ALBUM_ID,
+        createdAt: null,
+        images: [{ url: cover, postId: PROFILE_COVER_ALBUM_ID, createdAt: null }],
+      });
+    }
+  }
 
-  const alreadyPresent = albums.some((album) =>
-    album.images.some((image) => image.url.trim() === cover)
-  );
-  if (alreadyPresent) return albums;
+  const avatar = profilePic?.trim();
+  if (avatar) {
+    const alreadyPresent = albums.some((album) =>
+      album.images.some((image) => image.url.trim() === avatar)
+    );
+    if (!alreadyPresent) {
+      albums.unshift({
+        id: PROFILE_AVATAR_ALBUM_ID,
+        createdAt: null,
+        images: [{ url: avatar, postId: PROFILE_AVATAR_ALBUM_ID, createdAt: null }],
+      });
+    }
+  }
 
-  return [
-    {
-      id: PROFILE_COVER_ALBUM_ID,
-      createdAt: null,
-      images: [{ url: cover, postId: PROFILE_COVER_ALBUM_ID, createdAt: null }],
-    },
-    ...albums,
-  ];
+  return albums;
 }

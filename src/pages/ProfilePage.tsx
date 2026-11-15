@@ -192,6 +192,7 @@ const ProfilePage = () => {
         profileId={profile.id}
         isOwnProfile={isOwnProfile}
         coverPic={profile.cover_pic}
+        profilePic={profile.profile_pic}
         activeFilter={activeFilter}
         onFilterChange={handleFilterChange}
         activeTab={activeTab}

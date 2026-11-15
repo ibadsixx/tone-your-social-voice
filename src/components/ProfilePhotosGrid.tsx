@@ -10,6 +10,7 @@ interface ProfilePhotosGridProps {
   posts: PhotoSourcePost[];
   loading?: boolean;
   coverPic?: string | null;
+  profilePic?: string | null;
 }
 
 const SKELETON_COUNT = 9;
@@ -23,8 +24,8 @@ interface ViewerState {
 // Profile Photos section: shows only the profile's photos in a grid (never full
 // post cards). A post that holds several images is shown as a single album tile
 // with a count badge; opening it lets the visitor page through the set.
-export function ProfilePhotosGrid({ posts, loading, coverPic }: ProfilePhotosGridProps) {
-  const albums = useMemo(() => buildProfilePhotos(posts, coverPic), [posts, coverPic]);
+export function ProfilePhotosGrid({ posts, loading, coverPic, profilePic }: ProfilePhotosGridProps) {
+  const albums = useMemo(() => buildProfilePhotos(posts, coverPic, profilePic), [posts, coverPic, profilePic]);
   const [viewer, setViewer] = useState<ViewerState | null>(null);
 
   const activeAlbum = viewer ? albums.find((album) => album.id === viewer.albumId) ?? null : null;

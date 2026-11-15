@@ -1739,6 +1739,7 @@ const PageDetail = () => {
         profileId={page.id}
         isOwnProfile={isPageAdmin}
         coverPic={page.cover_image}
+        profilePic={page.profile_pic ?? null}
         profileKind="page"
         activeTab={activeTab}
         onTabChange={handleTabChange}
@@ -1749,6 +1750,7 @@ const PageDetail = () => {
               key={postsVersion}
               profileId={page.id}
               coverPic={page.cover_image}
+              profilePic={page.profile_pic ?? null}
               fetcher={pageContentFetcher}
               postPage={{ id: page.id, name: page.name, cover_image: page.cover_image, profile_pic: page.profile_pic ?? null }}
             />

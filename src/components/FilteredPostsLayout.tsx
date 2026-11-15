@@ -8,6 +8,7 @@ import type { ProfileContentFetcher, ProfileContentKind } from '@/api/profileCon
 interface FilteredPostsLayoutProps {
   profileId: string;
   coverPic?: string | null;
+  profilePic?: string | null;
   // When provided, the profile section is controlled by the URL (the parent
   // derives it from the route) and clicks are reported back to the parent so it
   // can navigate. Without these props the component falls back to local state,
@@ -31,6 +32,7 @@ const FILTER_KIND: Record<ProfileSectionFilter, ProfileContentKind> = {
 const FilteredPostsLayout = ({
   profileId,
   coverPic,
+  profilePic,
   activeFilter: controlledFilter,
   onFilterChange,
   fetcher,
@@ -121,6 +123,7 @@ const FilteredPostsLayout = ({
           active={activeFilter === filter.id}
           enabled={activeFilter === filter.id}
           coverPic={coverPic}
+          profilePic={profilePic}
           fetcher={fetcher}
           postPage={postPage}
         />
