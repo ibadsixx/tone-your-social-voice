@@ -20,7 +20,7 @@ import { useProfileReports } from '@/hooks/useProfileReports';
 import { useHasActiveStories } from '@/hooks/useHasActiveStories';
 import BlockButton from './BlockButton';
 import { MessageButton } from './MessageButton';
-import PhotoViewer from './PhotoViewer';
+import { mediaAppUrl } from '@/lib/mediaUrl';
 
 interface Profile {
   id: string;
@@ -87,7 +87,6 @@ const ProfileHeader = ({
   const { hasReported, refreshReportStatus } = useProfileReports(isOwnProfile ? undefined : profile.id);
   const hasActiveStories = useHasActiveStories(profile.id);
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
-  const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
 
   // Filter other names that should show at top
   const topOtherNames = otherNames.filter(name => name.show_at_top);
@@ -248,32 +247,35 @@ const ProfileHeader = ({
                 keeps its overlap with the cover while the name block beside it
                 starts under the cover's bottom edge instead of on top of it. */}
             <div className="relative flex-shrink-0 -mt-16 md:-mt-20">
-              {/* Avatar click opens the photo viewer (not the upload dialog). */}
-              <div
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (profile.profile_pic) setPhotoViewerOpen(true);
-                }}
-                className="cursor-pointer"
-              >
-                {!isPage && hasActiveStories ? (
-                  <div className="inline-flex p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 overflow-hidden">
-                    <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background ring-0">
+              {/* Avatar click opens the same post image viewer (/media/:id → MediaViewer).
+                  Wrapping in Link reuses the exact viewer component post images use. */}
+              {profile.profile_pic ? (
+                <Link to={mediaAppUrl(profile.profile_pic)}>
+                  {!isPage && hasActiveStories ? (
+                    <div className="inline-flex p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 overflow-hidden">
+                      <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background ring-0">
+                        <AvatarImage src={profile.profile_pic || ''} />
+                        <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
+                          {profile.display_name.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                  ) : (
+                    <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background shadow-lg">
                       <AvatarImage src={profile.profile_pic || ''} />
                       <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
                         {profile.display_name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                  </div>
-                ) : (
-                  <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background shadow-lg">
-                    <AvatarImage src={profile.profile_pic || ''} />
-                    <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
-                      {profile.display_name.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                )}
-              </div>
+                  )}
+                </Link>
+              ) : (
+                <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background shadow-lg">
+                  <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
+                    {profile.display_name.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              )}
               {isOwnProfile && (
                 avatarEditor !== undefined ? (
                   avatarEditor
@@ -304,14 +306,6 @@ const ProfileHeader = ({
                   </div>
                 )
               )}
-
-              {/* Photo viewer — opens when clicking the avatar. */}
-              <PhotoViewer
-                open={photoViewerOpen}
-                onOpenChange={setPhotoViewerOpen}
-                src={profile.profile_pic || ''}
-                alt={`Profile photo of ${profile.display_name}`}
-              />
             </div>
 
             {/* Name and profile information */}
