@@ -1,6 +1,4 @@
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
-import { X } from 'lucide-react';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 interface PhotoViewerProps {
   open: boolean;
@@ -18,18 +16,17 @@ const PhotoViewer = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 bg-background max-w-full w-full">
-        <DialogClose className="absolute right-4 top-4 z-20 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-          <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
-        </DialogClose>
+        {/* DialogContent already renders a built-in close (X) button at top-right
+            and handles Escape key + overlay click to close. */}
 
         {/* Image viewer — contained so the image is never stretched or cropped.
             Clicking the image itself does not close the viewer (stopPropagation). */}
         <div
           className="flex items-center justify-center min-h-[40vh] bg-black/90 p-6"
           onClick={(e) => {
-            // Clicking outside the image (on the backdrop) closes the viewer.
-            // Clicking inside the image container is handled below.
+            // Clicking outside the image (on the dark backdrop inside the
+            // viewer) closes the viewer. Clicks on the image are stopped
+            // below so they don't propagate to this handler.
             if ((e.target as HTMLElement).tagName === 'IMG') return;
             onOpenChange(false);
           }}
