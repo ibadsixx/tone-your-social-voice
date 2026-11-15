@@ -249,31 +249,39 @@ const ProfileHeader = ({
             <div className="relative flex-shrink-0 -mt-16 md:-mt-20">
               {/* Avatar click opens the same post image viewer (/media/:id → MediaViewer).
                   Uses programmatic navigation via mediaAppUrl, same as post images. */}
-              <div
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (profile.profile_pic) window.location.href = mediaAppUrl(profile.profile_pic);
-                }}
-                className="cursor-pointer"
-              >
-                {!isPage && hasActiveStories ? (
-                  <div className="inline-flex p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 overflow-hidden">
-                    <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background ring-0">
-                      <AvatarImage src={profile.profile_pic || ''} />
+              {profile.profile_pic ? (
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.location.href = mediaAppUrl(profile.profile_pic);
+                  }}
+                  className="cursor-pointer"
+                >
+                  {!isPage && hasActiveStories ? (
+                    <div className="inline-flex p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 overflow-hidden">
+                      <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background ring-0">
+                        <AvatarImage src={profile.profile_pic} />
+                        <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
+                          {profile.display_name.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                  ) : (
+                    <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background shadow-lg">
+                      <AvatarImage src={profile.profile_pic} />
                       <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
                         {profile.display_name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                  </div>
-                ) : (
-                  <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background shadow-lg">
-                    <AvatarImage src={profile.profile_pic || ''} />
-                    <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
-                      {profile.display_name.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                )}
-              </div>
+                  )}
+                </div>
+              ) : (
+                <Avatar className="h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 border-4 border-background shadow-lg">
+                  <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl bg-muted">
+                    {profile.display_name.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              )}
               {isOwnProfile && (
                 avatarEditor !== undefined ? (
                   avatarEditor
