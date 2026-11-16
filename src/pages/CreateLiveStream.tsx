@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { ArrowLeft, Mic, Video, MicOff, VideoOff, Record, Globe, Users, Lock } from 'lucide-react';
+import { ArrowLeft, Mic, Video, MicOff, VideoOff, Globe, Users, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveStream } from '@/contexts/LiveStreamContext';
 import { AudienceSummary, AudienceSelector, type AudienceSelection } from '@/components/AudienceSelector';
 
 type StreamType = 'video' | 'audio';
 
-const streamTypeOptions = [
+const streamTypeOptions: { value: StreamType; label: string; icon: React.ElementType }[] = [
   { value: 'video', label: 'Video & Audio', icon: Video },
   { value: 'audio', label: 'Audio Only', icon: Mic },
 ];
@@ -26,17 +26,19 @@ const CreateLiveStream = () => {
 
     setIsCreating(true);
     try {
-      await startStream({
+      const createdStream = await startStream({
         title: title.trim(),
         description: description.trim() || undefined,
         stream_type: streamType,
         audience_type: audience.type,
-        audience_user_ids: audience.audience_user_ids,
-        audience_excluded_user_ids: audience.audience_excluded_user_ids,
-        audience_list_id: audience.audience_list_id,
+        audience_user_ids: audience.userIds,
+        audience_excluded_user_ids: audience.excludedUserIds,
+        audience_list_id: audience.listId,
         recording: false,
-      });
-      navigate(`/live/${/* stream id will be set by context */ ''}`, { replace: true });
+      } as any);
+      if (createdStream) {
+        navigate(`/live/${createdStream.id}`, { replace: true });
+      }
     } catch {
       // Error already toasted by context
     } finally {
@@ -104,7 +106,7 @@ const CreateLiveStream = () => {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-input bg-background focus:ring-2 focus:ring-primary outline-none"
-              maxLength="200"
+              maxLength={200}
             />
           </div>
 
@@ -117,7 +119,7 @@ const CreateLiveStream = () => {
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-input bg-background focus:ring-2 focus:ring-primary outline-none"
               rows={3}
-              maxLength="500"
+              maxLength={500}
             />
           </div>
 

@@ -1,18 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { X, Mic, Video, MicOff, VideoOff, Users, Globe, Users as UsersIcon, Lock, StopCircle } from 'lucide-react';
+import { X, Mic, Video, MicOff, VideoOff, Users, Globe, Lock, StopCircle, Phone, Link } from 'lucide-react';
 import { useLiveStream } from '@/contexts/LiveStreamContext';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { gateway } from '@/lib/gateway';
+import { webrtcService } from '@/services/webrtc';
+
+const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
 
 const LiveStream = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { toast } = useToast();
+
   const {
     stream,
     participants,
     isHost,
     isConnected,
     localStream,
+    remoteStream,
     isMuted,
     isVideoOff,
     viewerCount,
@@ -22,20 +30,215 @@ const LiveStream = () => {
     toggleMute,
     toggleVideo,
     leaveStream,
-    addParticipant,
-    removeParticipant,
-    updateParticipantRole,
+    initMedia,
+    createOffer,
+    handleOffer,
+    handleAnswer,
+    addIceCandidate,
   } = useLiveStream();
 
+  const [signalingConnected, setSignalingConnected] = useState(false);
+  const [isNegotiating, setIsNegotiating] = useState(false);
+  const esRef = useRef<EventSource | null>(null);
+  const [myUserId, setMyUserId] = useState<string | null>(null);
+
   useEffect(() => {
-    if (id) {
-      // Join the stream - the joinStream method handles both host and viewer joining
+    // Get current user id from session
+    try {
+      const sessionStr = localStorage.getItem('tone-auth-token');
+      if (sessionStr) {
+        const session = JSON.parse(sessionStr);
+        setMyUserId(session?.user?.id ?? null);
+      }
+    } catch {
+      setMyUserId(null);
     }
-    return () => {
-      // Leave when unmounting
-      leaveStream();
+  }, []);
+
+  // Initialize media and WebRTC when joining a stream
+  useEffect(() => {
+    if (!id || !stream || !isConnected) return;
+
+    const initStream = async () => {
+      try {
+        if (isHost) {
+          // Host: initialize local media and create offer
+          await initMedia(stream.stream_type);
+          const offerSdp = await createOffer();
+          setIsNegotiating(true);
+
+          // Publish offer via signaling
+          await publishSignalingOffer(offerSdp);
+        } else {
+          // Viewer: initialize media (audio only for viewers, or video if they want to publish)
+          // Viewers receive media; they only publish if they're a guest with video
+          await initMedia('audio');
+        }
+      } catch (err) {
+        console.error('[LiveStream] Failed to initialize media:', err);
+        toast({ title: 'Error', description: 'Failed to initialize media', variant: 'destructive' });
+      }
     };
-  }, [id, leaveStream]);
+
+    initStream();
+
+    // Connect to the Gateway's live signaling SSE endpoint
+    if (myUserId) {
+      const token = localStorage.getItem('tone-auth-token');
+      const accessToken = token ? JSON.parse(token).access_token : null;
+      const url = `${GATEWAY_URL}/api/live/sessions/${id}/signaling`;
+
+      const signalingUrl = accessToken
+        ? `${url}?access_token=${encodeURIComponent(accessToken)}`
+        : url;
+      const es = new EventSource(signalingUrl, {
+        withCredentials: true,
+      });
+
+      esRef.current = es;
+
+      es.onopen = () => {
+        setSignalingConnected(true);
+        console.log('[LiveStream] Signaling connected');
+      };
+
+      es.onmessage = async (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.type === 'init') {
+            // SSE connection initialized
+            return;
+          }
+
+          if (data.type === 'participant-joined') {
+            // New participant joined
+            if (data.fromUserId !== myUserId) {
+              // If we're the host, create an offer for the new participant
+              if (isHost && localStream) {
+                const offerSdp = await createOffer();
+                setIsNegotiating(true);
+                await publishSignalingOffer(offerSdp, data.fromUserId);
+              }
+            }
+            return;
+          }
+
+          if (data.type === 'session-ended') {
+            leaveStream();
+            navigate('/');
+            return;
+          }
+
+          // Handle WebRTC signaling messages directed at us
+          if (data.toUserId && data.toUserId !== myUserId) return;
+
+          if (data.type === 'offer' && data.sdp) {
+            // Remote peer sent us an offer - create and send answer
+            const answerSdp = await handleOffer(data.sdp, data.fromUserId);
+            await publishSignalingAnswer(answerSdp, data.fromUserId);
+            return;
+          }
+
+          if (data.type === 'answer' && data.sdp) {
+            // Remote peer sent us an answer
+            await handleAnswer(data.sdp);
+            setIsNegotiating(false);
+            return;
+          }
+
+          if (data.type === 'ice-candidate' && data.candidate) {
+            await addIceCandidate(data.candidate);
+            return;
+          }
+
+          if (data.type === 'participant-left') {
+            // Participant left
+            return;
+          }
+        } catch (err) {
+          console.error('[LiveStream] Signaling message error:', err);
+        }
+      };
+
+      es.onerror = () => {
+        setSignalingConnected(false);
+        es.close();
+        esRef.current = null;
+      };
+    }
+
+    return () => {
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
+    };
+  }, [id, stream, isConnected, isHost, localStream, myUserId, leaveStream, navigate,
+      initMedia, createOffer, handleOffer, handleAnswer, addIceCandidate, toast]);
+
+  const getToken = useCallback((): string | null => {
+    try {
+      const sessionStr = localStorage.getItem('tone-auth-token');
+      if (sessionStr) {
+        const session = JSON.parse(sessionStr);
+        return session?.access_token ?? null;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }, []);
+
+  const publishSignalingOffer = useCallback(
+    async (sdp: string, toUserId?: string) => {
+      const token = getToken();
+      if (!token) return;
+
+      try {
+        await fetch(`${GATEWAY_URL}/api/live/sessions/${id}/signaling`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            type: 'offer',
+            toUserId,
+            sdp,
+          }),
+        });
+      } catch (err) {
+        console.error('[LiveStream] Failed to publish offer:', err);
+      }
+    },
+    [id, getToken]
+  );
+
+  const publishSignalingAnswer = useCallback(
+    async (sdp: string, toUserId: string) => {
+      const token = getToken();
+      if (!token) return;
+
+      try {
+        await fetch(`${GATEWAY_URL}/api/live/sessions/${id}/signaling`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            type: 'answer',
+            toUserId,
+            sdp,
+          }),
+        });
+      } catch (err) {
+        console.error('[LiveStream] Failed to publish answer:', err);
+      }
+    },
+    [id, getToken]
+  );
 
   if (error) {
     return (
@@ -63,7 +266,8 @@ const LiveStream = () => {
   }
 
   const isAudioOnly = stream.stream_type === 'audio';
-  const streamUrl = `https://live.tone.app/stream/${stream.id}`; // Placeholder - actual URL depends on provider
+  const hasRemoteStream = remoteStream !== null;
+  const hasLocalStream = localStream !== null;
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
@@ -117,18 +321,57 @@ const LiveStream = () => {
               <div className="text-center">
                 <h2 className="text-xl font-medium">{stream.title || 'Live Audio Stream'}</h2>
                 <p className="text-white/70 mt-2">Audio-only stream</p>
+                <div className="mt-4">
+                  {hasRemoteStream && remoteStream && (
+                    <audio
+                      autoPlay
+                      playsInline
+                      ref={(el) => {
+                        if (el) (el as HTMLAudioElement).srcObject = remoteStream;
+                      }}
+                      className="hidden"
+                    />
+                  )}
+                </div>
               </div>
             </div>
           ) : (
             <>
-              {/* Placeholder video - actual media depends on provider */}
-              <div className="w-full h-full flex items-center justify-center text-white/50">
-                <Video className="w-16 h-16 mb-4" />
-                <div className="text-center">
-                  <h2 className="text-xl font-medium">Live Stream</h2>
-                  <p className="text-white/70 mt-2">Streaming media will appear here once provider is integrated</p>
+              {/* Remote video (main display) */}
+              {hasRemoteStream && remoteStream ? (
+                <video
+                  autoPlay
+                  playsInline
+                  ref={(el) => {
+                    if (el) (el as HTMLVideoElement).srcObject = remoteStream;
+                  }}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white/50">
+                  <Video className="w-16 h-16 mb-4" />
+                  <div className="text-center">
+                    <h2 className="text-xl font-medium">Live Stream</h2>
+                    <p className="text-white/70 mt-2">
+                      {isNegotiating ? 'Establishing media connection...' : 'Waiting for stream...'}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Local video (picture-in-picture for host/guests) */}
+              {!isAudioOnly && hasLocalStream && localStream && (
+                <video
+                  autoPlay
+                  playsInline
+                  muted
+                  ref={(el) => {
+                    if (el) (el as HTMLVideoElement).srcObject = localStream;
+                  }}
+                  className="absolute bottom-4 right-4 w-48 h-64 object-cover border border-white/20 rounded-lg shadow-lg"
+                />
+              )}
+
               <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur px-3 py-1 rounded-full text-xs text-white/90 border border-white/20">
                 LIVE
               </div>
@@ -140,7 +383,7 @@ const LiveStream = () => {
       {/* Controls */}
       <footer className="h-20 bg-black/80 backdrop-blur flex items-center justify-between px-6 z-20 border-t border-white/10">
         <div className="flex items-center gap-4">
-          {stream.stream_type !== 'audio' ? (
+          {!isAudioOnly ? (
             <button
               onClick={toggleVideo}
               className={`p-3 rounded-full transition-colors ${isVideoOff ? 'text-white/40' : 'text-white'}`}
@@ -158,7 +401,7 @@ const LiveStream = () => {
 
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs text-white/90">
-            <UsersIcon className="w-3 h-3 mr-1" />
+            <Users className="w-3 h-3 mr-1" />
             {viewerCount} watching
           </div>
 

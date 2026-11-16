@@ -1,19 +1,14 @@
-// Provider-independent live stream context.
+// Tone Live — WebRTC media transport integrated into the existing Tone app.
 //
-// Manages live stream state without depending on any specific streaming
-// provider (LiveKit, Agora, self-hosted, etc.). The actual media transport
-// (WebRTC, RTMP, HLS, etc.) is intentionally NOT implemented here - the
-// provider comparison in do1.md §2 must complete first.
-//
-// What this layer provides:
+// Implements the live session media transport behind the same state model:
 //   - Stream session lifecycle: start, end, toggle recording
 //   - Stream metadata: title, type (video/audio), audience, status
 //   - Participant roles: host, moderator, guest, viewer
-//   - Real-time signaling via the existing SSE hub (/api/realtime)
+//   - WebRTC peer connection + media track publication/subscription
+//   - Signaling via the Gateway's /api/live/sessions/:id/signaling SSE endpoint
 //   - Integration with the existing audience/privacy system
 //
-// The streaming provider (LiveKit/Agora/etc.) is integrated later by
-// implementing the media transport behind this same state model.
+// No LiveKit, Agora, or mediasoup — Tone's own custom streaming engine.
 
 import {
   createContext,
@@ -25,6 +20,7 @@ import {
 } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { webrtcService } from '@/services/webrtc';
 import {
   createLiveStream,
   getLiveStream,
@@ -35,38 +31,45 @@ import {
   addStreamParticipant,
   updateStreamParticipant,
   removeStreamParticipant,
-  type LiveStream,
-  type LiveStreamParticipant,
-  type CreateLiveStreamData,
+  type LiveSession,
+  type LiveParticipant,
+  type CreateSessionData,
 } from '@/api/liveStreams';
 
 export type StreamRole = 'host' | 'moderator' | 'guest' | 'viewer';
 export type StreamType = 'video' | 'audio';
 
 export interface LiveStreamState {
-  stream: LiveStream | null;
-  participants: LiveStreamParticipant[];
+  stream: LiveSession | null;
+  participants: LiveParticipant[];
   isHost: boolean;
   isConnected: boolean;
   localStream: MediaStream | null;
+  remoteStream: MediaStream | null;
   isMuted: boolean;
   isVideoOff: boolean;
   viewerCount: number;
   error: string | null;
+  connectionState: RTCPeerConnectionState | null;
 }
 
 export interface LiveStreamContextType extends LiveStreamState {
-  startStream: (data: CreateLiveStreamData) => Promise<void>;
+  startStream: (data: CreateSessionData) => Promise<LiveSession | null>;
   endStream: () => Promise<void>;
   toggleRecording: () => Promise<void>;
   toggleMute: () => void;
   toggleVideo: () => void;
+  initMedia: (streamType: StreamType) => Promise<MediaStream>;
   joinStream: (streamId: string) => Promise<void>;
   leaveStream: () => Promise<void>;
   addParticipant: (userId: string, role: 'moderator' | 'guest' | 'viewer') => Promise<void>;
   removeParticipant: (userId: string) => Promise<void>;
   updateParticipantRole: (userId: string, role: StreamRole) => Promise<void>;
-  getActiveStreams: () => Promise<void>;
+  getActiveStreams: () => Promise<LiveSession[]>;
+  createOffer: () => Promise<string>;
+  handleOffer: (sdp: string, fromUserId: string) => Promise<string>;
+  handleAnswer: (sdp: string) => Promise<void>;
+  addIceCandidate: (candidate: any) => Promise<void>;
 }
 
 const LiveStreamContext = createContext<LiveStreamContextType | undefined>(undefined);
@@ -85,15 +88,38 @@ export const LiveStreamProvider = ({
     isHost: false,
     isConnected: false,
     localStream: null,
+    remoteStream: null,
     isMuted: false,
     isVideoOff: false,
     viewerCount: 0,
     error: null,
+    connectionState: null,
   });
 
-  const streamRef = useRef<LiveStream | null>(null);
+  const streamRef = useRef<LiveSession | null>(null);
   const signalingRef = useRef<EventSource | null>(null);
-  const viewerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const webrtcInitializedRef = useRef<boolean>(false);
+
+  // Set up WebRTC callbacks once
+  useEffect(() => {
+    webrtcService.setOnRemoteStream((stream) => {
+      setState((prev) => ({ ...prev, remoteStream: stream }));
+    });
+
+    webrtcService.setOnIceCandidate(async (candidate) => {
+      // ICE candidates are sent via the signaling channel by the caller
+    });
+
+    webrtcService.setOnConnectionStateChange((state) => {
+      setState((prev) => ({ ...prev, connectionState: state }));
+    });
+
+    return () => {
+      webrtcService.setOnRemoteStream(null);
+      webrtcService.setOnIceCandidate(null);
+      webrtcService.setOnConnectionStateChange(null);
+    };
+  }, []);
 
   // Get active live streams
   const getActiveStreams = useCallback(async () => {
@@ -110,25 +136,47 @@ export const LiveStreamProvider = ({
     }
   }, [toast]);
 
+  // Initialize local media (camera/microphone)
+  const initMedia = useCallback(async (streamType: StreamType): Promise<MediaStream> => {
+    if (webrtcInitializedRef.current) {
+      return state.localStream!;
+    }
+
+    const stream = await webrtcService.getLocalStream(streamType === 'video' ? 'video' : 'voice');
+
+    setState((prev) => ({
+      ...prev,
+      localStream: stream,
+      isMuted: streamType === 'audio',
+      isVideoOff: streamType === 'audio',
+    }));
+
+    webrtcInitializedRef.current = true;
+    return stream;
+  }, [state.localStream]);
+
   // Start a new live stream
   const startStream = useCallback(
-    async (data: CreateLiveStreamData) => {
+    async (data: CreateSessionData) => {
       if (!user) throw new Error('Authentication required');
 
       try {
         setState((prev) => ({ ...prev, error: null }));
 
+        // Initialize local media first
+        await initMedia(data.stream_type);
+
         const { data: stream, error } = await createLiveStream({
           ...data,
           host_id: user.id,
-          status: 'live',
+          status: 'live' as any,
           started_at: new Date().toISOString(),
           viewer_count: 0,
-        });
+        } as unknown as CreateSessionData);
 
         if (error) throw error;
 
-        const newStream: LiveStream = stream;
+        const newStream: LiveSession = stream;
         streamRef.current = newStream;
 
         setState((prev) => ({
@@ -140,7 +188,7 @@ export const LiveStreamProvider = ({
           participants: [
             {
               id: `${newStream.id}-${user.id}`,
-              stream_id: newStream.id,
+              session_id: newStream.id,
               user_id: user.id,
               role: 'host',
               joined_at: new Date().toISOString(),
@@ -151,13 +199,12 @@ export const LiveStreamProvider = ({
           ],
         }));
 
-        // Start SSE signaling for this stream
-        setupStreamSignaling(newStream.id);
-
         toast({
           title: 'Live stream started',
           description: `Your ${data.stream_type} stream is now live`,
         });
+
+        return newStream;
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to start stream';
         setState((prev) => ({ ...prev, error: message }));
@@ -165,7 +212,7 @@ export const LiveStreamProvider = ({
         throw err;
       }
     },
-    [user, toast]
+    [user, toast, initMedia]
   );
 
   // End the current stream
@@ -173,8 +220,14 @@ export const LiveStreamProvider = ({
     if (!streamRef.current) return;
 
     try {
-      // Stop SSE signaling
-      teardownStreamSignaling();
+      // Stop WebRTC
+      webrtcService.cleanup();
+      webrtcInitializedRef.current = false;
+
+      if (signalingRef.current) {
+        signalingRef.current.close();
+        signalingRef.current = null;
+      }
 
       // Update stream status to ended
       await endLiveStream(streamRef.current.id);
@@ -187,8 +240,10 @@ export const LiveStreamProvider = ({
         isHost: false,
         isConnected: false,
         localStream: null,
+        remoteStream: null,
         participants: [],
         viewerCount: 0,
+        connectionState: null,
       }));
 
       // Stop local media
@@ -255,8 +310,44 @@ export const LiveStreamProvider = ({
     });
   }, []);
 
+  // Create a WebRTC offer (host initiates)
+  const createOffer = useCallback(async (): Promise<string> => {
+    if (!webrtcInitializedRef.current || !state.localStream) {
+      throw new Error('Local media not initialized');
+    }
+
+    const offer = await webrtcService.createOffer();
+    return offer.sdp!;
+  }, [state.localStream]);
+
+  // Handle an incoming WebRTC offer: set remote description and create answer
+  const handleOffer = useCallback(async (sdp: string, fromUserId: string) => {
+    await webrtcService.setRemoteDescription({
+      type: 'offer',
+      sdp,
+    } as RTCSessionDescriptionInit);
+
+    const answer = await webrtcService.createAnswer();
+    return answer.sdp!;
+  }, []);
+
+  // Handle an incoming WebRTC answer
+  const handleAnswer = useCallback(async (sdp: string) => {
+    await webrtcService.setRemoteDescription({
+      type: 'answer',
+      sdp,
+    } as RTCSessionDescriptionInit);
+  }, []);
+
+  // Add an ICE candidate
+  const addIceCandidate = useCallback(async (candidate: any) => {
+    await webrtcService.addIceCandidate(candidate);
+  }, []);
+
   // Join an existing stream as a viewer/guest
   const joinStream = useCallback(async (streamId: string) => {
+    if (!user) throw new Error('Authentication required');
+
     try {
       setState((prev) => ({ ...prev, error: null }));
 
@@ -273,9 +364,11 @@ export const LiveStreamProvider = ({
         viewerCount: (stream.viewer_count || 0) + 1,
       }));
 
-      // Join as viewer (or host if owner)
-      const role = stream.host_id === user?.id ? 'host' : 'viewer';
-      await addStreamParticipant(streamId, user!.id, role);
+      // Join as viewer (or host if owner). Hosts are already added as a
+      // participant when the stream is created; viewers join via the API.
+      if (stream.host_id !== user?.id) {
+        await addStreamParticipant(streamId, user!.id, 'viewer');
+      }
 
       setState((prev) => ({
         ...prev,
@@ -283,9 +376,9 @@ export const LiveStreamProvider = ({
           ...prev.participants,
           {
             id: `${streamId}-${user!.id}`,
-            stream_id: streamId,
+            session_id: streamId,
             user_id: user!.id,
-            role,
+            role: stream.host_id === user?.id ? 'host' : 'viewer',
             joined_at: new Date().toISOString(),
             left_at: null,
             is_muted: true,
@@ -293,9 +386,6 @@ export const LiveStreamProvider = ({
           },
         ],
       }));
-
-      // Start SSE signaling
-      setupStreamSignaling(streamId);
 
       toast({ title: 'Joined stream', description: 'You are now watching the live stream' });
     } catch (err) {
@@ -310,7 +400,13 @@ export const LiveStreamProvider = ({
     if (!streamRef.current) return;
 
     try {
-      teardownStreamSignaling();
+      webrtcService.cleanup();
+      webrtcInitializedRef.current = false;
+
+      if (signalingRef.current) {
+        signalingRef.current.close();
+        signalingRef.current = null;
+      }
 
       if (state.isHost) {
         await endLiveStream(streamRef.current.id);
@@ -324,8 +420,10 @@ export const LiveStreamProvider = ({
         isHost: false,
         isConnected: false,
         localStream: null,
+        remoteStream: null,
         participants: [],
         viewerCount: 0,
+        connectionState: null,
       }));
 
       toast({ title: 'Left stream', description: 'You have left the live stream' });
@@ -350,7 +448,7 @@ export const LiveStreamProvider = ({
             ...prev.participants.filter((p) => p.user_id !== userId),
             {
               id: `${streamRef.current!.id}-${userId}`,
-              stream_id: streamRef.current.id,
+              session_id: streamRef.current.id,
               user_id: userId,
               role,
               joined_at: new Date().toISOString(),
@@ -416,85 +514,6 @@ export const LiveStreamProvider = ({
     [streamRef.current, state.isHost, toast]
   );
 
-  // SSE signaling for stream events
-  const setupStreamSignaling = useCallback((streamId: string) => {
-    if (!user) return;
-
-    const channel = `calls:${user.id}`;
-    const es = new EventSource(
-      `${import.meta.env.VITE_API_GATEWAY_URL}/api/realtime/subscribe/${channel}`,
-      { withCredentials: true }
-    );
-
-    es.onopen = () => {
-      signalingRef.current = es;
-    };
-
-    es.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.stream_id !== streamId) return;
-
-        switch (data.event) {
-          case 'stream_ended':
-            setState((prev) => ({
-              ...prev,
-              stream: prev.stream
-                ? { ...prev.stream, status: 'ended', ended_at: data.ended_at }
-                : null,
-              isConnected: false,
-            }));
-            break;
-          case 'viewer_joined':
-            setState((prev) => ({
-              ...prev,
-              viewerCount: prev.viewerCount + 1,
-            }));
-            break;
-          case 'viewer_left':
-            setState((prev) => ({
-              ...prev,
-              viewerCount: Math.max(0, prev.viewerCount - 1),
-            }));
-            break;
-          case 'recording_toggled':
-            setState((prev) => ({
-              ...prev,
-              stream: prev.stream
-                ? { ...prev.stream, recording: data.recording }
-                : null,
-            }));
-            break;
-        }
-      } catch {
-        // Ignore malformed messages
-      }
-    };
-
-    es.onerror = () => {
-      es.close();
-      signalingRef.current = null;
-    };
-  }, [user]);
-
-  const teardownStreamSignaling = useCallback(() => {
-    if (signalingRef.current) {
-      signalingRef.current.close();
-      signalingRef.current = null;
-    }
-    if (viewerIntervalRef.current) {
-      clearInterval(viewerIntervalRef.current);
-      viewerIntervalRef.current = null;
-    }
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      teardownStreamSignaling();
-    };
-  }, [teardownStreamSignaling]);
-
   const value: LiveStreamContextType = {
     ...state,
     startStream,
@@ -502,12 +521,17 @@ export const LiveStreamProvider = ({
     toggleRecording,
     toggleMute,
     toggleVideo,
+    initMedia,
     joinStream,
     leaveStream,
     addParticipant,
     removeParticipant,
     updateParticipantRole,
     getActiveStreams,
+    createOffer,
+    handleOffer,
+    handleAnswer,
+    addIceCandidate,
   };
 
   return (

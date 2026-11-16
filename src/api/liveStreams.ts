@@ -130,11 +130,11 @@ export interface ReactionCounts {
 
 // Sessions
 export async function createLiveStream(data: CreateSessionData): Promise<ApiResult<LiveSession>> {
-  return gateway.from('live_sessions').insert(data).select().single() as Promise<ApiResult<LiveSession>>;
+  return gateway.from('live_sessions').insert(data).select().single() as unknown as Promise<ApiResult<LiveSession>>;
 }
 
 export async function getLiveStream(id: string): Promise<ApiResult<LiveSession>> {
-  return gateway.from('live_sessions').select('*').eq('id', id).maybeSingle() as Promise<ApiResult<LiveSession>>;
+  return gateway.from('live_sessions').select('*').eq('id', id).maybeSingle() as unknown as Promise<ApiResult<LiveSession>>;
 }
 
 export async function getActiveLiveStreams(): Promise<ApiResult<LiveSession[]>> {
@@ -142,7 +142,7 @@ export async function getActiveLiveStreams(): Promise<ApiResult<LiveSession[]>> 
     .from('live_sessions')
     .select('*')
     .eq('status', 'live')
-    .order('started_at', { ascending: false }) as Promise<ApiResult<LiveSession[]>>;
+    .order('started_at', { ascending: false }) as unknown as Promise<ApiResult<LiveSession[]>>;
 }
 
 export async function updateLiveStream(
@@ -154,11 +154,11 @@ export async function updateLiveStream(
     .update(data)
     .eq('id', id)
     .select()
-    .single() as Promise<ApiResult<LiveSession>>;
+    .single() as unknown as Promise<ApiResult<LiveSession>>;
 }
 
 export async function endLiveStream(id: string): Promise<ApiResult<LiveSession>> {
-  return updateLiveStream(id, { status: 'ended', ended_at: new Date().toISOString() });
+  return updateLiveStream(id, { status: 'ended', ended_at: new Date().toISOString() } as unknown as UpdateSessionData);
 }
 
 // Participants
@@ -168,7 +168,7 @@ export async function getStreamParticipants(sessionId: string): Promise<ApiResul
     .select('*')
     .eq('session_id', sessionId)
     .is('left_at', null)
-    .order('joined_at', { ascending: true }) as Promise<ApiResult<LiveParticipant[]>>;
+    .order('joined_at', { ascending: true }) as unknown as Promise<ApiResult<LiveParticipant[]>>;
 }
 
 export async function addStreamParticipant(
@@ -180,7 +180,7 @@ export async function addStreamParticipant(
     .from('live_participants')
     .insert({ session_id: sessionId, user_id: userId, role })
     .select()
-    .single() as Promise<ApiResult<LiveParticipant>>;
+    .single() as unknown as Promise<ApiResult<LiveParticipant>>;
 }
 
 export async function updateStreamParticipant(
@@ -195,7 +195,7 @@ export async function updateStreamParticipant(
     .eq('user_id', userId)
     .is('left_at', null)
     .select()
-    .single() as Promise<ApiResult<LiveParticipant>>;
+    .single() as unknown as Promise<ApiResult<LiveParticipant>>;
 }
 
 export async function removeStreamParticipant(
@@ -207,7 +207,7 @@ export async function removeStreamParticipant(
     .delete()
     .eq('session_id', sessionId)
     .eq('user_id', userId);
-  return { error };
+  return { data: null, error };
 }
 
 // Comments
@@ -220,9 +220,9 @@ export async function getStreamComments(
     .from('live_comments')
     .select('*')
     .eq('session_id', sessionId)
-    .is('is_hidden', false)
+    .eq('is_hidden', false)
     .order('created_at', { ascending: true })
-    .range(offset, offset + limit - 1) as Promise<ApiResult<LiveComment[]>>;
+    .range(offset, offset + limit - 1) as unknown as Promise<ApiResult<LiveComment[]>>;
 }
 
 export async function sendComment(
@@ -233,7 +233,7 @@ export async function sendComment(
     .from('live_comments')
     .insert({ session_id: sessionId, user_id: '', content, created_at: new Date().toISOString(), is_hidden: false })
     .select()
-    .single() as Promise<ApiResult<LiveComment>>;
+    .single() as unknown as Promise<ApiResult<LiveComment>>;
 }
 
 export async function hideComment(commentId: string): Promise<ApiResult<{ error: string | null }>> {
@@ -241,7 +241,7 @@ export async function hideComment(commentId: string): Promise<ApiResult<{ error:
     .from('live_comments')
     .update({ is_hidden: true })
     .eq('id', commentId);
-  return { error };
+  return { data: null, error };
 }
 
 // Reactions
@@ -273,7 +273,7 @@ export async function sendReaction(
       created_at: new Date().toISOString(),
     }, { onConflict: 'session_id,user_id,reaction_type' })
     .select()
-    .single() as Promise<ApiResult<LiveReaction>>;
+    .single() as unknown as Promise<ApiResult<LiveReaction>>;
 }
 
 // Recordings
@@ -282,14 +282,14 @@ export async function getStreamRecordings(sessionId: string): Promise<ApiResult<
     .from('live_recordings')
     .select('*')
     .eq('session_id', sessionId)
-    .order('created_at', { ascending: true }) as Promise<ApiResult<LiveRecording[]>>;
+    .order('created_at', { ascending: true }) as unknown as Promise<ApiResult<LiveRecording[]>>;
 }
 
 export async function toggleRecording(
   sessionId: string,
   enabled: boolean
 ): Promise<ApiResult<LiveSession>> {
-  return updateLiveStream(sessionId, { recording: enabled });
+  return updateLiveStream(sessionId, { recording: enabled } as unknown as UpdateSessionData);
 }
 
 // Reports
@@ -309,7 +309,7 @@ export async function submitReport(
       created_at: new Date().toISOString(),
     })
     .select()
-    .single() as Promise<ApiResult<LiveReport>>;
+    .single() as unknown as Promise<ApiResult<LiveReport>>;
 }
 
 export async function getStreamReports(sessionId: string): Promise<ApiResult<LiveReport[]>> {
@@ -317,7 +317,7 @@ export async function getStreamReports(sessionId: string): Promise<ApiResult<Liv
     .from('live_reports')
     .select('*')
     .eq('session_id', sessionId)
-    .order('created_at', { ascending: true }) as Promise<ApiResult<LiveReport[]>>;
+    .order('created_at', { ascending: true }) as unknown as Promise<ApiResult<LiveReport[]>>;
 }
 
 // Events
@@ -336,5 +336,5 @@ export async function recordStreamEvent(
       created_at: new Date().toISOString(),
     })
     .select()
-    .single() as Promise<ApiResult<LiveEvent>>;
+    .single() as unknown as Promise<ApiResult<LiveEvent>>;
 }
