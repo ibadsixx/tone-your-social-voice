@@ -50,6 +50,7 @@ import {
   Image,
   Video,
   Clapperboard,
+  RadioTower,
 } from 'lucide-react';
 
 import { isPublicPath } from '@/lib/publicPaths';
@@ -343,6 +344,7 @@ const Layout = () => {
     { name: 'Saved', href: '/saved', icon: Bookmark },
     { name: 'Groups', href: '/groups', icon: Users },
     { name: 'Pages', href: '/pages', icon: FileText },
+    { name: 'Live', href: '/live/create', icon: RadioTower },
   ];
 
   // Guests only see the public sections of the sidebar.
