@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/hooks/useAuth";
 import { CallProvider } from "@/contexts/CallContext";
+import { LiveStreamProvider } from "@/contexts/LiveStreamContext";
 import { PageSwitchProvider } from "@/contexts/PageSwitchContext";
 import { IncomingCallModal, ActiveCallWindow } from "@/components/calls";
 import { PresenceHeartbeat } from "@/components/presence/PresenceHeartbeat";
@@ -46,6 +47,8 @@ import EditorPublish from "@/pages/EditorPublish";
 import ReelViewer from "@/pages/ReelViewer";
 import MediaViewer from "@/pages/MediaViewer";
 import CreatePost from "@/pages/CreatePost";
+import CreateLiveStream from "@/pages/CreateLiveStream";
+import LiveStream from "@/pages/LiveStream";
 import FeedbackPage from "@/pages/FeedbackPage";
 import FriendRequestsPage from "@/pages/FriendRequestsPage";
 import NotificationsPage from "@/pages/NotificationsPage";
@@ -108,6 +111,7 @@ const App = () => (
             existing `useFriendRequestLiveUpdates`; no new poll or subscription. */}
         <PendingFriendRequestsProvider>
         <CallProvider>
+          <LiveStreamProvider>
           <PageSwitchProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <TooltipProvider>
@@ -193,6 +197,8 @@ const App = () => (
               </Route>
               <Route path="/404" element={<NotFound />} />
               <Route path="/create/post" element={<CreatePost />} />
+              <Route path="/live/create" element={<RequireAuth><CreateLiveStream /></RequireAuth>} />
+              <Route path="/live/:id" element={<LiveStream />} />
               <Route path="/feedback" element={<FeedbackPage />} />
               <Route path="/friends/requests" element={<FriendRequestsPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
@@ -201,6 +207,7 @@ const App = () => (
           </TooltipProvider>
           </ThemeProvider>
           </PageSwitchProvider>
+          </LiveStreamProvider>
         </CallProvider>
         </PendingFriendRequestsProvider>
         </NotificationsProvider>
