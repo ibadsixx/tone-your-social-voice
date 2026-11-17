@@ -40,8 +40,10 @@ interface PostProps {
   content: string | null;
   media_url: string | null;
   created_at: string;
-  type: 'normal_post' | 'profile_picture_update' | 'cover_photo_update' | 'shared_post' | 'reel';
+  type: 'normal_post' | 'profile_picture_update' | 'cover_photo_update' | 'shared_post' | 'reel' | 'live';
   shared_post_id?: string | null;
+  live_session_id?: string | null;
+  viewer_count?: number;
   audience_type?: string;
   audience_user_ids?: string[];
   audience_excluded_user_ids?: string[];
@@ -318,16 +320,37 @@ const Post = ({
         <CardHeader className="p-3 sm:p-6 pb-2 sm:pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-1.5 sm:space-x-3 min-w-0">
-              <Link to={page ? `/pages/${page.id}` : `/profile/${profiles?.username || ''}`} className="flex items-center space-x-1.5 sm:space-x-3 hover:opacity-80 transition-opacity min-w-0">
-                <Avatar className="h-7 w-7 sm:h-10 sm:w-10 border sm:border-2 border-primary/20 shrink-0">
-                  <AvatarImage src={page ? (page.profile_pic || page.cover_image || undefined) : (profiles?.profile_pic || '/default-avatar.png')} className="object-cover" />
-                  <AvatarFallback className="bg-primary/10 text-primary text-xs sm:text-sm">
-                    {page ? page.name.charAt(0) : (profiles?.display_name?.charAt(0) || profiles?.username?.charAt(0) || '?')}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <div className="flex items-center flex-wrap gap-x-1">
-                    <p className="font-semibold text-[13px] sm:text-sm text-foreground hover:underline truncate max-w-[100px] sm:max-w-none">{page ? page.name : profiles?.display_name || 'Unknown'}</p>
+                {live_session_id ? (
+                  <Link to={`/live/${live_session_id}`} className="flex items-center space-x-1.5 sm:space-x-3 hover:opacity-80 transition-opacity min-w-0">
+                    <Avatar className="h-7 w-7 sm:h-10 sm:w-10 border sm:border-2 border-primary/20 shrink-0">
+                      <AvatarImage src={profiles?.profile_pic || '/default-avatar.png'} className="object-cover" />
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs sm:text-sm">
+                        {profiles?.display_name?.charAt(0) || profiles?.username?.charAt(0) || '?'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <div className="flex items-center flex-wrap gap-x-1">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-semibold bg-red-500/10 border border-red-500/20 text-red-500">
+                          LIVE
+                        </span>
+                        <p className="font-semibold text-[13px] sm:text-sm text-foreground hover:underline truncate max-w-[100px] sm:max-w-none">{profiles?.display_name || 'Unknown'}</p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <p className="text-muted-foreground text-xs">{viewerCount > 0 ? viewerCount + ' watching' : ''}</p>
+                      </div>
+                    </div>
+                  </Link>
+                ) : (
+                  <Link to={page ? `/pages/${page.id}` : `/profile/${profiles?.username || ''}`} className="flex items-center space-x-1.5 sm:space-x-3 hover:opacity-80 transition-opacity min-w-0">
+                    <Avatar className="h-7 w-7 sm:h-10 sm:w-10 border sm:border-2 border-primary/20 shrink-0">
+                      <AvatarImage src={page ? (page.profile_pic || page.cover_image || undefined) : (profiles?.profile_pic || '/default-avatar.png')} className="object-cover" />
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs sm:text-sm">
+                        {page ? page.name.charAt(0) : (profiles?.display_name?.charAt(0) || profiles?.username?.charAt(0) || '?')}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <div className="flex items-center flex-wrap gap-x-1">
+                        <p className="font-semibold text-[13px] sm:text-sm text-foreground hover:underline truncate max-w-[100px] sm:max-w-none">{page ? page.name : profiles?.display_name || 'Unknown'}</p>
                     {group_name && group_id && (
                       <>
                         <span className="text-sm text-muted-foreground">›</span>

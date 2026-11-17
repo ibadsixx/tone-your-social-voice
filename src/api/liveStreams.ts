@@ -1,3 +1,4 @@
+import { gateway } from './client';
 import type { ApiResult } from './client';
 
 const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
@@ -405,4 +406,34 @@ export async function recordStreamEvent(
   }
   const json = await parseJson<LiveEvent>(res);
   return { data: json, error: null };
+}
+
+// Live post integration
+export async function createLivePost(data: {
+  host_id: string;
+  title: string | null;
+  stream_type: 'video' | 'audio';
+  audience_type: string;
+  audience_user_ids: string[] | null;
+  audience_excluded_user_ids: string[] | null;
+  audience_list_id: string | null;
+  live_session_id: string;
+}): Promise<ApiResult<{ id: string }>> {
+  return gateway.from('posts').insert({
+    ...data,
+    type: 'live',
+    status: 'live',
+    viewer_count: 0,
+  }).select('id').single();
+}
+
+export async function updateLivePostStatus(
+  sessionId: string,
+  status: 'live' | 'ended'
+): Promise<ApiResult<null>> {
+  return gateway.from('posts').update({ status }).eq('live_session_id', sessionId);
+}
+
+export async function getLivePostBySessionId(sessionId: string): Promise<ApiResult<{ id: string }>> {
+  return gateway.from('posts').select('id').eq('live_session_id', sessionId).maybeSingle();
 }

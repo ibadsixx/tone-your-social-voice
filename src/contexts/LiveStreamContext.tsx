@@ -31,6 +31,8 @@ import {
   addStreamParticipant,
   updateStreamParticipant,
   removeStreamParticipant,
+  createLivePost,
+  updateLivePostStatus,
   type LiveSession,
   type LiveParticipant,
   type CreateSessionData,
@@ -51,6 +53,7 @@ export interface LiveStreamState {
   viewerCount: number;
   error: string | null;
   connectionState: RTCPeerConnectionState | null;
+  livePostId: string | null;
 }
 
 export interface LiveStreamContextType extends LiveStreamState {
@@ -95,6 +98,7 @@ export const LiveStreamProvider = ({
     viewerCount: 0,
     error: null,
     connectionState: null,
+    livePostId: null,
   });
 
   const streamRef = useRef<LiveSession | null>(null);
@@ -231,12 +235,35 @@ export const LiveStreamProvider = ({
         const newStream: LiveSession = stream;
         streamRef.current = newStream;
 
+        // Create a live post for the session so it appears in the feed
+        let livePostId: string | null = null;
+        try {
+          const { data: postData, error: postError } = await createLivePost({
+            host_id: user.id,
+            title: data.title ?? null,
+            stream_type: data.stream_type,
+            audience_type: data.audience_type,
+            audience_user_ids: data.audience_user_ids,
+            audience_excluded_user_ids: data.audience_excluded_user_ids,
+            audience_list_id: data.audience_list_id,
+            live_session_id: newStream.id,
+          });
+          if (postData?.id) {
+            livePostId = postData.id;
+          } else if (postError) {
+            console.warn('[LiveStreamContext] Failed to create live post:', postError);
+          }
+        } catch (err) {
+          console.warn('[LiveStreamContext] Exception creating live post:', err);
+        }
+
         setState((prev) => ({
           ...prev,
           stream: newStream,
           isHost: true,
           isConnected: true,
           viewerCount: 1,
+          livePostId,
           participants: [
             {
               id: `${newStream.id}-${user.id}`,
@@ -299,6 +326,11 @@ export const LiveStreamProvider = ({
       // Update stream status to ended
       await endLiveStream(streamRef.current.id);
 
+      // Mark the live post as ended
+      if (state.livePostId) {
+        await updateLivePostStatus(state.livePostId, 'ended');
+      }
+
       setState((prev) => ({
         ...prev,
         stream: prev.stream
@@ -311,6 +343,7 @@ export const LiveStreamProvider = ({
         participants: [],
         viewerCount: 0,
         connectionState: null,
+        livePostId: null,
       }));
 
       // Stop local media
