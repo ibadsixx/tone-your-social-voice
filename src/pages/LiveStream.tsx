@@ -1,11 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { X, Mic, Video, MicOff, VideoOff, Users, Globe, Lock, StopCircle, Phone, Link } from 'lucide-react';
+import { X, Mic, Video, MicOff, VideoOff, Users, Globe, Lock, StopCircle } from 'lucide-react';
 import { useLiveStream } from '@/contexts/LiveStreamContext';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { gateway } from '@/lib/gateway';
-import { webrtcService } from '@/services/webrtc';
 
 const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
 
@@ -63,20 +62,66 @@ const LiveStream = () => {
       try {
         if (isHost) {
           // Host: initialize local media and create offer
+          // Media failure is not fatal — the host can still be in the stream
+          // as a viewer-only participant if camera/microphone access fails.
           await initMedia(stream.stream_type);
-          const offerSdp = await createOffer();
-          setIsNegotiating(true);
 
-          // Publish offer via signaling
-          await publishSignalingOffer(offerSdp);
+          if (localStream) {
+            const offerSdp = await createOffer();
+            setIsNegotiating(true);
+
+            // Publish offer via signaling
+            await publishSignalingOffer(offerSdp);
+          } else {
+            toast({
+              title: 'Local broadcasting unavailable',
+              description:
+                'Camera and microphone access failed. You can view the stream but cannot broadcast audio or video.',
+              variant: 'default',
+            });
+          }
         } else {
-          // Viewer: initialize media (audio only for viewers, or video if they want to publish)
+          // Viewer: initialize media (audio only for viewers)
           // Viewers receive media; they only publish if they're a guest with video
           await initMedia('audio');
         }
       } catch (err) {
-        console.error('[LiveStream] Failed to initialize media:', err);
-        toast({ title: 'Error', description: 'Failed to initialize media', variant: 'destructive' });
+        const error = err as Error;
+        let message = 'Failed to initialize media';
+
+        // Map common getUserMedia() exception names to user-friendly messages
+        switch (error.name) {
+          case 'NotAllowedError':
+            message =
+              'Camera or microphone permission was denied. Allow access in your browser settings.';
+            break;
+          case 'NotFoundError':
+            message = 'No available camera or microphone was found.';
+            break;
+          case 'NotReadableError':
+            message = 'The camera or microphone is being used by another application.';
+            break;
+          case 'OverconstrainedError':
+            message = 'The requested camera or microphone settings are not supported.';
+            break;
+          case 'SecurityError':
+            message =
+              'Media access requires HTTPS or localhost and a supported browser.';
+            break;
+          case 'AbortError':
+            message = 'Media access was aborted. Please try again.';
+            break;
+          default:
+            message = `Failed to initialize media: ${error.message}`;
+        }
+
+        // Preserve original exception details in development logs (no secrets)
+        console.error('[LiveStream] Media initialization failed:', {
+          name: error.name,
+          message: error.message,
+        });
+
+        toast({ title: 'Error', description: message, variant: 'destructive' });
       }
     };
 

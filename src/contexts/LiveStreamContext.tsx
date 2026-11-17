@@ -99,6 +99,7 @@ export const LiveStreamProvider = ({
   const streamRef = useRef<LiveSession | null>(null);
   const signalingRef = useRef<EventSource | null>(null);
   const webrtcInitializedRef = useRef<boolean>(false);
+  const mediaInitAttemptedRef = useRef(false);
 
   // Set up WebRTC callbacks once
   useEffect(() => {
@@ -138,22 +139,65 @@ export const LiveStreamProvider = ({
 
   // Initialize local media (camera/microphone)
   const initMedia = useCallback(async (streamType: StreamType): Promise<MediaStream> => {
-    if (webrtcInitializedRef.current) {
+    // Prevent duplicate getUserMedia() calls
+    if (mediaInitAttemptedRef.current) {
       return state.localStream!;
     }
+    mediaInitAttemptedRef.current = true;
 
-    const stream = await webrtcService.getLocalStream(streamType === 'video' ? 'video' : 'voice');
+    const isAudioOnly = streamType === 'audio';
 
-    setState((prev) => ({
-      ...prev,
-      localStream: stream,
-      isMuted: streamType === 'audio',
-      isVideoOff: streamType === 'audio',
-    }));
+    try {
+      const stream = await webrtcService.getLocalStream(isAudioOnly ? 'voice' : 'video');
 
-    webrtcInitializedRef.current = true;
-    return stream;
-  }, [state.localStream]);
+      setState((prev) => ({
+        ...prev,
+        localStream: stream,
+        isMuted: isAudioOnly,
+        isVideoOff: isAudioOnly,
+      }));
+
+      webrtcInitializedRef.current = true;
+      return stream;
+    } catch (err) {
+      const error = err as Error;
+
+      // Release any partially acquired tracks
+      if (state.localStream) {
+        state.localStream.getTracks().forEach((track) => {
+          track.stop();
+        });
+        setState((prev) => ({ ...prev, localStream: null }));
+      }
+
+      // If video mode fails, try audio-only fallback
+      if (!isAudioOnly) {
+        console.warn('[LiveStreamContext] Video init failed, trying audio-only fallback:', error.name);
+        try {
+          const audioStream = await webrtcService.getLocalStream('voice');
+
+          setState((prev) => ({
+            ...prev,
+            localStream: audioStream,
+            isMuted: false,
+            isVideoOff: true,
+          }));
+
+          webrtcInitializedRef.current = true;
+          toast({
+            title: 'Video unavailable, audio-only mode',
+            description: 'Camera access failed. Stream started in audio-only mode.',
+            variant: 'default',
+          });
+          return audioStream;
+        } catch (audioErr) {
+          throw audioErr as Error;
+        }
+      }
+
+      throw error;
+    }
+  }, [state.localStream, toast]);
 
   // Start a new live stream
   const startStream = useCallback(
@@ -417,6 +461,7 @@ export const LiveStreamProvider = ({
     try {
       webrtcService.cleanup();
       webrtcInitializedRef.current = false;
+      mediaInitAttemptedRef.current = false;
 
       if (signalingRef.current) {
         signalingRef.current.close();
