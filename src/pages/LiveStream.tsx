@@ -385,7 +385,7 @@ const LiveStream = () => {
 
       {/* Main Stream Area */}
       <main className="flex-1 flex items-center justify-center p-4 bg-black">
-        <div className="w-full max-w-4xl aspect-video bg-black rounded-xl overflow-hidden relative shadow-2xl border border-white/10">
+        <div className="w-full max-w-[calc(100vw-2rem)] max-h-[calc(100vh-11rem)] aspect-[9/16] bg-black rounded-xl overflow-hidden relative shadow-2xl border border-white/10">
           {isAudioOnly ? (
             <div className="w-full h-full flex flex-col items-center justify-center text-white">
               <MicOff className="w-24 h-24 text-white/50 mb-4" />
