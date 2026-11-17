@@ -38,8 +38,22 @@ const LiveStream = () => {
 
   const [signalingConnected, setSignalingConnected] = useState(false);
   const [isNegotiating, setIsNegotiating] = useState(false);
+  const [isEnding, setIsEnding] = useState(false);
   const esRef = useRef<EventSource | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
+
+  const handleEndStream = async () => {
+    if (isEnding) return;
+    setIsEnding(true);
+    await endStream();
+    navigate('/');
+  };
+
+  const handleLeaveStream = async () => {
+    setIsEnding(true);
+    await leaveStream();
+    navigate('/');
+  };
 
   // Track whether any viewer has joined this session, so the host can show
   // "Waiting for viewer..." instead of "Establishing media connection..."
@@ -327,7 +341,7 @@ const LiveStream = () => {
       <header className="h-16 bg-black/80 backdrop-blur flex items-center justify-between px-4 z-20 border-b border-white/10">
         <div className="flex items-center gap-4">
           <button
-            onClick={leaveStream}
+            onClick={handleLeaveStream}
             className="p-2 rounded-full hover:bg-white/10 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -353,7 +367,8 @@ const LiveStream = () => {
             </Button>
           )}
           <Button
-            onClick={endStream}
+            onClick={handleEndStream}
+            disabled={isEnding}
             variant="destructive"
             size="sm"
             className="bg-red-600 hover:bg-red-700 text-white flex items-center gap-2"
