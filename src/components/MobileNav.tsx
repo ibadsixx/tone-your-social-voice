@@ -4,7 +4,6 @@ import {
   Home,
   Search,
   MessageCircle,
-  RadioTower,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet';
@@ -27,7 +26,6 @@ const mainNav = [
   { icon: Home, label: 'Home', href: '/' },
   { icon: Search, label: 'Search', href: '/search' },
   { icon: MessageCircle, label: 'Messages', href: '/messages' },
-  { icon: RadioTower, label: 'Live', href: '/live/create' },
 ];
 
 const MobileNav = ({ guest, profilePic, displayName, email, actingPageName, actingPagePic, avatarMenu }: MobileNavProps) => {
