@@ -61,10 +61,15 @@ const LiveStream = () => {
     const initStream = async () => {
       try {
         if (isHost) {
-          // Host: initialize local media and create offer
-          // Media failure is not fatal — the host can still be in the stream
-          // as a viewer-only participant if camera/microphone access fails.
-          await initMedia(stream.stream_type);
+          // Host: initialize local media (failure is not fatal — host can still
+          // be in the stream as a viewer-only participant).
+          let mediaInitFailed = false;
+          try {
+            await initMedia(stream.stream_type);
+          } catch (mediaErr) {
+            console.warn('[LiveStream] Host media init failed:', mediaErr);
+            mediaInitFailed = true;
+          }
 
           if (localStream) {
             const offerSdp = await createOffer();
@@ -81,47 +86,19 @@ const LiveStream = () => {
             });
           }
         } else {
-          // Viewer: initialize media (audio only for viewers)
-          // Viewers receive media; they only publish if they're a guest with video
-          await initMedia('audio');
+          // Viewer: initialize media (audio only for viewers).
+          // Viewers receive media; they only publish if they're a guest with video.
+          try {
+            await initMedia('audio');
+          } catch (mediaErr) {
+            console.warn('[LiveStream] Viewer media init failed:', mediaErr);
+            // Viewer media init failure is not fatal — viewer can still watch.
+          }
         }
       } catch (err) {
-        const error = err as Error;
-        let message = 'Failed to initialize media';
-
-        // Map common getUserMedia() exception names to user-friendly messages
-        switch (error.name) {
-          case 'NotAllowedError':
-            message =
-              'Camera or microphone permission was denied. Allow access in your browser settings.';
-            break;
-          case 'NotFoundError':
-            message = 'No available camera or microphone was found.';
-            break;
-          case 'NotReadableError':
-            message = 'The camera or microphone is being used by another application.';
-            break;
-          case 'OverconstrainedError':
-            message = 'The requested camera or microphone settings are not supported.';
-            break;
-          case 'SecurityError':
-            message =
-              'Media access requires HTTPS or localhost and a supported browser.';
-            break;
-          case 'AbortError':
-            message = 'Media access was aborted. Please try again.';
-            break;
-          default:
-            message = `Failed to initialize media: ${error.message}`;
-        }
-
-        // Preserve original exception details in development logs (no secrets)
-        console.error('[LiveStream] Media initialization failed:', {
-          name: error.name,
-          message: error.message,
-        });
-
-        toast({ title: 'Error', description: message, variant: 'destructive' });
+        // Only catch unexpected errors, not media init failures.
+        console.error('[LiveStream] Stream initialization failed:', err);
+        toast({ title: 'Error', description: 'Failed to start stream', variant: 'destructive' });
       }
     };
 
