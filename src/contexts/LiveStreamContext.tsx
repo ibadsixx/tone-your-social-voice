@@ -163,9 +163,9 @@ export const LiveStreamProvider = ({
       try {
         setState((prev) => ({ ...prev, error: null }));
 
-        // Initialize local media first
-        await initMedia(data.stream_type);
-
+        // Create the stream session first (API call), then initialize media.
+        // Media init (getUserMedia) can fail in headless environments and
+        // should not block session creation.
         const { data: stream, error } = await createLiveStream({
           ...data,
           host_id: user.id,
@@ -199,6 +199,20 @@ export const LiveStreamProvider = ({
           ],
         }));
 
+        // Initialize local media after session is created. If this fails
+        // (e.g. no camera/mic, permission denied), the stream still exists
+        // and the user can still join as a viewer.
+        try {
+          await initMedia(data.stream_type);
+        } catch (mediaErr) {
+          console.warn('Media init failed, stream created without local media:', mediaErr);
+          toast({
+            title: 'Stream started',
+            description: 'Stream created but camera/microphone access was denied',
+            variant: 'default',
+          });
+        }
+
         toast({
           title: 'Live stream started',
           description: `Your ${data.stream_type} stream is now live`,
@@ -207,12 +221,13 @@ export const LiveStreamProvider = ({
         return newStream;
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to start stream';
+        console.error('[LiveStream] startStream failed:', err);
         setState((prev) => ({ ...prev, error: message }));
         toast({ title: 'Error', description: message, variant: 'destructive' });
         throw err;
       }
     },
-    [user, toast, initMedia]
+    [user, toast, initMedia, createLiveStream]
   );
 
   // End the current stream
