@@ -34,13 +34,19 @@ const LiveStream = () => {
     handleOffer,
     handleAnswer,
     addIceCandidate,
-    resetMediaInit,
   } = useLiveStream();
 
   const [signalingConnected, setSignalingConnected] = useState(false);
   const [isNegotiating, setIsNegotiating] = useState(false);
   const esRef = useRef<EventSource | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
+
+  // Track whether media initialization has been attempted in this session,
+  // to prevent duplicate getUserMedia() calls across effect re-runs.
+  const hasInitedMediaRef = useRef(false);
+  // Track whether a WebRTC offer has already been created, to prevent
+  // duplicate peer connection initialization.
+  const hasCreatedOfferRef = useRef(false);
 
   useEffect(() => {
     // Get current user id from session
@@ -62,23 +68,32 @@ const LiveStream = () => {
     const initStream = async () => {
       try {
         if (isHost) {
-          // Host: initialize local media (failure is not fatal — host can still
-          // be in the stream as a viewer-only participant).
-          let mediaInitFailed = false;
-          try {
-            await initMedia(stream.stream_type);
-          } catch (mediaErr) {
-            console.warn('[LiveStream] Host media init failed:', mediaErr);
-            mediaInitFailed = true;
+          // Host: initialize local media only once per session.
+          // Media failure is not fatal — host can still be in the stream
+          // as a viewer-only participant.
+          if (!hasInitedMediaRef.current) {
+            try {
+              const mediaStream = await initMedia(stream.stream_type);
+              console.log('[LiveStream] Host media init result:',
+                'streamType:', stream.stream_type,
+                'hasLocalStream:', !!mediaStream,
+                'videoTracks:', mediaStream?.getVideoTracks().length ?? 0,
+                'audioTracks:', mediaStream?.getAudioTracks().length ?? 0);
+            } catch (mediaErr) {
+              console.warn('[LiveStream] Host media init failed:', mediaErr);
+            }
+            hasInitedMediaRef.current = true;
           }
 
-          if (localStream) {
+          if (localStream && !hasCreatedOfferRef.current) {
+            hasCreatedOfferRef.current = true;
+            console.log('[LiveStream] Creating WebRTC offer (peerConnection#1)');
             const offerSdp = await createOffer();
             setIsNegotiating(true);
 
             // Publish offer via signaling
             await publishSignalingOffer(offerSdp);
-          } else {
+          } else if (!localStream) {
             toast({
               title: 'Local broadcasting unavailable',
               description:
@@ -89,11 +104,13 @@ const LiveStream = () => {
         } else {
           // Viewer: initialize media (audio only for viewers).
           // Viewers receive media; they only publish if they're a guest with video.
-          try {
-            await initMedia('audio');
-          } catch (mediaErr) {
-            console.warn('[LiveStream] Viewer media init failed:', mediaErr);
-            // Viewer media init failure is not fatal — viewer can still watch.
+          if (!hasInitedMediaRef.current) {
+            try {
+              await initMedia('audio');
+            } catch (mediaErr) {
+              console.warn('[LiveStream] Viewer media init failed:', mediaErr);
+            }
+            hasInitedMediaRef.current = true;
           }
         }
       } catch (err) {
@@ -138,7 +155,9 @@ const LiveStream = () => {
             // New participant joined
             if (data.fromUserId !== myUserId) {
               // If we're the host, create an offer for the new participant
-              if (isHost && localStream) {
+              if (isHost && localStream && !hasCreatedOfferRef.current) {
+                hasCreatedOfferRef.current = true;
+                console.log('[LiveStream] Creating offer for new participant');
                 const offerSdp = await createOffer();
                 setIsNegotiating(true);
                 await publishSignalingOffer(offerSdp, data.fromUserId);
@@ -196,11 +215,13 @@ const LiveStream = () => {
         esRef.current.close();
         esRef.current = null;
       }
-      resetMediaInit();
+      // NOTE: Do NOT call resetMediaInit() here. Media cleanup happens only
+      // in leaveStream(). Resetting mediaInitAttemptedRef on every effect
+      // re-run caused getUserMedia() to be called repeatedly, producing the
+      // camera flickering bug.
     };
-  }, [id, stream, isConnected, isHost, localStream, myUserId, leaveStream, navigate,
-      initMedia, createOffer, handleOffer, handleAnswer, addIceCandidate, toast,
-      resetMediaInit]);
+  }, [id, stream, isConnected, isHost, myUserId, leaveStream, navigate,
+      initMedia, createOffer, handleOffer, handleAnswer, addIceCandidate, toast]);
 
   const getToken = useCallback((): string | null => {
     try {

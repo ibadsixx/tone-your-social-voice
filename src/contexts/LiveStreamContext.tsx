@@ -101,6 +101,8 @@ export const LiveStreamProvider = ({
   const signalingRef = useRef<EventSource | null>(null);
   const webrtcInitializedRef = useRef<boolean>(false);
   const mediaInitAttemptedRef = useRef(false);
+  const getUserMediaCallCountRef = useRef<number>(0);
+  const peerConnectionCountRef = useRef<number>(0);
 
   // Set up WebRTC callbacks once
   useEffect(() => {
@@ -148,18 +150,23 @@ export const LiveStreamProvider = ({
 
     const isAudioOnly = streamType === 'audio';
 
+    // Development diagnostics: count getUserMedia() calls
+    getUserMediaCallCountRef.current++;
+    console.log('[LiveStreamContext] getUserMedia() call #', getUserMediaCallCountRef.current,
+      'streamType:', streamType, 'isAudioOnly:', isAudioOnly);
+
     try {
       const stream = await webrtcService.getLocalStream(isAudioOnly ? 'voice' : 'video');
 
-      setState((prev) => ({
-        ...prev,
-        localStream: stream,
-        isMuted: isAudioOnly,
-        isVideoOff: isAudioOnly,
-      }));
+    setState((prev) => ({
+      ...prev,
+      localStream: stream,
+      isMuted: isAudioOnly,
+      isVideoOff: isAudioOnly,
+    }));
 
-      webrtcInitializedRef.current = true;
-      return stream;
+    webrtcInitializedRef.current = true;
+    return stream;
     } catch (err) {
       const error = err as Error;
 

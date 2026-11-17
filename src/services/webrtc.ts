@@ -90,6 +90,7 @@ export interface CallSignal {
 // media flow stops. Remove after the regression is fixed.
 let diagCallSeq = 0;
 const nextDiagCallId = () => `call-${Date.now().toString(36)}-${(diagCallSeq++).toString(36)}`;
+let peerConnectionCount = 0;
 
 export class WebRTCService {
   private peerConnection: RTCPeerConnection | null = null;
@@ -117,7 +118,8 @@ export class WebRTCService {
   }
 
   private createPeerConnection(iceServers: RTCIceServer[] = DEFAULT_ICE_SERVERS) {
-    console.log('[WEBRTC] peer connection created', { diagCallId: this.diagCallId });
+    peerConnectionCount++;
+    console.log('[WEBRTC] peer connection #', peerConnectionCount, 'created', { diagCallId: this.diagCallId });
     this.peerConnection = new RTCPeerConnection({
       iceServers,
       iceCandidatePoolSize: 10,
