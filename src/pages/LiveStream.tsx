@@ -41,6 +41,11 @@ const LiveStream = () => {
   const esRef = useRef<EventSource | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
 
+  // Track whether any viewer has joined this session, so the host can show
+  // "Waiting for viewer..." instead of "Establishing media connection..."
+  // before anyone is there to negotiate with.
+  const hasViewerRef = useRef(false);
+
   // Track whether media initialization has been attempted in this session,
   // to prevent duplicate getUserMedia() calls across effect re-runs.
   const hasInitedMediaRef = useRef(false);
@@ -85,7 +90,7 @@ const LiveStream = () => {
             hasInitedMediaRef.current = true;
           }
 
-          if (localStream && !hasCreatedOfferRef.current) {
+          if (localStream && !hasCreatedOfferRef.current && hasViewerRef.current) {
             hasCreatedOfferRef.current = true;
             console.log('[LiveStream] Creating WebRTC offer (peerConnection#1)');
             const offerSdp = await createOffer();
@@ -154,6 +159,7 @@ const LiveStream = () => {
           if (data.type === 'participant-joined') {
             // New participant joined
             if (data.fromUserId !== myUserId) {
+              hasViewerRef.current = true;
               // If we're the host, create an offer for the new participant
               if (isHost && localStream && !hasCreatedOfferRef.current) {
                 hasCreatedOfferRef.current = true;
@@ -399,7 +405,11 @@ const LiveStream = () => {
                   <div className="text-center">
                     <h2 className="text-xl font-medium">Live Stream</h2>
                     <p className="text-white/70 mt-2">
-                      {isNegotiating ? 'Establishing media connection...' : 'Waiting for stream...'}
+                      {!hasViewerRef.current
+                        ? 'Waiting for viewer...'
+                        : isNegotiating
+                          ? 'Establishing media connection...'
+                          : 'Waiting for stream...'}
                     </p>
                   </div>
                 </div>
