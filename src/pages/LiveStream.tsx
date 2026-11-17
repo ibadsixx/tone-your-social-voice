@@ -335,6 +335,10 @@ const LiveStream = () => {
   const hasRemoteStream = remoteStream !== null;
   const hasLocalStream = localStream !== null;
 
+  // Host alone: local camera becomes the main stage video.
+  // Host with guests: remote video is main, local camera becomes PiP.
+  const showLocalAsMain = isHost && hasLocalStream && !hasRemoteStream;
+
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
       {/* Header */}
@@ -414,6 +418,16 @@ const LiveStream = () => {
                   }}
                   className="w-full h-full object-cover"
                 />
+              ) : showLocalAsMain && localStream ? (
+                <video
+                  autoPlay
+                  playsInline
+                  muted
+                  ref={(el) => {
+                    if (el) (el as HTMLVideoElement).srcObject = localStream;
+                  }}
+                  className="w-full h-full object-cover"
+                />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-white/50">
                   <Video className="w-16 h-16 mb-4" />
@@ -431,7 +445,7 @@ const LiveStream = () => {
               )}
 
               {/* Local video (picture-in-picture for host/guests) */}
-              {!isAudioOnly && hasLocalStream && localStream && (
+              {!isAudioOnly && hasLocalStream && localStream && !showLocalAsMain && (
                 <video
                   autoPlay
                   playsInline
