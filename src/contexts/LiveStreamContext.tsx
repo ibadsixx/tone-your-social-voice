@@ -70,6 +70,7 @@ export interface LiveStreamContextType extends LiveStreamState {
   handleOffer: (sdp: string, fromUserId: string) => Promise<string>;
   handleAnswer: (sdp: string) => Promise<void>;
   addIceCandidate: (candidate: any) => Promise<void>;
+  resetMediaInit: () => void;
 }
 
 const LiveStreamContext = createContext<LiveStreamContextType | undefined>(undefined);
@@ -574,6 +575,12 @@ export const LiveStreamProvider = ({
     [streamRef.current, state.isHost, toast]
   );
 
+  // Reset media initialization state so a new session can retry getUserMedia.
+  const resetMediaInit = useCallback(() => {
+    mediaInitAttemptedRef.current = false;
+    webrtcInitializedRef.current = false;
+  }, []);
+
   const value: LiveStreamContextType = {
     ...state,
     startStream,
@@ -592,6 +599,7 @@ export const LiveStreamProvider = ({
     handleOffer,
     handleAnswer,
     addIceCandidate,
+    resetMediaInit,
   };
 
   return (

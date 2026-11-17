@@ -34,6 +34,7 @@ const LiveStream = () => {
     handleOffer,
     handleAnswer,
     addIceCandidate,
+    resetMediaInit,
   } = useLiveStream();
 
   const [signalingConnected, setSignalingConnected] = useState(false);
@@ -195,9 +196,11 @@ const LiveStream = () => {
         esRef.current.close();
         esRef.current = null;
       }
+      resetMediaInit();
     };
   }, [id, stream, isConnected, isHost, localStream, myUserId, leaveStream, navigate,
-      initMedia, createOffer, handleOffer, handleAnswer, addIceCandidate, toast]);
+      initMedia, createOffer, handleOffer, handleAnswer, addIceCandidate, toast,
+      resetMediaInit]);
 
   const getToken = useCallback((): string | null => {
     try {
