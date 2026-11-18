@@ -380,8 +380,8 @@ export const LiveStreamProvider = ({
       await endLiveStream(streamRef.current.id);
 
       // Mark the live post as ended
-      if (state.livePostId) {
-        await updateLivePostStatus(state.livePostId, 'ended');
+      if (state.livePostId && streamRef.current) {
+        await updateLivePostStatus(streamRef.current.id, 'ended');
       }
 
       setState((prev) => ({
