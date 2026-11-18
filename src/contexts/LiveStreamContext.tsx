@@ -145,10 +145,14 @@ export const LiveStreamProvider = ({
   }, [toast]);
 
   // Initialize local media (camera/microphone)
-  const initMedia = useCallback(async (streamType: StreamType): Promise<MediaStream> => {
+  // Returns null when no usable media tracks are available (e.g. headless,
+  // permission denied, or both video and audio failed). Returns a MediaStream
+  // with at least one usable track on success. Preserves audio-only mode when
+  // audio works but video does not.
+  const initMedia = useCallback(async (streamType: StreamType): Promise<MediaStream | null> => {
     // Prevent duplicate getUserMedia() calls
     if (mediaInitAttemptedRef.current) {
-      return state.localStream!;
+      return state.localStream;
     }
     mediaInitAttemptedRef.current = true;
 
@@ -162,15 +166,26 @@ export const LiveStreamProvider = ({
     try {
       const stream = await webrtcService.getLocalStream(isAudioOnly ? 'voice' : 'video');
 
-    setState((prev) => ({
-      ...prev,
-      localStream: stream,
-      isMuted: isAudioOnly,
-      isVideoOff: isAudioOnly,
-    }));
+      const hasTracks = stream.getTracks().length > 0;
+      console.log('[LiveStreamContext] Media init result:', hasTracks ? 'success' : 'no tracks',
+        'trackCount:', stream.getTracks().length);
 
-    webrtcInitializedRef.current = true;
-    return stream;
+      if (!hasTracks) {
+        stream.getTracks().forEach((track) => track.stop());
+        setState((prev) => ({ ...prev, localStream: null }));
+        console.warn('[LiveStreamContext] Media stream has no usable tracks');
+        return null;
+      }
+
+      setState((prev) => ({
+        ...prev,
+        localStream: stream,
+        isMuted: isAudioOnly,
+        isVideoOff: isAudioOnly,
+      }));
+
+      webrtcInitializedRef.current = true;
+      return stream;
     } catch (err) {
       const error = err as Error;
 
@@ -188,6 +203,16 @@ export const LiveStreamProvider = ({
         try {
           const audioStream = await webrtcService.getLocalStream('voice');
 
+          const hasAudioTracks = audioStream.getTracks().length > 0;
+          console.log('[LiveStreamContext] Audio fallback result:', hasAudioTracks ? 'success' : 'no tracks',
+            'trackCount:', audioStream.getTracks().length);
+
+          if (!hasAudioTracks) {
+            audioStream.getTracks().forEach((track) => track.stop());
+            console.warn('[LiveStreamContext] Audio fallback stream has no usable tracks');
+            throw error;
+          }
+
           setState((prev) => ({
             ...prev,
             localStream: audioStream,
@@ -203,6 +228,7 @@ export const LiveStreamProvider = ({
           });
           return audioStream;
         } catch (audioErr) {
+          console.warn('[LiveStreamContext] Audio fallback also failed:', (audioErr as Error).message);
           throw audioErr as Error;
         }
       }
@@ -235,26 +261,67 @@ export const LiveStreamProvider = ({
         const newStream: LiveSession = stream;
         streamRef.current = newStream;
 
-        // Create a live post for the session so it appears in the feed
-        let livePostId: string | null = null;
+        // Initialize local media after session is created. If this fails
+        // (e.g. no camera/mic, permission denied), the stream still exists
+        // and the user can still join as a viewer — but we do NOT publish
+        // a live post for a stream with no media, to avoid advertising an
+        // empty or unusable broadcast in the Home Feed.
+        //
+        // initMedia() returns null when no usable tracks exist; we must
+        // explicitly check the return value rather than assuming success
+        // just because the promise resolved.
+        let mediaOk = false;
+        let mediaStream: MediaStream | null = null;
         try {
-          const { data: postData, error: postError } = await createLivePost({
-            host_id: user.id,
-            title: data.title ?? null,
-            stream_type: data.stream_type,
-            audience_type: data.audience_type,
-            audience_user_ids: data.audience_user_ids,
-            audience_excluded_user_ids: data.audience_excluded_user_ids,
-            audience_list_id: data.audience_list_id,
-            live_session_id: newStream.id,
+          mediaStream = await initMedia(data.stream_type);
+        } catch (mediaErr) {
+          console.warn('[LiveStreamContext] Media init threw, stream created without local media:',
+            (mediaErr as Error).message);
+        }
+        if (mediaStream && mediaStream.getTracks().length > 0) {
+          mediaOk = true;
+          console.log('[LiveStreamContext] Media initialized successfully,',
+            'trackCount:', mediaStream.getTracks().length,
+            'trackKinds:', mediaStream.getTracks().map((t) => t.kind).join(','));
+        } else {
+          console.warn('[LiveStreamContext] Media init returned no usable tracks');
+          toast({
+            title: 'Stream started',
+            description: 'Stream created but camera/microphone access was denied',
+            variant: 'default',
           });
-          if (postData?.id) {
-            livePostId = postData.id;
-          } else if (postError) {
-            console.warn('[LiveStreamContext] Failed to create live post:', postError);
+        }
+
+        // Create a live post for the session only if media initialized successfully.
+        // An empty broadcast (no video, no audio) must not appear in the feed.
+        let livePostId: string | null = null;
+        if (mediaOk) {
+          console.log('[LiveStreamContext] Creating live post for session:', newStream.id);
+          try {
+            const { data: postData, error: postError } = await createLivePost({
+              host_id: user.id,
+              title: data.title ?? null,
+              stream_type: data.stream_type,
+              audience_type: data.audience_type,
+              audience_user_ids: data.audience_user_ids,
+              audience_excluded_user_ids: data.audience_excluded_user_ids,
+              audience_list_id: data.audience_list_id,
+              live_session_id: newStream.id,
+            });
+            if (postData?.id) {
+              livePostId = postData.id;
+              console.log('[LiveStreamContext] Live post created:', livePostId,
+                'sessionId:', newStream.id, 'streamType:', data.stream_type);
+            } else if (postError) {
+              console.warn('[LiveStreamContext] Failed to create live post:',
+                'status:', postError.code, 'message:', postError.message);
+            }
+          } catch (err) {
+            console.warn('[LiveStreamContext] Exception creating live post:',
+              (err as Error).message);
           }
-        } catch (err) {
-          console.warn('[LiveStreamContext] Exception creating live post:', err);
+        } else {
+          console.log('[LiveStreamContext] Skipping live post creation: no usable media tracks');
         }
 
         setState((prev) => ({
@@ -278,20 +345,6 @@ export const LiveStreamProvider = ({
           ],
         }));
 
-        // Initialize local media after session is created. If this fails
-        // (e.g. no camera/mic, permission denied), the stream still exists
-        // and the user can still join as a viewer.
-        try {
-          await initMedia(data.stream_type);
-        } catch (mediaErr) {
-          console.warn('Media init failed, stream created without local media:', mediaErr);
-          toast({
-            title: 'Stream started',
-            description: 'Stream created but camera/microphone access was denied',
-            variant: 'default',
-          });
-        }
-
         toast({
           title: 'Live stream started',
           description: `Your ${data.stream_type} stream is now live`,
@@ -306,7 +359,7 @@ export const LiveStreamProvider = ({
         throw err;
       }
     },
-    [user, toast, initMedia, createLiveStream]
+    [user, toast, initMedia, createLiveStream, createLivePost]
   );
 
   // End the current stream

@@ -419,12 +419,31 @@ export async function createLivePost(data: {
   audience_list_id: string | null;
   live_session_id: string;
 }): Promise<ApiResult<{ id: string }>> {
-  return gateway.from('posts').insert({
-    ...data,
-    type: 'live',
-    status: 'live',
-    viewer_count: 0,
-  }).select('id').single();
+  console.log('[LiveStream] createLivePost called, sessionId:', data.live_session_id,
+    'streamType:', data.stream_type, 'audience:', data.audience_type);
+  return liveFetch(`/sessions/${data.live_session_id}/posts`, {
+    method: 'POST',
+    body: JSON.stringify({
+      ...data,
+      type: 'live',
+      status: 'live',
+      viewer_count: 0,
+    }),
+  }).then(async (res) => {
+    console.log('[LiveStream] createLivePost response status:', res.status,
+      'sessionId:', data.live_session_id);
+    if (!res.ok) {
+      const err = await parseJson<{ message?: string; error?: string }>(res);
+      console.warn('[LiveStream] createLivePost failed, status:', res.status,
+        'message:', err?.message || err?.error || res.statusText,
+        'sessionId:', data.live_session_id);
+      return { data: null, error: { message: err?.message || err?.error || res.statusText, code: String(res.status) } };
+    }
+    const json = await parseJson<{ id: string }>(res);
+    console.log('[LiveStream] createLivePost success, postId:', json?.id,
+      'sessionId:', data.live_session_id);
+    return { data: json, error: null };
+  });
 }
 
 export async function updateLivePostStatus(

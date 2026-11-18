@@ -412,6 +412,7 @@ const Post = ({
                   )}
                 </div>
               </Link>
+            )}
             </div>
             <PostMoreMenu
               postId={id}
@@ -477,7 +478,6 @@ const Post = ({
                           />
                         </Link>
                       ) : type === 'reel' || (duration && aspect_ratio === '9:16') ? (
-                        /* Static Reel Preview - NO playback in feed, click navigates to reel page */
                         <button
                           type="button"
                           className="relative w-full overflow-hidden rounded-lg cursor-pointer group"

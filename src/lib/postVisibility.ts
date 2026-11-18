@@ -100,7 +100,7 @@ export function resolvePostAudience(post: PostVisibilityFields): string {
  * friends-only content can never appear there even for an authorized friend.
  */
 export function isPublicAudience(post: PostVisibilityFields): boolean {
-  if (post.status && post.status !== 'published') return false;
+  if (post.status && post.status !== 'published' && post.status !== 'live') return false;
   return resolvePostAudience(post) === 'public';
 }
 
@@ -117,8 +117,8 @@ export function isPostVisibleToViewer(
   // A guest (no viewer id) is never a friend: only public content passes.
   if (!viewerId) return isPublicAudience(post);
 
-  // Drafts and scheduled posts are author-only.
-  if (post.status && post.status !== 'published') return false;
+  // Drafts and scheduled posts are author-only. Active live streams are visible.
+  if (post.status && post.status !== 'published' && post.status !== 'live') return false;
 
   const audience = resolvePostAudience(post);
 
