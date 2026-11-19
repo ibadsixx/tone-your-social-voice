@@ -143,7 +143,7 @@ const Post = ({
   group_name,
   group_id,
   live_session_id,
-  viewerCount,
+  viewer_count,
   page,
   profiles,
   post_media,
@@ -338,7 +338,7 @@ const Post = ({
                         <p className="font-semibold text-[13px] sm:text-sm text-foreground hover:underline truncate max-w-[100px] sm:max-w-none">{profiles?.display_name || 'Unknown'}</p>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <p className="text-muted-foreground text-xs">{viewerCount > 0 ? viewerCount + ' watching' : ''}</p>
+                        <p className="text-muted-foreground text-xs">{viewer_count > 0 ? viewer_count + ' watching' : ''}</p>
                       </div>
                     </div>
                   </Link>
