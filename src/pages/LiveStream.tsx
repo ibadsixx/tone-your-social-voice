@@ -47,6 +47,10 @@ const LiveStream = () => {
   // Track whether a WebRTC offer has already been created, to prevent
   // duplicate peer connection initialization.
   const hasCreatedOfferRef = useRef(false);
+  // Track whether a viewer has joined, to know when to create WebRTC offer.
+  const hasViewerRef = useRef(false);
+  // Track whether the stream is ending.
+  const isEnding = useRef(false);
 
   useEffect(() => {
     // Get current user id from session
@@ -309,7 +313,7 @@ const LiveStream = () => {
       <header className="h-16 bg-black/80 backdrop-blur flex items-center justify-between px-4 z-20 border-b border-white/10">
         <div className="flex items-center gap-4">
           <button
-            onClick={handleLeaveStream}
+            onClick={leaveStream}
             className="p-2 rounded-full hover:bg-white/10 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -335,8 +339,8 @@ const LiveStream = () => {
             </Button>
           )}
           <Button
-            onClick={handleEndStream}
-            disabled={isEnding}
+            onClick={endStream}
+            disabled={isEnding.current}
             variant="destructive"
             size="sm"
             className="bg-red-600 hover:bg-red-700 text-white flex items-center gap-2"
