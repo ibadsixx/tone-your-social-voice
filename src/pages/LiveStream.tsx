@@ -289,6 +289,21 @@ const LiveStream = () => {
   }
 
   if (!stream || !isConnected) {
+    if (stream?.status === 'ended') {
+      return (
+        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+          <div className="text-center max-w-md">
+            <h1 className="text-lg font-medium">Stream Ended</h1>
+            <p className="text-muted-foreground mt-2">
+              This live stream has ended.
+            </p>
+            <Button onClick={() => navigate('/')} className="mt-4">
+              Back to Home
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
         <div className="text-center">
