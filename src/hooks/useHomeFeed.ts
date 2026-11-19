@@ -294,7 +294,24 @@ export const useHomeFeed = () => {
     ]);
 
     if (error) throw error;
-    return dedupeById(mapFeedPosts(data, unfollowedGroupIds, user?.id, friendIds))
+
+    // Diagnostic: log whether any LIVE posts are present in the raw feed response
+    const livePostsInResponse = (data || []).filter((p: Record<string, unknown>) =>
+      p.live_session_id && p.status === 'live'
+    );
+    console.log('[useHomeFeed] Feed response received', 'totalPosts:', data?.length ?? 0,
+      'livePostsInResponse:', livePostsInResponse.length,
+      'livePostIds:', livePostsInResponse.map((p: Record<string, unknown>) => p.id).join(','));
+
+    const mapped = mapFeedPosts(data, unfollowedGroupIds, user?.id, friendIds);
+    const livePostsMapped = mapped.filter((p: Record<string, unknown>) =>
+      p.live_session_id && p.status === 'live'
+    );
+    console.log('[useHomeFeed] After visibility filter', 'mappedPosts:', mapped.length,
+      'livePostsVisible:', livePostsMapped.length,
+      'livePostIds:', livePostsMapped.map((p: Record<string, unknown>) => p.id).join(','));
+
+    return dedupeById(mapped)
       .sort(compareFeedPosts);
   }, [user]);
 

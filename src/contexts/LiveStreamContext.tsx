@@ -62,7 +62,7 @@ export interface LiveStreamContextType extends LiveStreamState {
   toggleRecording: () => Promise<void>;
   toggleMute: () => void;
   toggleVideo: () => void;
-  initMedia: (streamType: StreamType) => Promise<MediaStream>;
+  initMedia: (streamType: StreamType) => Promise<MediaStream | null>;
   joinStream: (streamId: string) => Promise<void>;
   leaveStream: () => Promise<void>;
   addParticipant: (userId: string, role: 'moderator' | 'guest' | 'viewer') => Promise<void>;

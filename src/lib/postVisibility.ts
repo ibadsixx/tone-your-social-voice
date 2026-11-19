@@ -100,7 +100,11 @@ export function resolvePostAudience(post: PostVisibilityFields): string {
  * friends-only content can never appear there even for an authorized friend.
  */
 export function isPublicAudience(post: PostVisibilityFields): boolean {
-  if (post.status && post.status !== 'published' && post.status !== 'live') return false;
+  if (post.status && post.status !== 'published' && post.status !== 'live') {
+    console.warn('[postVisibility] isPublicAudience rejected post', 'postId:', post.id,
+      'status:', post.status, 'reason: status is neither published nor live');
+    return false;
+  }
   return resolvePostAudience(post) === 'public';
 }
 
@@ -118,26 +122,59 @@ export function isPostVisibleToViewer(
   if (!viewerId) return isPublicAudience(post);
 
   // Drafts and scheduled posts are author-only. Active live streams are visible.
-  if (post.status && post.status !== 'published' && post.status !== 'live') return false;
+  if (post.status && post.status !== 'published' && post.status !== 'live') {
+    console.warn('[postVisibility] isPostVisibleToViewer rejected post', 'postId:', post.id,
+      'viewerId:', viewerId, 'status:', post.status, 'reason: status is neither published nor live');
+    return false;
+  }
 
   const audience = resolvePostAudience(post);
 
   if (audience === 'public') {
-    return !post.audience_excluded_user_ids?.includes(viewerId);
+    const excluded = post.audience_excluded_user_ids?.includes(viewerId);
+    if (excluded) {
+      console.warn('[postVisibility] isPostVisibleToViewer rejected post', 'postId:', post.id,
+        'viewerId:', viewerId, 'reason: viewer is in audience_excluded_user_ids');
+    }
+    return !excluded;
   }
 
-  if (audience === 'friends') return friendIds.has(authorId);
+  if (audience === 'friends') {
+    const isFriend = friendIds.has(authorId);
+    if (!isFriend) {
+      console.warn('[postVisibility] isPostVisibleToViewer rejected post', 'postId:', post.id,
+        'viewerId:', viewerId, 'authorId:', authorId, 'reason: viewer is not a friend of the author');
+    }
+    return isFriend;
+  }
 
   if (audience === 'friends_except') {
-    if (!friendIds.has(authorId)) return false;
-    return !post.audience_excluded_user_ids?.includes(viewerId);
+    const isFriend = friendIds.has(authorId);
+    if (!isFriend) {
+      console.warn('[postVisibility] isPostVisibleToViewer rejected post', 'postId:', post.id,
+        'viewerId:', viewerId, 'authorId:', authorId, 'reason: viewer is not a friend of the author');
+      return false;
+    }
+    const excluded = post.audience_excluded_user_ids?.includes(viewerId);
+    if (excluded) {
+      console.warn('[postVisibility] isPostVisibleToViewer rejected post', 'postId:', post.id,
+        'viewerId:', viewerId, 'reason: viewer is in audience_excluded_user_ids');
+    }
+    return !excluded;
   }
 
   if (audience === 'specific') {
-    return !!post.audience_user_ids?.includes(viewerId);
+    const included = !!post.audience_user_ids?.includes(viewerId);
+    if (!included) {
+      console.warn('[postVisibility] isPostVisibleToViewer rejected post', 'postId:', post.id,
+        'viewerId:', viewerId, 'reason: viewer not in audience_user_ids');
+    }
+    return included;
   }
 
   // only_me, custom_list (needs a list-membership reader) and any unrecognized
   // value are denied.
+  console.warn('[postVisibility] isPostVisibleToViewer rejected post', 'postId:', post.id,
+    'viewerId:', viewerId, 'audience:', audience, 'reason: audience type denied');
   return false;
 }
