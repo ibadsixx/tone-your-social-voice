@@ -142,6 +142,8 @@ const Post = ({
   aspect_ratio,
   group_name,
   group_id,
+  live_session_id,
+  viewerCount,
   page,
   profiles,
   post_media,
