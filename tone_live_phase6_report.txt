@@ -1,0 +1,319 @@
+TONE LIVE - PHASE 6: PRODUCTION DATABASE AND AUTHENTICATED END-TO-END VALIDATION
+Report generated: 2026-11-20 (UTC)
+Latest production probe: 2026-11-20 (UTC), rerun from the deployed Gateway.
+
+Scope: close the remaining production verification gaps for the existing Tone
+Live P2P implementation. No P2P redesign, VPS, LiveKit, external SFU, paid TURN,
+Supabase Edge Function, Supabase Realtime, or separate backend was introduced.
+Private 1:1 calling was not modified. No credentials, JWTs, tickets, cookies,
+or service-role secrets are printed in this report.
+
+Evidence categories used below:
+  PRODUCTION DATABASE  - direct or gateway-proxied operations against the real
+                         Supabase project used by the deployed Gateway.
+  DEPLOYED GATEWAY     - requests/WSS against the deployed Vercel Gateway.
+  AUTHENTICATED        - requests using real production auth sessions.
+  PHYSICAL DEVICE      - real camera/microphone on independent devices.
+  DIFFERENT NETWORK    - devices on genuinely different networks.
+  MOCKED/LOCAL         - unit tests or a local signaling double. Never counted
+                         as production end-to-end verification.
+
+Classification:
+  PASS      = executed and verified.
+  FAIL      = executed and failed.
+  NOT TESTED = not executed; no result is claimed.
+
+
+AUTHORIZED ACCESS INSPECTION
+
+PASS (production identification) - The exact Supabase project used by the
+  deployed Gateway was identified from an authenticated Gateway session JWT:
+  https://ojdhztcetykgvrcwlwen.supabase.co/auth/v1, audience authenticated.
+  This matches supabase/config.toml project_id ojdhztcetykgvrcwlwen. No local
+  environment file or unrelated project was assumed to be production.
+
+NOT TESTED - Authorized Supabase SQL access:
+  No MIGRATION_SQL_ENDPOINT, MIGRATION_PROJECT_REF, MIGRATION_ACCESS_TOKEN,
+  SUPABASE_ACCESS_TOKEN, DATABASE_URL, SUPABASE_URL, service-role credential,
+  or psql client is available. Supabase CLI login cannot run non-interactively.
+
+NOT TESTED - Authorized Vercel access:
+  npx vercel whoami -> "Logged out". Two device-login attempts were started and
+  neither completed. No Vercel token or authenticated CLI profile is available.
+  GitHub commit statuses are public integration results, not Vercel account
+  access.
+
+Because the preceding access is missing, Tasks 1 and 2 cannot be completed.
+No credentials were fabricated and no database or Vercel settings were changed.
+
+
+1. PRODUCTION SUPABASE MIGRATION
+
+PASS (source inspection only) - gateway/migrations/005_create_live_signaling.sql
+  is additive and idempotent. It defines live_signaling_tickets,
+  live_signaling_messages, live_signaling_message_seq,
+  next_live_signaling_message_seq(), the supporting indexes, and a role CHECK
+  constraint. It uses CREATE TABLE IF NOT EXISTS, CREATE SEQUENCE IF NOT EXISTS,
+  CREATE OR REPLACE FUNCTION, and CREATE INDEX IF NOT EXISTS. It deletes no data
+  and enables no RLS on the Gateway-only signaling tables.
+
+FAIL (production database evidence) - migration 005 is not applied:
+  Through the deployed Gateway's authenticated RPC proxy,
+  next_live_signaling_message_seq returned HTTP 400:
+  "Could not find the function public.next_live_signaling_message_seq without
+  parameters in the schema cache".
+  A real authenticated POST to /api/live/sessions/:id/signaling-ticket on an
+  active session returned HTTP 500 "Failed to issue signaling ticket",
+  consistent with the missing live_signaling_tickets table.
+
+NOT TESTED - Full production schema inspection:
+  live_signaling_tickets, live_signaling_messages, live_signaling_message_seq,
+  next_live_signaling_message_seq(), all columns, constraints, indexes, grants,
+  permissions, and migration history were not directly inspected because no
+  authorized SQL access exists.
+
+NOT TESTED - Application of migration 005:
+  The migration was not applied. No table was dropped, recreated, or overwritten.
+
+NOT TESTED - Real service-role database operations:
+  1. Create a short-lived signaling ticket - NOT TESTED via service role.
+  2. Consume the ticket atomically - NOT TESTED.
+  3. Verify a second consumption fails - NOT TESTED.
+  4. Insert a signaling message - NOT TESTED.
+  5. Retrieve it using the cursor - NOT TESTED.
+  6. Verify recipient/session isolation - NOT TESTED.
+  7. Verify expiry and cleanup behavior - NOT TESTED.
+
+REQUIRED ACTION: with authorized production Supabase access, inspect the actual
+  project, confirm the objects and migration history, apply migration 005 only
+  if absent or incompatible, then perform the seven service-role operations
+  listed above. Do not claim success from code inspection or mocked tests.
+
+
+2. VERCEL PRODUCTION CONFIGURATION
+
+PASS (code + official docs) - Supported WebSocket model:
+  Official Vercel docs describe exporting a Node http.Server with a ws
+  WebSocketServer attached. gateway/api/live/signaling.ts does that directly:
+  http.createServer(...), new WebSocketServer({ server }), export default server.
+  There is no server.listen(), no custom-server assumption, and no use of the
+  Next.js-only @vercel/functions upgradeWebSocket() workaround.
+
+PASS (config inspection) - gateway/vercel.json defines the dedicated
+  api/live/signaling.ts Function with maxDuration 300 and does not override it
+  with the generic rewrite.
+
+PASS (deployed Gateway evidence) - Real external WSS connections to
+  wss://gateway-iota-two.vercel.app/api/live/signaling completed HTTP 101
+  upgrades and opened. The latest probe closed with 4001 missing_ticket.
+
+PASS (deployed Gateway evidence) - GET probes returned HTTP 200 with
+  x-vercel-id for the Gateway signaling endpoint, Gateway health endpoint, and
+  https://tonesn.vercel.app/. The deployed frontend references
+  assets/index-CToJwRAh.js, the same hash produced by the local build, and that
+  bundle contains the "ice-candidate" signaling event.
+
+PASS (deployment status) - Vercel GitHub commit statuses report success for
+  gateway fd3424a and frontend 4ea9a68, 3c7f412, f52e1e8, e57142d, 40af6fe,
+  and c8bb6bd. This is stronger than a Git push, but is not Vercel dashboard
+  access.
+
+NOT TESTED - Fluid Compute setting: the Vercel project setting was not read.
+NOT TESTED - Deployed Node.js runtime version from Vercel function metadata.
+NOT TESTED - Dashboard confirmation that /api/live/signaling resolves to the
+  dedicated Function.
+NOT TESTED - Dashboard confirmation of the configured maximum duration.
+NOT TESTED - Existence, names, and values of required environment variables;
+  no env values were printed or inspected.
+NOT TESTED - Deployment readiness/promotion state from the Vercel API.
+NOT TESTED - Deployed commit-to-source correspondence from Vercel metadata;
+  commit statuses and the matching frontend asset hash are indirect evidence.
+
+
+3. AUTHENTICATED PRODUCTION SIGNALING TEST
+
+PASS (authenticated production evidence) - Three temporary production accounts
+  were created and authenticated through the existing Gateway auth flow. These
+  are real auth sessions, but they were test accounts created for this
+  verification, not pre-existing user accounts.
+
+PASS (authenticated production evidence) - The host created a public LIVE
+  session and an only_me LIVE session. A viewer joined the public session.
+
+FAIL (authenticated production evidence) - Ticket issuance for an active
+  session returned HTTP 500. Therefore no authenticated WebSocket could be
+  established with a valid production ticket.
+
+PASS (authenticated production evidence) - Unauthorized access checks:
+  A viewer received HTTP 403 when joining the only_me session and HTTP 403 when
+  requesting a signaling ticket for it. A viewer received HTTP 403 when trying
+  to create a LIVE post or end the host's session. After the host ended the
+  session, ticket requests returned HTTP 409.
+
+NOT TESTED - Both browsers connecting to the deployed Gateway WebSocket with
+  valid production tickets: blocked by ticket HTTP 500.
+NOT TESTED - Valid signaling message from participant A delivered to B.
+NOT TESTED - Server-derived sender identity and role from the ticket.
+NOT TESTED - Cursor-based reconnect and durable replay.
+NOT TESTED - Genuine expired-ticket rejection.
+NOT TESTED - Genuine consumed-ticket reuse rejection.
+NOT TESTED - Sender/recipient impersonation prevention through two sockets.
+NOT TESTED - Two independent authenticated sockets end to end.
+PASS - No token, ticket, or secret value was printed during any probe.
+
+
+4. REAL BROWSER WEBRTC TEST
+
+PASS (MOCKED/LOCAL evidence only) - npm run test:e2e:live, final run:
+  3 passed (13.4s). Two Chromium pages negotiated real SDP/ICE and established
+  real RTCPeerConnections through a local signaling double using fake devices.
+  A second case formed a three-browser full mesh. A third case exercised
+  mute/unmute, camera off/on, participant leave, and host end through the same
+  local double.
+
+PASS (MOCKED/LOCAL evidence only) - ICE candidate-pair evidence:
+  Two-peer run: connection=connected, peerState=connected, remoteTracks=1,
+  selected candidate pair host -> host, state succeeded, nominated true.
+  Three-peer run: each page had peers=2, remoteTracks=2, and two nominated
+  succeeded host -> host candidate pairs. No relay candidate was selected.
+
+NOT TESTED - Two independent authenticated browser sessions against the
+  deployed Gateway. The deployed-target spec e2e/live-p2p-deployed.spec.ts was
+  added and Playwright discovers 2 tests in it, but it cannot run until the
+  production migration and ticket issuance work.
+
+NOT TESTED - Physical camera and microphone devices.
+NOT TESTED - Host publishing real audio/video to an authenticated viewer in a
+  browser through the deployed Gateway.
+NOT TESTED - Viewer receiving host audio/video in production.
+NOT TESTED - Production-browser mute/unmute and camera off/on.
+NOT TESTED - Viewer departure observed through production signaling.
+NOT TESTED - Temporary network interruption and reconnection in a browser.
+NOT TESTED - Host end received by the viewer in production.
+NOT TESTED - Production peer-connection and media-track cleanup in a browser.
+NOT TESTED - Production browser console errors.
+
+
+5. DIFFERENT NETWORK TEST
+
+NOT TESTED - Two devices on genuinely different networks were not available.
+NOT TESTED - Host-to-host result on different networks.
+NOT TESTED - Server-reflexive-to-server-reflexive result.
+NOT TESTED - Other direct candidate combinations.
+NOT TESTED - Connection failure evidence under a restrictive NAT/network.
+
+The implementation remains STUN-only. No relay or paid TURN was introduced.
+No universal NAT traversal is claimed.
+
+
+6. LIVE LIFECYCLE VERIFICATION
+
+PASS (authenticated production evidence) - Privacy and server-side roles:
+  only_me audience blocked unauthorized join and ticket requests with HTTP 403;
+  viewer role was denied LIVE post creation and session end with HTTP 403;
+  viewer leave did not change session status (remained scheduled); host end set
+  session status to ended.
+
+PASS (authenticated production evidence) - Repeated host end is idempotent:
+  two consecutive POST /api/live/sessions/:id/end calls both returned HTTP 200
+  and status ended.
+
+FAIL (authenticated production evidence) - LIVE post creation:
+  POST /api/live/sessions/:id/posts with a valid host JWT returned HTTP 500.
+  Generic inserts through the deployed Gateway reported the exact missing
+  columns:
+    "Could not find the 'host_id' column of 'posts' in the schema cache"
+    "Could not find the 'live_session_id' column of 'posts' in the schema cache"
+    "Could not find the 'title' column of 'posts' in the schema cache"
+  The deployed posts table lacks columns required by the Phase 4/5 LIVE
+  lifecycle.
+
+NOT TESTED - Exactly one LIVE post/session created when the host starts a
+  broadcast against production data: blocked because post creation fails.
+NOT TESTED - Reconnection without duplicate LIVE posts or sessions: blocked.
+NOT TESTED - Host termination updating the correct LIVE post: blocked because
+  no LIVE post could be created.
+NOT TESTED - Full participant-role and ownership matrix beyond the viewer,
+  only_me, post-create, and end checks executed above.
+
+
+7. REGRESSION PROTECTION
+
+PASS (Gateway) - npm run build completed cleanly.
+PASS (Gateway) - npm run test:live-signaling-protocol: 139 passed, 0 failed.
+PASS (Gateway) - npm run test:live-signaling-store: 23 passed, 0 failed.
+PASS (Gateway) - npm run test:live-lifecycle: 36 passed, 0 failed.
+PASS (Frontend) - npx vitest run src/services/liveP2P.test.ts
+  src/services/liveSignalingClient.test.ts: 15 passed, 0 failed.
+PASS (Frontend) - npm run build succeeded, producing
+  assets/index-CToJwRAh.js. Existing chunk-size, browserslist, and Tailwind
+  ambiguity warnings remain non-blocking.
+PASS (MOCKED/LOCAL browser) - Existing real-browser two-peer, three-peer, and
+  device/lifecycle tests: 3 passed (13.4s).
+PASS (test discovery) - Playwright discovers 2 tests in the deployed-target
+  spec, but they were not executed because production ticket issuance fails.
+NOT TESTED - Private 1:1 call regression tests: no available script was found;
+  private call code was not modified.
+
+A full frontend TypeScript run has 782 pre-existing diagnostics; none are in
+the new P2P/signaling modules or rewritten Live files. These are unrelated
+existing failures and are not counted as production verification.
+
+
+FINAL CLASSIFICATION SUMMARY
+
+Task 1 - Production Supabase migration:
+  PASS       - production project identified; migration source inspected.
+  FAIL       - migration 005 absent; authenticated ticket issuance is 500.
+  NOT TESTED - full schema/history inspection and all service-role DB operations.
+
+Task 2 - Vercel production configuration:
+  PASS       - code/config/docs model, WSS upgrades, HTTP probes, commit statuses.
+  NOT TESTED - Fluid Compute, runtime metadata, Function route, duration, env
+               variable existence, promotion state, deployed commit metadata.
+
+Task 3 - Authenticated production signaling:
+  PASS       - real auth users, session creation, unauthorized-access 403s.
+  FAIL       - valid ticket issuance.
+  NOT TESTED - all valid two-user socket/message/replay/ticket-lifecycle checks.
+
+Task 4 - Real browser WebRTC:
+  PASS       - only MOCKED/LOCAL fake-device browser tests.
+  NOT TESTED - all production, authenticated, physical-device browser checks.
+
+Task 5 - Different network:
+  NOT TESTED - all requirements.
+
+Task 6 - LIVE lifecycle:
+  PASS       - privacy/role/leave/session-end/idempotent-end checks executed
+               against production.
+  FAIL       - LIVE post creation due to missing deployed posts columns.
+  NOT TESTED - post idempotency, reconnection duplicates, post update on end,
+               full role matrix.
+
+Task 7 - Regression protection:
+  PASS       - all available Gateway, frontend targeted, build, and local E2E
+               regression tests.
+  NOT TESTED - private 1:1 call regression tests.
+
+
+REMAINING LIMITATIONS AND REQUIRED ACTION
+
+1. Authorized Supabase production access is required to inspect the real schema
+   and migration history, apply migration 005 if absent, and verify the seven
+   service-role ticket/message operations.
+2. Authorized Vercel access is required to verify Fluid Compute, Node runtime,
+   Function routing, duration, env-variable existence, and deployment promotion.
+3. The deployed posts table also needs a migration adding host_id,
+   live_session_id, and title before the LIVE post lifecycle can pass.
+4. Production authenticated browser tests need valid tickets, real accounts,
+   physical devices, and two genuinely different networks.
+5. Until items 1-4 are closed, Phase 6 is NOT complete and production readiness
+   must NOT be claimed.
+
+COMPLETION STATUS: NOT COMPLETE.
+
+Two production FAILs were found: migration 005 is absent and the deployed posts
+table lacks required LIVE columns. Critical production integration remains
+NOT TESTED. No code changes were necessary for this report, so no new commit or
+push was made.
