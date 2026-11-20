@@ -25,6 +25,9 @@ interface HarnessStatus {
   peers: number;
   peerStates: Record<string, string>;
   candidatePairs: CandidatePairInfo[];
+  localAudioEnabled: boolean;
+  localVideoEnabled: boolean;
+  sessionEnded: boolean;
   inbound: number;
   outbound: number;
   offers: number;
@@ -37,6 +40,9 @@ const params = new URLSearchParams(window.location.search);
 const sessionId = params.get('session') || 'p2p-e2e-session';
 const userId = params.get('user') || 'unknown-user';
 const gatewayUrl = params.get('gateway') || window.location.origin;
+const media = params.get('media') === 'video' ? 'video' : 'audio';
+const role = (params.get('role') || 'host') as 'host' | 'moderator' | 'guest' | 'viewer';
+const injectedAuthToken = (window as unknown as { __phase5AuthToken?: string }).__phase5AuthToken;
 
 const status: HarnessStatus = {
   userId,
@@ -48,6 +54,9 @@ const status: HarnessStatus = {
   peers: 0,
   peerStates: {},
   candidatePairs: [],
+  localAudioEnabled: false,
+  localVideoEnabled: false,
+  sessionEnded: false,
   inbound: 0,
   outbound: 0,
   offers: 0,
@@ -107,12 +116,43 @@ async function sampleCandidatePairs(): Promise<void> {
 }
 setInterval(() => { void sampleCandidatePairs(); }, 500);
 
+function syncLocalState(): void {
+  const stream = manager?.getLocalStream();
+  status.localAudioEnabled = Boolean(stream?.getAudioTracks().some((track) => track.enabled));
+  status.localVideoEnabled = Boolean(stream?.getVideoTracks().some((track) => track.enabled));
+  render();
+}
+
+(window as unknown as {
+  __phase5Actions: {
+    setMuted: (muted: boolean) => void;
+    setVideoEnabled: (enabled: boolean) => void;
+    leave: () => void;
+  };
+}).__phase5Actions = {
+  setMuted: (muted) => { manager?.setMuted(muted); syncLocalState(); },
+  setVideoEnabled: (enabled) => { manager?.setVideoEnabled(enabled); syncLocalState(); },
+  leave: () => {
+    signaling?.close();
+    manager?.close();
+    status.signaling = 'closed';
+    status.connection = 'closed';
+    render();
+  },
+};
+
 let manager: LivePeerManager | null = null;
 let signaling: LiveSignalingClient | null = null;
 
 async function handleMessage(message: InboundP2PSignal): Promise<void> {
   status.inbound++;
   if (!manager || message.fromUserId === userId) return;
+
+  if (message.type === 'session-ended') {
+    status.sessionEnded = true;
+    render();
+    return;
+  }
 
   if (message.type === 'join') {
     // Deterministic single offer per pair; perfect negotiation stays as backstop.
@@ -142,7 +182,7 @@ async function start(): Promise<void> {
   manager = new LivePeerManager({
     sessionId,
     localUserId: userId,
-    role: 'host',
+    role,
     onSignal: (signal) => {
       status.outbound++;
       signaling?.send(signal);
@@ -164,14 +204,14 @@ async function start(): Promise<void> {
     },
   });
 
-  const local = await manager.initLocalMedia('audio');
+  const local = await manager.initLocalMedia(media);
   status.localTracks = local?.getTracks().length ?? 0;
-  render();
+  syncLocalState();
 
   signaling = new LiveSignalingClient({
     gatewayUrl,
     sessionId,
-    getAuthToken: () => userId,
+    getAuthToken: () => injectedAuthToken || userId,
     onMessage: (message) => {
       void handleMessage(message).catch((error: Error) => {
         status.error = error.message;

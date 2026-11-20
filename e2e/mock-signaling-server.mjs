@@ -57,6 +57,27 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ name: 'Tone Live mock signaling', ok: true }));
     return;
   }
+  const endMatch = url.pathname.match(/^\/api\/live\/sessions\/([^/]+)\/end$/);
+  if (req.method === 'POST' && endMatch) {
+    const sessionKey = decodeURIComponent(endMatch[1]);
+    const state = rooms.get(sessionKey);
+    if (state) {
+      const ended = {
+        id: randomUUID(),
+        sessionId: sessionKey,
+        fromUserId: 'gateway',
+        type: 'session-ended',
+        role: 'host',
+        gatewaySeq: ++state.seq,
+        timestamp: new Date().toISOString(),
+      };
+      state.messages.push(ended);
+      for (const peer of state.sockets) send(peer, ended);
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ended' }));
+    return;
+  }
   res.writeHead(404);
   res.end();
 });

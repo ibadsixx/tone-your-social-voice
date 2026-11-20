@@ -7,7 +7,7 @@ tickets, cookies, service-role credentials, or other secrets are printed here.
 
 Classification used below:
   PASS      = actually executed/inspected successfully with evidence
-  FAIL      = actually executed and failed (none remain in the final runs)
+  FAIL      = actually executed and failed
   NOT TESTED = not executed; no result is claimed
 
 
@@ -24,20 +24,33 @@ PASS (code inspection) - Gateway store targets exactly those objects:
   src/features/liveSignalingStore.ts inserts/consumes tickets, calls the
   sequence RPC, stores/fetches messages by cursor, and cleans expired rows.
 
-NOT TESTED - Direct Supabase project inspection:
-  No Supabase CLI auth (npx supabase projects list -> AccessTokenRequiredError),
-  no Vercel CLI auth (npx vercel whoami -> "Logged out"), no DATABASE_URL /
-  SUPABASE_URL / service-role credentials in the environment, and no psql client.
-  Therefore the actual deployed project's table existence, columns, constraints,
-  indexes, permissions, migration history, and project identity were NOT directly
-  inspected. Migration 005 was NOT applied by this run.
+PASS (deployed-project identity) - the real Supabase project used by the
+  deployed Gateway was identified from an authenticated Gateway session JWT:
+  issuer https://ojdhztcetykgvrcwlwen.supabase.co/auth/v1, audience
+  authenticated. This matches supabase/config.toml project_id
+  ojdhztcetykgvrcwlwen. No token or secret value is printed.
 
-OBSERVATION (inconclusive, not a PASS) - Deployed Gateway DB path was probed
-  without secrets: a WebSocket connection with a non-secret invalid ticket
-  closed with 4002 invalid_or_used_ticket, and a connection with no ticket
-  closed with 4001 missing_ticket. The code swallows ticket-query errors and
-  returns null, so 4002 is consistent with either a healthy schema or a hidden
-  query error. It does NOT prove migration 005 exists.
+FAIL (deployed schema probe) - migration 005 is NOT applied:
+  Through the deployed Gateway's authenticated RPC proxy, calling
+  next_live_signaling_message_seq returned HTTP 400:
+  "Could not find the function public.next_live_signaling_message_seq without
+  parameters in the schema cache".
+  An independent real authenticated POST to
+  /api/live/sessions/:id/signaling-ticket returned HTTP 500
+  "Failed to issue signaling ticket", consistent with the missing
+  live_signaling_tickets table.
+
+NOT TESTED - full direct schema inspection:
+  No Supabase CLI auth, Vercel CLI auth (npx vercel whoami -> "Logged out"),
+  DATABASE_URL / SUPABASE_URL / service-role credentials, or psql client is
+  available. The complete column/constraint/index/permission/migration-history
+  inventory and the application of migration 005 were therefore NOT performed.
+
+OBSERVATION (now explained) - earlier WebSocket probes with no ticket and with
+  a non-secret invalid ticket closed 4001 and 4002 respectively. Because
+  consumeSignalingTicket swallows DB query errors and returns null, those
+  probes never proved migration 005 existed; the authenticated probes above
+  now show it is absent.
 
 PASS (mocked tests only) - Gateway verification on current main:
   npm run build                       -> clean
@@ -50,7 +63,9 @@ REQUIRED ACTION: with authorized Supabase/Vercel access, inspect the actual
   deployed project, confirm both tables, the sequence, the function, their
   columns/constraints/indexes/permissions and migration history, then apply
   migration 005 only if absent, and verify real service-role ticket insert,
-  atomic consume, message insert, cursor fetch, and cleanup.
+  atomic consume, message insert, cursor fetch, and cleanup. A separate
+  migration is also required to add host_id, live_session_id, and title to the
+  deployed posts table before the LIVE post lifecycle can pass.
 
 
 2. VERCEL WEBSOCKET DEPLOYMENT
@@ -133,19 +148,34 @@ PASS - Unauthenticated / invalid-ticket rejection:
   No ticket -> 4001 missing_ticket. Non-secret invalid ticket -> 4002
   invalid_or_used_ticket. No ticket or secret values were logged.
 
-NOT TESTED - Authenticated ticket issuance:
-  Requires a real authenticated Gateway session/JWT and an active live session;
-  none were available. Unauthenticated POST to the ticket endpoint returned
-  401 Missing authorization header in earlier probing.
+PASS - Real authenticated users and sessions were created:
+  Three independent temporary users signed up and signed in through the
+  deployed Gateway. The host created a public LIVE session and an only_me
+  session. No token, JWT, ticket, cookie, or password is printed.
 
-NOT TESTED - Send valid signaling message and verify delivery to a different
-  authenticated client.
-NOT TESTED - Cursor-based reconnect and durable message replay.
-NOT TESTED - Expired ticket behavior.
-NOT TESTED - Reused ticket behavior (the invalid-ticket probe does not test a
-  real previously consumed ticket).
-NOT TESTED - Unauthorized session access with real authenticated sessions.
-NOT TESTED - Two independent authenticated sessions end to end.
+PASS - Unauthorized session access with real authenticated sessions:
+  A non-host viewer received HTTP 403 when joining the only_me session and
+  HTTP 403 when requesting a signaling ticket for it. A viewer received HTTP
+  403 when attempting to create a LIVE post and when attempting to end the
+  host's session. Roles and privacy are Gateway-enforced.
+
+FAIL - Authenticated signaling-ticket issuance:
+  With a valid JWT on an active live session, POST
+  /api/live/sessions/:id/signaling-ticket returned HTTP 500
+  "Failed to issue signaling ticket". After the host ended the session the
+  same endpoint correctly returned HTTP 409, proving the request path and
+  auth were reached before the DB failure.
+
+NOT TESTED - Send a valid signaling message and verify delivery to a different
+  authenticated client: blocked because ticket issuance returns 500.
+NOT TESTED - Cursor-based reconnect and durable message replay: blocked by
+  ticket issuance.
+NOT TESTED - Expired-ticket behavior with a real issued ticket: blocked by
+  ticket issuance.
+NOT TESTED - Reused-ticket behavior with a real previously consumed ticket:
+  blocked by ticket issuance.
+NOT TESTED - Two independent authenticated sockets end to end: blocked by
+  ticket issuance.
 
 
 4. TWO-BROWSER WEBRTC
@@ -171,17 +201,25 @@ PASS - Real ICE state and selected candidate-pair type were recorded:
   Selected candidate pair: host -> host, state succeeded, nominated true.
   Relay candidates were absent by assertion.
 
+PASS (real browser, local signaling double) - mute/unmute, camera on/off,
+  participant leave, and host end:
+  A third local E2E case drove the production manager from two Chromium pages.
+  It asserted localAudioEnabled false after mute and true after unmute,
+  localVideoEnabled false after camera-off and true after camera-on, the
+  remaining peer count dropping to 0 when the second participant left, and
+  sessionEnded becoming true on the remaining page after the host ended.
+  Final run: 3 passed (11.9s), including the two-peer and three-peer cases.
+
 NOT TESTED - Two authenticated production users through the deployed Supabase
-  Gateway. The e2e harness uses fake device flags and a local Gateway double;
-  it proves real browser WebRTC, not production ticket/DB delivery.
+  Gateway. A deployed-target spec (e2e/live-p2p-deployed.spec.ts) was added and
+  discovered by Playwright (2 tests), but it cannot run until migration 005 is
+  applied and ticket issuance succeeds. The local harness uses fake device
+  flags and a local Gateway double; it proves real browser WebRTC, not
+  production ticket/DB delivery.
 
 NOT TESTED - Physical camera and microphone devices.
 NOT TESTED - Host publishing to an authenticated viewer role in a browser.
-NOT TESTED - Mute/unmute and camera on/off in a real browser. These pass only
-  in the mocked WebRTC unit test suite.
-NOT TESTED - Participant leaving in a real browser.
 NOT TESTED - Reconnection after a temporary network interruption.
-NOT TESTED - Host ending the broadcast in a real browser.
 NOT TESTED - Different physical networks.
 
 
@@ -197,10 +235,12 @@ PASS (real browser, local signaling double) - Three independent Chromium
       peerStates={mesh-alice: connected, mesh-bob: connected}
   Each participant had two nominated succeeded candidate pairs, both host->host.
 
-PASS - Final run: 2 tests passed (10.1s total) including the two-browser and
-  three-browser cases. Relay candidates were absent by assertion.
+PASS - Final run: 3 tests passed (11.9s total) including the two-browser,
+  three-browser, and lifecycle/device-toggle cases. Relay candidates were
+  absent by assertion.
 
 NOT TESTED - Three authenticated production users through the deployed Gateway.
+  The deployed-target spec exists but is blocked by the missing migration.
 
 
 6. NAT AND STUN LIMITATIONS
@@ -236,16 +276,40 @@ PASS (build) - Frontend npm run build succeeded: 4343 modules transformed,
   same asset hash. Known pre-existing Vite chunk-size/browserslist/Tailwind
   warnings remain non-blocking.
 
-NOT TESTED - Real deployed LIVE post lifecycle end to end:
-  exactly one LIVE post created, privacy rules against real friend data,
-  viewer leaving, host ending updating the real post, reconnect without
-  duplicate sessions/posts, and Gateway-enforced permissions were NOT verified
-  against the deployed Supabase database or with authenticated browser users.
+PASS (real deployed Gateway) - privacy and permission rules:
+  With three real temporary users, a viewer was denied joining a session with
+  audience_type=only_me, denied a signaling ticket for it, denied creating a
+  LIVE post, and denied ending the host's session. Viewer leave did not change
+  the session status, and host end set the session status to ended.
+
+FAIL (real deployed Gateway) - LIVE post creation:
+  POST /api/live/sessions/:id/posts with a valid host JWT returned HTTP 500.
+  Direct generic inserts through the deployed Gateway returned the exact
+  PostgREST errors:
+    "Could not find the 'host_id' column of 'posts' in the schema cache"
+    "Could not find the 'live_session_id' column of 'posts' in the schema cache"
+    "Could not find the 'title' column of 'posts' in the schema cache"
+  The deployed posts table therefore lacks the columns the Phase 4/5 LIVE
+  lifecycle requires.
+
+NOT TESTED - Post-idempotency and host-end-updates-post against real data:
+  Blocked because no LIVE post could be created. The mocked lifecycle suite
+  covers these behaviors, but the deployed database does not.
+
+NOT TESTED - Reconnect without duplicate sessions/posts with real
+  authenticated browser users: blocked by the same failures plus the missing
+  signaling migration.
 
 
 8. KNOWN FAILURES AND REMAINING LIMITATIONS
 
-No current FAIL items remain in the final executed runs.
+Current FAIL items found by real deployed probes:
+  1. Migration 005 is absent in the actual Supabase project: the sequence RPC
+     next_live_signaling_message_seq does not exist, and authenticated ticket
+     issuance returns HTTP 500.
+  2. LIVE post creation cannot succeed against the deployed database: the posts
+     table lacks host_id, live_session_id, and title.
+These are real failures, not mocked-test results.
 
 Historical issues found and fixed during real-browser verification in Phase 4:
   - Early ICE candidates could be applied before remote SDP: fixed by queuing
@@ -258,9 +322,12 @@ Historical issues found and fixed during real-browser verification in Phase 4:
     routing: fixed in the test double.
 
 Remaining limitations:
-  1. Migration 005 was not applied or directly verified because no Supabase or
-     Vercel credentials/CLI auth were available. Direct schema, sequence,
-     function, permissions, and history inspection is still required.
+  1. Migration 005 was NOT applied. Two Vercel device-login attempts were
+     started; neither completed (`vercel whoami` remained "Logged out"), and
+     no Supabase token, service-role credential, or SQL endpoint was provided.
+     The function/ticket failures above prove the migration is absent, but a
+     full columns/constraints/indexes/permissions/history inventory and the
+     application of migration 005 remain blocked on authorized access.
   2. Fluid compute could not be verified in Vercel project settings, although
      the deployed WebSocket upgrade succeeds.
   3. Full Vercel build logs and environment-variable values were not read.
@@ -268,20 +335,24 @@ Remaining limitations:
      via Vercel's GitHub commit statuses, plus live HTTP/WSS probes and a
      matching deployed frontend asset hash.
   4. Real authenticated two-user and three-user WebSocket flows, ticket
-     expiry/reuse, cursor reconnect/replay, and unauthorized session access
-     were not executed.
+     expiry/reuse, cursor reconnect/replay, and valid message delivery were
+     not executed because ticket issuance returns HTTP 500. Unauthorized
+     session access WAS executed with real users and correctly returned 403.
   5. Real browser tests used fake media devices and a local signaling double.
-     Physical devices, viewer-role rendering, mute/camera toggles, participant
-     leave, temporary network interruption, host end, and different networks
-     remain untested in a real browser.
+     Mute/unmute, camera on/off, participant leave, and host end now PASS in a
+     real browser against that double. Physical devices, viewer-role rendering
+     against deployed data, reconnection after a network interruption, and
+     different networks remain untested in a real browser.
   6. External NAT/STUN traversal and restrictive-network behavior remain
      untested. STUN-only direct host connections were demonstrated locally;
      relay candidates were absent.
 
 Bottom line: Vercel reports successful deployments for the relevant commits,
-the deployed signaling WebSocket endpoint is reachable and upgrades
-successfully, the deployed frontend matches the P2P build, and real Chromium
-two-peer/three-peer WebRTC with host->host selected candidate pairs PASSES.
-Production database migration/application, authenticated end-to-end signaling,
-and real-world authenticated browser sessions are NOT TESTED and remain
-required before claiming production readiness.
+the deployed signaling WebSocket endpoint upgrades successfully, the deployed
+frontend matches the P2P build, and real Chromium two-peer/three-peer WebRTC
+with host->host selected candidate pairs PASSES, including mute/unmute, camera
+on/off, participant leave and host end in the browser double. Real deployed
+probes now show two concrete production FAILs: migration 005 is absent and
+LIVE post columns are missing. Authenticated signaling and browser tests
+against the deployed Gateway are blocked until those are fixed. This is NOT
+production-ready.

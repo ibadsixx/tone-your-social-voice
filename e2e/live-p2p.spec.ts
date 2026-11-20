@@ -23,6 +23,9 @@ interface HarnessStatus {
   peers: number;
   peerStates: Record<string, string>;
   candidatePairs: CandidatePairInfo[];
+  localAudioEnabled: boolean;
+  localVideoEnabled: boolean;
+  sessionEnded: boolean;
   inbound: number;
   outbound: number;
   offers: number;
@@ -33,8 +36,9 @@ interface HarnessStatus {
 
 const MOCK_GATEWAY = 'http://127.0.0.1:8787';
 
-function harnessUrl(session: string, user: string): string {
+function harnessUrl(session: string, user: string, media: 'audio' | 'video' = 'audio'): string {
   const params = new URLSearchParams({ session, user, gateway: MOCK_GATEWAY });
+  if (media === 'video') params.set('media', 'video');
   return `/e2e/live-p2p-harness.html?${params.toString()}`;
 }
 
@@ -46,10 +50,11 @@ async function openParticipant(
   browser: Browser,
   session: string,
   user: string,
+  media: 'audio' | 'video' = 'audio',
 ): Promise<Page> {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(harnessUrl(session, user), { waitUntil: 'domcontentloaded' });
+  await page.goto(harnessUrl(session, user, media), { waitUntil: 'domcontentloaded' });
   await expect.poll(() => status(page), { message: `${user}: harness started` })
     .not.toBeUndefined();
   return page;
@@ -134,5 +139,42 @@ test.describe('Tone Live real-browser P2P', () => {
     expect(states.reduce((n, s) => n + s.offers, 0)).toBeGreaterThanOrEqual(3);
     expect(states.reduce((n, s) => n + s.answers, 0)).toBeGreaterThanOrEqual(3);
     expect(states.reduce((n, s) => n + s.ice, 0)).toBeGreaterThanOrEqual(3);
+  });
+
+  test('device toggles, participant leave, and host end are observed in browsers', async ({ browser }) => {
+    const session = `p2p-lifecycle-${Date.now()}`;
+    const alice = await openParticipant(browser, session, 'life-alice', 'video');
+    const bob = await openParticipant(browser, session, 'life-bob', 'video');
+
+    await expectConnected(alice, 'life-alice', 1);
+    await expectConnected(bob, 'life-bob', 1);
+    await expect.poll(async () => (await status(alice)).localVideoEnabled, { message: 'initial camera on' }).toBe(true);
+
+    await alice.evaluate(() => (window as unknown as {
+      __phase5Actions: { setMuted: (muted: boolean) => void };
+    }).__phase5Actions.setMuted(true));
+    await expect.poll(async () => (await status(alice)).localAudioEnabled, { message: 'mute' }).toBe(false);
+    await alice.evaluate(() => (window as unknown as {
+      __phase5Actions: { setMuted: (muted: boolean) => void };
+    }).__phase5Actions.setMuted(false));
+    await expect.poll(async () => (await status(alice)).localAudioEnabled, { message: 'unmute' }).toBe(true);
+
+    await alice.evaluate(() => (window as unknown as {
+      __phase5Actions: { setVideoEnabled: (enabled: boolean) => void };
+    }).__phase5Actions.setVideoEnabled(false));
+    await expect.poll(async () => (await status(alice)).localVideoEnabled, { message: 'camera off' }).toBe(false);
+    await alice.evaluate(() => (window as unknown as {
+      __phase5Actions: { setVideoEnabled: (enabled: boolean) => void };
+    }).__phase5Actions.setVideoEnabled(true));
+    await expect.poll(async () => (await status(alice)).localVideoEnabled, { message: 'camera on' }).toBe(true);
+
+    await bob.evaluate(() => (window as unknown as {
+      __phase5Actions: { leave: () => void };
+    }).__phase5Actions.leave());
+    await expect.poll(async () => (await status(alice)).peers, { message: 'host sees viewer leave' }).toBe(0);
+
+    const ended = await fetch(`${MOCK_GATEWAY}/api/live/sessions/${session}/end`, { method: 'POST' });
+    expect(ended.status).toBe(200);
+    await expect.poll(async () => (await status(alice)).sessionEnded, { message: 'host sees session ended' }).toBe(true);
   });
 });
