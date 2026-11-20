@@ -1,14 +1,13 @@
-// Tone Live — WebRTC media transport integrated into the existing Tone app.
+// Tone Live — LiveKit SDK media transport integrated into the existing Tone app.
 //
 // Implements the live session media transport behind the same state model:
 //   - Stream session lifecycle: start, end, toggle recording
 //   - Stream metadata: title, type (video/audio), audience, status
 //   - Participant roles: host, moderator, guest, viewer
-//   - WebRTC peer connection + media track publication/subscription
-//   - Signaling via the Gateway's /api/live/sessions/:id/signaling SSE endpoint
+//   - LiveKit Room connection for media transport
 //   - Integration with the existing audience/privacy system
 //
-// No LiveKit, Agora, or mediasoup — Tone's own custom streaming engine.
+// Private 1:1 calling (src/services/webrtc.ts) is NOT modified by this file.
 
 import {
   createContext,
@@ -20,7 +19,7 @@ import {
 } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { webrtcService } from '@/services/webrtc';
+import { Room, createLocalTracks, logLevel } from 'livekit-client';
 import {
   createLiveStream,
   getLiveStream,
@@ -38,6 +37,8 @@ import {
   type CreateSessionData,
 } from '@/api/liveStreams';
 
+const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
+
 export type StreamRole = 'host' | 'moderator' | 'guest' | 'viewer';
 export type StreamType = 'video' | 'audio';
 
@@ -52,7 +53,7 @@ export interface LiveStreamState {
   isVideoOff: boolean;
   viewerCount: number;
   error: string | null;
-  connectionState: RTCPeerConnectionState | null;
+  connectionState: string | null;
   livePostId: string | null;
 }
 
@@ -69,14 +70,71 @@ export interface LiveStreamContextType extends LiveStreamState {
   removeParticipant: (userId: string) => Promise<void>;
   updateParticipantRole: (userId: string, role: StreamRole) => Promise<void>;
   getActiveStreams: () => Promise<LiveSession[]>;
-  createOffer: () => Promise<string>;
-  handleOffer: (sdp: string, fromUserId: string) => Promise<string>;
-  handleAnswer: (sdp: string) => Promise<void>;
-  addIceCandidate: (candidate: any) => Promise<void>;
   resetMediaInit: () => void;
 }
 
 const LiveStreamContext = createContext<LiveStreamContextType | undefined>(undefined);
+
+// Fetch a LiveKit token from the Gateway for a session.
+// Returns { token, roomId, livekitUrl, role, sessionId }
+async function fetchLiveKitToken(sessionId: string): Promise<{
+  token: string;
+  roomId: string;
+  livekitUrl: string;
+  role: StreamRole;
+  sessionId: string;
+}> {
+  const token = (() => {
+    try {
+      const sessionStr = localStorage.getItem('tone-auth-token');
+      if (sessionStr) {
+        const session = JSON.parse(sessionStr);
+        return session?.access_token ?? null;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  })();
+
+  if (!token) {
+    throw new Error('Authentication required');
+  }
+
+  const res = await fetch(`${GATEWAY_URL}/api/live/sessions/${sessionId}/token`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error || `Failed to get LiveKit token (${res.status})`);
+  }
+
+  const data = await res.json();
+  return {
+    token: data.token,
+    roomId: data.roomId,
+    livekitUrl: data.livekitUrl,
+    role: data.role,
+    sessionId: data.sessionId,
+  };
+}
+
+// Combine all subscribed remote tracks from all participants into a single MediaStream
+// for backward compatibility with the existing UI that uses srcObject.
+function combineRemoteTracks(room: Room): MediaStream {
+  const stream = new MediaStream();
+  for (const participant of room.remoteParticipants.values()) {
+    for (const track of participant.getTracks()) {
+      if (track.isSubscribed && track.track) {
+        stream.addTrack(track.track);
+      }
+    }
+  }
+  return stream;
+}
 
 export const LiveStreamProvider = ({
   children,
@@ -102,32 +160,49 @@ export const LiveStreamProvider = ({
   });
 
   const streamRef = useRef<LiveSession | null>(null);
-  const signalingRef = useRef<EventSource | null>(null);
-  const webrtcInitializedRef = useRef<boolean>(false);
+  const roomRef = useRef<Room | null>(null);
+  const localTracksRef = useRef<Array<{ track: import('livekit-client').LocalTrack }>>([]);
   const mediaInitAttemptedRef = useRef(false);
-  const getUserMediaCallCountRef = useRef<number>(0);
-  const peerConnectionCountRef = useRef<number>(0);
 
-  // Set up WebRTC callbacks once
-  useEffect(() => {
-    webrtcService.setOnRemoteStream((stream) => {
-      setState((prev) => ({ ...prev, remoteStream: stream }));
-    });
+  // Cleanup LiveKit resources
+  const cleanupLiveKit = useCallback(() => {
+    // Stop and unpublish local tracks
+    if (roomRef.current) {
+      const room = roomRef.current;
+      const localParticipant = room.localParticipant;
+      for (const trackInfo of localTracksRef.current) {
+        try {
+          localParticipant.unpublishTrack(trackInfo.track);
+        } catch {
+          // Ignore errors during cleanup
+        }
+        try {
+          trackInfo.track.stop();
+        } catch {
+          // Ignore errors during cleanup
+        }
+      }
+      localTracksRef.current = [];
 
-    webrtcService.setOnIceCandidate(async (candidate) => {
-      // ICE candidates are sent via the signaling channel by the caller
-    });
+      try {
+        room.disconnect();
+      } catch {
+        // Ignore errors during cleanup
+      }
+      roomRef.current = null;
+    }
 
-    webrtcService.setOnConnectionStateChange((state) => {
-      setState((prev) => ({ ...prev, connectionState: state }));
-    });
-
-    return () => {
-      webrtcService.setOnRemoteStream(null);
-      webrtcService.setOnIceCandidate(null);
-      webrtcService.setOnConnectionStateChange(null);
-    };
-  }, []);
+    // Stop any remaining local stream tracks
+    if (state.localStream) {
+      state.localStream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          // Ignore
+        }
+      });
+    }
+  }, [state.localStream]);
 
   // Get active live streams
   const getActiveStreams = useCallback(async () => {
@@ -144,11 +219,7 @@ export const LiveStreamProvider = ({
     }
   }, [toast]);
 
-  // Initialize local media (camera/microphone)
-  // Returns null when no usable media tracks are available (e.g. headless,
-  // permission denied, or both video and audio failed). Returns a MediaStream
-  // with at least one usable track on success. Preserves audio-only mode when
-  // audio works but video does not.
+  // Initialize local media (camera/microphone) using LiveKit
   const initMedia = useCallback(async (streamType: StreamType): Promise<MediaStream | null> => {
     // Prevent duplicate getUserMedia() calls
     if (mediaInitAttemptedRef.current) {
@@ -158,24 +229,36 @@ export const LiveStreamProvider = ({
 
     const isAudioOnly = streamType === 'audio';
 
-    // Development diagnostics: count getUserMedia() calls
-    getUserMediaCallCountRef.current++;
-    console.log('[LiveStreamContext] getUserMedia() call #', getUserMediaCallCountRef.current,
-      'streamType:', streamType, 'isAudioOnly:', isAudioOnly);
+    console.log('[LiveStreamContext] Creating local tracks, streamType:', streamType,
+      'isAudioOnly:', isAudioOnly);
 
     try {
-      const stream = await webrtcService.getLocalStream(isAudioOnly ? 'voice' : 'video');
+      const tracks = await createLocalTracks({
+        audio: true,
+        video: isAudioOnly ? false : true,
+      });
 
-      const hasTracks = stream.getTracks().length > 0;
-      console.log('[LiveStreamContext] Media init result:', hasTracks ? 'success' : 'no tracks',
-        'trackCount:', stream.getTracks().length);
+      const hasTracks = tracks.length > 0;
+      console.log('[LiveStreamContext] Local tracks created:', hasTracks ? 'success' : 'no tracks',
+        'trackCount:', tracks.length, 'kinds:',
+        tracks.map((t) => (t.track as MediaStreamTrack).kind).join(','));
 
       if (!hasTracks) {
-        stream.getTracks().forEach((track) => track.stop());
+        for (const t of tracks) {
+          try { t.stop(); } catch { /* ignore */ }
+        }
         setState((prev) => ({ ...prev, localStream: null }));
-        console.warn('[LiveStreamContext] Media stream has no usable tracks');
+        console.warn('[LiveStreamContext] No usable tracks created');
         return null;
       }
+
+      // Build a MediaStream from the local tracks
+      const stream = new MediaStream();
+      for (const t of tracks) {
+        stream.addTrack(t.track);
+      }
+
+      localTracksRef.current = tracks.map((t) => ({ track: t }));
 
       setState((prev) => ({
         ...prev,
@@ -184,52 +267,51 @@ export const LiveStreamProvider = ({
         isVideoOff: isAudioOnly,
       }));
 
-      webrtcInitializedRef.current = true;
+      console.log('[LiveStreamContext] Media initialized successfully, trackCount:',
+        stream.getTracks().length);
+
+      // Audio-only fallback notification
+      if (!isAudioOnly && !stream.getTracks().some((t) => t.kind === 'video')) {
+        toast({
+          title: 'Video unavailable, audio-only mode',
+          description: 'Camera access failed. Stream started in audio-only mode.',
+          variant: 'default',
+        });
+      }
+
       return stream;
     } catch (err) {
       const error = err as Error;
-
-      // Release any partially acquired tracks
-      if (state.localStream) {
-        state.localStream.getTracks().forEach((track) => {
-          track.stop();
-        });
-        setState((prev) => ({ ...prev, localStream: null }));
-      }
+      console.warn('[LiveStreamContext] Media init failed:', error.message);
 
       // If video mode fails, try audio-only fallback
       if (!isAudioOnly) {
-        console.warn('[LiveStreamContext] Video init failed, trying audio-only fallback:', error.name);
         try {
-          const audioStream = await webrtcService.getLocalStream('voice');
+          const audioTracks = await createLocalTracks({ audio: true, video: false });
+          if (audioTracks.length > 0) {
+            const audioStream = new MediaStream();
+            for (const t of audioTracks) {
+              audioStream.addTrack(t.track);
+            }
+            localTracksRef.current = audioTracks.map((t) => ({ track: t }));
 
-          const hasAudioTracks = audioStream.getTracks().length > 0;
-          console.log('[LiveStreamContext] Audio fallback result:', hasAudioTracks ? 'success' : 'no tracks',
-            'trackCount:', audioStream.getTracks().length);
+            setState((prev) => ({
+              ...prev,
+              localStream: audioStream,
+              isMuted: false,
+              isVideoOff: true,
+            }));
 
-          if (!hasAudioTracks) {
-            audioStream.getTracks().forEach((track) => track.stop());
-            console.warn('[LiveStreamContext] Audio fallback stream has no usable tracks');
-            throw error;
+            toast({
+              title: 'Video unavailable, audio-only mode',
+              description: 'Camera access failed. Stream started in audio-only mode.',
+              variant: 'default',
+            });
+            return audioStream;
           }
-
-          setState((prev) => ({
-            ...prev,
-            localStream: audioStream,
-            isMuted: false,
-            isVideoOff: true,
-          }));
-
-          webrtcInitializedRef.current = true;
-          toast({
-            title: 'Video unavailable, audio-only mode',
-            description: 'Camera access failed. Stream started in audio-only mode.',
-            variant: 'default',
-          });
-          return audioStream;
         } catch (audioErr) {
-          console.warn('[LiveStreamContext] Audio fallback also failed:', (audioErr as Error).message);
-          throw audioErr as Error;
+          console.warn('[LiveStreamContext] Audio fallback also failed:',
+            (audioErr as Error).message);
         }
       }
 
@@ -242,12 +324,13 @@ export const LiveStreamProvider = ({
     async (data: CreateSessionData) => {
       if (!user) throw new Error('Authentication required');
 
+      // Clean up any previous LiveKit resources
+      cleanupLiveKit();
+
       try {
         setState((prev) => ({ ...prev, error: null }));
 
-        // Create the stream session first (API call), then initialize media.
-        // Media init (getUserMedia) can fail in headless environments and
-        // should not block session creation.
+        // Create the stream session first (API call)
         const { data: stream, error } = await createLiveStream({
           ...data,
           host_id: user.id,
@@ -261,15 +344,127 @@ export const LiveStreamProvider = ({
         const newStream: LiveSession = stream;
         streamRef.current = newStream;
 
+        // Get LiveKit token from Gateway
+        let tokenData: {
+          token: string;
+          roomId: string;
+          livekitUrl: string;
+          role: StreamRole;
+          sessionId: string;
+        } | null = null;
+        try {
+          tokenData = await fetchLiveKitToken(newStream.id);
+        } catch (tokenErr) {
+          console.warn('[LiveStreamContext] Failed to get LiveKit token:',
+            (tokenErr as Error).message);
+        }
+
+        // Connect to LiveKit Room
+        if (tokenData) {
+          const room = new Room({
+            adaptiveStream: true,
+            dynacast: true,
+          });
+          roomRef.current = room;
+
+          // Set up event handlers
+          room.on('connected', () => {
+            console.log('[LiveKit] Connected to room:', room.name);
+            setState((prev) => ({
+              ...prev,
+              isConnected: true,
+              connectionState: 'connected',
+              error: null,
+            }));
+          });
+
+          room.on('disconnected', () => {
+            console.log('[LiveKit] Disconnected from room:', room.name);
+            setState((prev) => ({
+              ...prev,
+              isConnected: false,
+              connectionState: 'disconnected',
+            }));
+          });
+
+          room.on('reconnecting', () => {
+            console.log('[LiveKit] Reconnecting to room:', room.name);
+            setState((prev) => ({ ...prev, connectionState: 'reconnecting' }));
+          });
+
+          room.on('reconnected', () => {
+            console.log('[LiveKit] Reconnected to room:', room.name);
+            setState((prev) => ({ ...prev, connectionState: 'connected' }));
+          });
+
+          room.on('connectionError', (err) => {
+            console.error('[LiveKit] Connection error:', err);
+            setState((prev) => ({
+              ...prev,
+              connectionState: 'failed',
+              error: err?.message || 'LiveKit connection failed',
+            }));
+          });
+
+          room.on('participantConnected', (participant) => {
+            console.log('[LiveKit] Participant connected:', participant.identity);
+            setState((prev) => ({
+              ...prev,
+              viewerCount: room.remoteParticipants.size + 1,
+            }));
+          });
+
+          room.on('participantDisconnected', (participant) => {
+            console.log('[LiveKit] Participant disconnected:', participant.identity);
+            setState((prev) => ({
+              ...prev,
+              viewerCount: Math.max(0, room.remoteParticipants.size),
+            }));
+          });
+
+          room.on('trackPublished', (publication, participant) => {
+            console.log('[LiveKit] Track published:', publication.track?.kind,
+              'by', participant.identity);
+          });
+
+          room.on('trackSubscribed', (track, publication, participant) => {
+            console.log('[LiveKit] Track subscribed:', track.kind,
+              'from', participant.identity);
+            setState((prev) => ({
+              ...prev,
+              remoteStream: combineRemoteTracks(room),
+            }));
+          });
+
+          room.on('trackUnpublished', (publication, participant) => {
+            console.log('[LiveKit] Track unpublished:', publication.track?.kind,
+              'from', participant.identity);
+            setState((prev) => ({
+              ...prev,
+              remoteStream: combineRemoteTracks(room),
+            }));
+          });
+
+          room.on('activeSpeakersChanged', (speakers) => {
+            // Could be used for speaker indicators
+          });
+
+          try {
+            await room.connect(tokenData.livekitUrl, tokenData.token);
+          } catch (connectErr) {
+            console.error('[LiveKit] Failed to connect:', connectErr);
+            setState((prev) => ({
+              ...prev,
+              connectionState: 'failed',
+              error: connectErr instanceof Error ? connectErr.message : 'Failed to connect to media server',
+            }));
+          }
+        }
+
         // Initialize local media after session is created. If this fails
         // (e.g. no camera/mic, permission denied), the stream still exists
         // and the user can still join as a viewer — but we do NOT publish
-        // a live post for a stream with no media, to avoid advertising an
-        // empty or unusable broadcast in the Home Feed.
-        //
-        // initMedia() returns null when no usable tracks exist; we must
-        // explicitly check the return value rather than assuming success
-        // just because the promise resolved.
+        // a live post for a stream with no media.
         let mediaOk = false;
         let mediaStream: MediaStream | null = null;
         try {
@@ -283,6 +478,21 @@ export const LiveStreamProvider = ({
           console.log('[LiveStreamContext] Media initialized successfully,',
             'trackCount:', mediaStream.getTracks().length,
             'trackKinds:', mediaStream.getTracks().map((t) => t.kind).join(','));
+
+          // Publish local tracks to LiveKit Room if we have a room and role permits publishing
+          if (roomRef.current && mediaStream.getTracks().length > 0) {
+            const room = roomRef.current;
+            const localParticipant = room.localParticipant;
+            const trackObjs = localTracksRef.current;
+            for (const t of trackObjs) {
+              try {
+                await localParticipant.publishTrack(t.track);
+                console.log('[LiveKit] Published track:', t.track.kind);
+              } catch (pubErr) {
+                console.error('[LiveKit] Failed to publish track:', pubErr);
+              }
+            }
+          }
         } else {
           console.warn('[LiveStreamContext] Media init returned no usable tracks');
           toast({
@@ -293,7 +503,6 @@ export const LiveStreamProvider = ({
         }
 
         // Create a live post for the session only if media initialized successfully.
-        // An empty broadcast (no video, no audio) must not appear in the feed.
         let livePostId: string | null = null;
         if (mediaOk) {
           console.log('[LiveStreamContext] Creating live post for session:', newStream.id);
@@ -311,7 +520,7 @@ export const LiveStreamProvider = ({
             if (postData?.id) {
               livePostId = postData.id;
               console.log('[LiveStreamContext] Live post created:', livePostId,
-                'sessionId:', newStream.id, 'streamType:', data.stream_type);
+                'sessionId:', newStream.id);
             } else if (postError) {
               console.warn('[LiveStreamContext] Failed to create live post:',
                 'status:', postError.code, 'message:', postError.message);
@@ -328,7 +537,7 @@ export const LiveStreamProvider = ({
           ...prev,
           stream: newStream,
           isHost: true,
-          isConnected: true,
+          isConnected: roomRef.current ? roomRef.current.connectionState === 'connected' : false,
           viewerCount: 1,
           livePostId,
           participants: [
@@ -359,7 +568,7 @@ export const LiveStreamProvider = ({
         throw err;
       }
     },
-    [user, toast, initMedia, createLiveStream, createLivePost]
+    [user, toast, initMedia, createLiveStream, createLivePost, cleanupLiveKit]
   );
 
   // End the current stream
@@ -367,14 +576,8 @@ export const LiveStreamProvider = ({
     if (!streamRef.current) return;
 
     try {
-      // Stop WebRTC
-      webrtcService.cleanup();
-      webrtcInitializedRef.current = false;
-
-      if (signalingRef.current) {
-        signalingRef.current.close();
-        signalingRef.current = null;
-      }
+      // Clean up LiveKit resources
+      cleanupLiveKit();
 
       // Update stream status to ended
       await endLiveStream(streamRef.current.id);
@@ -399,18 +602,12 @@ export const LiveStreamProvider = ({
         livePostId: null,
       }));
 
-      // Stop local media
-      if (state.localStream) {
-        state.localStream.getTracks().forEach((track) => track.stop());
-        setState((prev) => ({ ...prev, localStream: null }));
-      }
-
       toast({ title: 'Stream ended', description: 'Your live stream has ended' });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to end stream';
       toast({ title: 'Error', description: message, variant: 'destructive' });
     }
-  }, [streamRef.current, state.localStream, toast]);
+  }, [streamRef.current, state.localStream, state.livePostId, toast, cleanupLiveKit]);
 
   // Toggle recording
   const toggleRecording = useCallback(async () => {
@@ -446,6 +643,20 @@ export const LiveStreamProvider = ({
           track.enabled = !newMuted;
         });
       }
+      // Also update LiveKit local track published state
+      const room = roomRef.current;
+      if (room) {
+        const localParticipant = room.localParticipant;
+        for (const trackInfo of localTracksRef.current) {
+          if (trackInfo.track.kind === 'audio') {
+            try {
+              localParticipant.setMicrophoneEnabled(!newMuted);
+            } catch {
+              // Ignore
+            }
+          }
+        }
+      }
       return { ...prev, isMuted: newMuted };
     });
   }, []);
@@ -459,47 +670,30 @@ export const LiveStreamProvider = ({
           track.enabled = !newVideoOff;
         });
       }
+      // Also update LiveKit local track published state
+      const room = roomRef.current;
+      if (room) {
+        const localParticipant = room.localParticipant;
+        for (const trackInfo of localTracksRef.current) {
+          if (trackInfo.track.kind === 'video') {
+            try {
+              localParticipant.setCameraEnabled(!newVideoOff);
+            } catch {
+              // Ignore
+            }
+          }
+        }
+      }
       return { ...prev, isVideoOff: newVideoOff };
     });
-  }, []);
-
-  // Create a WebRTC offer (host initiates)
-  const createOffer = useCallback(async (): Promise<string> => {
-    if (!webrtcInitializedRef.current || !state.localStream) {
-      throw new Error('Local media not initialized');
-    }
-
-    const offer = await webrtcService.createOffer();
-    return offer.sdp!;
-  }, [state.localStream]);
-
-  // Handle an incoming WebRTC offer: set remote description and create answer
-  const handleOffer = useCallback(async (sdp: string, fromUserId: string) => {
-    await webrtcService.setRemoteDescription({
-      type: 'offer',
-      sdp,
-    } as RTCSessionDescriptionInit);
-
-    const answer = await webrtcService.createAnswer();
-    return answer.sdp!;
-  }, []);
-
-  // Handle an incoming WebRTC answer
-  const handleAnswer = useCallback(async (sdp: string) => {
-    await webrtcService.setRemoteDescription({
-      type: 'answer',
-      sdp,
-    } as RTCSessionDescriptionInit);
-  }, []);
-
-  // Add an ICE candidate
-  const addIceCandidate = useCallback(async (candidate: any) => {
-    await webrtcService.addIceCandidate(candidate);
   }, []);
 
   // Join an existing stream as a viewer/guest
   const joinStream = useCallback(async (streamId: string) => {
     if (!user) throw new Error('Authentication required');
+
+    // Clean up any previous LiveKit resources
+    cleanupLiveKit();
 
     try {
       setState((prev) => ({ ...prev, error: null }));
@@ -509,11 +703,118 @@ export const LiveStreamProvider = ({
 
       streamRef.current = stream;
 
+      // Get LiveKit token from Gateway
+      let tokenData: {
+        token: string;
+        roomId: string;
+        livekitUrl: string;
+        role: StreamRole;
+        sessionId: string;
+      } | null = null;
+      try {
+        tokenData = await fetchLiveKitToken(streamId);
+      } catch (tokenErr) {
+        console.warn('[LiveStreamContext] Failed to get LiveKit token:',
+          (tokenErr as Error).message);
+      }
+
+      // Connect to LiveKit Room
+      if (tokenData) {
+        const room = new Room({
+          adaptiveStream: true,
+          dynacast: true,
+        });
+        roomRef.current = room;
+
+        room.on('connected', () => {
+          console.log('[LiveKit] Connected to room:', room.name);
+          setState((prev) => ({
+            ...prev,
+            isConnected: true,
+            connectionState: 'connected',
+            error: null,
+          }));
+        });
+
+        room.on('disconnected', () => {
+          console.log('[LiveKit] Disconnected from room:', room.name);
+          setState((prev) => ({
+            ...prev,
+            isConnected: false,
+            connectionState: 'disconnected',
+          }));
+        });
+
+        room.on('reconnecting', () => {
+          console.log('[LiveKit] Reconnecting to room:', room.name);
+          setState((prev) => ({ ...prev, connectionState: 'reconnecting' }));
+        });
+
+        room.on('reconnected', () => {
+          console.log('[LiveKit] Reconnected to room:', room.name);
+          setState((prev) => ({ ...prev, connectionState: 'connected' }));
+        });
+
+        room.on('connectionError', (err) => {
+          console.error('[LiveKit] Connection error:', err);
+          setState((prev) => ({
+            ...prev,
+            connectionState: 'failed',
+            error: err?.message || 'LiveKit connection failed',
+          }));
+        });
+
+        room.on('participantConnected', (participant) => {
+          console.log('[LiveKit] Participant connected:', participant.identity);
+          setState((prev) => ({
+            ...prev,
+            viewerCount: room.remoteParticipants.size + 1,
+          }));
+        });
+
+        room.on('participantDisconnected', (participant) => {
+          console.log('[LiveKit] Participant disconnected:', participant.identity);
+          setState((prev) => ({
+            ...prev,
+            viewerCount: Math.max(0, room.remoteParticipants.size),
+          }));
+        });
+
+        room.on('trackSubscribed', (track, publication, participant) => {
+          console.log('[LiveKit] Track subscribed:', track.kind,
+            'from', participant.identity);
+          setState((prev) => ({
+            ...prev,
+            remoteStream: combineRemoteTracks(room),
+          }));
+        });
+
+        room.on('trackUnpublished', (publication, participant) => {
+          console.log('[LiveKit] Track unpublished:', publication.track?.kind,
+            'from', participant.identity);
+          setState((prev) => ({
+            ...prev,
+            remoteStream: combineRemoteTracks(room),
+          }));
+        });
+
+        try {
+          await room.connect(tokenData.livekitUrl, tokenData.token);
+        } catch (connectErr) {
+          console.error('[LiveKit] Failed to connect:', connectErr);
+          setState((prev) => ({
+            ...prev,
+            connectionState: 'failed',
+            error: connectErr instanceof Error ? connectErr.message : 'Failed to connect to media server',
+          }));
+        }
+      }
+
       setState((prev) => ({
         ...prev,
         stream,
         isHost: stream.host_id === user?.id,
-        isConnected: true,
+        isConnected: roomRef.current ? roomRef.current.connectionState === 'connected' : false,
         viewerCount: (stream.viewer_count || 0) + 1,
       }));
 
@@ -546,21 +847,15 @@ export const LiveStreamProvider = ({
       setState((prev) => ({ ...prev, error: message }));
       toast({ title: 'Error', description: message, variant: 'destructive' });
     }
-  }, [user]);
+  }, [user, cleanupLiveKit]);
 
   // Leave the current stream
   const leaveStream = useCallback(async () => {
     if (!streamRef.current) return;
 
     try {
-      webrtcService.cleanup();
-      webrtcInitializedRef.current = false;
-      mediaInitAttemptedRef.current = false;
-
-      if (signalingRef.current) {
-        signalingRef.current.close();
-        signalingRef.current = null;
-      }
+      // Clean up LiveKit resources
+      cleanupLiveKit();
 
       if (state.isHost) {
         await endLiveStream(streamRef.current.id);
@@ -585,7 +880,7 @@ export const LiveStreamProvider = ({
       const message = err instanceof Error ? err.message : 'Failed to leave stream';
       toast({ title: 'Error', description: message, variant: 'destructive' });
     }
-  }, [streamRef.current, state.isHost, user]);
+  }, [streamRef.current, state.isHost, user, cleanupLiveKit]);
 
   // Add a participant (host/moderator only)
   const addParticipant = useCallback(
@@ -671,7 +966,6 @@ export const LiveStreamProvider = ({
   // Reset media initialization state so a new session can retry getUserMedia.
   const resetMediaInit = useCallback(() => {
     mediaInitAttemptedRef.current = false;
-    webrtcInitializedRef.current = false;
   }, []);
 
   const value: LiveStreamContextType = {
@@ -688,10 +982,6 @@ export const LiveStreamProvider = ({
     removeParticipant,
     updateParticipantRole,
     getActiveStreams,
-    createOffer,
-    handleOffer,
-    handleAnswer,
-    addIceCandidate,
     resetMediaInit,
   };
 

@@ -4,9 +4,6 @@ import { X, Mic, Video, MicOff, VideoOff, Users, Globe, Lock, StopCircle } from 
 import { useLiveStream } from '@/contexts/LiveStreamContext';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { gateway } from '@/lib/gateway';
-
-const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
 
 const LiveStream = () => {
   const { id } = useParams<{ id: string }>();
@@ -30,25 +27,13 @@ const LiveStream = () => {
     toggleVideo,
     leaveStream,
     initMedia,
-    createOffer,
-    handleOffer,
-    handleAnswer,
-    addIceCandidate,
   } = useLiveStream();
 
-  const [signalingConnected, setSignalingConnected] = useState(false);
-  const [isNegotiating, setIsNegotiating] = useState(false);
-  const esRef = useRef<EventSource | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
 
   // Track whether media initialization has been attempted in this session,
   // to prevent duplicate getUserMedia() calls across effect re-runs.
   const hasInitMediaRef = useRef(false);
-  // Track whether a WebRTC offer has already been created, to prevent
-  // duplicate peer connection initialization.
-  const hasCreatedOfferRef = useRef(false);
-  // Track whether a viewer has joined, to know when to create WebRTC offer.
-  const hasViewerRef = useRef(false);
   // Track whether the stream is ending.
   const isEnding = useRef(false);
 
@@ -65,14 +50,16 @@ const LiveStream = () => {
     }
   }, []);
 
-  // Initialize media and WebRTC when joining a stream
+  // Initialize media when joining a stream
+  // LiveKit handles all media transport natively — no SSE signaling,
+  // no WebRTC offer/answer/ICE negotiation needed.
   useEffect(() => {
     if (!id || !stream || !isConnected) return;
 
     const initStream = async () => {
       try {
         if (isHost) {
-          // Host: initialize local media and create offer
+          // Host: initialize local media
           // Media failure is not fatal — host can still
           // be in the stream as a viewer-only participant.
           if (!hasInitMediaRef.current) {
@@ -82,10 +69,6 @@ const LiveStream = () => {
               console.warn('[LiveStream] Host media init failed:', mediaErr);
             }
             hasInitMediaRef.current = true;
-          }
-
-          if (localStream && !hasCreatedOfferRef.current && !hasViewerRef.current) {
-            // Wait for a viewer before creating offer
           }
         } else {
           // Viewer: initialize media (audio only for viewers)
@@ -99,7 +82,6 @@ const LiveStream = () => {
           }
         }
       } catch (err) {
-        // Only catch unexpected errors, not media init failures
         console.error('[LiveStream] Stream initialization failed:', err);
         toast({ title: 'Error', description: 'Failed to start stream', variant: 'destructive' });
       }
@@ -107,172 +89,12 @@ const LiveStream = () => {
 
     initStream();
 
-    // Connect to the Gateway's live signaling SSE endpoint
-    if (myUserId) {
-      const token = localStorage.getItem('tone-auth-token');
-      const accessToken = token ? JSON.parse(token).access_token : null;
-      const url = `${GATEWAY_URL}/api/live/sessions/${id}/signaling`;
-
-      const signalingUrl = accessToken
-        ? `${url}?access_token=${encodeURIComponent(accessToken)}`
-        : url;
-      const es = new EventSource(signalingUrl, {
-        withCredentials: true,
-      });
-
-      esRef.current = es;
-
-      es.onopen = () => {
-        setSignalingConnected(true);
-        console.log('[LiveStream] Signaling connected');
-      };
-
-      es.onmessage = async (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          if (data.type === 'init') {
-            // SSE connection initialized
-            return;
-          }
-
-          if (data.type === 'participant-joined') {
-            // New participant joined
-            if (data.fromUserId !== myUserId) {
-              hasViewerRef.current = true;
-              // If we're the host, create an offer for the new participant
-              if (isHost && localStream && !hasCreatedOfferRef.current) {
-                hasCreatedOfferRef.current = true;
-                console.log('[LiveStream] Creating offer for new participant');
-                const offerSdp = await createOffer();
-                setIsNegotiating(true);
-
-                // Publish offer via signaling
-                await publishSignalingOffer(offerSdp, data.fromUserId);
-              }
-            }
-            return;
-          }
-
-          if (data.type === 'session-ended') {
-            leaveStream();
-            navigate('/');
-            return;
-          }
-
-          // Handle WebRTC signaling messages directed at us
-          if (data.toUserId && data.toUserId !== myUserId) return;
-
-          if (data.type === 'offer' && data.sdp) {
-            // Remote peer sent us an offer - create and send answer
-            const answerSdp = await handleOffer(data.sdp, data.fromUserId);
-            await publishSignalingAnswer(answerSdp, data.fromUserId);
-            return;
-          }
-
-          if (data.type === 'answer' && data.sdp) {
-            // Remote peer sent us an answer
-            await handleAnswer(data.sdp);
-            setIsNegotiating(false);
-            return;
-          }
-
-          if (data.type === 'ice-candidate' && data.candidate) {
-            await addIceCandidate(data.candidate);
-            return;
-          }
-
-          if (data.type === 'participant-left') {
-            // Participant left
-            return;
-          }
-        } catch (err) {
-          console.error('[LiveStream] Signaling message error:', err);
-        }
-      };
-
-      es.onerror = () => {
-        setSignalingConnected(false);
-        es.close();
-        esRef.current = null;
-      };
-    }
-
     return () => {
-      if (esRef.current) {
-        esRef.current.close();
-        esRef.current = null;
-      }
       // NOTE: Do NOT call resetMediaInit() here. Media cleanup happens only
       // in leaveStream(). Resetting mediaInitAttemptedRef on every effect
-      // re-run caused getUserMedia() to be called repeatedly, producing the
-      // camera flickering bug.
+      // re-run caused getUserMedia() to be called repeatedly.
     };
-  }, [id, stream, isConnected, isHost, myUserId, leaveStream, navigate,
-      initMedia, createOffer, handleOffer, handleAnswer, addIceCandidate, toast]);
-
-  const getToken = useCallback((): string | null => {
-    try {
-      const sessionStr = localStorage.getItem('tone-auth-token');
-      if (sessionStr) {
-        const session = JSON.parse(sessionStr);
-        return session?.access_token ?? null;
-      }
-    } catch {
-      return null;
-    }
-    return null;
-  }, []);
-
-  const publishSignalingOffer = useCallback(
-    async (sdp: string, toUserId?: string) => {
-      const token = getToken();
-      if (!token) return;
-
-      try {
-        await fetch(`${GATEWAY_URL}/api/live/sessions/${id}/signaling`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            type: 'offer',
-            toUserId,
-            sdp,
-          }),
-        });
-      } catch (err) {
-        console.error('[LiveStream] Failed to publish offer:', err);
-      }
-    },
-    [id, getToken]
-  );
-
-  const publishSignalingAnswer = useCallback(
-    async (sdp: string, toUserId: string) => {
-      const token = getToken();
-      if (!token) return;
-
-      try {
-        await fetch(`${GATEWAY_URL}/api/live/sessions/${id}/signaling`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            type: 'answer',
-            toUserId,
-            sdp,
-          }),
-        });
-      } catch (err) {
-        console.error('[LiveStream] Failed to publish answer:', err);
-      }
-    },
-    [id, getToken]
-  );
+  }, [id, stream, isConnected, isHost, initMedia, toast]);
 
   if (error) {
     return (
@@ -302,7 +124,7 @@ const LiveStream = () => {
             </Button>
           </div>
         </div>
-    );
+      );
     }
 
     return (
@@ -402,9 +224,7 @@ const LiveStream = () => {
                   <Video className="w-16 h-16 mb-4" />
                   <div className="text-center">
                     <h2 className="text-xl font-medium">Live Stream</h2>
-                    <p className="text-white/70 mt-2">
-                      {!hasViewerRef.current ? 'Waiting for viewer...' : isNegotiating ? 'Establishing media connection...' : 'Waiting for stream...'}
-                    </p>
+                    <p className="text-white/70 mt-2">Waiting for stream...</p>
                   </div>
                 </div>
               )}
