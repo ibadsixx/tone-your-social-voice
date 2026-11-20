@@ -133,10 +133,12 @@ PASS (HTTP probes) - Deployed endpoints are live:
 
 PASS (Git state) - Repositories are clean and contain the expected commits:
   gateway main @ fd3424a, clean, pushed
-  frontend main @ 4ea9a68 plus verification commits 3c7f412 and f52e1e8, clean,
-    pushed. The extra commits add real-browser tests, ICE candidate queueing,
-    signaling serialization, deterministic offers, and candidate-pair stats;
-    they do not redesign the P2P implementation.
+  frontend main @ 40af6fe, clean, pushed. It includes 4ea9a68 plus verification
+    commits 3c7f412, f52e1e8, e57142d and 40af6fe. These add real-browser
+    tests, ICE candidate queueing, signaling serialization, deterministic
+    offers, candidate-pair stats, device/lifecycle browser assertions, a
+    deployed-target spec, and this report. They do not redesign the P2P
+    implementation.
 
 
 3. REAL WEBSOCKET TEST (DEPLOYED GATEWAY)
