@@ -34,6 +34,9 @@ const LiveStream = () => {
     switchMicrophone,
     devices,
     raisedHand,
+    updateParticipantRole,
+    dismissHand,
+    peerCount,
   } = useLiveStream();
 
   const [myUserId, setMyUserId] = useState<string | null>(null);
@@ -63,51 +66,35 @@ const LiveStream = () => {
     getDevices();
   }, [getDevices]);
 
-  // Initialize media when joining a stream
-  // LiveKit handles all media transport natively — no SSE signaling,
-  // no WebRTC offer/answer/ICE negotiation needed.
+  // The host publishes local media; P2P peers are negotiated by the signaling
+  // layer. Viewers/listeners are subscribe-only and acquire no local tracks,
+  // so frontend state alone cannot grant publishing permission.
   useEffect(() => {
-    if (!id || !stream || !isConnected) return;
+    if (!id || !stream || !isConnected || !isHost) return;
+    if (hasInitMediaRef.current) return;
 
-    const initStream = async () => {
+    hasInitMediaRef.current = true;
+    (async () => {
       try {
-        if (isHost) {
-          // Host: initialize local media
-          // Media failure is not fatal — host can still
-          // be in the stream as a viewer-only participant.
-          if (!hasInitMediaRef.current) {
-            try {
-              await initMedia(stream.stream_type);
-            } catch (mediaErr) {
-              console.warn('[LiveStream] Host media init failed:', mediaErr);
-            }
-            hasInitMediaRef.current = true;
-          }
-        } else {
-          // Viewer: initialize media (audio only for viewers)
-          if (!hasInitMediaRef.current) {
-            try {
-              await initMedia('audio');
-            } catch (mediaErr) {
-              console.warn('[LiveStream] Viewer media init failed:', mediaErr);
-            }
-            hasInitMediaRef.current = true;
-          }
-        }
-      } catch (err) {
-        console.error('[LiveStream] Stream initialization failed:', err);
-        toast({ title: 'Error', description: 'Failed to start stream', variant: 'destructive' });
+        await initMedia(stream.stream_type);
+      } catch (mediaErr) {
+        console.warn('[LiveStream] Host media init failed:', mediaErr);
       }
-    };
-
-    initStream();
-
-    return () => {
-      // NOTE: Do NOT call resetMediaInit() here. Media cleanup happens only
-      // in leaveStream(). Resetting mediaInitAttemptedRef on every effect
-      // re-run caused getUserMedia() to be called repeatedly.
-    };
+    })();
   }, [id, stream, isConnected, isHost, initMedia, toast]);
+
+  // A listener promoted to speaker/guest by the Gateway may publish. This is
+  // driven by the server-authoritative role in the participants list.
+  useEffect(() => {
+    if (!myUserId || isHost || !isConnected || localStream) return;
+    const own = participants.find((p) => p.user_id === myUserId);
+    if (!own || (own.role !== 'guest' && own.role !== 'moderator')) return;
+    if (hasInitMediaRef.current) return;
+    hasInitMediaRef.current = true;
+    initMedia(stream?.stream_type === 'video' ? 'video' : 'audio').catch((error) => {
+      console.warn('[LiveStream] Speaker media init failed:', error);
+    });
+  }, [myUserId, isHost, isConnected, localStream, participants, stream, initMedia]);
 
   if (error) {
     return (
@@ -204,6 +191,31 @@ const LiveStream = () => {
           </Button>
         </div>
       </header>
+
+      {/* Speaking requests — Gateway-authorized role changes only */}
+      {isHost && participants.some((p) => p.raised_hand) && (
+        <div className="bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-2 flex items-center gap-3 overflow-x-auto">
+          <Hand className="w-4 h-4 text-yellow-400 shrink-0" />
+          <span className="text-xs text-yellow-200 shrink-0">Speaking requests:</span>
+          {participants.filter((p) => p.raised_hand).map((p) => (
+            <div key={p.user_id} className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-white/80">{p.user_id.slice(0, 8)}</span>
+              <button
+                onClick={() => updateParticipantRole(p.user_id, 'guest')}
+                className="text-[11px] px-2 py-0.5 rounded bg-green-500/20 text-green-200 hover:bg-green-500/30"
+              >
+                Accept
+              </button>
+              <button
+                onClick={() => dismissHand(p.user_id)}
+                className="text-[11px] px-2 py-0.5 rounded bg-white/10 text-white/70 hover:bg-white/20"
+              >
+                Dismiss
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Main Stream Area */}
       <main className="flex-1 flex items-center justify-center p-4 bg-black">
@@ -347,6 +359,7 @@ const LiveStream = () => {
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs text-white/90">
             <Users className="w-3 h-3 mr-1" />
             {viewerCount} watching
+            <span className="ml-2 text-white/50">P2P peers: {peerCount}</span>
           </div>
           <div className="hidden md:flex items-center gap-2">
             {participants.map((p) => (

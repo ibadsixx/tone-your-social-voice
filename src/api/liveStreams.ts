@@ -251,11 +251,25 @@ export async function updateStreamParticipant(
   return { data: json, error: null };
 }
 
+/** Leave the current authenticated user from a session. */
 export async function removeStreamParticipant(
+  sessionId: string,
+  _userId: string
+): Promise<ApiResult<{ error: string | null }>> {
+  const res = await liveFetch(`/sessions/${sessionId}/leave`, { method: 'POST' });
+  if (!res.ok) {
+    const err = await parseJson<{ message?: string }>(res);
+    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
+  }
+  return { data: null, error: null };
+}
+
+/** Remove another participant (host/moderator authorization enforced by Gateway). */
+export async function removeStreamParticipantById(
   sessionId: string,
   userId: string
 ): Promise<ApiResult<{ error: string | null }>> {
-  const res = await liveFetch(`/sessions/${sessionId}/leave`, { method: 'POST' });
+  const res = await liveFetch(`/sessions/${sessionId}/participants/${userId}`, { method: 'DELETE' });
   if (!res.ok) {
     const err = await parseJson<{ message?: string }>(res);
     return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };

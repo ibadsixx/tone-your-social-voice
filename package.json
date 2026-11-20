@@ -56,7 +56,6 @@
     "jsdom": "^27.3.0",
     "konva": "^10.3.0",
     "leaflet": "^1.9.4",
-    "livekit-client": "^2.24.1",
     "lottie-react": "^2.4.1",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
