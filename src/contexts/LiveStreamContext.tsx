@@ -4,7 +4,9 @@
 //   - Stream session lifecycle: start, end, toggle recording
 //   - Stream metadata: title, type (video/audio), audience, status
 //   - Participant roles: host, moderator, guest, viewer
+//   - Participant raise-hand
 //   - LiveKit Room connection for media transport
+//   - Device selection (camera/microphone)
 //   - Integration with the existing audience/privacy system
 //
 // Private 1:1 calling (src/services/webrtc.ts) is NOT modified by this file.
@@ -19,7 +21,7 @@ import {
 } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { Room, createLocalTracks } from 'livekit-client';
+import { Room, createLocalTracks, LocalTrack } from 'livekit-client';
 import {
   createLiveStream,
   getLiveStream,
@@ -30,6 +32,8 @@ import {
   addStreamParticipant,
   updateStreamParticipant,
   removeStreamParticipant,
+  raiseHand,
+  lowerHand,
   createLivePost,
   updateLivePostStatus,
   type LiveSession,
@@ -41,6 +45,12 @@ const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
 
 export type StreamRole = 'host' | 'moderator' | 'guest' | 'viewer';
 export type StreamType = 'video' | 'audio';
+
+export interface MediaDeviceInfo {
+  deviceId: string;
+  label: string;
+  kind: 'videoinput' | 'audioinput';
+}
 
 export interface LiveStreamState {
   stream: LiveSession | null;
@@ -54,7 +64,9 @@ export interface LiveStreamState {
   viewerCount: number;
   error: string | null;
   connectionState: string | null;
-  livePostId: string | null;
+  livePostId: null | string;
+  devices: MediaDeviceInfo[];
+  raisedHand: boolean;
 }
 
 export interface LiveStreamContextType extends LiveStreamState {
@@ -71,6 +83,13 @@ export interface LiveStreamContextType extends LiveStreamState {
   updateParticipantRole: (userId: string, role: StreamRole) => Promise<void>;
   getActiveStreams: () => Promise<LiveSession[]>;
   resetMediaInit: () => void;
+  // Raise hand
+  raiseHand: () => Promise<void>;
+  lowerHand: () => Promise<void>;
+  // Device selection
+  getDevices: () => Promise<void>;
+  switchCamera: (deviceId: string) => Promise<void>;
+  switchMicrophone: (deviceId: string) => Promise<void>;
 }
 
 const LiveStreamContext = createContext<LiveStreamContextType | undefined>(undefined);
@@ -157,12 +176,17 @@ export const LiveStreamProvider = ({
     error: null,
     connectionState: null,
     livePostId: null,
+    devices: [],
+    raisedHand: false,
   });
 
   const streamRef = useRef<LiveSession | null>(null);
   const roomRef = useRef<Room | null>(null);
-  const localTracksRef = useRef<Array<{ track: import('livekit-client').LocalTrack }>>([]);
+  const localTracksRef = useRef<Array<{ track: LocalTrack; kind: 'audio' | 'video' }>>([]);
   const mediaInitAttemptedRef = useRef(false);
+  const reconnectAttemptsRef = useRef<number>(0);
+  const maxReconnectAttempts = 3;
+  const reconnectDelayMs = 3000;
 
   // Cleanup LiveKit resources
   const cleanupLiveKit = useCallback(() => {
@@ -258,7 +282,7 @@ export const LiveStreamProvider = ({
         stream.addTrack(t.track);
       }
 
-      localTracksRef.current = tracks.map((t) => ({ track: t }));
+      localTracksRef.current = tracks.map((t) => ({ track: t, kind: t.track.kind as 'audio' | 'video' }));
 
       setState((prev) => ({
         ...prev,
@@ -291,9 +315,9 @@ export const LiveStreamProvider = ({
           if (audioTracks.length > 0) {
             const audioStream = new MediaStream();
             for (const t of audioTracks) {
-              audioStream.addTrack(t.track);
+              stream.addTrack(t.track);
             }
-            localTracksRef.current = audioTracks.map((t) => ({ track: t }));
+            localTracksRef.current = audioTracks.map((t) => ({ track: t, kind: 'audio' }));
 
             setState((prev) => ({
               ...prev,
@@ -318,6 +342,38 @@ export const LiveStreamProvider = ({
       throw error;
     }
   }, [state.localStream, toast]);
+
+  // Connect to LiveKit Room with retry logic
+  const connectToRoom = useCallback(async (
+    livekitUrl: string,
+    token: string,
+    onConnected: () => void,
+    onDisconnected: () => void,
+    onReconnecting: () => void,
+    onReconnected: () => void,
+    onConnectionError: (err: Error) => void,
+  ): Promise<void> => {
+    reconnectAttemptsRef.current = 0;
+
+    const connect = async (): Promise<void> => {
+      try {
+        await roomRef.current!.connect(livekitUrl, token);
+        reconnectAttemptsRef.current = 0;
+        onConnected();
+      } catch (err) {
+        reconnectAttemptsRef.current++;
+        if (reconnectAttemptsRef.current <= maxReconnectAttempts) {
+          console.log('[LiveKit] Reconnect attempt', reconnectAttemptsRef.current,
+            'of', maxReconnectAttempts);
+          setTimeout(connect, reconnectDelayMs);
+        } else {
+          onConnectionError(err instanceof Error ? err : new Error('Connection failed'));
+        }
+      }
+    };
+
+    await connect();
+  }, []);
 
   // Start a new live stream
   const startStream = useCallback(
@@ -449,16 +505,25 @@ export const LiveStreamProvider = ({
             // Could be used for speaker indicators
           });
 
-          try {
-            await room.connect(tokenData.livekitUrl, tokenData.token);
-          } catch (connectErr) {
-            console.error('[LiveKit] Failed to connect:', connectErr);
-            setState((prev) => ({
-              ...prev,
-              connectionState: 'failed',
-              error: connectErr instanceof Error ? connectErr.message : 'Failed to connect to media server',
-            }));
-          }
+          await connectToRoom(
+            tokenData.livekitUrl,
+            tokenData.token,
+            () => {
+              // connected handler already set above
+            },
+            () => {
+              // disconnected handler already set above
+            },
+            () => {
+              // reconnecting handler already set above
+            },
+            () => {
+              // reconnected handler already set above
+            },
+            (err) => {
+              console.error('[LiveKit] Connection failed after retries:', err);
+            },
+          );
         }
 
         // Initialize local media after session is created. If this fails
@@ -550,6 +615,7 @@ export const LiveStreamProvider = ({
               left_at: null,
               is_muted: data.stream_type === 'audio',
               is_video_off: data.stream_type === 'audio',
+              raised_hand: false,
             },
           ],
         }));
@@ -568,7 +634,7 @@ export const LiveStreamProvider = ({
         throw err;
       }
     },
-    [user, toast, initMedia, createLiveStream, createLivePost, cleanupLiveKit]
+    [user, toast, initMedia, createLiveStream, createLivePost, cleanupLiveKit, connectToRoom]
   );
 
   // End the current stream
@@ -600,6 +666,7 @@ export const LiveStreamProvider = ({
         viewerCount: 0,
         connectionState: null,
         livePostId: null,
+        raisedHand: false,
       }));
 
       toast({ title: 'Stream ended', description: 'Your live stream has ended' });
@@ -798,16 +865,17 @@ export const LiveStreamProvider = ({
           }));
         });
 
-        try {
-          await room.connect(tokenData.livekitUrl, tokenData.token);
-        } catch (connectErr) {
-          console.error('[LiveKit] Failed to connect:', connectErr);
-          setState((prev) => ({
-            ...prev,
-            connectionState: 'failed',
-            error: connectErr instanceof Error ? connectErr.message : 'Failed to connect to media server',
-          }));
-        }
+        await connectToRoom(
+          tokenData.livekitUrl,
+          tokenData.token,
+          () => {},
+          () => {},
+          () => {},
+          () => {},
+          (err) => {
+            console.error('[LiveKit] Connection failed after retries:', err);
+          },
+        );
       }
 
       setState((prev) => ({
@@ -837,6 +905,7 @@ export const LiveStreamProvider = ({
             left_at: null,
             is_muted: true,
             is_video_off: true,
+            raised_hand: false,
           },
         ],
       }));
@@ -847,7 +916,7 @@ export const LiveStreamProvider = ({
       setState((prev) => ({ ...prev, error: message }));
       toast({ title: 'Error', description: message, variant: 'destructive' });
     }
-  }, [user, cleanupLiveKit]);
+  }, [user, cleanupLiveKit, connectToRoom]);
 
   // Leave the current stream
   const leaveStream = useCallback(async () => {
@@ -873,6 +942,7 @@ export const LiveStreamProvider = ({
         participants: [],
         viewerCount: 0,
         connectionState: null,
+        raisedHand: false,
       }));
 
       toast({ title: 'Left stream', description: 'You have left the live stream' });
@@ -904,6 +974,7 @@ export const LiveStreamProvider = ({
               left_at: null,
               is_muted: true,
               is_video_off: true,
+              raised_hand: false,
             },
           ],
         }));
@@ -968,6 +1039,160 @@ export const LiveStreamProvider = ({
     mediaInitAttemptedRef.current = false;
   }, []);
 
+  // Raise hand
+  const raiseHandFn = useCallback(async () => {
+    if (!streamRef.current || !user) return;
+
+    try {
+      const { data, error } = await raiseHand(streamRef.current.id, user.id);
+      if (error) throw error;
+
+      setState((prev) => ({
+        ...prev,
+        raisedHand: true,
+        participants: prev.participants.map((p) =>
+          p.user_id === user.id ? { ...p, raised_hand: true } : p
+        ),
+      }));
+
+      toast({ title: 'Hand raised', description: 'Host has been notified' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to raise hand';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
+    }
+  }, [streamRef.current, user]);
+
+  // Lower hand
+  const lowerHandFn = useCallback(async () => {
+    if (!streamRef.current || !user) return;
+
+    try {
+      const { data, error } = await lowerHand(streamRef.current.id, user.id);
+      if (error) throw error;
+
+      setState((prev) => ({
+        ...prev,
+        raisedHand: false,
+        participants: prev.participants.map((p) =>
+          p.user_id === user.id ? { ...p, raised_hand: false } : p
+        ),
+      }));
+
+      toast({ title: 'Hand lowered' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to lower hand';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
+    }
+  }, [streamRef.current, user]);
+
+  // Get available media devices
+  const getDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices
+        .filter((d) => d.kind === 'videoinput')
+        .map((d) => ({ deviceId: d.deviceId, label: d.label, kind: 'videoinput' as const }));
+      const audioDevices = devices
+        .filter((d) => d.kind === 'audioinput')
+        .map((d) => ({ deviceId: d.deviceId, label: d.label, kind: 'audioinput' as const }));
+
+      setState((prev) => ({
+        ...prev,
+        devices: [...videoDevices, ...audioDevices],
+      }));
+    } catch (err) {
+      console.warn('[LiveStreamContext] Failed to enumerate devices:', err);
+    }
+  }, []);
+
+  // Switch camera device
+  const switchCamera = useCallback(async (deviceId: string) => {
+    if (!roomRef.current) return;
+
+    try {
+      // Stop existing video tracks
+      const videoTracks = localTracksRef.current
+        .filter((t) => t.kind === 'video');
+      for (const t of videoTracks) {
+        try {
+          const room = roomRef.current!;
+          const localParticipant = room.localParticipant;
+          localParticipant.unpublishTrack(t.track);
+          t.track.stop();
+        } catch {
+          // Ignore
+        }
+      }
+      localTracksRef.current = localTracksRef.current.filter((t) => t.kind !== 'video');
+
+      // Create new video track with selected device
+      const tracks = await createLocalTracks({
+        video: { deviceId: { exact: deviceId } },
+        audio: false,
+      });
+
+      if (tracks.length > 0) {
+        const track = tracks[0];
+        localTracksRef.current.push({ track, kind: 'video' });
+
+        const localParticipant = roomRef.current!.localParticipant;
+        await localParticipant.publishTrack(track.track);
+
+        setState((prev) => ({
+          ...prev,
+          localStream: new MediaStream([...localTracksRef.current.map(t => t.track)]),
+        }));
+      }
+    } catch (err) {
+      console.error('[LiveStreamContext] Failed to switch camera:', err);
+      toast({ title: 'Error', description: 'Failed to switch camera', variant: 'destructive' });
+    }
+  }, []);
+
+  // Switch microphone device
+  const switchMicrophone = useCallback(async (deviceId: string) => {
+    if (!roomRef.current) return;
+
+    try {
+      // Stop existing audio tracks
+      const audioTracks = localTracksRef.current
+        .filter((t) => t.kind === 'audio');
+      for (const t of audioTracks) {
+        try {
+          const room = roomRef.current!;
+          const localParticipant = room.localParticipant;
+          localParticipant.unpublishTrack(t.track);
+          t.track.stop();
+        } catch {
+          // Ignore
+        }
+      }
+      localTracksRef.current = localTracksRef.current.filter((t) => t.kind !== 'audio');
+
+      // Create new audio track with selected device
+      const tracks = await createLocalTracks({
+        audio: { deviceId: { exact: deviceId } },
+        video: false,
+      });
+
+      if (tracks.length > 0) {
+        const track = tracks[0];
+        localTracksRef.current.push({ track, kind: 'audio' });
+
+        const localParticipant = roomRef.current!.localParticipant;
+        await localParticipant.publishTrack(track.track);
+
+        setState((prev) => ({
+          ...prev,
+          localStream: new MediaStream([...localTracksRef.current.map(t => t.track)]),
+        }));
+      }
+    } catch (err) {
+      console.error('[LiveStreamContext] Failed to switch microphone:', err);
+      toast({ title: 'Error', description: 'Failed to switch microphone', variant: 'destructive' });
+    }
+  }, []);
+
   const value: LiveStreamContextType = {
     ...state,
     startStream,
@@ -983,6 +1208,11 @@ export const LiveStreamProvider = ({
     updateParticipantRole,
     getActiveStreams,
     resetMediaInit,
+    raiseHand: raiseHandFn,
+    lowerHand: lowerHandFn,
+    getDevices,
+    switchCamera,
+    switchMicrophone,
   };
 
   return (

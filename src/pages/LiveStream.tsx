@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { X, Mic, Video, MicOff, VideoOff, Users, Globe, Lock, StopCircle } from 'lucide-react';
+import { X, Mic, Video, MicOff, VideoOff, Users, Globe, Lock, StopCircle, Hand } from 'lucide-react';
 import { useLiveStream } from '@/contexts/LiveStreamContext';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -27,9 +27,17 @@ const LiveStream = () => {
     toggleVideo,
     leaveStream,
     initMedia,
+    raiseHand,
+    lowerHand,
+    getDevices,
+    switchCamera,
+    switchMicrophone,
+    devices,
+    raisedHand,
   } = useLiveStream();
 
   const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
 
   // Track whether media initialization has been attempted in this session,
   // to prevent duplicate getUserMedia() calls across effect re-runs.
@@ -49,6 +57,11 @@ const LiveStream = () => {
       setMyUserId(null);
     }
   }, []);
+
+  // Load available media devices on mount
+  useEffect(() => {
+    getDevices();
+  }, [getDevices]);
 
   // Initialize media when joining a stream
   // LiveKit handles all media transport natively — no SSE signaling,
@@ -145,6 +158,9 @@ const LiveStream = () => {
   // Host with guests: remote video is main, local camera becomes PiP.
   const showLocalAsMain = isHost && hasLocalStream && !hasRemoteStream;
 
+  const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+  const audioDevices = devices.filter((d) => d.kind === 'audioinput');
+
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
       {/* Header */}
@@ -194,7 +210,14 @@ const LiveStream = () => {
         <div className="w-full max-w-[calc(100vw-2rem)] max-h-[calc(100vh-11rem)] aspect-[9/16] bg-black rounded-xl overflow-hidden relative shadow-2xl border border-white/10">
           {isAudioOnly ? (
             <div className="w-full h-full flex flex-col items-center justify-center text-white">
-              <MicOff className="w-24 h-24 text-white/50 mb-4" />
+              {raisedHand ? (
+                <div className="animate-pulse">
+                  <Hand className="w-24 h-24 text-yellow-400 mb-4" />
+                  <p className="text-yellow-400 text-sm font-medium">Hand Raised</p>
+                </div>
+              ) : (
+                <MicOff className="w-24 h-24 text-white/50 mb-4" />
+              )}
               <div className="text-center">
                 <h2 className="text-xl font-medium">{stream.title || 'Live Audio Stream'}</h2>
                 <p className="text-white/70 mt-2">Audio-only stream</p>
@@ -263,6 +286,61 @@ const LiveStream = () => {
           >
             {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
           </button>
+          <button
+            onClick={raisedHand ? lowerHand : raiseHand}
+            className={`p-3 rounded-full transition-colors ${raisedHand ? 'text-yellow-400' : 'text-white/70'}`}
+            title={raisedHand ? 'Lower Hand' : 'Raise Hand'}
+          >
+            <Hand className="w-5 h-5" />
+          </button>
+          {/* Device selection dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setDeviceMenuOpen(!deviceMenuOpen)}
+              className="p-3 rounded-full hover:bg-white/10 transition-colors text-white/70"
+              title="Device Settings"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </button>
+            {deviceMenuOpen && (
+              <div className="absolute bottom-full left-0 mb-2 bg-black/90 border border-white/20 rounded-lg p-2 w-64 backdrop-blur">
+                {videoDevices.length > 0 && (
+                  <>
+                    <div className="text-xs text-white/40 mb-1">Camera</div>
+                    <select
+                      value=""
+                      onChange={(e) => switchCamera(e.target.value)}
+                      className="w-full text-sm bg-black/50 border border-white/10 rounded px-2 py-1 text-white"
+                    >
+                      {videoDevices.map((d) => (
+                        <option key={d.deviceId} value={d.deviceId}>
+                          {d.label || 'Camera'}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
+                {audioDevices.length > 0 && (
+                  <>
+                    <div className="text-xs text-white/40 mb-1 mt-2">Microphone</div>
+                    <select
+                      value=""
+                      onChange={(e) => switchMicrophone(e.target.value)}
+                      className="w-full text-sm bg-black/50 border border-white/10 rounded px-2 py-1 text-white"
+                    >
+                      {audioDevices.map((d) => (
+                        <option key={d.deviceId} value={d.deviceId}>
+                          {d.label || 'Microphone'}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-4">
@@ -279,6 +357,7 @@ const LiveStream = () => {
                 <div className="w-2 h-2 rounded-full bg-green-400" />
                 <span>{p.role === 'host' ? 'Host' : p.role.charAt(0).toUpperCase() + p.role.slice(1)}</span>
                 {p.is_muted && <MicOff className="w-3 h-3 text-white/60" />}
+                {p.raised_hand && <span className="text-yellow-400 text-[10px] ml-1">✋</span>}
               </div>
             ))}
           </div>

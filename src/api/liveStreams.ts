@@ -70,6 +70,7 @@ export interface LiveParticipant {
   left_at: string | null;
   is_muted: boolean;
   is_video_off: boolean;
+  raised_hand: boolean;
   [key: string]: unknown;
 }
 
@@ -260,6 +261,36 @@ export async function removeStreamParticipant(
     return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
   }
   return { data: null, error: null };
+}
+
+export async function raiseHand(
+  sessionId: string,
+  userId: string
+): Promise<ApiResult<LiveParticipant>> {
+  const res = await liveFetch(`/sessions/${sessionId}/participants/${userId}/raise-hand`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await parseJson<{ message?: string }>(res);
+    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
+  }
+  const json = await parseJson<LiveParticipant>(res);
+  return { data: json, error: null };
+}
+
+export async function lowerHand(
+  sessionId: string,
+  userId: string
+): Promise<ApiResult<LiveParticipant>> {
+  const res = await liveFetch(`/sessions/${sessionId}/participants/${userId}/lower-hand`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await parseJson<{ message?: string }>(res);
+    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
+  }
+  const json = await parseJson<LiveParticipant>(res);
+  return { data: json, error: null };
 }
 
 // Comments
