@@ -8,6 +8,13 @@ import {
 } from '../src/services/liveP2P';
 import { LiveSignalingClient } from '../src/services/liveSignalingClient';
 
+interface CandidatePairInfo {
+  localType: string;
+  remoteType: string;
+  state: string;
+  nominated: boolean;
+}
+
 interface HarnessStatus {
   userId: string;
   sessionId: string;
@@ -17,6 +24,7 @@ interface HarnessStatus {
   remoteTracks: number;
   peers: number;
   peerStates: Record<string, string>;
+  candidatePairs: CandidatePairInfo[];
   inbound: number;
   outbound: number;
   offers: number;
@@ -39,6 +47,7 @@ const status: HarnessStatus = {
   remoteTracks: 0,
   peers: 0,
   peerStates: {},
+  candidatePairs: [],
   inbound: 0,
   outbound: 0,
   offers: 0,
@@ -52,6 +61,51 @@ function render() {
   const el = document.getElementById('status');
   if (el) el.textContent = JSON.stringify(status, null, 2);
 }
+
+// Test-only instrumentation: capture the RTCPeerConnection instances the
+// production manager creates so getStats() can report the selected candidate
+// pair type. No production code is changed.
+const NativeRTCPeerConnection = window.RTCPeerConnection;
+const trackedConnections = new Set<RTCPeerConnection>();
+class TrackedRTCPeerConnection extends NativeRTCPeerConnection {
+  constructor(...args: ConstructorParameters<typeof RTCPeerConnection>) {
+    super(...args);
+    trackedConnections.add(this);
+  }
+}
+window.RTCPeerConnection = TrackedRTCPeerConnection as unknown as typeof RTCPeerConnection;
+
+async function sampleCandidatePairs(): Promise<void> {
+  const pairs: CandidatePairInfo[] = [];
+  for (const pc of trackedConnections) {
+    if (pc.connectionState === 'closed') continue;
+    try {
+      const stats = await pc.getStats();
+      let selected: Record<string, unknown> | null = null;
+      stats.forEach((report) => {
+        const value = report as unknown as Record<string, unknown>;
+        if (value.type === 'candidate-pair' && value.state === 'succeeded' && value.nominated === true) {
+          selected = value;
+        }
+      });
+      if (!selected) continue;
+      const chosen = selected as Record<string, unknown>;
+      const local = stats.get(String(chosen.localCandidateId)) as unknown as Record<string, unknown> | undefined;
+      const remote = stats.get(String(chosen.remoteCandidateId)) as unknown as Record<string, unknown> | undefined;
+      pairs.push({
+        localType: String(local?.candidateType ?? 'unknown'),
+        remoteType: String(remote?.candidateType ?? 'unknown'),
+        state: String(chosen.state ?? 'unknown'),
+        nominated: chosen.nominated === true,
+      });
+    } catch {
+      // Stats may be briefly unavailable during teardown; next sample will retry.
+    }
+  }
+  status.candidatePairs = pairs;
+  render();
+}
+setInterval(() => { void sampleCandidatePairs(); }, 500);
 
 let manager: LivePeerManager | null = null;
 let signaling: LiveSignalingClient | null = null;

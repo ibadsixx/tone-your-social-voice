@@ -6,6 +6,13 @@
 
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
+interface CandidatePairInfo {
+  localType: string;
+  remoteType: string;
+  state: string;
+  nominated: boolean;
+}
+
 interface HarnessStatus {
   userId: string;
   sessionId: string;
@@ -15,6 +22,7 @@ interface HarnessStatus {
   remoteTracks: number;
   peers: number;
   peerStates: Record<string, string>;
+  candidatePairs: CandidatePairInfo[];
   inbound: number;
   outbound: number;
   offers: number;
@@ -68,6 +76,11 @@ async function expectConnected(page: Page, user: string, expectedPeers: number):
   await expect.poll(async () => (await status(page)).remoteTracks, {
     message: `${user}: remote tracks`,
   }).toBeGreaterThanOrEqual(1);
+
+  await expect.poll(async () => {
+    const s = await status(page);
+    return s.candidatePairs.filter((pair) => pair.state === 'succeeded' && pair.nominated).length;
+  }, { message: `${user}: selected ICE candidate pairs` }).toBe(expectedPeers);
 }
 
 test.describe('Tone Live real-browser P2P', () => {
@@ -84,6 +97,8 @@ test.describe('Tone Live real-browser P2P', () => {
       const user = index === 0 ? 'user-alice' : 'user-bob';
       console.log(`${user}:`, JSON.stringify(s));
       expect(s.error).toBeNull();
+      expect(s.candidatePairs.length).toBeGreaterThanOrEqual(1);
+      expect(s.candidatePairs.every((p) => p.localType !== 'relay' && p.remoteType !== 'relay')).toBe(true);
       expect(s.inbound).toBeGreaterThan(0);
       expect(s.outbound).toBeGreaterThan(0);
     });
@@ -112,6 +127,8 @@ test.describe('Tone Live real-browser P2P', () => {
       const user = ['mesh-alice', 'mesh-bob', 'mesh-carol'][index];
       console.log(`${user}:`, JSON.stringify(s));
       expect(s.error).toBeNull();
+      expect(s.candidatePairs.length).toBeGreaterThanOrEqual(2);
+      expect(s.candidatePairs.every((p) => p.localType !== 'relay' && p.remoteType !== 'relay')).toBe(true);
       expect(s.remoteTracks).toBeGreaterThanOrEqual(2);
     });
     expect(states.reduce((n, s) => n + s.offers, 0)).toBeGreaterThanOrEqual(3);
