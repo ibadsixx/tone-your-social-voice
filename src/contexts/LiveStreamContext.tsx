@@ -162,11 +162,14 @@ export const LiveStreamProvider = ({ children }: { children: React.ReactNode }) 
 
     switch (message.type) {
       case 'join': {
-        // A new participant connected. Existing peers initiate the offer; the
-        // newcomer waits for offers, which avoids duplicate/glare offers.
-        manager.offerTo(from).catch((error: Error) => {
-          console.warn('[LiveStream] offer to', from, 'failed:', error.message);
-        });
+        // A new participant connected. Only the lexically earlier peer offers,
+        // so each pair has exactly one offer and glare cannot occur; perfect
+        // negotiation in LivePeerManager remains the backstop for renegotiation.
+        if (user.id.localeCompare(from) < 0) {
+          manager.offerTo(from).catch((error: Error) => {
+            console.warn('[LiveStream] offer to', from, 'failed:', error.message);
+          });
+        }
         break;
       }
       case 'leave': {

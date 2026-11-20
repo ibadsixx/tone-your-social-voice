@@ -180,11 +180,19 @@ describe('Tone Live P2P engine (mocked WebRTC)', () => {
     manager.close();
   });
 
-  it('emits ICE candidates produced by the browser', async () => {
+  it('queues early ICE candidates and emits them once remote SDP arrives', async () => {
     const { manager, signals } = makeManager();
     await manager.offerTo('user-b');
     createdConnections[0].onicecandidate?.({
       candidate: { sdpMid: '0', sdpMLineIndex: 0, candidate: 'candidate:host' },
+    });
+    // No remote SDP yet: the candidate must not be applied by the peer.
+    expect(signals.filter((s) => s.type === 'ice-candidate')).toHaveLength(0);
+
+    createdConnections[0].signalingState = 'have-local-offer';
+    await manager.handleSignal({
+      id: 'answer-1', sessionId: 'session-1', fromUserId: 'user-b',
+      type: 'answer', sdp: 'remote-answer',
     });
     const candidates = signals.filter((s) => s.type === 'ice-candidate');
     expect(candidates.length).toBe(1);

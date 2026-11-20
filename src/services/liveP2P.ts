@@ -88,6 +88,10 @@ interface PeerEntry {
   ignoreOffer: boolean;
   /** True once the initial offer/answer exchange has started for this peer. */
   offered: boolean;
+  /** Local candidates gathered before remote SDP; sent once it is available. */
+  pendingLocalCandidates: IceCandidateSignal[];
+  /** Remote candidates arriving before the offer/answer; applied after it. */
+  pendingRemoteCandidates: IceCandidateSignal[];
   lastState: RTCPeerConnectionState | 'new';
 }
 
@@ -105,6 +109,8 @@ function newId(): string {
 export class LivePeerManager {
   private readonly peers = new Map<string, PeerEntry>();
   private localStream: MediaStream | null = null;
+  /** Serializes SDP/ICE application so two messages cannot race the same PC. */
+  private signalQueue: Promise<void> = Promise.resolve();
   private closed = false;
   private videoEnabled = true;
   private audioEnabled = true;
@@ -197,6 +203,8 @@ export class LivePeerManager {
       makingOffer: false,
       ignoreOffer: false,
       offered: false,
+      pendingLocalCandidates: [],
+      pendingRemoteCandidates: [],
       lastState: 'new',
     };
     this.peers.set(remoteUserId, entry);
@@ -209,17 +217,24 @@ export class LivePeerManager {
 
     pc.onicecandidate = (event) => {
       if (!event.candidate) return;
+      const candidate: IceCandidateSignal = {
+        sdpMid: event.candidate.sdpMid,
+        sdpMLineIndex: event.candidate.sdpMLineIndex,
+        candidate: event.candidate.candidate,
+        usernameFragment: (event.candidate as RTCIceCandidate & { usernameFragment?: string }).usernameFragment ?? null,
+      };
+      // A candidate can be gathered before the remote SDP arrives. Queue it
+      // locally instead of sending it into a peer that cannot apply it yet.
+      if (!entry.pc.remoteDescription) {
+        entry.pendingLocalCandidates.push(candidate);
+        return;
+      }
       this.options.onSignal({
         id: newId(),
         sessionId: this.options.sessionId,
         toUserId: remoteUserId,
         type: 'ice-candidate',
-        candidate: {
-          sdpMid: event.candidate.sdpMid,
-          sdpMLineIndex: event.candidate.sdpMLineIndex,
-          candidate: event.candidate.candidate,
-          usernameFragment: (event.candidate as RTCIceCandidate & { usernameFragment?: string }).usernameFragment ?? null,
-        },
+        candidate,
       });
     };
 
@@ -313,8 +328,44 @@ export class LivePeerManager {
     }
   }
 
-  /** Consume an inbound signaling message. */
+  /** Flush candidates that were gathered before the remote SDP arrived. */
+  private flushLocalCandidates(remoteUserId: string): void {
+    const entry = this.peers.get(remoteUserId);
+    if (!entry) return;
+    const queued = entry.pendingLocalCandidates.splice(0);
+    for (const candidate of queued) {
+      this.options.onSignal({
+        id: newId(),
+        sessionId: this.options.sessionId,
+        toUserId: remoteUserId,
+        type: 'ice-candidate',
+        candidate,
+      });
+    }
+  }
+
+  /** Apply candidates that arrived before the remote SDP, then clear them. */
+  private async flushRemoteCandidates(remoteUserId: string): Promise<void> {
+    const entry = this.peers.get(remoteUserId);
+    if (!entry) return;
+    const queued = entry.pendingRemoteCandidates.splice(0);
+    for (const candidate of queued) {
+      try {
+        await entry.pc.addIceCandidate(candidate as RTCIceCandidateInit);
+      } catch {
+        // A stale candidate from rejected glare is safe to ignore.
+      }
+    }
+  }
+
+  /** Consume an inbound signaling message, serialized with all others. */
   async handleSignal(message: InboundP2PSignal): Promise<void> {
+    const run = this.signalQueue.then(() => this.handleSignalInternal(message));
+    this.signalQueue = run.catch(() => undefined);
+    return run;
+  }
+
+  private async handleSignalInternal(message: InboundP2PSignal): Promise<void> {
     if (this.closed) return;
     const from = message.fromUserId;
     if (!from || from === this.options.localUserId) return;
@@ -322,6 +373,11 @@ export class LivePeerManager {
     if (message.type === 'ice-candidate') {
       const entry = this.peers.get(from);
       if (!entry || !message.candidate) return;
+      if (!entry.pc.remoteDescription) {
+        // The offer may still be in flight; buffer and replay after SDP.
+        entry.pendingRemoteCandidates.push(message.candidate);
+        return;
+      }
       try {
         await entry.pc.addIceCandidate(message.candidate as RTCIceCandidateInit);
       } catch (error) {
@@ -342,6 +398,8 @@ export class LivePeerManager {
       entry.offered = true; // we answered; do not also offer on a later join event
 
       await entry.pc.setRemoteDescription({ type: 'offer', sdp: message.sdp });
+      await this.flushRemoteCandidates(from);
+      this.flushLocalCandidates(from);
       await entry.pc.setLocalDescription();
       const answer = entry.pc.localDescription;
       if (answer) {
@@ -360,6 +418,8 @@ export class LivePeerManager {
       const entry = this.peers.get(from);
       if (!entry || !message.sdp || entry.pc.signalingState !== 'have-local-offer') return;
       await entry.pc.setRemoteDescription({ type: 'answer', sdp: message.sdp });
+      await this.flushRemoteCandidates(from);
+      this.flushLocalCandidates(from);
       return;
     }
   }
