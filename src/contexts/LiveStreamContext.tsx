@@ -19,7 +19,7 @@ import {
 } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { Room, createLocalTracks, logLevel } from 'livekit-client';
+import { Room, createLocalTracks } from 'livekit-client';
 import {
   createLiveStream,
   getLiveStream,
