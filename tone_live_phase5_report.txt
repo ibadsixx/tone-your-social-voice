@@ -1,0 +1,287 @@
+TONE LIVE - PHASE 5: DATABASE DEPLOYMENT AND REAL-WORLD WEBRTC VERIFICATION
+Report generated: 2026-11-20 (UTC)
+
+Scope: verify and deploy the Phase 4 P2P implementation. No P2P redesign was
+performed. No paid services, VPS, LiveKit, or external SFU were added. No JWTs,
+tickets, cookies, service-role credentials, or other secrets are printed here.
+
+Classification used below:
+  PASS      = actually executed/inspected successfully with evidence
+  FAIL      = actually executed and failed (none remain in the final runs)
+  NOT TESTED = not executed; no result is claimed
+
+
+1. DATABASE MIGRATION
+
+PASS (source inspection) - Migration file identified:
+  gateway/migrations/005_create_live_signaling.sql
+  It creates live_signaling_tickets, live_signaling_messages,
+  live_signaling_message_seq, next_live_signaling_message_seq(), and the
+  supporting indexes. It uses IF NOT EXISTS / CREATE OR REPLACE, is additive,
+  enables no RLS on these Gateway-only tables, and deletes no existing data.
+
+PASS (code inspection) - Gateway store targets exactly those objects:
+  src/features/liveSignalingStore.ts inserts/consumes tickets, calls the
+  sequence RPC, stores/fetches messages by cursor, and cleans expired rows.
+
+NOT TESTED - Direct Supabase project inspection:
+  No Supabase CLI auth (npx supabase projects list -> AccessTokenRequiredError),
+  no Vercel CLI auth (npx vercel whoami -> "Logged out"), no DATABASE_URL /
+  SUPABASE_URL / service-role credentials in the environment, and no psql client.
+  Therefore the actual deployed project's table existence, columns, constraints,
+  indexes, permissions, migration history, and project identity were NOT directly
+  inspected. Migration 005 was NOT applied by this run.
+
+OBSERVATION (inconclusive, not a PASS) - Deployed Gateway DB path was probed
+  without secrets: a WebSocket connection with a non-secret invalid ticket
+  closed with 4002 invalid_or_used_ticket, and a connection with no ticket
+  closed with 4001 missing_ticket. The code swallows ticket-query errors and
+  returns null, so 4002 is consistent with either a healthy schema or a hidden
+  query error. It does NOT prove migration 005 exists.
+
+PASS (mocked tests only) - Gateway verification on current main:
+  npm run build                       -> clean
+  npm run test:live-signaling-protocol -> 139 passed, 0 failed
+  npm run test:live-signaling-store    -> 23 passed, 0 failed
+  npm run test:live-lifecycle          -> 36 passed, 0 failed
+  These are unit/mocked tests, not real Supabase verification.
+
+REQUIRED ACTION: with authorized Supabase/Vercel access, inspect the actual
+  deployed project, confirm both tables, the sequence, the function, their
+  columns/constraints/indexes/permissions and migration history, then apply
+  migration 005 only if absent, and verify real service-role ticket insert,
+  atomic consume, message insert, cursor fetch, and cleanup.
+
+
+2. VERCEL WEBSOCKET DEPLOYMENT
+
+PASS (code + official docs) - Supported Vercel WebSocket model:
+  Official Vercel docs (https://vercel.com/docs/functions/websockets) show
+  exporting a Node http.Server with a `ws` WebSocketServer attached.
+  gateway/api/live/signaling.ts does exactly that:
+    import http from 'node:http';
+    import { WebSocketServer } from 'ws';
+    const server = http.createServer(...);
+    const wss = new WebSocketServer({ server });
+    export default server;
+  There is no server.listen(), no custom-server assumption, and no use of the
+  Next.js-only @vercel/functions upgradeWebSocket() workaround.
+
+PASS (config inspection) - Function routing and duration:
+  gateway/vercel.json defines a dedicated api/live/signaling.ts Function with
+  maxDuration 300. The file is served at /api/live/signaling. The generic
+  /(.*) rewrite does not override the filesystem route; deployment probes
+  below hit the signaling Function directly.
+
+PASS (runtime evidence) - WebSocket upgrade after deployment:
+  Real external WSS connections to
+  wss://gateway-iota-two.vercel.app/api/live/signaling returned:
+    UPGRADE_STATUS=101, OPEN=yes, CLOSE_CODE=4001 REASON=missing_ticket
+    UPGRADE_STATUS=101, OPEN=yes, CLOSE_CODE=4002 REASON=invalid_or_used_ticket
+  This proves the deployed route accepts and completes WebSocket upgrades.
+
+PASS (code inspection) - No process-global cross-instance state:
+  Tickets, messages, cursors, and presence are coordinated through the
+  Supabase-backed store. The only module-level value in the signaling Function
+  is lastCleanupAt, a non-authoritative cleanup throttle.
+
+NOT TESTED - Fluid Compute setting:
+  Vercel docs state WebSockets require Fluid compute. The successful deployed
+  upgrade is consistent with it being enabled, but the project setting could
+  not be inspected without Vercel account access. Verify/enable Fluid compute
+  in the Vercel Gateway project settings.
+
+PASS (GitHub Vercel commit statuses) - Actual deployment results:
+  The GitHub commit-status API reported Vercel deployment success for every
+  relevant commit, so this is not inferred from Git push alone:
+    gateway fd3424a      -> context "Vercel – gateway": success
+      https://vercel.com/apigateway1/gateway/F3QUTm1gXjQh7iwzrfhAte5iiWQt
+    frontend 4ea9a68     -> context "Vercel": success
+    frontend 3c7f412     -> context "Vercel": success
+    frontend f52e1e8     -> context "Vercel": success
+      https://vercel.com/tone10/tone/BpSKz3vyLhqnYs7abbXYndcJoXBj
+  Full Vercel build logs and environment-variable values were not read because
+  the Vercel CLI remains logged out, but the deployment status itself is
+  confirmed from Vercel's GitHub integration.
+
+PASS (HTTP probes) - Deployed endpoints are live:
+  GET https://gateway-iota-two.vercel.app/api/live/signaling
+    HTTP/2 200, content-type application/json, x-vercel-id present
+  GET https://gateway-iota-two.vercel.app/api/system/health
+    HTTP/2 200, body {"status":"healthy",...}, x-vercel-id present
+  GET https://tonesn.vercel.app/
+    HTTP/2 200, content-type text/html, x-vercel-id present
+  Deployed frontend index.html references assets/index-CToJwRAh.js, the same
+  hashed asset produced by the local production build; that bundle contains
+  the live signaling event string "ice-candidate". This is strong evidence the
+  P2P frontend is deployed, but it is not a Vercel deployment-status read.
+
+PASS (Git state) - Repositories are clean and contain the expected commits:
+  gateway main @ fd3424a, clean, pushed
+  frontend main @ 4ea9a68 plus verification commits 3c7f412 and f52e1e8, clean,
+    pushed. The extra commits add real-browser tests, ICE candidate queueing,
+    signaling serialization, deterministic offers, and candidate-pair stats;
+    they do not redesign the P2P implementation.
+
+
+3. REAL WEBSOCKET TEST (DEPLOYED GATEWAY)
+
+PASS - WebSocket connection upgrade:
+  Two independent external connections completed HTTP 101 upgrades and opened.
+
+PASS - Unauthenticated / invalid-ticket rejection:
+  No ticket -> 4001 missing_ticket. Non-secret invalid ticket -> 4002
+  invalid_or_used_ticket. No ticket or secret values were logged.
+
+NOT TESTED - Authenticated ticket issuance:
+  Requires a real authenticated Gateway session/JWT and an active live session;
+  none were available. Unauthenticated POST to the ticket endpoint returned
+  401 Missing authorization header in earlier probing.
+
+NOT TESTED - Send valid signaling message and verify delivery to a different
+  authenticated client.
+NOT TESTED - Cursor-based reconnect and durable message replay.
+NOT TESTED - Expired ticket behavior.
+NOT TESTED - Reused ticket behavior (the invalid-ticket probe does not test a
+  real previously consumed ticket).
+NOT TESTED - Unauthorized session access with real authenticated sessions.
+NOT TESTED - Two independent authenticated sessions end to end.
+
+
+4. TWO-BROWSER WEBRTC
+
+PASS (real browser, local signaling double) - npm run test:e2e:live:
+  Two independent Chromium contexts acquired fake-device microphone media,
+  used the production LivePeerManager and LiveSignalingClient, exchanged real
+  SDP/ICE over a local WebSocket signaling double, and connected real
+  RTCPeerConnections.
+
+  Observed final status for each side:
+    user-alice: signaling=connected, connection=connected, localTracks=1,
+      remoteTracks=1, peers=1, peerStates={user-bob: connected},
+      candidatePairs=[{localType: host, remoteType: host, state: succeeded,
+      nominated: true}], offers=1, answers=1, ice=1, error=null
+    user-bob: signaling=connected, connection=connected, localTracks=1,
+      remoteTracks=1, peers=1, peerStates={user-alice: connected},
+      candidatePairs=[{localType: host, remoteType: host, state: succeeded,
+      nominated: true}], offers=1, answers=0, ice=2, error=null
+
+PASS - Real ICE state and selected candidate-pair type were recorded:
+  ICE connection state: connected / peer connection state: connected.
+  Selected candidate pair: host -> host, state succeeded, nominated true.
+  Relay candidates were absent by assertion.
+
+NOT TESTED - Two authenticated production users through the deployed Supabase
+  Gateway. The e2e harness uses fake device flags and a local Gateway double;
+  it proves real browser WebRTC, not production ticket/DB delivery.
+
+NOT TESTED - Physical camera and microphone devices.
+NOT TESTED - Host publishing to an authenticated viewer role in a browser.
+NOT TESTED - Mute/unmute and camera on/off in a real browser. These pass only
+  in the mocked WebRTC unit test suite.
+NOT TESTED - Participant leaving in a real browser.
+NOT TESTED - Reconnection after a temporary network interruption.
+NOT TESTED - Host ending the broadcast in a real browser.
+NOT TESTED - Different physical networks.
+
+
+5. THREE-BROWSER WEBRTC
+
+PASS (real browser, local signaling double) - Three independent Chromium
+  contexts formed a full mesh with production WebRTC modules and real SDP/ICE:
+    mesh-alice: peers=2, remoteTracks=2,
+      peerStates={mesh-bob: connected, mesh-carol: connected}
+    mesh-bob: peers=2, remoteTracks=2,
+      peerStates={mesh-alice: connected, mesh-carol: connected}
+    mesh-carol: peers=2, remoteTracks=2,
+      peerStates={mesh-alice: connected, mesh-bob: connected}
+  Each participant had two nominated succeeded candidate pairs, both host->host.
+
+PASS - Final run: 2 tests passed (10.1s total) including the two-browser and
+  three-browser cases. Relay candidates were absent by assertion.
+
+NOT TESTED - Three authenticated production users through the deployed Gateway.
+
+
+6. NAT AND STUN LIMITATIONS
+
+PASS - Direct candidate-pair connections were achieved locally: host -> host,
+  state succeeded, nominated true, in both two- and three-browser tests.
+
+PASS - Relay candidates are absent: the harness asserts no local or remote
+  candidateType is "relay" for any selected pair. The implementation is
+  STUN-only; no relay was configured or invented.
+
+NOT TESTED - Failed NAT traversal scenarios.
+NOT TESTED - srflx-only / symmetric NAT paths with external STUN.
+NOT TESTED - Restrictive network or enterprise firewall behavior.
+NOT TESTED - Cross-network browser connectivity.
+No universal connectivity is claimed.
+
+
+7. LIVE SESSION INTEGRATION
+
+PASS (mocked Gateway lifecycle tests) - npm run test:live-lifecycle: 36 passed,
+  0 failed. Covered in that suite: privacy/audience enforcement, fail-closed
+  friend checks, viewer leaving without ending the session, no duplicate
+  sessions/posts on reconnect, host ending and idempotent end, stored
+  participant roles, and no media-server room_id in P2P sessions.
+
+PASS (unit/mocked WebRTC) - Targeted frontend tests:
+  src/services/liveP2P.test.ts (12 tests) and
+  src/services/liveSignalingClient.test.ts (3 tests): 15 passed, 0 failed.
+
+PASS (build) - Frontend npm run build succeeded: 4343 modules transformed,
+  asset assets/index-CToJwRAh.js produced. Deployed frontend references the
+  same asset hash. Known pre-existing Vite chunk-size/browserslist/Tailwind
+  warnings remain non-blocking.
+
+NOT TESTED - Real deployed LIVE post lifecycle end to end:
+  exactly one LIVE post created, privacy rules against real friend data,
+  viewer leaving, host ending updating the real post, reconnect without
+  duplicate sessions/posts, and Gateway-enforced permissions were NOT verified
+  against the deployed Supabase database or with authenticated browser users.
+
+
+8. KNOWN FAILURES AND REMAINING LIMITATIONS
+
+No current FAIL items remain in the final executed runs.
+
+Historical issues found and fixed during real-browser verification in Phase 4:
+  - Early ICE candidates could be applied before remote SDP: fixed by queuing
+    and flushing local/remote candidates.
+  - Concurrent signaling messages could race setRemoteDescription: fixed with
+    a serialized signaling queue.
+  - Simultaneous join offers caused glare in three-peer tests: fixed by
+    deterministic single-offer initiation with perfect negotiation retained.
+  - Local signaling double initially lacked CORS headers and recipient
+    routing: fixed in the test double.
+
+Remaining limitations:
+  1. Migration 005 was not applied or directly verified because no Supabase or
+     Vercel credentials/CLI auth were available. Direct schema, sequence,
+     function, permissions, and history inspection is still required.
+  2. Fluid compute could not be verified in Vercel project settings, although
+     the deployed WebSocket upgrade succeeds.
+  3. Full Vercel build logs and environment-variable values were not read.
+     However, Vercel deployment success is confirmed for all relevant commits
+     via Vercel's GitHub commit statuses, plus live HTTP/WSS probes and a
+     matching deployed frontend asset hash.
+  4. Real authenticated two-user and three-user WebSocket flows, ticket
+     expiry/reuse, cursor reconnect/replay, and unauthorized session access
+     were not executed.
+  5. Real browser tests used fake media devices and a local signaling double.
+     Physical devices, viewer-role rendering, mute/camera toggles, participant
+     leave, temporary network interruption, host end, and different networks
+     remain untested in a real browser.
+  6. External NAT/STUN traversal and restrictive-network behavior remain
+     untested. STUN-only direct host connections were demonstrated locally;
+     relay candidates were absent.
+
+Bottom line: Vercel reports successful deployments for the relevant commits,
+the deployed signaling WebSocket endpoint is reachable and upgrades
+successfully, the deployed frontend matches the P2P build, and real Chromium
+two-peer/three-peer WebRTC with host->host selected candidate pairs PASSES.
+Production database migration/application, authenticated end-to-end signaling,
+and real-world authenticated browser sessions are NOT TESTED and remain
+required before claiming production readiness.
