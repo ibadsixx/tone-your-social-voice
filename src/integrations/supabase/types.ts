@@ -2531,9 +2531,11 @@ export type Database = {
           feeling_activity_type: string | null
           hide_like_count: boolean | null
           hide_share_count: boolean | null
+          host_id: string | null
           id: string
           like_count: number | null
           likes_count: number | null
+          live_session_id: string | null
           location_address: string | null
           location_id: string | null
           location_lat: number | null
@@ -2559,6 +2561,7 @@ export type Database = {
           status: string | null
           tagged_people: Json | null
           thumbnail: string | null
+          title: string | null
           type: Database["public"]["Enums"]["post_type_new"] | null
           user_id: string
           visibility: string | null
@@ -2585,9 +2588,11 @@ export type Database = {
           feeling_activity_type?: string | null
           hide_like_count?: boolean | null
           hide_share_count?: boolean | null
+          host_id?: string | null
           id?: string
           like_count?: number | null
           likes_count?: number | null
+          live_session_id?: string | null
           location_address?: string | null
           location_id?: string | null
           location_lat?: number | null
@@ -2613,6 +2618,7 @@ export type Database = {
           status?: string | null
           tagged_people?: Json | null
           thumbnail?: string | null
+          title?: string | null
           type?: Database["public"]["Enums"]["post_type_new"] | null
           user_id: string
           visibility?: string | null
@@ -2639,9 +2645,11 @@ export type Database = {
           feeling_activity_type?: string | null
           hide_like_count?: boolean | null
           hide_share_count?: boolean | null
+          host_id?: string | null
           id?: string
           like_count?: number | null
           likes_count?: number | null
+          live_session_id?: string | null
           location_address?: string | null
           location_id?: string | null
           location_lat?: number | null
@@ -2667,6 +2675,7 @@ export type Database = {
           status?: string | null
           tagged_people?: Json | null
           thumbnail?: string | null
+          title?: string | null
           type?: Database["public"]["Enums"]["post_type_new"] | null
           user_id?: string
           visibility?: string | null
