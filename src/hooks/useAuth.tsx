@@ -1,5 +1,18 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { gateway } from '@/lib/gateway';
+import {
+  signInWithPassword,
+  signUp,
+  signOut,
+  getSession,
+  getUser,
+  refreshSession,
+  updateUser,
+  onAuthStateChange,
+  mfa,
+  initializeCentralAuth,
+  getCentralAuthInitError,
+  resetCentralAuthClient,
+} from '@/lib/supabase/centralAuth';
 import { profilesApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 import { endPresenceSession } from '@/hooks/usePresence';
@@ -69,62 +82,84 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
        }
      }, 4000);
 
-    // Set up auth state listener first
-    const { data: { subscription } } = gateway.auth.onAuthStateChange(
-      (event, session) => {
-        if (mounted) {
-          sessionResolved = true;
-          window.clearTimeout(loadingTimeout);
-          setSession(session);
-          setUser(session?.user ?? null);
-          setLoading(false);
-          ensureUserProfile(session?.user ?? null);
-        }
-      }
-    );
+    // Initialize the central Auth client first.
+    initializeCentralAuth()
+      .then(() => {
+        // Set up auth state listener first.
+        const { data: { subscription } } = onAuthStateChange(
+          (event, session) => {
+            if (mounted) {
+              sessionResolved = true;
+              window.clearTimeout(loadingTimeout);
+              setSession(session as GatewaySession | null);
+              setUser(session?.user ?? null);
+              setLoading(false);
+              ensureUserProfile(session?.user ?? null);
+            }
+          }
+        );
 
-    // Get initial session with error handling
-    gateway.auth.getSession()
-      .then(({ data: { session }, error }) => {
-        if (mounted) {
-          sessionResolved = true;
+        // Get initial session with error handling.
+        getSession()
+          .then(({ data: { session }, error }) => {
+            if (mounted) {
+              sessionResolved = true;
+              window.clearTimeout(loadingTimeout);
+              if (error) {
+                console.error('Failed to get session:', error);
+                toast({
+                  title: "Connection error",
+                  description: "Failed to connect to authentication service. Please check your internet connection.",
+                  variant: "destructive"
+                });
+              }
+              // Only update user if we actually got a session — avoids a slow
+              // network response resetting user to null after a concurrent login
+              if (session) {
+                setSession(session as GatewaySession | null);
+                setUser(session.user);
+                ensureUserProfile(session.user);
+              }
+              setLoading(false);
+            }
+          })
+          .catch((error) => {
+            console.error('getSession exception:', error);
+            if (mounted) {
+              sessionResolved = true;
+              window.clearTimeout(loadingTimeout);
+              toast({
+                title: "Failed to fetch",
+                description: error.message || "Unable to connect to the server. Please try again.",
+                variant: "destructive"
+              });
+              setLoading(false);
+            }
+          });
+
+        return () => {
+          mounted = false;
           window.clearTimeout(loadingTimeout);
-          if (error) {
-            console.error('Failed to get session:', error);
-            toast({
-              title: "Connection error",
-              description: "Failed to connect to authentication service. Please check your internet connection.",
-              variant: "destructive"
-            });
-          }
-          // Only update user if we actually got a session — avoids a slow
-          // network response resetting user to null after a concurrent login
-          if (session) {
-            setSession(session);
-            setUser(session.user);
-            ensureUserProfile(session.user);
-          }
-          setLoading(false);
-        }
+          subscription.unsubscribe();
+        };
       })
-      .catch((error) => {
-        console.error('getSession exception:', error);
+      .catch((initError) => {
+        console.error('Failed to initialize central auth:', initError);
         if (mounted) {
           sessionResolved = true;
           window.clearTimeout(loadingTimeout);
+          setLoading(false);
           toast({
-            title: "Failed to fetch",
-            description: error.message || "Unable to connect to the server. Please try again.",
+            title: "Authentication unavailable",
+            description: initError.message || "Unable to connect to authentication service.",
             variant: "destructive"
           });
-          setLoading(false);
         }
       });
 
     return () => {
       mounted = false;
       window.clearTimeout(loadingTimeout);
-      subscription.unsubscribe();
     };
   }, [toast]);
 
@@ -132,7 +167,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const redirectUrl = `${window.location.origin}/`;
       
-      const { error } = await gateway.auth.signUp({
+      const { error } = await signUp({
         email,
         password,
         options: {
@@ -155,7 +190,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       // Accounts are created pre-confirmed server-side (no email verification).
       // Auto sign-in so registration gives immediate access.
-      const { error: signInError } = await gateway.auth.signInWithPassword({ email, password });
+      const { error: signInError } = await signInWithPassword({ email, password });
       if (signInError) {
         toast({
           title: "Account created",
@@ -177,7 +212,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const result = await gateway.auth.signInWithPassword({
+      const result = await signInWithPassword({
         email,
         password,
       });
@@ -220,7 +255,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return { error: { message: 'No pending two-factor login found' } };
       }
 
-      const challenge = await gateway.auth.mfa.challenge({ factorId: mfaFactorId });
+      const challenge = await mfa.challenge({ factorId: mfaFactorId });
       if (challenge.error) {
         toast({
           title: "Verification failed",
@@ -230,7 +265,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return { error: challenge.error };
       }
 
-      const verify = await gateway.auth.mfa.verify({
+      const verify = await mfa.verify({
         factorId: mfaFactorId,
         challengeId: challenge.data.id,
         code,
@@ -292,7 +327,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     clearPostActionsForUser(user?.id);
 
     try {
-      const { error } = await gateway.auth.signOut();
+      const { error } = await signOut();
 
       if (error) {
         toast({
