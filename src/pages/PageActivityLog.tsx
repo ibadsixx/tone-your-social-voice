@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -46,7 +46,7 @@ const PageActivityLog = () => {
       setPage(state);
     } else {
       (async () => {
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('pages')
           .select('id, name, profile_pic')
           .eq('id', id)
@@ -60,7 +60,7 @@ const PageActivityLog = () => {
     }
 
     (async () => {
-      const { data: pagePosts } = await gateway
+      const { data: pagePosts } = await dataClient
         .from('page_posts')
         .select(`
           id, message, created_at,
@@ -80,11 +80,14 @@ const PageActivityLog = () => {
 
       const sharerIds = [...new Set((pagePosts || []).map((pp) => pp.shared_by))];
       if (sharerIds.length > 0) {
-        const { data: profiles } = await gateway
+        const { data: profiles } = await dataClient
           .from('profiles')
           .select('id, display_name, username, profile_pic')
           .in('id', sharerIds);
-        const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+        const profileMap = new Map<string, { display_name?: string; username?: string; profile_pic?: string | null }>(
+          ((profiles || []) as Array<{ id: string; display_name?: string; username?: string; profile_pic?: string | null }>)
+            .map((p) => [p.id, p])
+        );
         for (const entry of entries) {
           const pp = pagePosts?.find((p) => p.id === entry.id);
           if (pp) {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -21,10 +21,10 @@ export const useStoryReactions = (storyId: string) => {
     if (!storyId) return;
     fetchReactions();
 
-    // A viewer only ever sees their OWN reaction state (do.md). The gateway
+    // A viewer only ever sees their OWN reaction state (do.md). The dataClient
     // enforces the same restriction server-side; the channel filter is scoped
     // to the current user's rows too.
-    const channel = gateway
+    const channel = dataClient
       .channel(`story-reactions-${storyId}`)
       .on(
         'postgres_changes',
@@ -41,7 +41,7 @@ export const useStoryReactions = (storyId: string) => {
       .subscribe();
 
     return () => {
-      gateway.removeChannel(channel);
+      dataClient.removeChannel(channel);
     };
   }, [storyId, user?.id]);
 
@@ -50,7 +50,7 @@ export const useStoryReactions = (storyId: string) => {
       // Only the current viewer's reactions are fetched (do.md: a viewer must
       // not receive other users' reactions or counts; the Gateway additionally
       // redacts non-owner rows server-side).
-      let query = gateway.from('story_reactions').select('*').eq('story_id', storyId);
+      let query = dataClient.from('story_reactions').select('*').eq('story_id', storyId);
       if (user?.id) {
         query = query.eq('user_id', user.id);
       }
@@ -75,7 +75,7 @@ export const useStoryReactions = (storyId: string) => {
 
     setLoading(true);
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('story_reactions')
         .insert({
           story_id: storyId,
@@ -105,7 +105,7 @@ export const useStoryReactions = (storyId: string) => {
 
     setLoading(true);
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('story_reactions')
         .delete()
         .eq('story_id', storyId)

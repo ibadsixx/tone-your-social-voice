@@ -3,8 +3,7 @@ import { defineConfig } from '@playwright/test';
 // Standalone config for the Share-dialog layout regression (the repo's default
 // playwright.config.ts depends on an uninstalled helper package).
 //
-// `VITE_API_GATEWAY_URL` is pinned to the dev-server origin so the harness's
-// Gateway calls are same-origin and can be fulfilled by `page.route`.
+// The harness intercepts network calls with `page.route`; no backend is needed.
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.layout.spec.ts',
@@ -21,7 +20,6 @@ export default defineConfig({
     reuseExistingServer: true,
     timeout: 120_000,
     env: {
-      VITE_API_GATEWAY_URL: 'http://localhost:5173',
     },
   },
 });

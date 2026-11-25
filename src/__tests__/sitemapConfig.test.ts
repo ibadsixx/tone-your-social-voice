@@ -1,22 +1,22 @@
 // do.md §16 (robots.txt) and §17 (routing), applied to the deployment config.
 //
-// The Gateway generates the sitemap correctly - that is proven in the Gateway's
-// own suite - but a correct generator is invisible if the bytes never reach a
-// crawler. Two files decide that, and both are pure configuration, so both are
-// asserted here where a regression is a one-line diff rather than a production
-// incident:
+// The Infrastructure Supabase `sitemap` Edge Function generates the sitemap,
+// but a correct generator is invisible if the bytes never reach a crawler. Two
+// files decide that, and both are pure configuration, so both are asserted here
+// where a regression is a one-line diff rather than a production incident:
 //
-//   vercel.json   /sitemap.xml must reach the Gateway and NOT the SPA shell. The
-//                 failure this guards is silent and total: the catch-all
-//                 /(.*) -> /index.html would return the app, the crawler would
-//                 parse HTML as a sitemap, and every discovery signal for the
-//                 site would be lost with no error anywhere (do.md §17, §20.20).
+//   vercel.json   /sitemap.xml must reach the sitemap Edge Function and NOT the
+//                 SPA shell. The failure this guards is silent and total: the
+//                 catch-all /(.*) -> /index.html would return the app, the
+//                 crawler would parse HTML as a sitemap, and every discovery
+//                 signal for the site would be lost with no error anywhere
+//                 (do.md §17, §20.20).
 //   robots.txt    the Sitemap: declaration has to name the CANONICAL origin and
 //                 has to leave the public content paths crawlable (do.md §16).
 //
 // The rewrite contract is asserted in both directions: the frontend must map each
-// advertised path onto a real Gateway route, and the advertised <loc> origin must
-// match the one the robots.txt declaration advertises.
+// advertised path onto a real sitemap Function request, and the advertised <loc>
+// origin must match the one the robots.txt declaration advertises.
 //
 // Run: npx vitest run src/__tests__/sitemapConfig.test.ts
 import { describe, it, expect } from 'vitest';
@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
+import { getEdgeFunctionUrl } from '@/lib/supabase/edgeTransport';
 import { PUBLIC_CONTENT_PATH_PREFIX, publicContentKind } from '@/lib/seo';
 import { isPublicPath } from '@/lib/publicPaths';
 
@@ -36,24 +37,44 @@ const vercelJson = JSON.parse(read('vercel.json')) as {
 const robotsTxt = read('public/robots.txt');
 
 const CANONICAL_ORIGIN = 'https://tonesn.vercel.app';
+const SITEMAP_FUNCTION_PATH = new URL(getEdgeFunctionUrl('sitemap')).pathname;
 
 describe('vercel.json routes the sitemap to the generator, not the SPA', () => {
   const rewrites = vercelJson.rewrites;
 
-  it('rewrites /sitemap.xml to the Gateway generator', () => {
+  it('rewrites /sitemap.xml to the sitemap Edge Function', () => {
     const rule = rewrites.find((r) => r.source === '/sitemap.xml');
     expect(rule, 'no rewrite for /sitemap.xml').toBeDefined();
-    expect(rule!.destination).toMatch(/^https:\/\/[a-z0-9-]+\.vercel\.app\/api\/sitemap\.xml$/);
+    const destination = new URL(rule!.destination);
+    expect(destination.hostname).toMatch(/^[a-z0-9-]+\.supabase\.co$/);
+    expect(destination.pathname).toBe(SITEMAP_FUNCTION_PATH);
+    expect(destination.searchParams.get('file')).toBe('sitemap.xml');
   });
 
   it('rewrites every child sitemap path, preserving the section and page', () => {
-    // One parameter, not two, so the whole child filename is passed through
-    // unchanged: `/sitemap-posts-2.xml` reaches the Gateway as
-    // `/api/sitemap-posts-2.xml`, which is the route the Gateway parses.
+    // One parameter, and Vercel captures the part after `/sitemap-`. The
+    // Function's own file name is added by the destination: `/sitemap-posts-2.xml`
+    // reaches it as `?file=sitemap-posts-2.xml`, which is what the Function parses.
     const rule = rewrites.find((r) => r.source.startsWith('/sitemap-'));
     expect(rule, 'no rewrite for the child sitemaps').toBeDefined();
     expect(rule!.source).toBe('/sitemap-:file');
-    expect(rule!.destination).toMatch(/\/api\/sitemap-:file$/);
+    expect(rule!.destination).toContain('?file=sitemap-:file');
+    const destination = new URL(rule!.destination.replace(':file', 'posts-2.xml'));
+    expect(destination.pathname).toBe(SITEMAP_FUNCTION_PATH);
+    expect(destination.searchParams.get('file')).toBe('sitemap-posts-2.xml');
+  });
+
+  it('does not send sitemap traffic through the retired API Gateway', () => {
+    const sitemapRules = rewrites.filter(
+      (r) => r.source === '/sitemap.xml' || r.source.startsWith('/sitemap-'),
+    );
+    expect(sitemapRules.length).toBeGreaterThan(0);
+    for (const rule of sitemapRules) {
+      const destination = new URL(rule.destination.replace(':file', 'posts-1.xml'));
+      expect(destination.hostname).toMatch(/^[a-z0-9-]+\.supabase\.co$/);
+      expect(destination.pathname).toBe(SITEMAP_FUNCTION_PATH);
+      expect(destination.pathname).not.toContain('/api/');
+    }
   });
 
   it('lists the sitemap rules BEFORE the SPA catch-all', () => {
@@ -81,11 +102,15 @@ describe('vercel.json routes the sitemap to the generator, not the SPA', () => {
   });
 
   it('does not let the SPA catch-all swallow the sitemap for any child name', () => {
-    // Every section name the Gateway can emit must match the child rewrite.
+    // Every section name the sitemap Function can emit must match the child
+    // rewrite and arrive as the Function's opaque `file` parameter.
+    const destination = rewrites.find((r) => r.source === '/sitemap-:file')!.destination;
     for (const section of ['posts', 'reels', 'photos', 'profiles', 'pages', 'groups', 'hashtags']) {
       const advertised = `/sitemap-${section}-1.xml`;
-      const mapped = advertised.replace(/^\/sitemap-/, '/api/sitemap-');
-      expect(mapped).toBe(`/api/sitemap-${section}-1.xml`);
+      const capture = advertised.slice('/sitemap-'.length);
+      const mapped = new URL(destination.replace(':file', capture));
+      expect(mapped.pathname).toBe(SITEMAP_FUNCTION_PATH);
+      expect(mapped.searchParams.get('file')).toBe(`sitemap-${capture}`);
     }
   });
 });
@@ -97,12 +122,15 @@ describe('robots.txt declares the sitemap without using robots.txt as a control'
       .map((line) => line.trim())
       .filter((line) => line.toLowerCase().startsWith('sitemap:'));
     expect(declarations).toEqual([`Sitemap: ${CANONICAL_ORIGIN}/sitemap.xml`]);
+    expect(declarations.some((line) => /gateway/i.test(line) || line.includes('/api/'))).toBe(false);
   });
 
-  it('does not advertise the Gateway host as the site to index', () => {
-    // The Gateway is the generator, not the site. A declaration on the Gateway's
-    // host would root every <loc> at a host that is not the one being indexed.
+  it('does not advertise the sitemap Function host as the site to index', () => {
+    // The Edge Function is the generator, not the site. A declaration on its host
+    // would root every <loc> at a host that is not the one being indexed. The
+    // old Gateway host must not be advertised either.
     expect(robotsTxt).not.toMatch(/^Sitemap:\s*https?:\/\/[^/]*vercel\.app\/api/m);
+    expect(robotsTxt).not.toMatch(/^Sitemap:\s*https?:\/\/[^/]*supabase\.co\//m);
   });
 
   it('keeps the sitemap itself crawlable', () => {
@@ -118,8 +146,8 @@ describe('robots.txt declares the sitemap without using robots.txt as a control'
   it('never globally disallows the public content paths', () => {
     // do.md §16: /post/, /reel/ and /photo/ each contain both public and private
     // content, so disallowing the prefix would make every public post
-    // permanently unindexable. Privacy is enforced by the Gateway's audience
-    // check, not here.
+    // permanently unindexable. Privacy is enforced by the sitemap Function's
+    // audience check, not here.
     for (const prefix of ['/post/', '/reel/', '/photo/', '/profile/']) {
       expect(robotsTxt).not.toMatch(new RegExp(`^Disallow:\\s*${escapeRe(prefix)}$`, 'm'));
     }
@@ -134,7 +162,7 @@ describe('robots.txt declares the sitemap without using robots.txt as a control'
 });
 
 describe('the routes the sitemap advertises are routes the app serves', () => {
-  it('every public content prefix matches the Gateway-side constants', () => {
+  it('every public content prefix matches the sitemap-side constants', () => {
     // These three literals are asserted on both sides of the repos; a rename on
     // one fails a test on the other rather than emitting dead sitemap URLs.
     expect(PUBLIC_CONTENT_PATH_PREFIX).toEqual({
@@ -144,7 +172,7 @@ describe('the routes the sitemap advertises are routes the app serves', () => {
     });
   });
 
-  it('builds the same URL the Gateway builds for a public row', () => {
+  it('builds the same URL the sitemap Function builds for a public row', () => {
     const id = '00000000-0000-4000-8000-0000000000AB';
     expect(`${PUBLIC_CONTENT_PATH_PREFIX.post}${id.toLowerCase()}`).toBe(`/post/${id.toLowerCase()}`);
     expect(publicContentKind({ type: 'reel' })).toBe('reel');

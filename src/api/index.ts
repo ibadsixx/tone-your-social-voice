@@ -1,5 +1,5 @@
-export { gateway, API_URL } from './client';
-export type { ApiResult } from './client';
+export { dataClient } from '@/lib/supabase/dataClient';
+export type { ApiResult } from '@/lib/supabase/dataClient';
 export type {
   Post, Comment, Story, Notification, Conversation, Message,
   Group, GroupMember, GroupPost, GroupFollow, GroupPin, Page, Hashtag,

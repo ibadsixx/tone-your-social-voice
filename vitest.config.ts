@@ -7,7 +7,6 @@ export default defineConfig({
     globals: true,
     setupFiles: [],
     env: {
-      VITE_API_GATEWAY_URL: 'http://mock.test',
       VITE_INFRA_SUPABASE_URL: 'https://infra.supabase.co',
       VITE_INFRA_SUPABASE_ANON_KEY: 'test-anon-key',
     },

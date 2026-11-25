@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { ArrowLeft, Bug, Lightbulb, MessageSquare, MessageSquareWarning, Loader2, Send } from 'lucide-react';
 
 const FEEDBACK_TYPES = [
@@ -38,7 +38,7 @@ const FeedbackPage = () => {
 
     setSubmitting(true);
     try {
-      const { error } = await gateway.from('user_feedback').insert({
+      const { error } = await dataClient.from('user_feedback').insert({
         user_id: user.id,
         feedback_type: feedbackType,
         subject: subject.trim(),

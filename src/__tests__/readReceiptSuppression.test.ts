@@ -18,7 +18,18 @@
 //   - a GROUP conversation is never read-only, even when a stale pending DM
 //     request exists from the member that happens to be participants[0] (the
 //     pending-request concept is direct-message-only).
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, expect, beforeEach, it, vi } from 'vitest';
+import { clearCurrentAccessToken, setCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import {
+  applyPostgrestFilters,
+  applyPostgrestOrder,
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  jsonResponse,
+  postgrestTable,
+  prefersObjectResponse,
+  shapePostgrestRows,
+} from './infraFixtures';
 
 import { isReadOnlyPendingConversation } from '@/hooks/useConversations';
 
@@ -28,17 +39,6 @@ const THIRD = 'third-uuid-0003';
 const CONVERSATION = 'conversation-uuid-0001';
 const GROUP_CONVERSATION = 'conversation-uuid-0002';
 
-function applyServerFilter(rows: any[], filter: string | undefined): any[] {
-  if (!filter) return rows;
-  const eq = /^([^=]+)=eq\.(.+)$/.exec(filter);
-  if (eq) return rows.filter(r => String(r[eq[1]]) === eq[2]);
-  const inM = /^([^=]+)=in\.\(([^)]*)\)$/.exec(filter);
-  if (inM) {
-    const vals = new Set(inM[2] ? inM[2].split(',') : []);
-    return rows.filter(r => vals.has(String(r[inM[1]])));
-  }
-  return rows;
-}
 
 function makeDb({ requestStatus, dmType = 'dm' }: { requestStatus: string | null; dmType?: string }) {
   const conversations: Array<{ id: string; type: string }> = [
@@ -66,54 +66,49 @@ function makeDb({ requestStatus, dmType = 'dm' }: { requestStatus: string | null
         ];
 
   return {
-    handle(req: { url: string; method?: string }) {
-      const url = new URL(req.url, 'http://mock.test');
-      const path = url.pathname;
-      const params = Object.fromEntries(url.searchParams.entries());
+    handle(req: { url: string; method?: string; single?: boolean }) {
+      const table = postgrestTable(req.url);
+      const method = req.method || 'GET';
 
-      if (path === '/api/conversations') {
+      if (table === 'conversations') {
         let rows = conversations.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows[0] ?? null };
+      rows = applyPostgrestOrder(applyPostgrestFilters(rows, req.url), req.url);
+        return { status: 200, json: shapePostgrestRows(rows, req.single) };
       }
 
-      if (path === '/api/conversation_participants') {
+      if (table === 'conversation_participants') {
         let rows = participants.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
+      rows = applyPostgrestOrder(applyPostgrestFilters(rows, req.url), req.url);
         return { status: 200, json: rows };
       }
 
-      if (path === '/api/message_requests') {
+      if (table === 'message_requests') {
         let rows = messageRequests.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
+      rows = applyPostgrestOrder(applyPostgrestFilters(rows, req.url), req.url);
         return { status: 200, json: rows };
       }
 
-      return { status: 404, json: { error: `no mock route for ${path}` } };
+      return { status: 404, json: { error: `no mock route for ${table}` } };
     },
   };
 }
 
 beforeEach(() => {
-  localStorage.clear();
-  localStorage.setItem(
-    'tone-auth-token',
-    JSON.stringify({ access_token: 'test-token', refresh_token: 'test-refresh' })
-  );
+  setCurrentAccessToken('test-token');
 });
 
 function install(db: ReturnType<typeof makeDb>) {
-  (globalThis as any).fetch = vi.fn(async (input: RequestInfo | URL) => {
+  (globalThis as any).fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (isInfraRegistryRequest(input)) return infraRegistryResponse();
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-    const resp = db.handle({ url, method: 'GET' });
-    return {
-      ok: resp.status < 400,
-      status: resp.status,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      json: async () => resp.json,
-    } as Response;
+    const resp = db.handle({ url, method: 'GET', single: prefersObjectResponse(init) });
+    return jsonResponse(resp.status, resp.json);
   });
 }
+
+afterEach(() => {
+  clearCurrentAccessToken();
+});
 
 describe('isReadOnlyPendingConversation (read-receipt suppression gate)', () => {
   it('is TRUE for the recipient of a still-pending request (preview is read-only)', async () => {

@@ -7,16 +7,27 @@
 //   - partial UNIQUE index on (conversation_id) WHERE status='pending'
 //     (20260902000000_add_conversation_id_to_message_requests.sql — one pending
 //     request per conversation, concurrency-safe at the database level)
-// both of which surface to the gateway client as 409/Postgres 23505. This
+// both of which surface to the dataClient client as 409/Postgres 23505. This
 // simulation models both constraints so it verifies the real code path end to
 // end:
 //   - first send creates one pending request carrying the conversation_id,
 //   - every subsequent send reuses it (no second insert, concurrent or serial),
 //   - Test 5 (messages.md): two ACCEPTED friends never get a Message Request,
 //   - the shared conversation + all messages are preserved.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, expect, beforeEach, it, vi } from 'vitest';
+import { clearCurrentAccessToken, setCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import {
+  applyPostgrestFilters,
+  applyPostgrestOrder,
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  jsonResponse,
+  postgrestTable,
+  prefersObjectResponse,
+  shapePostgrestRows,
+} from './infraFixtures';
 
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { ensureMessageRequest, hasAcceptedFriendship } from '@/lib/messageRequests';
 
 export const __notifications: unknown[] = [];
@@ -31,21 +42,6 @@ const CONVERSATION = 'conversation-uuid-0001';
 
 let notifications: unknown[] = [];
 
-// Applies a single gateway `filter` param (eq/neq/in are honored; `or=(...)`
-// falls through to "all rows") — mirroring the real gateway server.
-function applyServerFilter(rows: any[], filter: string | undefined): any[] {
-  if (!filter) return rows;
-  const eq = /^([^=]+)=eq\.(.+)$/.exec(filter);
-  if (eq) return rows.filter(r => String(r[eq[1]]) === eq[2]);
-  const neq = /^([^=]+)=neq\.(.+)$/.exec(filter);
-  if (neq) return rows.filter(r => String(r[neq[1]]) !== neq[2]);
-  const inM = /^([^=]+)=in\.\(([^)]*)\)$/.exec(filter);
-  if (inM) {
-    const vals = new Set(inM[2] ? inM[2].split(',') : []);
-    return rows.filter(r => vals.has(String(r[inM[1]])));
-  }
-  return rows; // or=(...) etc. — additional eq filters below still narrow rows
-}
 
 function makeInMemoryDb(opts?: { friends?: any[] }) {
   // Models public.message_requests with the columns that exist after
@@ -72,18 +68,12 @@ function makeInMemoryDb(opts?: { friends?: any[] }) {
   };
 
   return {
-    handle(req: { url: string; method?: string; body?: unknown }) {
-      const url = new URL(req.url, 'http://mock.test');
+    handle(req: { url: string; method?: string; body?: unknown; single?: boolean }) {
+      const table = postgrestTable(req.url);
       const method = req.method || 'GET';
-      const path = url.pathname;
-      const filters = url.searchParams.getAll('filter');
-      const apply = (rows: any[]) => {
-        if (!filters.length) return rows;
-        if (filters.length === 1) return applyServerFilter(rows, filters[0]);
-        return rows.filter(r => filters.every(f => applyServerFilter([r], f).length > 0));
-      };
+      const apply = (rows: any[]) => shapePostgrestRows(applyPostgrestOrder(applyPostgrestFilters(rows, req.url), req.url), req.single);
 
-      if (path === '/api/message_requests') {
+      if (table === 'message_requests') {
         if (method === 'GET') {
           return { status: 200, json: apply(messageRequests) };
         }
@@ -101,15 +91,15 @@ function makeInMemoryDb(opts?: { friends?: any[] }) {
         }
       }
 
-      if (path === '/api/friends') {
+      if (table === 'friends') {
         return { status: 200, json: apply(friends) };
       }
 
-      if (path === '/api/restricted_users') {
+      if (table === 'restricted_users') {
         return { status: 200, json: [] };
       }
 
-      return { status: 404, json: { error: `no mock route for ${method} ${path}` } };
+      return { status: 404, json: { error: `no mock route for ${method} ${table}` } };
     },
     messageRequests,
   };
@@ -117,27 +107,27 @@ function makeInMemoryDb(opts?: { friends?: any[] }) {
 
 beforeEach(() => {
   localStorage.clear();
-  localStorage.setItem('tone-auth-token', JSON.stringify({ access_token: 'test-token', refresh_token: 'test-refresh' }));
+  setCurrentAccessToken('test-token');
   notifications = [];
 
   const db = makeInMemoryDb();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (isInfraRegistryRequest(input)) return infraRegistryResponse();
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method || 'GET';
     let body: unknown = undefined;
     if (init?.body) body = JSON.parse(init.body as string);
-    const resp = db.handle({ url, method, body });
-    return {
-      ok: resp.status < 400,
-      status: resp.status,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      json: async () => resp.json,
-    } as Response;
+    const resp = db.handle({ url, method, body, single: prefersObjectResponse(init) });
+    return jsonResponse(resp.status, resp.json);
   });
   (globalThis as any).fetch = fetchMock;
 
   notifications = __notifications;
   __notifications.length = 0;
+});
+
+afterEach(() => {
+  clearCurrentAccessToken();
 });
 
 describe('ensureMessageRequest dedup for the same conversation/recipient', () => {
@@ -160,7 +150,7 @@ describe('ensureMessageRequest dedup for the same conversation/recipient', () =>
       });
     }
 
-    const pending = (await gateway.from('message_requests').select('*').eq('status', 'pending'))
+    const pending = (await dataClient.from('message_requests').select('*').eq('status', 'pending'))
       .data || [];
     expect(pending).toHaveLength(1);
     expect(pending[0]).toMatchObject({
@@ -173,7 +163,7 @@ describe('ensureMessageRequest dedup for the same conversation/recipient', () =>
     expect(notifications).toHaveLength(1);
 
     // All rows in the table are pending (still no duplicates/blocked rows).
-    const all = (await gateway.from('message_requests').select('*')).data || [];
+    const all = (await dataClient.from('message_requests').select('*')).data || [];
     expect(all).toHaveLength(1);
   });
 
@@ -188,21 +178,21 @@ describe('ensureMessageRequest dedup for the same conversation/recipient', () =>
         category: 'spam',
       });
     }
-    const all = (await gateway.from('message_requests').select('*')).data || [];
+    const all = (await dataClient.from('message_requests').select('*')).data || [];
     expect(all).toHaveLength(1);
     expect(notifications).toHaveLength(1);
   });
 
   it('concurrency-safe: the DB partial unique index rejects a second PENDING request for the same conversation', async () => {
     // Two near-simultaneous first sends both pass the client check and insert.
-    await gateway.from('message_requests').insert({
+    await dataClient.from('message_requests').insert({
       sender_id: SENDER,
       receiver_id: RECEIVER,
       status: 'pending',
       category: 'spam',
       conversation_id: CONVERSATION,
     });
-    const dup = await gateway.from('message_requests').insert({
+    const dup = await dataClient.from('message_requests').insert({
       sender_id: SENDER,
       receiver_id: RECEIVER,
       status: 'pending',
@@ -212,7 +202,7 @@ describe('ensureMessageRequest dedup for the same conversation/recipient', () =>
 
     expect(dup.error).toBeTruthy(); // 409 / 23505 from the partial unique index
 
-    const all = (await gateway.from('message_requests').select('*')).data || [];
+    const all = (await dataClient.from('message_requests').select('*')).data || [];
     expect(all).toHaveLength(1);
     expect(notifications).toHaveLength(0); // ensureMessageRequest was not involved
   });
@@ -226,17 +216,13 @@ describe('Test 5 (messages.md): existing friends get a NORMAL chat — no Messag
   function withFriendsDb() {
     const db = makeInMemoryDb({ friends: friendsFixture });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (isInfraRegistryRequest(input)) return infraRegistryResponse();
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const method = init?.method || 'GET';
       let body: unknown = undefined;
       if (init?.body) body = JSON.parse(init.body as string);
-      const resp = db.handle({ url, method, body });
-      return {
-        ok: resp.status < 400,
-        status: resp.status,
-        headers: new Headers({ 'content-type': 'application/json' }),
-        json: async () => resp.json,
-      } as Response;
+      const resp = db.handle({ url, method, body, single: prefersObjectResponse(init) });
+      return jsonResponse(resp.status, resp.json);
     });
     (globalThis as any).fetch = fetchMock;
     return db;
@@ -279,7 +265,7 @@ describe('Test 5 (messages.md): existing friends get a NORMAL chat — no Messag
       }
     }
 
-    const all = (await gateway.from('message_requests').select('*')).data || [];
+    const all = (await dataClient.from('message_requests').select('*')).data || [];
     expect(all).toHaveLength(1);
     expect(all[0]).toMatchObject({
       sender_id: SENDER,

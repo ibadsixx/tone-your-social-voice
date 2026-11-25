@@ -1,6 +1,7 @@
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 export interface PostVisibilityFields {
+  id?: string;
   user_id: string;
   visibility?: string | null;
   audience_type?: string | null;
@@ -11,7 +12,7 @@ export interface PostVisibilityFields {
 
 export async function loadFriendIds(userId?: string): Promise<Set<string>> {
   if (!userId) return new Set();
-  const { data } = await gateway
+  const { data } = await dataClient
     .from('friends')
     .select('requester_id, receiver_id')
     .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`)
@@ -27,7 +28,7 @@ export async function loadFriendIds(userId?: string): Promise<Set<string>> {
 // Canonical audience resolution for post-shaped content (posts, reels, photos).
 //
 // The Gateway enforces the audience for every read (see
-// gateway/src/features/contentVisibility.ts) and the RLS policy
+// dataClient/src/features/contentVisibility.ts) and the RLS policy
 // `Posts are viewable based on audience and status` enforces it for direct
 // Supabase access. This module is the client-side defense-in-depth layer: it
 // must never hide content the viewer is ALLOWED to see, and it must never show

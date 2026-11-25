@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 export interface College {
   id: string;
@@ -18,7 +18,7 @@ export const useColleges = () => {
   const fetchColleges = async () => {
     try {
       setLoading(true);
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('colleges')
         .select('id, name')
         .order('name');

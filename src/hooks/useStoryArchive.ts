@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 
 export const useStoryArchive = () => {

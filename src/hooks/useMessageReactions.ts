@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import type { ReactionKey } from '@/lib/reactions';
 
@@ -21,7 +21,7 @@ export const useMessageReactions = (conversationId?: string) => {
     if (!messageIds.length) return;
 
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('message_reactions')
         .select('*')
         .in('message_id', messageIds);
@@ -47,7 +47,7 @@ export const useMessageReactions = (conversationId?: string) => {
   const toggleReaction = async (messageId: string, reactionKey: ReactionKey, userId: string) => {
     try {
       // Check if user already has a reaction on this message
-      const { data: existingReaction, error: fetchError } = await gateway
+      const { data: existingReaction, error: fetchError } = await dataClient
         .from('message_reactions')
         .select('*')
         .eq('message_id', messageId)
@@ -59,7 +59,7 @@ export const useMessageReactions = (conversationId?: string) => {
       if (existingReaction) {
         if (existingReaction.reaction === reactionKey) {
           // Same reaction - remove it
-          const { error: deleteError } = await gateway
+          const { error: deleteError } = await dataClient
             .from('message_reactions')
             .delete()
             .eq('id', existingReaction.id);
@@ -73,7 +73,7 @@ export const useMessageReactions = (conversationId?: string) => {
           }));
         } else {
           // Different reaction - update it
-          const { data: updatedReaction, error: updateError } = await gateway
+          const { data: updatedReaction, error: updateError } = await dataClient
             .from('message_reactions')
             .update({ reaction: reactionKey })
             .eq('id', existingReaction.id)
@@ -92,7 +92,7 @@ export const useMessageReactions = (conversationId?: string) => {
         }
       } else {
         // No existing reaction - create new one
-        const { data: newReaction, error: insertError } = await gateway
+        const { data: newReaction, error: insertError } = await dataClient
           .from('message_reactions')
           .insert({
             message_id: messageId,
@@ -129,7 +129,7 @@ export const useMessageReactions = (conversationId?: string) => {
   useEffect(() => {
     if (!conversationId) return;
 
-    const channel = gateway
+    const channel = dataClient
       .channel(`message-reactions-${conversationId}`)
       .on(
         'postgres_changes',
@@ -167,7 +167,7 @@ export const useMessageReactions = (conversationId?: string) => {
       .subscribe();
 
     return () => {
-      gateway.removeChannel(channel);
+      dataClient.removeChannel(channel);
     };
   }, [conversationId]);
 

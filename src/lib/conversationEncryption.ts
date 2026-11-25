@@ -34,7 +34,8 @@ export async function encryptContent(
 
   try {
     const { encryptAesGcm } = await import('./crypto');
-    return encryptAesGcm(key, plaintext);
+    const { ciphertext, iv } = await encryptAesGcm(key, plaintext);
+    return { encryptedContent: ciphertext, iv };
   } catch {
     return null;
   }

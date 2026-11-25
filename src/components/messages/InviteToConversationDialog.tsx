@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Search, Loader2, UserPlus } from 'lucide-react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 
 interface Invitee {
@@ -70,7 +70,7 @@ export const InviteToConversationDialog: React.FC<InviteToConversationDialogProp
     const load = async () => {
       try {
         // People already in the conversation: exclude them from the invite list
-        const { data: members } = await gateway
+        const { data: members } = await dataClient
           .from('conversation_participants')
           .select('user_id')
           .eq('conversation_id', conversationId);
@@ -79,7 +79,7 @@ export const InviteToConversationDialog: React.FC<InviteToConversationDialogProp
         setMemberIds(existing);
 
         // Accepted friends
-        const { data: friends } = await gateway
+        const { data: friends } = await dataClient
           .from('friends')
           .select(`
             requester_id,
@@ -93,7 +93,7 @@ export const InviteToConversationDialog: React.FC<InviteToConversationDialogProp
         if (cancelled) return;
 
         // The current user's followers (people following THIS user)
-        const { data: followerRows } = await gateway
+        const { data: followerRows } = await dataClient
           .from('followers')
           .select('follower_id, follower:profiles!followers_follower_id_fkey(id, username, display_name, profile_pic)')
           .eq('following_id', currentUserId)
@@ -164,8 +164,8 @@ export const InviteToConversationDialog: React.FC<InviteToConversationDialogProp
       let failures = 0;
       for (const uid of ids) {
         const { error } = isChannel
-          ? await gateway.rpc('add_channel_follower', { p_conversation_id: conversationId, p_new_follower_id: uid })
-          : await gateway.rpc('add_group_member', { p_conversation_id: conversationId, p_new_member_id: uid });
+          ? await dataClient.rpc('add_channel_follower', { p_conversation_id: conversationId, p_new_follower_id: uid })
+          : await dataClient.rpc('add_group_member', { p_conversation_id: conversationId, p_new_member_id: uid });
         if (error) {
           failures += 1;
           console.error(`Failed to add ${uid}:`, error.message);

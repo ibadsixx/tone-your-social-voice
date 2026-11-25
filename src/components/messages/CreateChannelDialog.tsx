@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Loader2, Hash } from 'lucide-react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 
 interface CreateChannelDialogProps {
@@ -48,7 +48,7 @@ export const CreateChannelDialog: React.FC<CreateChannelDialogProps> = ({
 
     setCreating(true);
     try {
-      const { data: created, error: convError } = await gateway
+      const { data: created, error: convError } = await dataClient
         .from('conversations')
         .insert({
           type: 'channel',
@@ -60,7 +60,7 @@ export const CreateChannelDialog: React.FC<CreateChannelDialogProps> = ({
         .single();
       if (convError || !created) throw convError || new Error('Failed to create channel');
 
-      const { error: partError } = await gateway
+      const { error: partError } = await dataClient
         .from('conversation_participants')
         .insert({ conversation_id: created.id, user_id: currentUserId, role: 'owner' });
       if (partError) throw partError;

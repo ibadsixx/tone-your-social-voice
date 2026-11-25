@@ -16,7 +16,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useComments } from '@/hooks/useComments';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { mediaAppUrl } from '@/lib/mediaUrl';
 import { SendPostModal } from '@/components/modals/SendPostModal';
 import { SharePostModal } from '@/components/modals/SharePostModal';

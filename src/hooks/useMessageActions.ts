@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 
 export const useMessageActions = (conversationId?: string, currentUserId?: string) => {
@@ -19,7 +19,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
 
     setLoading(true);
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('messages')
         .delete()
         .eq('id', messageId)
@@ -46,7 +46,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
   };
 
   // Edit a message's content (channel posts: owner/moderator only — the
-  // gateway re-checks authorization server-side and ignores non-editable body
+  // dataClient re-checks authorization server-side and ignores non-editable body
   // fields). No sender filter: an admin can edit any channel post.
   const updateMessage = async (messageId: string, content: string): Promise<boolean> => {
     if (!currentUserId) {
@@ -69,7 +69,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
 
     setLoading(true);
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('messages')
         .update({ content })
         .eq('id', messageId);
@@ -108,7 +108,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
     setLoading(true);
     try {
       // Check if already pinned
-      const { data: existing } = await gateway
+      const { data: existing } = await dataClient
         .from('pinned_messages')
         .select('id')
         .eq('message_id', messageId)
@@ -117,7 +117,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
 
       if (existing) {
         // Unpin
-        const { error } = await gateway
+        const { error } = await dataClient
           .from('pinned_messages')
           .delete()
           .eq('id', existing.id);
@@ -130,7 +130,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
         });
       } else {
         // Pin
-        const { error } = await gateway
+        const { error } = await dataClient
           .from('pinned_messages')
           .insert({
             message_id: messageId,
@@ -172,7 +172,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
 
     setLoading(true);
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('message_reports')
         .insert({
           message_id: messageId,
@@ -207,7 +207,7 @@ export const useMessageActions = (conversationId?: string, currentUserId?: strin
     if (!conversationId) return [];
 
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('pinned_messages')
         .select('message_id')
         .eq('conversation_id', conversationId);

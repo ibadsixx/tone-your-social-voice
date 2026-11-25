@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Search as SearchIcon, User, Users, FileText, Loader2, Hash } from 'lucide-react';
 import { useSearch, SearchResult } from '@/hooks/useSearch';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { ExploreSection } from '@/components/explore/ExploreSection';
 import { cn } from '@/lib/utils';
 import PageContainer from '@/components/PageContainer';
@@ -40,7 +40,7 @@ const Search = () => {
 
   const saveSearchQuery = async (q: string) => {
     try {
-      await gateway.rpc('add_search_entry', { p_query: q });
+      await dataClient.rpc('add_search_entry', { p_query: q });
     } catch {
       // silently fail — search history is non-critical
     }

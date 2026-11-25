@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -53,7 +53,7 @@ const PageArchive = () => {
       // The follower count is decorative; the archive toggle only needs
       // `archived`. Release the gate as soon as the page row lands so the header
       // and the toggle render immediately, then fill the count in.
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('pages')
         .select('id, name, profile_pic, archived, created_at')
         .eq('id', id)
@@ -66,7 +66,7 @@ const PageArchive = () => {
       setPage({ ...data, follower_count: 0 } as PageArchiveData);
       setLoading(false);
 
-      const { count } = await gateway
+      const { count } = await dataClient
         .from('page_followers')
         .select('*', { count: 'exact', head: true })
         .eq('page_id', id);
@@ -78,7 +78,7 @@ const PageArchive = () => {
     if (!page || !user || !id) return;
     setToggling(true);
     const newArchived = !page.archived;
-    const { error } = await gateway
+    const { error } = await dataClient
       .from('pages')
       .update({ archived: newArchived })
       .eq('id', id);

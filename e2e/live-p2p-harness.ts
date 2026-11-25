@@ -1,6 +1,6 @@
 // Browser-side harness for the real-browser Tone Live P2P test.
 // It uses the production LivePeerManager and LiveSignalingClient modules, but
-// replaces only the Gateway with the test double in mock-signaling-server.mjs.
+// replaces only the Edge Function transport with the test double in mock-signaling-server.mjs.
 
 import {
   LivePeerManager,
@@ -39,7 +39,7 @@ interface HarnessStatus {
 const params = new URLSearchParams(window.location.search);
 const sessionId = params.get('session') || 'p2p-e2e-session';
 const userId = params.get('user') || 'unknown-user';
-const gatewayUrl = params.get('gateway') || window.location.origin;
+const edgeBaseUrl = params.get('edgeBaseUrl') || window.location.origin;
 const media = params.get('media') === 'video' ? 'video' : 'audio';
 const role = (params.get('role') || 'host') as 'host' | 'moderator' | 'guest' | 'viewer';
 const injectedAuthToken = (window as unknown as { __phase5AuthToken?: string }).__phase5AuthToken;
@@ -209,7 +209,7 @@ async function start(): Promise<void> {
   syncLocalState();
 
   signaling = new LiveSignalingClient({
-    gatewayUrl,
+    edgeBaseUrl,
     sessionId,
     getAuthToken: () => injectedAuthToken || userId,
     onMessage: (message) => {

@@ -35,10 +35,10 @@
 //
 // WHY THE SKEW IS THE READER'S AND NOT THE WRITER'S. The column is written with
 // the GATEWAY's clock, never the writer's: `writePresenceHeartbeat` in the
-// gateway calls `new Date()` server-side and sends the result, and the heartbeat
+// dataClient calls `new Date()` server-side and sends the result, and the heartbeat
 // POST carries no timestamp the client could choose. So the writer's device
 // cannot skew the value. What can skew it is the reader's, because `isOnline`
-// compares the gateway's stamp against the browser's `Date.now()`. A laptop that
+// compares the dataClient's stamp against the browser's `Date.now()`. A laptop that
 // boots on a dead RTC battery and has not resynchronised is the ordinary case.
 // A 15-minute offset produces exactly the reported number; an uncorrected one
 // produces "sometimes even longer", i.e. never.
@@ -62,7 +62,7 @@
 //   6. The label agrees with the dot: no "Just now" forever, no "Invalid Date".
 //   7. Two tabs, one closed, the user stays online.
 //   8. Nothing new was introduced: no second store, no extra request, no
-//      per-conversation poll, and the gateway still stamps server-side.
+//      per-conversation poll, and the dataClient still stamps server-side.
 //
 // Run: npx vitest run src/__tests__/presenceStaleDot.test.tsx
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -73,8 +73,8 @@ import { join } from 'node:path';
 const presenceHeartbeat = vi.fn();
 const presenceLogout = vi.fn();
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     presenceHeartbeat: () => presenceHeartbeat(),
     presenceLogout: () => presenceLogout(),
   },
@@ -96,6 +96,10 @@ import {
 
 const SRC = join(__dirname, '..');
 const read = (rel: string) => readFileSync(join(SRC, rel), 'utf8');
+// Presence writes now live in a narrow Edge Function because the presence and
+// friend rows are owned by different projects. The frontend calls it through
+// dataClient; the writer itself is outside src/.
+const readRepo = (rel: string) => readFileSync(join(SRC, '..', rel), 'utf8');
 
 /**
  * Strip comments and string/regex literals so a structural assertion cannot be
@@ -222,24 +226,25 @@ describe('1. the arithmetic of the report: there is no 15-minute window', () => 
   it('nothing anywhere in the presence path declares a 15-minute constant', () => {
     // The search that came up empty, written down so it does not have to be
     // repeated. Stripped of comments and literals, so these are the numbers the
-    // code actually compares against rather than numbers named in prose. Both
-    // repositories, because the column and the comparison that reads it are in
-    // different ones and a 15-minute window could have been hiding in either.
+    // code actually compares against rather than numbers named in prose. Check
+    // both the reader path and the Function that owns the writer.
     const files = [
       'hooks/usePresence.ts',
       'hooks/useConversations.ts',
       'components/messages/ConversationList.tsx',
       'components/messages/ChatWindow.tsx',
       'components/messages/ChatInfoPanel.tsx',
-      'lib/gateway.ts',
+      'lib/supabase/dataClient.ts',
     ];
     const pattern = /900000|900_000|15\s*\*\s*60\s*\*\s*1000|60\s*\*\s*15\s*\*\s*1000/;
     for (const f of files) {
       expect(stripComments(read(f)), f).not.toMatch(pattern);
     }
-    const gateway = join(SRC, '..', '..', 'gateway', 'src');
-    for (const f of ['features/presence.ts', 'api/realtime.ts', 'api/routes.ts']) {
-      expect(stripComments(readFileSync(join(gateway, f), 'utf8')), f).not.toMatch(pattern);
+    for (const f of [
+      'supabase/functions/presence/index.ts',
+      'supabase/functions/_shared/operation.ts',
+    ]) {
+      expect(stripComments(readRepo(f)), f).not.toMatch(pattern);
     }
   });
 });
@@ -304,7 +309,7 @@ describe('3. the reported symptom, end to end', () => {
 
   it('the same partner is online again once their clock agrees, not before', () => {
     // The fix must not be "always gray". When the reader's clock matches the
-    // gateway's the ordinary path resumes immediately.
+    // dataClient's the ordinary path resumes immediately.
     expect(isOnline(staleBy(0))).toBe(true);
     expect(isOnline(staleBy(1000))).toBe(true);
   });
@@ -365,7 +370,7 @@ describe('5. the fix is a bound, not a shorter timeout', () => {
 
   it('the heartbeat still runs at the same rate and adds no request', () => {
     const code = stripComments(read('hooks/usePresence.ts'));
-    const beats = code.match(/gateway\.presenceHeartbeat\(\)/g) || [];
+    const beats = code.match(/dataClient\.presenceHeartbeat\(\)/g) || [];
     // Two call sites, both pre-existing: the interval beat and the `pagehide`
     // beat. A third would be a new request on a path that did not have one.
     expect(beats).toHaveLength(2);
@@ -377,23 +382,16 @@ describe('5. the fix is a bound, not a shorter timeout', () => {
     expect(code).not.toMatch(/setTimeout\(\s*beat/);
   });
 
-  it('the writer still stamps with the GATEWAY clock, so the skew is the readers', () => {
+  it('the writer still stamps on the server, so the skew is the readers', () => {
     // The premise of the whole diagnosis: the value is not client-chosen, so the
     // offset being fixed is a reader-side device clock and not something a
-    // client can inject. Asserted in the gateway, where the write lives.
-    const gw = readFileSync(
-      join(SRC, '..', '..', 'gateway', 'src', 'features', 'presence.ts'),
-      'utf8'
-    );
-    expect(gw).toMatch(/now:\s*\(\)\s*=>\s*Date\s*=\s*\(\)\s*=>\s*new Date\(\)/);
-    // No route may take a timestamp from the request body.
-    const routes = readFileSync(
-      join(SRC, '..', '..', 'gateway', 'src', 'api', 'routes.ts'),
-      'utf8'
-    );
-    const at = routes.indexOf("router.post('/presence/heartbeat'");
-    expect(at).toBeGreaterThan(-1);
-    expect(routes.slice(at, at + 1500)).not.toMatch(/body\.(last_seen_at|lastSeenAt|timestamp|now)/);
+    // client can inject. The write now lives in the presence Edge Function.
+    const fn = stripComments(readRepo('supabase/functions/presence/index.ts'));
+    expect(fn).toMatch(/last_seen_at:\s*new Date\(\)\.toISOString\(\)/);
+    // The only accepted request field is `action`; no route takes a timestamp
+    // from the caller.
+    expect(fn).toMatch(/assertFields\(ctx\.body,\s*\['action'\]\)/);
+    expect(fn).not.toMatch(/ctx\.body\.(last_seen_at|lastSeenAt|timestamp|now)/);
   });
 });
 
@@ -572,7 +570,7 @@ describe('8. nothing new was introduced', () => {
   });
 
   it('no Realtime presence channel, track, or presence_diff was introduced', () => {
-    for (const f of ['lib/gateway.ts', 'hooks/usePresence.ts', 'hooks/useConversations.ts']) {
+    for (const f of ['lib/supabase/dataClient.ts', 'hooks/usePresence.ts', 'hooks/useConversations.ts']) {
       const code = stripComments(read(f));
       expect(code, f).not.toMatch(/presenceState|\.track\(|presence_diff/);
     }
@@ -590,7 +588,7 @@ describe('8. nothing new was introduced', () => {
   });
 
   it('the privacy gate still gates the dot, and the reader still refuses a null', () => {
-    // A null `last_seen_at` is the gateway's REDACTION shape for a non-friend
+    // A null `last_seen_at` is the dataClient's REDACTION shape for a non-friend
     // with a pending request, and overwriting the held value with it would leak
     // presence. That guard is why the sign-out marker had to be the epoch rather
     // than null, and it is untouched.

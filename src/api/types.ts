@@ -1,4 +1,4 @@
-export type { ApiResult } from './client';
+export type { ApiResult } from '@/lib/supabase/dataClient';
 
 export interface Post {
   id: string;

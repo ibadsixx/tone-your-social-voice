@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { blockingApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 import { createNotification } from '@/hooks/useNotifications';
@@ -12,7 +12,7 @@ export const FRIEND_REQUEST_SENT_EVENT = 'tone:friend-request-sent';
 // toast even though the request was created.
 const inFlightFriendRequestSends = new Set<string>();
 
-// The gateway client reports `error.code` as the HTTP status (String(res.status)),
+// The dataClient client reports `error.code` as the HTTP status (String(res.status)),
 // never the Postgres code, so a duplicate unique-violation on the friends pair
 // surfaces as 409 (or 23505 if it is ever surfaced directly). A duplicate means
 // the request already exists — treated as success, never as failure.
@@ -36,7 +36,7 @@ const ensureFollowing = async (
   followingId: string
 ): Promise<{ message?: string; code?: string } | null> => {
   try {
-    const { error } = await gateway.from('followers').insert({
+    const { error } = await dataClient.from('followers').insert({
       follower_id: followerId,
       following_id: followingId,
     });
@@ -81,7 +81,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
         return;
       }
 
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('friends')
         .select('*')
         .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${profileId}),and(requester_id.eq.${profileId},receiver_id.eq.${currentUserId})`)
@@ -121,7 +121,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
       // A declined request keeps its row at status='rejected', occupying the
       // UNIQUE(requester_id, receiver_id) pair. A plain insert would then
       // violate that constraint, so reuse the existing row when present.
-      const { data: existing, error: existingError } = await gateway
+      const { data: existing, error: existingError } = await dataClient
         .from('friends')
         .select('id, status')
         .eq('requester_id', currentUserId)
@@ -133,7 +133,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
       let friendshipData: { id: string } | undefined;
       if (existing && existing.status !== 'accepted') {
         // Re-send: flip the previously rejected request back to pending.
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('friends')
           .update({ status: 'pending' })
           .eq('id', existing.id)
@@ -159,7 +159,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
         });
       } else if (!existing) {
         // Fresh request: insert a new row.
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('friends')
           .insert({
             requester_id: currentUserId,
@@ -174,7 +174,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
           // A duplicate insert means the request was created by a concurrent
           // send (double-click or another in-flight caller). Idempotence:
           // resolve the existing row and continue instead of failing.
-          const { data: dup } = await gateway
+          const { data: dup } = await dataClient
             .from('friends')
             .select('id')
             .eq('requester_id', currentUserId)
@@ -235,7 +235,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
     if (!friendship.id) return;
 
     try {
-      const { error } = await gateway.from('friends').delete().eq('id', friendship.id);
+      const { error } = await dataClient.from('friends').delete().eq('id', friendship.id);
 
       if (error) throw error;
 
@@ -263,7 +263,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
     if (!friendship.id) return;
 
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('friends')
         .update({ status: 'accepted' })
         .eq('id', friendship.id)
@@ -296,7 +296,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
     if (!friendship.id) return;
 
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('friends')
         .update({ status: 'rejected' })
         .eq('id', friendship.id)
@@ -329,7 +329,7 @@ export const useFriendship = (profileId: string, currentUserId?: string) => {
     if (!friendship.id) return;
 
     try {
-      const { error } = await gateway.from('friends').delete().eq('id', friendship.id);
+      const { error } = await dataClient.from('friends').delete().eq('id', friendship.id);
 
       if (error) throw error;
 

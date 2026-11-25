@@ -190,10 +190,10 @@ describe('B. indexing explicitly withheld', () => {
     // The sharpest assertion in the file, and the reason the default and the
     // unresolved state had to be separated. A rejected lookup is NOT the default:
     // the answer we failed to get may have been 'false'. If the page kept the
-    // pending `index,follow` after a rejection, a gateway outage would publish
+    // pending `index,follow` after a rejection, a dataClient outage would publish
     // every profile whose owner had opted out - the exact inverse of the harm the
     // previous fail-closed design existed to prevent.
-    mockIndexing.mockRejectedValue(new Error('gateway down'));
+    mockIndexing.mockRejectedValue(new Error('dataClient down'));
     const Harness = () => {
       useProfileSeo('ada', PROFILE);
       return null;

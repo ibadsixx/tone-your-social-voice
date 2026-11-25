@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { VisibilitySelector, Visibility } from '@/components/VisibilitySelector';
 import { useToast } from '@/hooks/use-toast';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { searchProfiles } from '@/api/profiles';
 import { Plus, X, Edit, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -119,13 +119,13 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
 
   const checkFriendshipStatus = async () => {
     try {
-      const { data: { user } } = await gateway.auth.getUser();
+      const { data: { user } } = await dataClient.auth.getUser();
       if (!user?.id || isOwnProfile) {
         setViewerCanSeeFriend(false);
         return;
       }
 
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('friends')
         .select('status')
         .or(`and(requester_id.eq.${user.id},receiver_id.eq.${profileId}),and(requester_id.eq.${profileId},receiver_id.eq.${user.id})`)
@@ -143,7 +143,7 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
   const loadFamilyMembers = async () => {
     try {
       setLoading(true);
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('family_relationships')
         .select(`
           *,
@@ -180,7 +180,7 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
 
     try {
       setLoading(true);
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('family_relationships')
         .insert({
           user_id: profileId,
@@ -230,7 +230,7 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
 
     try {
       setLoading(true);
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('family_relationships')
         .update({
           relation_type: relationType,
@@ -264,7 +264,7 @@ export const FamilyMembersSection: React.FC<FamilyMembersSectionProps> = ({
 
     try {
       setLoading(true);
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('family_relationships')
         .delete()
         .eq('id', id);

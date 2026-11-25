@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { usePeopleYouMayKnow } from '@/hooks/usePeopleYouMayKnow';
 import { usePendingFriendRequests } from '@/hooks/usePendingFriendRequests';
 import { useFriendRequestLiveUpdates } from '@/hooks/useFriendRequestLiveUpdates';
@@ -37,7 +37,7 @@ const FriendRequestsPage = () => {
     if (!user?.id) return;
     if (!silent) setLoadingSent(true);
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('friends')
         .select(`
           id,

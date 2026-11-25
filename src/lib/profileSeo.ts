@@ -8,7 +8,7 @@
 // THE CHAIN, END TO END (do.md asks for this to be traced rather than guessed):
 //
 //   PrivacyCheckup.tsx      Switch -> updatePrivacySetting('search_engine_indexing', 'true'|'false')
-//     -> api/users.ts       upsertPrivacySetting -> gateway.from('privacy_settings').upsert(...)
+//     -> api/users.ts       upsertPrivacySetting -> dataClient.from('privacy_settings').upsert(...)
 //     -> Gateway            POST passthrough -> privacy_settings.setting_value  (TEXT)
 //     -> this module        GET /api/public/profile-indexing?username=... -> boolean
 //     -> applyProfileSeo    <meta name="robots">

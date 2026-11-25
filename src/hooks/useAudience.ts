@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import type { AudienceSelection } from '@/components/AudienceSelector';
 
@@ -23,7 +23,7 @@ export const useAudience = () => {
     
     setLoading(true);
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('audience_lists')
         .select('*')
         .eq('owner_id', user.id)
@@ -43,7 +43,7 @@ export const useAudience = () => {
     if (!user) return null;
     
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('audience_lists')
         .insert({
           owner_id: user.id,
@@ -66,7 +66,7 @@ export const useAudience = () => {
   // Update an existing audience list
   const updateAudienceList = async (listId: string, updates: Partial<Pick<AudienceList, 'name' | 'member_ids'>>) => {
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('audience_lists')
         .update(updates)
         .eq('id', listId)
@@ -89,7 +89,7 @@ export const useAudience = () => {
   // Delete an audience list
   const deleteAudienceList = async (listId: string) => {
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('audience_lists')
         .delete()
         .eq('id', listId)

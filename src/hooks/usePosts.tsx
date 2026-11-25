@@ -74,7 +74,9 @@ export const usePosts = (userId?: string) => {
       // defense-in-depth layer.
       const viewerId = user?.id || '';
       const friendIds = await loadFriendIds(viewerId);
-      setPosts(postsWithTypedMedia.filter(p => isPostVisibleToViewer(p, viewerId, friendIds)));
+      setPosts(
+        postsWithTypedMedia.filter(p => isPostVisibleToViewer(p, viewerId, friendIds)) as unknown as Post[]
+      );
     } catch {
       toast({
         title: 'Error',

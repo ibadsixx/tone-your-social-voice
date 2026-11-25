@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 
 interface Friend {
@@ -26,7 +26,7 @@ export const useFriends = (userId?: string) => {
       if (!silent) setLoading(true);
       console.debug('[useFriends] Fetching friends for user:', userId);
       
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('friends')
         .select(`
           *,

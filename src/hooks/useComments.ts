@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { gateway } from '@/lib/gateway';
-import type { ReactionViewerRow } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
+import type { ReactionViewerRow } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { createNotification } from '@/hooks/useNotifications';
@@ -39,7 +39,7 @@ export interface Comment {
 }
 
 /**
- * Minimal shape of a Supabase realtime payload. The gateway's realtime shim
+ * Minimal shape of a Supabase realtime payload. The dataClient's realtime shim
  * types the payload as `unknown`, but the change events always carry `new` (and
  * `old` on DELETE) row objects.
  */
@@ -166,7 +166,7 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
 
   const withCommentReactionSummaries = async (rows: Comment[]): Promise<Comment[]> => {
     if (rows.length === 0) return rows;
-    const { data, error } = await gateway.commentReactionCounts(rows.map((comment) => comment.id));
+    const { data, error } = await dataClient.commentReactionCounts(rows.map((comment) => comment.id));
     const counts = error || !data?.counts ? {} : data.counts;
     return rows.map((comment) => applySummary(comment, counts[comment.id]));
   };
@@ -176,7 +176,7 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
   // handlers (registered once per post) always patch the current list.
   const refreshCommentReactionSummaries = async (commentIds: string[]) => {
     if (commentIds.length === 0) return;
-    const { data, error } = await gateway.commentReactionCounts(commentIds);
+    const { data, error } = await dataClient.commentReactionCounts(commentIds);
     if (error || !data?.counts) return;
     const requested = new Set(commentIds);
     setComments((current) =>
@@ -191,7 +191,7 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
 
     try {
       setLoading(true);
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('comments')
         .select(`
           *,
@@ -229,7 +229,7 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
       setSubmitting(true);
       
       // Insert the comment
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('comments')
         .insert({
           post_id: postId,
@@ -301,7 +301,7 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
       setSubmitting(true);
       
       // Insert the reply
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('comments')
         .insert({
           post_id: postId,
@@ -368,7 +368,7 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
     if (!user || !newContent.trim()) return false;
 
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('comments')
         .update({ content: newContent.trim() })
         .eq('id', commentId)
@@ -401,7 +401,7 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
 
   const deleteComment = async (commentId: string) => {
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('comments')
         .delete()
         .eq('id', commentId);
@@ -438,7 +438,7 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
 
       if (existingReaction) {
         // Remove reaction
-        const { error } = await gateway
+        const { error } = await dataClient
           .from('comment_reactions')
           .delete()
           .eq('id', existingReaction.id);
@@ -457,7 +457,7 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
         void refreshCommentReactionSummaries([commentId]);
       } else {
         // Add reaction
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('comment_reactions')
           .insert({
             comment_id: commentId,
@@ -501,7 +501,7 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
     fetchComments();
 
     // Set up real-time subscription for comments and reactions
-    const channel = gateway
+    const channel = dataClient
       .channel('comments_realtime')
       .on(
         'postgres_changes',
@@ -516,7 +516,7 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
           if (typeof newCommentId !== 'string') return;
 
           // Fetch the full comment with profile data
-          const { data } = await gateway
+          const { data } = await dataClient
             .from('comments')
             .select(`
               *,
@@ -568,7 +568,7 @@ export const useComments = (postId: string, options?: { enabled?: boolean }) => 
       .subscribe();
 
     return () => {
-      gateway.removeChannel(channel);
+      dataClient.removeChannel(channel);
     };
   }, [postId, user?.id, enabled]);
 

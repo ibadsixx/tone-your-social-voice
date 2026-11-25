@@ -14,7 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import { resolveIdentityAvatar } from '@/utils/publishingIdentityAvatar';
 import { useEffect, useState } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { Badge } from '@/components/ui/badge';
 import { useUnreadConversationCount } from '@/hooks/useUnreadConversationCount';
 import FriendRequestsDropdown from '@/components/FriendRequestsDropdown';
@@ -68,7 +68,7 @@ const HeaderAvatar = ({ profile, user, onSignOut }: { profile: any; user: any; o
   useEffect(() => {
     if (!user?.id) return;
     (async () => {
-      const { data } = await gateway
+      const { data } = await dataClient
         .from('pages')
         .select('*')
         .eq('admin_id', user.id)

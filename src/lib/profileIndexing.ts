@@ -20,7 +20,7 @@
 // switch read `=== 'true'` and therefore showed OFF for every user who had never
 // opened the checkup, while the product's intended default was a separate
 // question that the toggle simply did not ask. Any future change to the rule
-// belongs here and in gateway/src/features/profileIndexing.ts, together, and not
+// belongs here and in dataClient/src/features/profileIndexing.ts, together, and not
 // in either of the two call sites that consume it.
 
 /** The `privacy_settings.setting_name` key. Must match the Gateway exactly. */

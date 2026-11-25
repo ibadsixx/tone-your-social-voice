@@ -5,7 +5,7 @@
 // do.md §"Authentication and logout", item 4: "Realtime reconnects -> counters
 // synchronize correctly."
 //
-// WHY THIS NEEDS ITS OWN SUITE. The gateway caps its SSE functions at 300 s, so on
+// WHY THIS NEEDS ITS OWN SUITE. The dataClient caps its SSE functions at 300 s, so on
 // any long-lived session the stream drops and reconnects routinely. Nothing that
 // happened during the gap was delivered to anybody, so a counter that does not
 // re-read on reconnect is simply wrong until some unrelated event nudges it — and
@@ -152,7 +152,7 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: stableToast }),
 }));
 
-vi.mock('@/lib/gateway', () => {
+vi.mock('@/lib/supabase/dataClient', () => {
   /** Minimal thenable chain so `.select().eq().eq().order()` resolves. */
   const makeQuery = (table: string) => {
     const filters: Array<[string, unknown]> = [];
@@ -196,7 +196,7 @@ vi.mock('@/lib/gateway', () => {
   };
 
   return {
-    gateway: {
+    dataClient: {
       from: (table: string) => makeQuery(table),
       channel: (name: string) => {
         state.channels.push(name);
@@ -425,11 +425,11 @@ async function notificationRealtime() {
 }
 
 /**
- * Fires every registered `onReconnect` callback, i.e. what the gateway's SSE hub
+ * Fires every registered `onReconnect` callback, i.e. what the dataClient's SSE hub
  * does when the stream is re-established after a drop.
  *
  * This is the one path that matters most for correctness and is least visible: the
- * gateway caps its SSE functions at 300 s, so on any long-lived session the stream
+ * dataClient caps its SSE functions at 300 s, so on any long-lived session the stream
  * drops and reconnects routinely, and nothing that happened during the gap was
  * delivered to anybody. A counter that does not re-read on reconnect is simply
  * wrong until some unrelated event nudges it.

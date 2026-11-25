@@ -7,19 +7,27 @@
 //      front of every feed load and every poll. The lookups are inputs to the
 //      client-side audience filter, not prerequisites for the request.
 //
-//   B. Join resolution dedupes and parallelizes. The Gateway does not process
-//      `select` joins, so the client resolves them itself. It used to walk the
-//      join specs with a sequential `for ... await`, and it re-read the same
-//      table once per spec. The feed's select reaches `posts` twice (top level
-//      and `shared_post:shared_post_id`) and `profiles` three times, so one feed
-//      load cost nine sequential full-table reads.
+//   B. PostgREST owns the joins. The removed Gateway did not process embedded
+//      `select` joins, so the old client walked the join specs itself and
+//      re-read the same table once per spec (nine full-table reads for one feed
+//      load). The direct-Supabase client now sends one embedded select to the
+//      registered posts project; this section verifies that there is no client
+//      join resolver left and no fan-out to related tables.
 //
-// The audience matrix itself is covered in postVisibility.test.ts and in the
-// Gateway's contentVisibilityTest.ts; test A's last case re-checks that the
-// client filter is still applied now that it no longer blocks the request.
+// The audience matrix itself is covered in postVisibility.test.ts; test A's last
+// case re-checks that the client filter is still applied now that it no longer
+// blocks the request.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { clearClientCache } from '@/lib/supabase/clientFactory';
+import {
+  INFRA_PROJECTS,
+  applyPostgrestOrder,
+  isInfraRegistryRequest,
+  jsonResponse,
+  postgrestTable,
+} from './infraFixtures';
 
 // --- Part A: the feed hook -------------------------------------------------
 
@@ -46,8 +54,8 @@ vi.mock('@/api', () => ({
 
 // The `group_follows` read is held open until the test releases it, which is how
 // "the feed request started anyway" becomes observable.
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     from: (table: string) => ({
       select: () => ({
         eq: (_c: string, v: string) =>
@@ -143,8 +151,8 @@ describe('A. the feed read does not wait for the filter lookups', () => {
   });
 
   it('still hides friends-only content from a non-friend', async () => {
-    // The client filter is defence-in-depth behind the Gateway. Removing the
-    // waterfall must not weaken it.
+    // The client filter is defence-in-depth behind the trusted read boundary.
+    // Removing the waterfall must not weaken it.
     loadFriendIds.mockResolvedValue(new Set<string>());
     getFeedTimeline.mockResolvedValue({ data: [friendsPost(), publicPost()], error: null });
 
@@ -170,7 +178,7 @@ describe('A. the feed read does not wait for the filter lookups', () => {
   });
 
   it('reports a feed-scoped error without throwing', async () => {
-    getFeedTimeline.mockResolvedValue({ data: null, error: { message: 'Gateway unreachable' } });
+    getFeedTimeline.mockResolvedValue({ data: null, error: { message: 'Feed service unavailable' } });
 
     const view = renderHook(() => useHomeFeed());
     await settle();
@@ -178,16 +186,60 @@ describe('A. the feed read does not wait for the filter lookups', () => {
     await settle();
 
     expect(view.result.current.loading).toBe(false);
-    expect(view.result.current.error).toBe('Gateway unreachable');
+    expect(view.result.current.error).toBe('Feed service unavailable');
+    expect(view.result.current.feedStatus).toBe('query');
+  });
+
+  it('distinguishes no posts from posts hidden by visibility', async () => {
+    loadFriendIds.mockResolvedValue(new Set<string>());
+    getFeedTimeline.mockResolvedValue({ data: [], error: null, rawCount: 0 });
+
+    const empty = renderHook(() => useHomeFeed());
+    await settle();
+    releaseGroupFollows();
+    await settle();
+    expect(empty.result.current.feedStatus).toBe('no-posts');
+
+    getFeedTimeline.mockResolvedValue({ data: [friendsPost()], error: null, rawCount: 1 });
+    const hidden = renderHook(() => useHomeFeed());
+    await settle();
+    releaseGroupFollows();
+    await settle();
+    expect(hidden.result.current.posts).toHaveLength(0);
+    expect(hidden.result.current.feedStatus).toBe('none-visible');
+  });
+
+  it('keeps routing and authentication failures out of the empty states', async () => {
+    getFeedTimeline.mockResolvedValue({
+      data: null,
+      error: { message: 'Feed routing is ambiguous' },
+      feedErrorCode: 'FEED_ROUTE_AMBIGUOUS',
+    });
+
+    const routing = renderHook(() => useHomeFeed());
+    await settle();
+    releaseGroupFollows();
+    await settle();
+    expect(routing.result.current.feedStatus).toBe('routing');
+
+    getFeedTimeline.mockResolvedValue({
+      data: null,
+      error: { message: 'Your session has expired' },
+      feedErrorCode: 'AUTH_REQUIRED',
+    });
+    const auth = renderHook(() => useHomeFeed());
+    await settle();
+    releaseGroupFollows();
+    await settle();
+    expect(auth.result.current.feedStatus).toBe('auth');
   });
 });
 
-// --- Part B: join resolution ------------------------------------------------
+// --- Part B: direct-Supabase feed requests ----------------------------------
 
 /**
- * The feed's select, with `comments` still carrying a nested author join so that
- * the dedupe of nested same-table reads is exercised independently of the
- * payload trim in src/api/posts.ts.
+ * The feed's embedded select, including a nested comment author so the direct
+ * request still exercises the deeply nested join shape the old resolver had.
  */
 const SELECT_WITH_NESTED_COMMENT_AUTHOR = `
   *,
@@ -198,7 +250,7 @@ const SELECT_WITH_NESTED_COMMENT_AUTHOR = `
   group_posts (group_id, groups:group_id (id, name))
 `;
 
-/** A post row with the feed's joins resolved. */
+/** A post row as PostgREST returns it once the embedded joins are resolved. */
 type JoinedRow = {
   id: string;
   user_id: string;
@@ -209,149 +261,170 @@ type JoinedRow = {
   group_posts?: Array<{ group_id: string; groups?: { id: string; name: string } }>;
 };
 
-const TABLE_ROWS: Record<string, unknown[]> = {
-  posts: [
-    { id: 'p1', user_id: 'a', content: 'one', shared_post_id: 'sp1', created_at: '2026-01-03T00:00:00.000Z' },
-    { id: 'p2', user_id: 'b', content: 'two', shared_post_id: null, created_at: '2026-01-02T00:00:00.000Z' },
-    { id: 'sp1', user_id: 'c', content: 'original', shared_post_id: null, created_at: '2026-01-01T00:00:00.000Z' },
-  ],
-  profiles: [
-    { id: 'a', username: 'a', display_name: 'A', profile_pic: null },
-    { id: 'b', username: 'b', display_name: 'B', profile_pic: null },
-    { id: 'c', username: 'c', display_name: 'C', profile_pic: null },
-  ],
-  likes: [{ id: 'l1', user_id: 'a', post_id: 'p1' }],
-  comments: [{ id: 'c1', content: 'nice', user_id: 'a', post_id: 'p1' }],
-  group_posts: [{ group_id: 'g1', post_id: 'p1' }],
-  groups: [{ id: 'g1', name: 'Group One' }],
-};
+const POSTS_ORIGIN = 'http://posts.test';
+const OTHER_ORIGIN = 'http://other.test';
 
-describe('B. join resolution dedupes tables and reads them concurrently', () => {
+const POSTS_WITH_JOINS: Record<string, unknown>[] = [
+  {
+    id: 'p1',
+    user_id: 'a',
+    content: 'one',
+    created_at: '2026-01-03T00:00:00.000Z',
+    profiles: { id: 'a', username: 'a', display_name: 'A', profile_pic: null },
+    likes: [{ id: 'l1', user_id: 'a' }],
+    comments: [{ id: 'c1', content: 'nice', profiles: { display_name: 'A' } }],
+    shared_post: {
+      id: 'sp1',
+      user_id: 'c',
+      content: 'original',
+      created_at: '2026-01-01T00:00:00.000Z',
+      profiles: { id: 'c', username: 'c', display_name: 'C', profile_pic: null },
+    },
+    group_posts: [{ group_id: 'g1', groups: { id: 'g1', name: 'Group One' } }],
+  },
+  {
+    id: 'p2',
+    user_id: 'b',
+    content: 'two',
+    created_at: '2026-01-02T00:00:00.000Z',
+    profiles: { id: 'b', username: 'b', display_name: 'B', profile_pic: null },
+    likes: [],
+    comments: [],
+    group_posts: [],
+  },
+];
+
+function projectRegistry() {
+  return INFRA_PROJECTS.map((project) => ({
+    ...project,
+    project_url: project.domain === 'posts' ? POSTS_ORIGIN : OTHER_ORIGIN,
+  }));
+}
+
+function ambiguousPostsRegistry() {
+  const projects = projectRegistry();
+  const postsProject = projects.find((project) => project.domain === 'posts');
+  if (!postsProject) throw new Error('test fixture is missing the posts project');
+  return [...projects, { ...postsProject, project_key: 'posts-2' }];
+}
+
+describe('B. direct-Supabase feed requests', () => {
   const realFetch = globalThis.fetch;
   let requested: string[] = [];
-  let maxConcurrent = 0;
-  let inFlight = 0;
+  let postsRequests: Array<{ url: URL; init?: RequestInit }> = [];
+  let postsQueryFails = false;
+  let registryProjects = projectRegistry();
 
   beforeEach(() => {
+    clearClientCache();
     requested = [];
-    maxConcurrent = 0;
-    inFlight = 0;
+    postsRequests = [];
+    postsQueryFails = false;
+    registryProjects = projectRegistry();
 
-    globalThis.fetch = vi.fn(async (url: string) => {
-      const table = String(url).split('/api/')[1];
-      requested.push(table);
-      inFlight += 1;
-      maxConcurrent = Math.max(maxConcurrent, inFlight);
-      // Yield so sequential execution stays sequential and parallel stays parallel.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      inFlight -= 1;
-      return {
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        headers: { get: () => 'application/json' },
-        // Fresh objects per response: join resolution writes the joined fields
-        // onto the rows it is given, so handing back the shared fixtures would
-        // leak resolved fields from one test into the next.
-        json: async () => JSON.parse(JSON.stringify(TABLE_ROWS[table] ?? [])),
-      } as unknown as Response;
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (isInfraRegistryRequest(input)) {
+        requested.push('registry');
+        return jsonResponse(200, registryProjects);
+      }
+
+      const url = typeof input === 'string'
+        ? new URL(input)
+        : input instanceof URL
+          ? input
+          : new URL(input.url);
+      const table = postgrestTable(url);
+      requested.push(table || url.pathname);
+      if (table === 'posts') postsRequests.push({ url, init });
+
+      if (postsQueryFails && table === 'posts') {
+        return jsonResponse(500, { code: 'PGRST500', message: 'embedded posts join failed' });
+      }
+      if (table !== 'posts') {
+        return jsonResponse(404, { message: `no mock route for ${table || url.pathname}` });
+      }
+
+      const offset = Number(url.searchParams.get('offset') ?? 0);
+      const limit = Number(url.searchParams.get('limit') ?? POSTS_WITH_JOINS.length);
+      const rows = applyPostgrestOrder(POSTS_WITH_JOINS, url).slice(offset, offset + limit);
+      return jsonResponse(200, rows);
     }) as unknown as typeof fetch;
   });
 
   afterEach(() => {
     globalThis.fetch = realFetch;
     vi.restoreAllMocks();
+    clearClientCache();
   });
 
-  /** Runs one feed-shaped query against the REAL gateway client. */
+  /** Runs one feed-shaped query against the REAL dataClient client. */
   async function runFeedQuery() {
-    // `importActual` is required: this file mocks '@/lib/gateway' for part A, and
-    // join resolution lives in that module.
-    const { gateway } = await vi.importActual<typeof import('@/lib/gateway')>('@/lib/gateway');
-    const res = await gateway
+    // `importActual` is required: this file mocks '@/lib/supabase/dataClient' for
+    // part A, but this section must exercise the real direct-Supabase client.
+    const { dataClient } = await vi.importActual<typeof import('@/lib/supabase/dataClient')>('@/lib/supabase/dataClient');
+    return dataClient
       .from('posts')
       .select(SELECT_WITH_NESTED_COMMENT_AUTHOR)
       .order('created_at', { ascending: false })
       .range(0, 1);
-    return res;
   }
 
-  it('reads each related table at most once', async () => {
-    await runFeedQuery();
+  it('reads the feed from exactly the registered posts project', async () => {
+    const res = await runFeedQuery();
 
-    const counts = requested.reduce<Record<string, number>>((acc, t) => {
-      acc[t] = (acc[t] ?? 0) + 1;
-      return acc;
-    }, {});
-
-    // `posts` is reached twice by this select (top level and shared_post) and
-    // `profiles` three times (post author, comment author, shared post author).
-    // Before the fix each was re-read in full.
-    expect(counts.posts).toBe(1);
-    expect(counts.profiles).toBe(1);
-    expect(counts.likes).toBe(1);
-    expect(counts.comments).toBe(1);
-    expect(counts.group_posts).toBe(1);
-    expect(counts.groups).toBe(1);
-    expect(requested.length).toBe(6);
+    expect(res.error).toBeNull();
+    expect(requested).toEqual(['registry', 'posts']);
+    expect(postsRequests).toHaveLength(1);
+    expect(postsRequests[0].url.origin).toBe(POSTS_ORIGIN);
+    expect(postsRequests[0].url.pathname).toBe('/rest/v1/posts');
   });
 
-  it('requests independent tables concurrently, not one after another', async () => {
+  it('sends embedded joins in one PostgREST select instead of client-side table reads', async () => {
     await runFeedQuery();
 
-    // The top-level read is necessarily alone, but every join table must be in
-    // flight at the same time. A sequential `for ... await` caps this at 1.
-    expect(maxConcurrent).toBeGreaterThanOrEqual(4);
+    const select = postsRequests[0].url.searchParams.get('select') ?? '';
+    expect(select).toContain('profiles!posts_user_id_fkey');
+    expect(select).toContain('likes');
+    expect(select).toContain('comments');
+    expect(select).toContain('shared_post:shared_post_id');
+    expect(select).toContain('group_posts');
+    expect(postsRequests[0].url.searchParams.get('order')).toBe('created_at.desc');
+    // No client-side resolver may re-read profiles/likes/comments/groups.
+    expect(requested.filter((table) => table !== 'registry')).toEqual(['posts']);
   });
 
-  it('still resolves the joined fields correctly', async () => {
+  it('preserves ordered, ranged rows with their embedded profile and shared data', async () => {
     const res = await runFeedQuery();
     const rows = res.data as JoinedRow[];
 
     expect(rows).toHaveLength(2);
-    // Ordered client-side by created_at desc, sliced to the range.
     expect(rows[0].id).toBe('p1');
     expect(rows[0].profiles?.display_name).toBe('A');
     expect(rows[0].likes?.[0]?.user_id).toBe('a');
     expect(rows[0].comments?.[0]?.id).toBe('c1');
-    // shared_post resolved off the already-fetched posts response.
     expect(rows[0].shared_post?.id).toBe('sp1');
     expect(rows[0].shared_post?.profiles?.display_name).toBe('C');
     expect(rows[0].group_posts?.[0]?.groups?.name).toBe('Group One');
-    // A post with no shared_post_id must not gain a bogus one.
     expect(rows[1].id).toBe('p2');
-    expect(rows[1].shared_post).toBeUndefined();
   });
 
-  it('does not fail the whole query when one related table errors', async () => {
-    globalThis.fetch = vi.fn(async (url: string) => {
-      const table = String(url).split('/api/')[1];
-      requested.push(table);
-      if (table === 'comments') {
-        return {
-          ok: false,
-          status: 500,
-          statusText: 'Server Error',
-          headers: { get: () => 'application/json' },
-          json: async () => ({}),
-        } as unknown as Response;
-      }
-      return {
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        headers: { get: () => 'application/json' },
-        json: async () => JSON.parse(JSON.stringify(TABLE_ROWS[table] ?? [])),
-      } as unknown as Response;
-    }) as unknown as typeof fetch;
+  it('surfaces an embedded query failure instead of returning a partial feed', async () => {
+    postsQueryFails = true;
 
     const res = await runFeedQuery();
-    const rows = res.data as JoinedRow[];
 
-    // The feed still renders, with the healthy joins attached.
-    expect(rows).toHaveLength(2);
-    expect(rows[0].profiles?.display_name).toBe('A');
-    expect(rows[0].group_posts?.[0]?.groups?.name).toBe('Group One');
-    expect(rows[0].comments).toBeUndefined();
+    expect(res.data).toBeNull();
+    expect(res.error?.message).toMatch(/join failed/i);
+    expect(requested.filter((table) => table !== 'registry')).toEqual(['posts']);
+  });
+
+  it('fails closed when the posts domain has more than one active project', async () => {
+    registryProjects = ambiguousPostsRegistry();
+
+    const res = await runFeedQuery();
+
+    expect(res.data).toBeNull();
+    expect(res.error?.configCode).toBe('AMBIGUOUS_ROUTE');
+    expect(postsRequests).toHaveLength(0);
   });
 });

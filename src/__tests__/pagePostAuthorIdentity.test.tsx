@@ -37,8 +37,8 @@ vi.mock('@/hooks/useAuth', () => ({
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: () => {} }),
 }));
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     from: () => {
       const q: Record<string, unknown> = {
         select: () => q,

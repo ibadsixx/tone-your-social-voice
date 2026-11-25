@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 
 export const useFileUpload = () => {
@@ -20,7 +20,7 @@ export const useFileUpload = () => {
     });
 
     // Check if user is authenticated
-    const { data: { user }, error: authError } = await gateway.auth.getUser();
+    const { data: { user }, error: authError } = await dataClient.auth.getUser();
     
     if (authError) {
       console.error('[useFileUpload] ❌ Auth error:', authError);
@@ -57,7 +57,7 @@ export const useFileUpload = () => {
         fileSize: file.size,
       });
 
-      const { error: uploadError, data: uploadData } = await gateway.storage
+      const { error: uploadError, data: uploadData } = await dataClient.storage
         .from(bucket)
         .upload(filePath, file, {
           contentType: file.type,
@@ -75,7 +75,7 @@ export const useFileUpload = () => {
 
       console.log('[useFileUpload] ✅ UPLOAD SUCCESS:', uploadData);
 
-      const { data } = gateway.storage
+      const { data } = dataClient.storage
         .from(bucket)
         .getPublicUrl(filePath);
 

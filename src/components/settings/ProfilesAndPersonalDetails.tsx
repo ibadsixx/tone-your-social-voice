@@ -11,7 +11,7 @@ import { ChevronRight, Plus, ArrowLeft, Save, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useToast } from '@/hooks/use-toast';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 type SubView = 'main' | 'contact' | 'contact-email' | 'birthday' | 'profile-detail' | 'display-name' | 'username';
 
@@ -86,7 +86,7 @@ const ProfilesAndPersonalDetails: React.FC = () => {
     const timer = setTimeout(async () => {
       setCheckingUsername(true);
       try {
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('profiles')
           .select('username')
           .eq('username', username)
@@ -96,7 +96,7 @@ const ProfilesAndPersonalDetails: React.FC = () => {
         if (data) {
           setUsernameError('Username already exists');
           const candidates = Array.from({ length: 10 }, (_, i) => `${username}${i + 1}`);
-          const { data: taken } = await gateway
+          const { data: taken } = await dataClient
             .from('profiles')
             .select('username')
             .in('username', candidates);
@@ -119,7 +119,7 @@ const ProfilesAndPersonalDetails: React.FC = () => {
     if (!user?.id) return;
     try {
       if (email !== user.email) {
-        const { error } = await gateway.auth.updateUser({ email });
+        const { error } = await dataClient.auth.updateUser({ email });
         if (error) throw error;
       }
       toast({ title: 'Success', description: 'Contact info updated.' });
@@ -167,7 +167,7 @@ const ProfilesAndPersonalDetails: React.FC = () => {
     const birthDateOnly = new Date(2000, monthIndex, parseInt(birthDay)).toISOString().split('T')[0];
     const birthYearInt = parseInt(birthYear);
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('profiles')
         .update({
           birthday: dateStr,
@@ -198,7 +198,7 @@ const ProfilesAndPersonalDetails: React.FC = () => {
     }
     try {
       const fullName = [firstName, middleName, lastName].filter(Boolean).join(' ');
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('profiles')
         .update({ display_name: fullName })
         .eq('id', user.id);
@@ -218,7 +218,7 @@ const ProfilesAndPersonalDetails: React.FC = () => {
     }
     if (usernameError) return;
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('profiles')
         .update({ username })
         .eq('id', user.id);
@@ -465,7 +465,7 @@ const ProfilesAndPersonalDetails: React.FC = () => {
     if (!newEmail.trim() || !user?.id) return;
     try {
       const updated = [...new Set([...profileEmails, newEmail])];
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('profiles')
         .update({ email: updated } as any)
         .eq('id', user.id);
@@ -482,7 +482,7 @@ const ProfilesAndPersonalDetails: React.FC = () => {
     if (!user?.id) return;
     try {
       const updated = profileEmails.filter((e) => e !== addr);
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('profiles')
         .update({ email: updated } as any)
         .eq('id', user.id);
@@ -496,13 +496,13 @@ const ProfilesAndPersonalDetails: React.FC = () => {
   const handleSetPrimary = async (addr: string) => {
     if (!user?.id || addr === user?.email) return;
     try {
-      const { data: oldEmail, error } = await gateway.rpc<string>('set_primary_email', { new_email: addr });
+      const { data: oldEmail, error } = await dataClient.rpc<string>('set_primary_email', { new_email: addr });
       if (error) throw error;
       if (oldEmail && oldEmail !== addr) {
         const updated = [...new Set([...profileEmails.filter(e => e !== addr), oldEmail])];
-        await gateway.from('profiles').update({ email: updated } as any).eq('id', user.id);
+        await dataClient.from('profiles').update({ email: updated } as any).eq('id', user.id);
       }
-      await gateway.auth.refreshSession();
+      await dataClient.auth.refreshSession();
       toast({ title: 'Success', description: addr + ' is now your primary email.' });
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });

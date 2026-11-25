@@ -33,10 +33,53 @@ import { render, waitFor, act } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { useGroups } from '@/hooks/useGroups';
+import ProfilePage from '@/pages/ProfilePage';
 
 const authState = vi.hoisted(() => ({ user: null as { id: string } | null }));
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authState }));
+
+// The profile-level mocks below replace only the profile reads. Every other
+// module (including useGroups and the Post card) stays real.
+const profileFns = vi.hoisted(() => ({
+  getProfileByUsername: vi.fn(),
+  findAuthUserByUsernameResult: vi.fn(),
+  ensureProfile: vi.fn(),
+  getProfileContentPage: vi.fn(),
+}));
+
+vi.mock('@/api/profiles', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/profiles')>();
+  return { ...actual, getProfileSearchEngineIndexing: vi.fn(async () => false) };
+});
+
+vi.mock('@/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api')>();
+  return {
+    ...actual,
+    profilesApi: {
+      ...actual.profilesApi,
+      getProfileByUsername: (...args: unknown[]) => profileFns.getProfileByUsername(...args),
+      findAuthUserByUsernameResult: (...args: unknown[]) =>
+        profileFns.findAuthUserByUsernameResult(...args),
+      ensureProfile: (...args: unknown[]) => profileFns.ensureProfile(...args),
+    },
+  };
+});
+
+vi.mock('@/api/profileContent', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/profileContent')>();
+  return {
+    ...actual,
+    getProfileContentPage: (...args: unknown[]) => profileFns.getProfileContentPage(...args),
+  };
+});
+
+// The header owns unrelated domain reads; this suite exercises the guest post
+// path, so a minimal header keeps it focused without fabricating profile data.
+vi.mock('@/components/ProfileHeader', () => ({
+  default: ({ profile }: { profile: { username: string } }) => <div>@{profile.username}</div>,
+}));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: toastSpy }) }));
 
 const toastSpy = vi.fn();
@@ -65,6 +108,10 @@ beforeEach(() => {
   groupsApi.getGroupsWithMembers.mockReset();
   groupsApi.getUserPinnedGroups.mockReset();
   groupsApi.getGroupsWithMembers.mockResolvedValue({ data: GROUP_ROWS, error: null });
+  profileFns.getProfileByUsername.mockReset();
+  profileFns.findAuthUserByUsernameResult.mockReset();
+  profileFns.ensureProfile.mockReset();
+  profileFns.getProfileContentPage.mockReset();
 });
 
 afterEach(() => {
@@ -167,13 +214,10 @@ describe('useGroups as an authenticated viewer', () => {
 //
 // The reported symptom, on the path the user actually took. A guest reads a
 // public profile whose posts tab renders at least one `Post`; each `Post` mounts
-// `SharePostModal`, which mounts `useGroups`. The Gateway is emulated at the
-// fetch layer with the responses the live Gateway actually returns to a guest
-// (including 401/403 on the authenticated-only domains), so the real client
-// code runs.
+// `SharePostModal`, which mounts `useGroups`. The profile and its content are
+// supplied through their public API seams, so the real ProfilePage, Post and
+// useGroups code runs without a stale Gateway-era fetch mock.
 describe('a guest opening a public profile with posts', () => {
-  const realFetch = globalThis.fetch;
-
   const PUBLIC_PROFILE = {
     id: 'pid-1',
     username: 'Test',
@@ -192,52 +236,18 @@ describe('a guest opening a public profile with posts', () => {
     type: 'normal_post',
     created_at: '2026-01-02T00:00:00Z',
     profiles: { id: 'pid-1', username: 'Test', display_name: 'One' },
+    shared_post: null,
   };
 
-  function json(body: unknown, status = 200) {
-    return {
-      ok: status >= 200 && status < 300,
-      status,
-      statusText: status === 200 ? 'OK' : 'Error',
-      headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
-      json: async () => body,
-    } as unknown as Response;
-  }
-
-  function guestGateway() {
-    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input).split('/api/')[1] ?? '';
-      const table = path.split('?')[0];
-      // The authenticated-only domains answer exactly as the live Gateway does
-      // for a logged-out visitor.
-      if (table === 'users') return json({ error: 'Missing authorization header' }, 401);
-      if (table === 'stories' || table === 'follows') return json({ error: 'Forbidden' }, 403);
-      if (table === 'group_pins') return json({ error: 'Missing authorization header' }, 401);
-      if (table === 'groups') return json(GROUP_ROWS);
-      if (table.startsWith('profiles')) {
-        if (path.includes('relationship-counts')) {
-          return json({ friends_count: 0, following_count: 0, followers_count: 0 });
-        }
-        if (path.includes('/content')) {
-          return json({ items: [PUBLIC_POST], has_more: false, next_cursor: null });
-        }
-        return json([PUBLIC_PROFILE]);
-      }
-      if (table === 'posts') return json([PUBLIC_POST]);
-      return json([]);
-    }) as unknown as typeof fetch;
-  }
-
   beforeEach(() => {
-    guestGateway();
-  });
-
-  afterEach(() => {
-    globalThis.fetch = realFetch;
+    profileFns.getProfileByUsername.mockResolvedValue({ data: PUBLIC_PROFILE, error: null });
+    profileFns.getProfileContentPage.mockResolvedValue({
+      data: { items: [PUBLIC_POST], has_more: false, next_cursor: null },
+      error: null,
+    });
   });
 
   it('renders the profile and its post without a null-destructure error', async () => {
-    const { default: ProfilePage } = await import('@/pages/ProfilePage');
     const pageErrors: string[] = [];
     const onError = (event: ErrorEvent) => {
       pageErrors.push(String((event.error as Error | undefined)?.message ?? event.message));
@@ -264,21 +274,9 @@ describe('a guest opening a public profile with posts', () => {
   });
 
   it('shows the existing not-found page for a profile that does not exist', async () => {
-    // The Gateway answers a missing profile with an empty list, which the
-    // client's maybeSingle turns into { data: null, error: null } — never a
-    // crash, and never a fake profile.
-    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input).split('/api/')[1] ?? '';
-      const table = path.split('?')[0];
-      if (table === 'users') return json({ error: 'Missing authorization header' }, 401);
-      if (table === 'stories' || table === 'follows' || table === 'group_pins') {
-        return json({ error: 'Forbidden' }, 403);
-      }
-      if (table.startsWith('profiles')) return json([]);
-      return json([]);
-    }) as unknown as typeof fetch;
+    // A readable, empty profile lookup is the only genuine missing-profile case.
+    profileFns.getProfileByUsername.mockResolvedValue({ data: null, error: null });
 
-    const { default: ProfilePage } = await import('@/pages/ProfilePage');
     const pageErrors: string[] = [];
     const onError = (event: ErrorEvent) => {
       pageErrors.push(String((event.error as Error | undefined)?.message ?? event.message));

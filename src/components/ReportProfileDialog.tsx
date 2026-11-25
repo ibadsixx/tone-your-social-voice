@@ -94,7 +94,7 @@ export const ReportProfileDialog = ({
     );
 
     if (success) {
-      setOpen(false);
+      onOpenChange(false);
       resetForm();
       onReportSubmitted();
     }
@@ -199,7 +199,7 @@ export const ReportProfileDialog = ({
               type="button"
               variant="outline"
               onClick={() => {
-                setOpen(false);
+                onOpenChange(false);
                 resetForm();
               }}
               disabled={loading}

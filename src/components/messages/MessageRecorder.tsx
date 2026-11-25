@@ -33,7 +33,7 @@ export const MessageRecorder: React.FC<MessageRecorderProps> = ({
   disabled = false
 }) => {
   // After Send finalizes the clip, we keep the blob in memory: if the send
-  // fails (network/gateway), the same clip can be retried with Send or
+  // fails (network/dataClient), the same clip can be retried with Send or
   // discarded with Delete instead of silently pretending it was sent.
   const [finalized, setFinalized] = useState<AudioRecording | null>(null);
   const [isSending, setIsSending] = useState(false);

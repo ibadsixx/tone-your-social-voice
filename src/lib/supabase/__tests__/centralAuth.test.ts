@@ -19,7 +19,7 @@ import {
   getCentralAuthInitError,
 } from '@/lib/supabase/centralAuth';
 import {
-  getDomainSupabaseClient,
+  getProjectClient,
   isInfrastructureConfigured,
 } from '@/lib/supabase/clientFactory';
 
@@ -28,12 +28,12 @@ vi.mock('@supabase/supabase-js', () => ({
 }));
 
 vi.mock('@/lib/supabase/clientFactory', () => ({
-  getDomainSupabaseClient: vi.fn(),
+  getProjectClient: vi.fn(),
   isInfrastructureConfigured: vi.fn(() => true),
 }));
 
-const mockCreateClient = vi.mocked(createClient);
-const mockGetDomainSupabaseClient = vi.mocked(getDomainSupabaseClient);
+const mockCreateClient = vi.mocked(createClient) as any;
+const mockGetProjectClient = vi.mocked(getProjectClient);
 const mockIsInfrastructureConfigured = vi.mocked(isInfrastructureConfigured);
 
 const mockAuth = {
@@ -76,10 +76,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mockCreateClient.mockReturnValue(mockClient);
   mockIsInfrastructureConfigured.mockReturnValue(true);
-  mockGetDomainSupabaseClient.mockResolvedValue({
-    client: mockClient,
-    project: mockProject,
-  });
+  mockGetProjectClient.mockResolvedValue({ route: { project: mockProject } } as any);
 });
 
 afterEach(() => {

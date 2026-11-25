@@ -12,11 +12,11 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: { from: vi.fn() },
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: { from: vi.fn() },
 }));
 
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { fetchEngagementForPosts } from '@/lib/postEngagement';
 
 const POSTS = ['p1', 'p2', 'p3', 'p4', 'p5'];
@@ -48,7 +48,7 @@ function tableReturning(rows: unknown[]) {
 
 describe('fetchEngagementForPosts', () => {
   beforeEach(() => {
-    vi.mocked(gateway.from).mockImplementation((table: string) => {
+    vi.mocked(dataClient.from).mockImplementation((table: string) => {
       if (table === 'likes') return tableReturning(LIKES) as never;
       if (table === 'comments') return tableReturning(COMMENTS) as never;
       throw new Error(`unexpected table read: ${table}`);
@@ -62,7 +62,7 @@ describe('fetchEngagementForPosts', () => {
   it('reads each table once regardless of how many posts are shown', async () => {
     await fetchEngagementForPosts(POSTS);
 
-    const tables = vi.mocked(gateway.from).mock.calls.map((c) => c[0]);
+    const tables = vi.mocked(dataClient.from).mock.calls.map((c) => c[0]);
     expect(tables.sort()).toEqual(['comments', 'likes']);
   });
 
@@ -100,7 +100,7 @@ describe('fetchEngagementForPosts', () => {
   });
 
   it('ignores rows with no post_id instead of bucketing them under undefined', async () => {
-    vi.mocked(gateway.from).mockImplementation((table: string) =>
+    vi.mocked(dataClient.from).mockImplementation((table: string) =>
       tableReturning(
         table === 'likes'
           ? [...LIKES, { id: 'l9', user_id: 'u1', post_id: null }]
@@ -119,13 +119,13 @@ describe('fetchEngagementForPosts', () => {
   it('makes no request at all when there are no posts to enrich', async () => {
     const { likesByPostId, commentsByPostId } = await fetchEngagementForPosts([]);
 
-    expect(vi.mocked(gateway.from)).not.toHaveBeenCalled();
+    expect(vi.mocked(dataClient.from)).not.toHaveBeenCalled();
     expect(likesByPostId.size).toBe(0);
     expect(commentsByPostId.size).toBe(0);
   });
 
   it('degrades to empty engagement when a table read fails', async () => {
-    vi.mocked(gateway.from).mockImplementation((table: string) => {
+    vi.mocked(dataClient.from).mockImplementation((table: string) => {
       const rows = table === 'likes' ? LIKES : COMMENTS;
       const err = table === 'comments';
       return {

@@ -5,7 +5,7 @@
 // fine, which is exactly why the fix had to be in the sign-out path rather than in
 // the comparison.
 //
-// THE ROOT CAUSE. `useAuth.signOut` called `gateway.auth.signOut()` and nothing
+// THE ROOT CAUSE. `useAuth.signOut` called `dataClient.auth.signOut()` and nothing
 // else. It never mentioned presence. So `profiles.last_seen_at` was left holding
 // the timestamp from the last heartbeat - up to one 30s interval earlier - and
 // `isOnline()` kept answering `true` for the whole remaining freshness window.
@@ -16,12 +16,13 @@
 //
 // WHY NOT `channel.untrack()`. do.md asks for the Supabase Realtime lifecycle -
 // `track()`, `untrack()`, `presenceState()`, `presence_diff`. Tone has none of
-// them. `GatewayChannel` in `src/lib/gateway.ts` is a hand-rolled local shim:
+// them. `DirectChannel` in `src/lib/supabase/dataClient.ts` (still exported
+// under the legacy alias `GatewayChannel`) is a hand-rolled local shim:
 // `subscribe()` immediately calls back with 'SUBSCRIBED' and connects to nothing,
 // `postgres_changes` listeners are stored and never dispatched, there is no
 // `track`/`untrack`/`presenceState`/`presence_diff`, `removeAllChannels()` is a
 // no-op, and `send({type:'broadcast'})` only reaches broadcast listeners in the
-// SAME tab. Its 19 call sites are decorative. There is therefore no channel to
+// SAME tab. Its call sites are decorative. There is therefore no channel to
 // untrack and no `presence_diff` to observe, and adding one would be the second
 // presence system this codebase deliberately does not have. The existing
 // mechanism - one heartbeat write, read by the other client's existing
@@ -49,8 +50,8 @@ const presenceHeartbeat = vi.fn();
 const presenceLogout = vi.fn();
 const authSignOut = vi.fn();
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     presenceHeartbeat: () => presenceHeartbeat(),
     presenceLogout: () => presenceLogout(),
     auth: {
@@ -81,7 +82,7 @@ const read = (rel: string) => readFileSync(join(SRC, rel), 'utf8');
  * `1970-01-01T00:00:00+00:00`, with an offset and no milliseconds. This is the
  * value the other user's client actually receives, so it is the value every
  * reader assertion must use - a test that only exercised the literal string the
- * gateway sent would pass while production failed.
+ * dataClient sent would pass while production failed.
  */
 const MARKER_AS_POSTGRES_RETURNS_IT = '1970-01-01T00:00:00+00:00';
 
@@ -95,7 +96,7 @@ const flush = async () => {
  * a regex, for the two reasons this codebase forces:
  *
  *   - a `//` inside a string literal (a URL) would truncate the rest of the line
- *   - a regex literal containing a quote - `/^['"]|['"]$/g` in lib/gateway.ts -
+ *   - a regex literal containing a quote - `/^['"]|['"]$/g` in lib/supabase/dataClient.ts -
  *     would be mistaken for the start of a string, and every comment after it
  *     would be read as string content
  *
@@ -191,15 +192,15 @@ describe('the root cause: sign-out never mentioned presence', () => {
   it('the sign-out path calls presence removal, and calls it before auth signOut', () => {
     const src = read('hooks/useAuth.tsx');
 
-    const presenceAt = src.indexOf('endPresenceSession()');
-    const authAt = src.indexOf('gateway.auth.signOut()');
+    const presenceAt = src.indexOf('await endPresenceSession();');
+    const authAt = src.indexOf('await centralSignOut();');
     expect(presenceAt).toBeGreaterThan(-1);
     expect(authAt).toBeGreaterThan(-1);
 
-    // THE ORDERING IS THE FIX. Once `gateway.auth.signOut()` has run it removes
-    // the bearer token from localStorage, and the removal endpoint is
-    // authenticated - so calling it afterwards would 401 and write nothing,
-    // reproducing the original bug in a new position.
+    // THE ORDERING IS THE FIX. Once the central auth sign-out has run it clears
+    // the current access token, and the removal endpoint is authenticated - so
+    // calling it afterwards would 401 and write nothing, reproducing the original
+    // bug in a new position.
     expect(presenceAt).toBeLessThan(authAt);
   });
 
@@ -334,7 +335,7 @@ describe('endPresenceSession: stop, drain, then write', () => {
 
   it('drains an in-flight heartbeat BEFORE writing the marker', async () => {
     // The race this closes. A heartbeat dispatched moments before sign-out can
-    // still land at the gateway after the marker and overwrite it with `now`,
+    // still land at the dataClient after the marker and overwrite it with `now`,
     // putting the green dot straight back for another 150s. Draining first makes
     // the marker provably the last write of the session.
     const order: string[] = [];
@@ -374,7 +375,7 @@ describe('endPresenceSession: stop, drain, then write', () => {
     await expect(endPresenceSession()).resolves.toBeUndefined();
   });
 
-  it('does not throw when the gateway reports an error', async () => {
+  it('does not throw when the dataClient reports an error', async () => {
     presenceLogout.mockResolvedValue({ data: null, error: { message: 'boom', code: '500' } });
     await expect(endPresenceSession()).resolves.toBeUndefined();
   });
@@ -468,28 +469,26 @@ describe('closing a tab is not logging out (multi-tab)', () => {
 
 describe('no second presence system, no new traffic', () => {
   it('introduces no Realtime presence channel, track, or untrack', () => {
-    // Comments are stripped first, and that is not a nicety: this suite's own
-    // explanatory comments in `lib/gateway.ts` use the words "track()" and
-    // "untrack()" to explain why they are NOT called, so a raw-source scan
-    // matches the prose that documents the absence and reports the absence as
-    // present. The regex-literal case matters too - `lib/gateway.ts` contains
-    // `/^['"]|['"]$/g`, and a naive stripper reads the `'` as a string delimiter
-    // and silently stops stripping from there.
-    const code = stripComments(read('lib/gateway.ts'));
+    // Comments are stripped first, and that is not a nicety: explanatory prose
+    // in `lib/supabase/dataClient.ts` uses the words "track()" and "untrack()"
+    // to explain why they are NOT called, so a raw-source scan would match the
+    // prose that documents the absence and report the absence as present.
+    const code = stripComments(read('lib/supabase/dataClient.ts'));
     expect(code).not.toMatch(/\buntrack\b/);
     expect(code).not.toMatch(/presenceState|presence_diff/);
     // Sanity-check the stripper rather than trusting it: if it had desynchronised
     // it would emit an empty or implausibly short file and every assertion above
-    // would "pass" for the wrong reason.
+    // would "pass" for the wrong reason. The local channel shim must still be
+    // there under its real class name (GatewayChannel is only a legacy alias).
     expect(code.length).toBeGreaterThan(1000);
-    expect(code).toMatch(/class GatewayChannel/);
+    expect(code).toMatch(/class DirectChannel/);
   });
 
   it('adds exactly one endpoint call per sign-out and none per conversation', () => {
     const src = read('hooks/usePresence.ts');
     // One `presenceLogout()` call inside `endPresenceSession`, and it is not in a
     // loop or a map over conversations.
-    const calls = src.match(/gateway\.presenceLogout\(\)/g) ?? [];
+    const calls = src.match(/dataClient\.presenceLogout\(\)/g) ?? [];
     expect(calls.length).toBe(1);
     expect(src).not.toMatch(/\.map\([^)]*=>[^)]*presenceLogout/);
   });
@@ -507,16 +506,18 @@ describe('no second presence system, no new traffic', () => {
     expect(OFFLINE_THRESHOLD_MS).toBe(150000);
   });
 
-  it('the gateway client sends the logout write to a no-store authenticated POST', () => {
-    const code = stripComments(read('lib/gateway.ts'));
+  it('the dataClient sends the logout write through the authenticated presence Function', () => {
+    const code = stripComments(read('lib/supabase/dataClient.ts'));
     const at = code.indexOf('presenceLogout()');
     expect(at).toBeGreaterThan(-1);
-    const body = code.slice(at, at + 1200);
-    expect(body).toMatch(/\/api\/presence\/logout/);
-    expect(body).toMatch(/method:\s*'POST'/);
-    expect(body).toMatch(/Authorization/);
-    // A cached response would let a stale "ok" outlive the presence it removed.
-    expect(body).toMatch(/no-store/);
+    const body = code.slice(at, at + 400);
+    expect(body).toMatch(/callEdgeFunction<[^>]*>\('presence',\s*\{\s*action:\s*'logout'\s*\}/);
+    // The shared transport must use an authenticated POST; a cached response
+    // would let a stale "ok" outlive the presence it removed, but POST requests
+    // are not cached by the browser.
+    const transport = stripComments(read('lib/supabase/crossProject.ts'));
+    expect(transport).toMatch(/method:\s*'POST'/);
+    expect(transport).toMatch(/Authorization:\s*`Bearer \$\{token\}`/);
   });
 });
 
@@ -539,8 +540,8 @@ describe('privacy is untouched', () => {
   });
 
   it('the logout marker is only ever derived from the signed-in user\'s own id', () => {
-    const code = stripComments(read('lib/gateway.ts'));
-    // The client sends no user id at all: the gateway derives the caller from the
+    const code = stripComments(read('lib/supabase/dataClient.ts'));
+    // The client sends no user id at all: the dataClient derives the caller from the
     // bearer token. Anything else would be a force-offline-anyone primitive.
     const at = code.indexOf('presenceLogout()');
     expect(at).toBeGreaterThan(-1);

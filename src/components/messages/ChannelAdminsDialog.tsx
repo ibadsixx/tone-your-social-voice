@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, Shield, UserCog, UserPlus, UserMinus } from 'lucide-react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 
 interface ChannelMember {
@@ -47,7 +47,7 @@ export const ChannelAdminsDialog: React.FC<ChannelAdminsDialogProps> = ({
     if (!conversationId) return;
     setLoading(true);
     try {
-      const { data, error } = await gateway.rpc('get_channel_members', {
+      const { data, error } = await dataClient.rpc('get_channel_members', {
         p_conversation_id: conversationId,
       });
       if (error) throw error;
@@ -75,7 +75,7 @@ export const ChannelAdminsDialog: React.FC<ChannelAdminsDialogProps> = ({
     if (!conversationId) return;
     setBusyUserId(userId);
     try {
-      const { error } = await gateway.rpc('add_channel_moderator', {
+      const { error } = await dataClient.rpc('add_channel_moderator', {
         p_conversation_id: conversationId,
         p_moderator_id: userId,
       });
@@ -96,7 +96,7 @@ export const ChannelAdminsDialog: React.FC<ChannelAdminsDialogProps> = ({
     if (!conversationId) return;
     setBusyUserId(userId);
     try {
-      const { error } = await gateway.rpc('remove_channel_moderator', {
+      const { error } = await dataClient.rpc('remove_channel_moderator', {
         p_conversation_id: conversationId,
         p_moderator_id: userId,
       });

@@ -112,7 +112,9 @@ export const usePost = (postId?: string) => {
       let apiError: { message: string; code?: string } | null = null;
 
       try {
-        ({ data, error: apiError } = await postsApi.getPostById(postId));
+        const result = await postsApi.getPostById(postId);
+        data = result.data as unknown as Post | null;
+        apiError = result.error;
       } catch (thrown: unknown) {
         // A thrown transport error is the same class as a returned one.
         apiError = { message: errorMessage(thrown) };
@@ -174,7 +176,7 @@ export const usePost = (postId?: string) => {
         duration: typeof data.duration === 'number' ? data.duration : null,
         shared_post: data.shared_post
       };
-      setPost(postWithTypedMedia);
+      setPost(postWithTypedMedia as unknown as Post);
       setError(null);
       setLoading(false);
       return;

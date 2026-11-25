@@ -51,7 +51,7 @@ export const BAN_DURATION_PRESETS: RestrictionOption[] = [
   { label: 'Permanent', kind: 'permanent' },
 ];
 
-// Mirror of the gateway `canModerate` (owner > moderator > member; the owner can
+// Mirror of the dataClient `canModerate` (owner > moderator > member; the owner can
 // moderate moderators, but never self or another admin/owner).
 export function canModerateAccess(
   callerAccess: GroupMemberAccess,

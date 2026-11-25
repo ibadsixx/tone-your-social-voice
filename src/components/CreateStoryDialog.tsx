@@ -19,10 +19,11 @@ import {
 } from 'lucide-react';
 import { Stage, Layer, Text as KonvaText, Image as KonvaImage, Transformer, Group, Rect, Line } from 'react-konva';
 import Konva from 'konva';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/useAuth';
 import { useStories } from '@/hooks/useStories';
+import { MusicTrimmer } from '@/components/music/MusicTrimmer';
 import { emojiService, type EmojiData } from '@/services/emojiService';
 
 const STAGE_W = 360;
@@ -329,20 +330,20 @@ function MusicTab({ music, onSelect }: { music: MusicData | null; onSelect: (m: 
     try {
       const { detectMusicUrl } = await import('@/utils/musicUrlDetector');
       const { extractMusicMetadata } = await import('@/utils/musicMetadataExtractor');
-      const sourceType = detectMusicUrl(url);
-      if (!sourceType) { setError('Unsupported URL'); return; }
-      const meta = await extractMusicMetadata(url, sourceType);
+      const urlInfo = detectMusicUrl(url);
+      if (!urlInfo.isValid) { setError('Unsupported URL'); return; }
+      const meta = await extractMusicMetadata(url);
       if (!meta) { setError('Could not extract metadata'); return; }
       onSelect({
-        url: meta.url || url,
+        url: urlInfo.url || url,
         title: meta.title || 'Unknown',
         artist: meta.artist,
         startAt: 0,
         endAt: Math.min(meta.duration || 15, 15),
         duration: meta.duration || 15,
-        source_type: sourceType,
-        video_id: meta.video_id,
-        thumbnail_url: meta.thumbnail_url,
+        source_type: urlInfo.type,
+        video_id: urlInfo.videoId ?? null,
+        thumbnail_url: meta.thumbnail,
       });
     } catch {
       setError('Failed to add music');
@@ -359,10 +360,10 @@ function MusicTab({ music, onSelect }: { music: MusicData | null; onSelect: (m: 
           {music.artist && <p className="text-xs text-muted-foreground">{music.artist}</p>}
         </div>
         <MusicTrimmer
-          maxDuration={15}
+          duration={music.duration}
           initialStart={music.startAt}
           initialEnd={music.endAt}
-          onTrim={(start, end) => onSelect({ ...music, startAt: start, endAt: end })}
+          onSelectSegment={(start, end) => onSelect({ ...music, startAt: start, endAt: end })}
         />
         <Button variant="destructive" size="sm" className="w-full" onClick={() => onSelect(null)}>
           <X className="h-4 w-4 mr-1" /> Remove Music
@@ -621,7 +622,7 @@ export default function CreateStoryDialog({
   const [mentionResults, setMentionResults] = useState<{ id: string; username: string; display_name: string; profile_pic: string | null }[]>([]);
   const [mentionSearching, setMentionSearching] = useState(false);
   const [drawingMode, setDrawingMode] = useState(false);
-  const [activeDrawTool, setActiveDrawTool] = useState<'pen' | 'neon' | 'highlighter'>('pen');
+  const [activeDrawTool, setActiveDrawTool] = useState<'pen' | 'neon' | 'highlighter' | 'eraser'>('pen');
   const [drawColor, setDrawColor] = useState('#FFFFFF');
   const [brushSize, setBrushSize] = useState(4);
   const [strokes, setStrokes] = useState<DrawingStroke[]>([]);
@@ -759,7 +760,7 @@ export default function CreateStoryDialog({
     if (pickerPanel !== 'post' || !user || posts.length) return;
     let cancelled = false;
     setPostsLoading(true);
-    gateway
+    dataClient
       .from('posts')
       .select('id, media_url, media_type, created_at')
       .eq('user_id', user.id)
@@ -1046,7 +1047,7 @@ export default function CreateStoryDialog({
       setMentionSearching(true);
       try {
         const pattern = `%${mentionSearch.trim()}%`;
-        const { data } = await gateway
+        const { data } = await dataClient
           .from('profiles')
           .select('id, username, display_name, profile_pic')
           .or(`display_name.ilike.${pattern},username.ilike.${pattern}`)
@@ -1168,7 +1169,7 @@ export default function CreateStoryDialog({
       );
       if (result) {
         if (mentionOverlays.length > 0) {
-          const { error: mentionError } = await gateway
+          const { error: mentionError } = await dataClient
             .from('story_mentions')
             .insert(mentionOverlays.map(o => ({
               story_id: result.id,

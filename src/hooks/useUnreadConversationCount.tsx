@@ -23,7 +23,7 @@
 // CORRECTNESS MODEL — the server is the source of truth, events are wake-ups:
 //
 //   - Initial fetch / focus / SSE (re)connect: the full set is re-read from
-//     the gateway aggregate (`get_unread_conversation_ids`), which applies the
+//     the dataClient aggregate (`get_unread_conversation_ids`), which applies the
 //     authoritative sender/read/cleared/participant rules in SQL.
 //   - An incoming `message.created` optimistically ADDS its conversation (an
 //     incoming message can only make a conversation unread), then schedules a
@@ -46,7 +46,7 @@
 // No polling loop is added; resync happens on reconnect (`init` frame) and tab
 // focus, and every event coalesces into a short debounce.
 //
-// The server side of this is gateway/src/features/unreadConversations.ts, and
+// The server side of this is dataClient/src/features/unreadConversations.ts, and
 // the SQL aggregate it calls is `get_unread_conversation_ids` (supabase
 // migrations). This file only ever talks to the Gateway.
 
@@ -61,7 +61,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { getMessageRealtime, subscribeToMessages } from '@/lib/messageRealtime';
 import { onConversationRead } from '@/lib/unreadBadgeBus';
 
@@ -77,7 +77,7 @@ const UnreadBadgeContext = createContext<UnreadBadgeValue>({ count: 0 });
 
 /**
  * Fetches the server's authoritative unread-conversation set. On any kind of
- * failure the PREVIOUS set is kept: a transient gateway/network blip must not
+ * failure the PREVIOUS set is kept: a transient dataClient/network blip must not
  * wipe a badge the user can already see.
  */
 async function fetchServerUnreadSet(
@@ -85,7 +85,7 @@ async function fetchServerUnreadSet(
   current: Set<string> | null
 ): Promise<Set<string>> {
   try {
-    const { data, error } = await gateway.rpc('get_unread_conversation_ids');
+    const { data, error } = await dataClient.rpc('get_unread_conversation_ids');
     if (error) return current ?? new Set<string>();
     if (!Array.isArray(data)) return current ?? new Set<string>();
     const next = new Set<string>();

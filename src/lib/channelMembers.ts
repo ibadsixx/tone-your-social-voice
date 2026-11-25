@@ -1,5 +1,5 @@
 // Shared shape for a channel participant as returned by the API Gateway's
-// `get_channel_members` RPC (see gateway/src/api/routes.ts resolveChannelMembers).
+// `get_channel_members` RPC (see dataClient/src/api/routes.ts resolveChannelMembers).
 // `role` is the actual membership role stored in conversation_participants:
 // 'owner' | 'moderator' | 'follower'. Profile fields are enriched by the
 // Gateway from the users host.

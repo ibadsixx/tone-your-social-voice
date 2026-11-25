@@ -2,19 +2,19 @@
 //
 // Browser WebSocket APIs cannot set an Authorization header, so this client:
 //   1. fetches a short-lived, single-use ticket over authenticated HTTP;
-//   2. opens wss://<gateway>/api/live/signaling?ticket=...&after=<cursor>;
+//   2. opens wss://<dataClient>/functions/v1/live/signaling?ticket=...&after=<cursor>;
 //   3. never puts a long-lived access token or secret in the WebSocket URL.
 //
 // Reconnects obtain a fresh ticket and resend the durable delivery cursor so
 // messages are not lost or replayed across Function instance rotations.
 
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import type { InboundP2PSignal, OutboundP2PSignal } from './liveP2P';
 
 export type SignalingConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'failed';
 
 export interface LiveSignalingClientOptions {
-  gatewayUrl: string;
+  edgeBaseUrl: string;
   sessionId: string;
   getAuthToken: () => string | null;
   onMessage: (message: InboundP2PSignal) => void;
@@ -32,7 +32,7 @@ interface TicketResponse {
 
 interface ServerFrame extends Partial<InboundP2PSignal> {
   type: string;
-  gatewaySeq?: number;
+  sequence?: number;
   code?: string;
   timestamp?: string;
 }
@@ -57,7 +57,7 @@ export class LiveSignalingClient {
     this.maxReconnectAttempts = options.maxReconnectAttempts ?? 5;
   }
 
-  /** Last durable cursor received from the Gateway. */
+  /** Last durable cursor received from the Edge Function. */
   getCursor(): number {
     return this.afterSeq;
   }
@@ -81,7 +81,7 @@ export class LiveSignalingClient {
     if (!token) throw new Error('Authentication required for live signaling');
 
     const response = await fetch(
-      `${this.options.gatewayUrl}/api/live/sessions/${encodeURIComponent(this.options.sessionId)}/signaling-ticket`,
+      `${this.options.edgeBaseUrl}/functions/v1/live/sessions/${encodeURIComponent(this.options.sessionId)}/signaling-ticket`,
       {
         method: 'POST',
         headers: {
@@ -93,7 +93,7 @@ export class LiveSignalingClient {
 
     if (response.status === 401 && allowRefresh) {
       try {
-        await gateway.auth.refreshSession();
+        await dataClient.auth.refreshSession();
         return this.fetchTicket(false);
       } catch {
         // fall through to the error below
@@ -107,13 +107,13 @@ export class LiveSignalingClient {
   }
 
   private openSocket(ticket: TicketResponse): void {
-    const base = toWebSocketUrl(this.options.gatewayUrl);
-    const url = `${base}/api/live/signaling?ticket=${encodeURIComponent(ticket.ticket)}&after=${this.afterSeq}`;
+    const base = toWebSocketUrl(this.options.edgeBaseUrl);
+    const url = `${base}/functions/v1/live/signaling?ticket=${encodeURIComponent(ticket.ticket)}&after=${this.afterSeq}`;
     const socket = new WebSocket(url);
     this.socket = socket;
 
     socket.addEventListener('open', () => {
-      // The Gateway sends a `connected` frame after consuming the ticket; we
+      // The Edge Function sends a `connected` frame after consuming the ticket; we
       // treat the socket open as connected and refine the cursor on that frame.
       this.reconnectAttempts = 0;
       this.options.onConnectionStateChange('connected');
@@ -128,8 +128,8 @@ export class LiveSignalingClient {
       }
 
       if (frame.type === 'connected') {
-        if (typeof frame.gatewaySeq === 'number' && frame.gatewaySeq > this.afterSeq) {
-          this.afterSeq = frame.gatewaySeq;
+        if (typeof frame.sequence === 'number' && frame.sequence > this.afterSeq) {
+          this.afterSeq = frame.sequence;
         }
         return;
       }
@@ -137,8 +137,8 @@ export class LiveSignalingClient {
         console.warn('[LiveSignaling] server error:', frame.code);
         return;
       }
-      if (typeof frame.gatewaySeq === 'number' && frame.gatewaySeq > this.afterSeq) {
-        this.afterSeq = frame.gatewaySeq;
+      if (typeof frame.sequence === 'number' && frame.sequence > this.afterSeq) {
+        this.afterSeq = frame.sequence;
       }
       if (frame.id && frame.fromUserId && frame.type) {
         this.options.onMessage(frame as InboundP2PSignal);

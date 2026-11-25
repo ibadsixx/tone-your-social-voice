@@ -1,4 +1,4 @@
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 /**
  * Engagement data for a page of posts, in two round trips instead of two per post.
@@ -8,15 +8,15 @@ import { gateway } from '@/lib/gateway';
  * read that the client then filters itself. Fetching that per post therefore
  * re-downloaded the entire `likes` and `comments` tables once per post, which for
  * a 20-post feed is 40 round trips and roughly 1.7 MB to produce two integers per
- * post. Filtering also makes the requests non-identical, so the gateway client's
+ * post. Filtering also makes the requests non-identical, so the dataClient client's
  * in-flight coalescing cannot merge them.
  *
  * Reading each table once and bucketing by `post_id` in JS gives the identical
  * result in two round trips. The bucket shape matches what the callers used to
  * build, so nothing downstream changes.
  */
-export type PostLikes = Array<{ id: string; user_id: string }>;
-export type PostComments = Array<{ id: string; content: string; user_id: string; profiles?: { display_name?: string } | null }>;
+export type PostLikes = Array<{ id: string; user_id: string; post_id?: string | null }>;
+export type PostComments = Array<{ id: string; content: string; user_id: string; post_id?: string | null; profiles?: { display_name?: string } | null }>;
 
 export interface PostEngagement {
   likesByPostId: Map<string, PostLikes>;
@@ -47,10 +47,10 @@ export async function fetchEngagementForPosts(postIds: string[]): Promise<PostEn
   if (!postIds || postIds.length === 0) return empty;
 
   const [likesResult, commentsResult] = await Promise.all([
-    gateway.from('likes').select('id, user_id'),
-    gateway
+    dataClient.from('likes').select('id, user_id, post_id'),
+    dataClient
       .from('comments')
-      .select('id, content, user_id, profiles:user_id(display_name)'),
+      .select('id, content, user_id, post_id, profiles:user_id(display_name)'),
   ]);
 
   if (likesResult.error) console.warn('[engagement] likes read failed:', likesResult.error.message);

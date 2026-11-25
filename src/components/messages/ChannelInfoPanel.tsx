@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { removeChannelMember } from '@/api/conversations';
 import { deriveChannelModerators, type ChannelMember } from '@/lib/channelMembers';
 import {
@@ -161,7 +161,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
     if (!shouldLoadMembers || !conversationId) return;
     let active = true;
     setMembersLoading(true);
-    gateway.rpc('get_channel_members', { p_conversation_id: conversationId })
+    dataClient.rpc('get_channel_members', { p_conversation_id: conversationId })
       .then(({ data, error }) => {
         if (!active) return;
         if (error) throw error;
@@ -221,7 +221,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
     }
     setSavingEdit(true);
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('conversations')
         .update({ name, description: editDescription.trim() || null })
         .eq('id', conversationId);
@@ -252,7 +252,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
 
   // Channel member management (messages.md): promoting/demoting moderators is
   // owner-only, while removal is owner-or-moderator (moderators may remove
-  // followers only). Reuses the backend-enforced RPCs and the gateway-owned
+  // followers only). Reuses the backend-enforced RPCs and the dataClient-owned
   // DELETE member endpoint — the UI only decides whether to surface actions.
   const pushChannelStats = (stats: ChannelStats) => {
     onChannelStatsChange?.(stats);
@@ -262,7 +262,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
     if (!conversationId) return;
     setBusyUserId(userId);
     try {
-      const { error } = await gateway.rpc('add_channel_moderator', {
+      const { error } = await dataClient.rpc('add_channel_moderator', {
         p_conversation_id: conversationId,
         p_moderator_id: userId,
       });
@@ -292,7 +292,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
     if (!conversationId) return;
     setBusyUserId(userId);
     try {
-      const { error } = await gateway.rpc('remove_channel_moderator', {
+      const { error } = await dataClient.rpc('remove_channel_moderator', {
         p_conversation_id: conversationId,
         p_moderator_id: userId,
       });
@@ -348,8 +348,8 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
     if (!conversationId) return;
     setDeleting(true);
     try {
-      // Owner-only: the gateway re-validates ownership before deleting.
-      const { error } = await gateway.rpc('delete_channel', { p_conversation_id: conversationId });
+      // Owner-only: the dataClient re-validates ownership before deleting.
+      const { error } = await dataClient.rpc('delete_channel', { p_conversation_id: conversationId });
       if (error) throw error;
       toast({ title: 'Channel deleted', description: `#${conversationName || 'channel'} has been deleted` });
       setShowDeleteConfirm(false);
@@ -420,7 +420,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
                 <p className="text-sm text-muted-foreground mt-1">{conversationDescription}</p>
               )}
               {/* Statistics are owner/moderator-only (messages.md): followers
-                  must not see counts, and the gateway denies them the stats. */}
+                  must not see counts, and the dataClient denies them the stats. */}
               {channelStats && (
                 <p className="text-sm text-muted-foreground flex items-center justify-center gap-1.5 mt-2">
                   <Users className="h-4 w-4" />
@@ -550,7 +550,7 @@ export const ChannelInfoPanel: React.FC<ChannelInfoPanelProps> = ({
 
             {/* Channel control — visible to owner AND moderators (messages.md).
                 Owner-only actions (manage moderators, permissions, delete
-                channel) are hidden from moderators; the gateway re-checks. */}
+                channel) are hidden from moderators; the dataClient re-checks. */}
             {canAccessChannelControl && (
               <div className="space-y-1">
                 <button

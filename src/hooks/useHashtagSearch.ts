@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 interface HashtagSearchResult {
   id: string;
@@ -24,7 +24,7 @@ export const useHashtagSearch = (query: string, limit: number = 10) => {
         const searchTerm = query.startsWith('#') ? query.slice(1) : query;
         
         // Use fuzzy search with pg_trgm
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('hashtags' as any)
           .select('id, tag, follower_count')
           .ilike('tag', `%${searchTerm}%`)

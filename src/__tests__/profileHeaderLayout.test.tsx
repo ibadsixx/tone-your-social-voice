@@ -22,8 +22,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: { from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }), removeChannel: () => undefined },
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: { from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }), removeChannel: () => undefined },
 }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 

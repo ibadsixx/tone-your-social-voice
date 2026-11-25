@@ -59,6 +59,7 @@ export function logVoicePlayback(fields: {
   canPlayRecordedMime: boolean;
   httpStatus?: number;
   httpContentType?: string;
+  probe?: boolean;
 }): void {
   record({ t: new Date().toISOString(), kind: 'playback', ...fields });
 }

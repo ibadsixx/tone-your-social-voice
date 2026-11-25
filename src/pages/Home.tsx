@@ -20,7 +20,7 @@ import PageContainer from '@/components/PageContainer';
 
 const Home = () => {
   const { user } = useAuth();
-  const { posts, loading, error, hasMore, loadMore, refresh, createPost, toggleLike } = useHomeFeed();
+  const { posts, loading, error, feedStatus, hasMore, loadMore, refresh, createPost, toggleLike } = useHomeFeed();
   // When the viewer has switched to acting as a Page, the composer shows that
   // page's identity; the published post must be associated with the same page.
   const { actingPage } = usePageSwitch();
@@ -30,10 +30,25 @@ const Home = () => {
   // background poll (which never touches `posts`) must not blank the feed.
   const feedError = error && !loading ? error : null;
 
+  // Empty means different things. Never collapse a failed/denied/unroutable feed
+  // into "No posts yet": that is what made a 401 look like an empty community.
+  const emptyMessage = feedStatus === 'none-visible'
+    ? 'No posts are visible to you right now.'
+    : feedStatus === 'routing'
+      ? 'The feed is temporarily unavailable because its project routing is not configured.'
+      : feedStatus === 'auth'
+        ? 'Your session has expired. Sign in again to see your feed.'
+        : feedStatus === 'rls'
+          ? 'These posts are not available to this account.'
+          : feedStatus === 'query'
+            ? 'The feed could not be loaded.'
+            : isGuest
+              ? 'No public posts yet — check back soon!'
+              : 'No posts yet. Be the first to share something amazing!';
+
   const feedSentinelRef = useRef<HTMLDivElement>(null);
-  // Tracks whether a page reveal is in progress so the status row can say so.
-  // `loadMore` reveals from the already-fetched timeline, so this is a render
-  // frame rather than a round trip.
+  // Tracks whether the next server page is in flight so the status row can say
+  // so without blanking posts already on screen.
   const [loadingMore, setLoadingMore] = useState(false);
 
   // Automatic pagination (do.md §2, §3).
@@ -67,15 +82,11 @@ const Home = () => {
         const isNear = entries.some(e => e.isIntersecting);
         if (!isNear) return;
         // §7: an observer can fire repeatedly for one approach. `loadMore`
-        // advances the cursor, so a repeat call reveals the *next* page rather
-        // than re-requesting the same one, and it also guards re-entrancy.
+        // guards re-entrancy and uses the server cursor, so a repeat call
+        // cannot re-request the same page.
         if (!hasMoreRef.current) return;
         setLoadingMore(true);
-        try {
-          loadMoreRef.current();
-        } finally {
-          setLoadingMore(false);
-        }
+        void Promise.resolve(loadMoreRef.current()).finally(() => setLoadingMore(false));
       },
       { root: null, rootMargin: '800px 0px', threshold: 0 }
     );
@@ -165,9 +176,7 @@ const Home = () => {
                           <Sparkles className="w-8 h-8 text-tone-purple" />
                         </div>
                         <h3 className="text-lg font-semibold text-foreground mb-2">Welcome to Tone!</h3>
-                        <p className="text-muted-foreground">
-                          {user ? 'No posts yet. Be the first to share something amazing!' : 'No public posts yet — check back soon!'}
-                        </p>
+                        <p className="text-muted-foreground">{emptyMessage}</p>
                       </Card>
                     )}
                   </motion.div>
@@ -247,8 +256,8 @@ const Home = () => {
               )}
 
               {/* Feed sentinel + status row.
-                  There is deliberately no "Load more posts" button: the next page
-                  is revealed by an IntersectionObserver on the sentinel below
+                  There is deliberately no "Load more posts" button: the next server
+                  page is read by an IntersectionObserver on the sentinel below
                   (do.md §1, §2, §3). The sentinel carries no content of its own —
                   it exists purely to be watched. */}
               <div ref={feedSentinelRef} aria-hidden="true" data-testid="feed-sentinel" />

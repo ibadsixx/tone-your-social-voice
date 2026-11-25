@@ -1,6 +1,7 @@
 // `groupsApi.getGroupsWithMembers()` asks for the reverse embed
-// `group_members!group_members_group_id_fkey (...)`. The Gateway ignores
-// `select` and returns whole tables, so the client resolves the embed itself.
+// `group_members!group_members_group_id_fkey (...)`. The direct-Supabase
+// compatibility client resolves that embed itself, so the in-memory mock below
+// models the embedded row shapes and keeps the same two directions covered.
 //
 // The join resolver used to strip only the *current* table prefix from the
 // PostgREST constraint name, which left `group_members_group_id` as the local
@@ -12,8 +13,15 @@
 // the prefix handling cannot silently drop group membership again.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-
-const TOKEN = { access_token: 'token-viewer' };
+import { clearCurrentAccessToken, setCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import {
+  applyPostgrestFilters,
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  jsonResponse,
+  MOCK_ORIGIN,
+  postgrestTable,
+} from './infraFixtures';
 
 const GROUP_ROWS = [
   { id: 'g1', name: 'Ada Fans', privacy: 'public', created_by: 'u1', cover_image: 'https://cdn.example/g1.jpg' },
@@ -29,29 +37,42 @@ const GROUP_MEMBER_ROWS = [
   { group_id: 'g2', user_id: 'u9', role: 'admin' },
 ];
 
-const TABLE_ROWS: Record<string, unknown[]> = {
+const TABLE_ROWS: Record<string, Array<Record<string, unknown>>> = {
   groups: GROUP_ROWS,
   group_members: GROUP_MEMBER_ROWS,
 };
 
-describe('gateway join resolution: reverse (one-to-many) FK embeds', () => {
+describe('dataClient join resolution: reverse (one-to-many) FK embeds', () => {
   const realFetch = globalThis.fetch;
 
   beforeEach(() => {
-    localStorage.setItem('tone-auth-token', JSON.stringify(TOKEN));
+    setCurrentAccessToken('token-viewer');
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
-      const table = String(input).split('/api/')[1]?.split('?')[0] ?? '';
-      return {
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        headers: { get: () => 'application/json' },
-        json: async () => TABLE_ROWS[table] ?? [],
-      } as unknown as Response;
+      if (isInfraRegistryRequest(input)) return infraRegistryResponse();
+      const url = typeof input === 'string' ? new URL(input, MOCK_ORIGIN) : input instanceof URL ? input : new URL(input.url);
+      const table = postgrestTable(input);
+      const select = url.searchParams.get('select') ?? '';
+      let rows = applyPostgrestFilters(TABLE_ROWS[table] ?? [], input);
+
+      // Model the two embedded shapes PostgREST returns for `!fkName` embeds.
+      if (table === 'groups' && select.includes('group_members!')) {
+        rows = rows.map((group) => ({
+          ...group,
+          group_members: GROUP_MEMBER_ROWS.filter((member) => member.group_id === group.id),
+        }));
+      }
+      if (table === 'group_members' && select.includes('groups!')) {
+        rows = rows.map((member) => {
+          const group = GROUP_ROWS.find((candidate) => candidate.id === member.group_id);
+          return { ...member, groups: group ? { id: group.id, name: group.name } : null };
+        });
+      }
+      return jsonResponse(200, rows);
     }) as unknown as typeof fetch;
   });
 
   afterEach(() => {
+    clearCurrentAccessToken();
     globalThis.fetch = realFetch;
     vi.restoreAllMocks();
   });
@@ -75,9 +96,9 @@ describe('gateway join resolution: reverse (one-to-many) FK embeds', () => {
   });
 
   it('still resolves the many-to-one direction (FK on the current table)', async () => {
-    const { gateway } = await import('@/lib/gateway');
+    const { dataClient } = await import('@/lib/supabase/dataClient');
 
-    const { data } = await gateway.from('group_members').select('*, groups!group_members_group_id_fkey (name)');
+    const { data } = await dataClient.from('group_members').select('*, groups!group_members_group_id_fkey (name)');
 
     const rows = data as Array<Record<string, unknown>>;
     const first = rows.find((r) => r.user_id === 'u1') as any;

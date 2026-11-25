@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -38,7 +38,7 @@ export const useStoryQuestions = (storyId?: string) => {
 
     try {
       setLoading(true);
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('story_questions')
         .select(`
           *,
@@ -67,7 +67,7 @@ export const useStoryQuestions = (storyId?: string) => {
     if (!storyId || !user) return null;
 
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('story_questions')
         .insert({
           story_id: storyId,
@@ -100,7 +100,7 @@ export const useStoryQuestions = (storyId?: string) => {
     if (!user) return;
 
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('story_question_responses')
         .insert({
           question_id: questionId,

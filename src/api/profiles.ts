@@ -1,9 +1,17 @@
-import { gateway } from './client';
-import { API_URL } from './client';
-import type { ApiResult } from './client';
+import { dataClient } from '@/lib/supabase/dataClient';
+import type { ApiResult } from '@/lib/supabase/dataClient';
+import { readInfraEnv } from '@/lib/supabase/infrastructureClient';
+import { parseProfileRouteUsername } from '@/lib/profileRoute';
+import { classifyProfileLoadFailure, describeProfileLoadFailure } from '@/lib/profileLoadFailure';
+import type { ProfileLoadErrorLike } from '@/lib/profileLoadFailure';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+/** Diagnostics never include error text, only an allow-listed code and kind. */
+function warnProfileFailure(label: string, error: ProfileLoadErrorLike | null | undefined): void {
+  console.warn(label, describeProfileLoadFailure(classifyProfileLoadFailure(error)));
 }
 
 export interface Profile {
@@ -46,19 +54,56 @@ export interface DisplayPreferences {
 const DISPLAY_COLUMNS = 'font_scale, reduce_motion, reduce_transparency, high_contrast';
 
 export async function getDisplayPreferences(userId: string): Promise<ApiResult<DisplayPreferences>> {
-  return gateway.from('profiles').select(DISPLAY_COLUMNS).eq('id', userId).maybeSingle() as Promise<ApiResult<DisplayPreferences>>;
+  return dataClient.from('profiles').select(DISPLAY_COLUMNS).eq('id', userId).maybeSingle() as Promise<ApiResult<DisplayPreferences>>;
 }
 
 export async function updateDisplayPreferences(userId: string, data: Partial<DisplayPreferences>): Promise<ApiResult<null>> {
-  return gateway.from('profiles').update(data).eq('id', userId) as Promise<ApiResult<null>>;
+  return dataClient.from('profiles').update(data).eq('id', userId) as Promise<ApiResult<null>>;
 }
 
 export async function getProfileById(id: string): Promise<ApiResult<Profile>> {
-  return gateway.from('profiles').select('*').eq('id', id).maybeSingle() as Promise<ApiResult<Profile>>;
+  return dataClient.from('profiles').select('*').eq('id', id).maybeSingle() as Promise<ApiResult<Profile>>;
 }
 
+// PostgREST LIKE/ILIKE treats these as wildcards; usernames are literals here.
+function escapeLikeLiteral(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
+/**
+ * Look up a profile from a route username.
+ *
+ * The exact match is authoritative. Only when it finds no row do we try a
+ * case-insensitive match, because profile URLs are typed by hand and the
+ * database's username uniqueness is case-sensitive. More than one match is
+ * reported as ambiguity rather than picking a row: a lookup must never depend
+ * on registry/query ordering, and an ambiguous identity is not a 404.
+ */
 export async function getProfileByUsername(username: string): Promise<ApiResult<Profile>> {
-  return gateway.from('profiles').select('*').eq('username', username).maybeSingle() as Promise<ApiResult<Profile>>;
+  const parsed = parseProfileRouteUsername(username);
+  if (!parsed.valid || !parsed.username) {
+    return { data: null, error: { message: 'Invalid profile route', code: 'INVALID_ROUTE' } };
+  }
+
+  const exact = await dataClient
+    .from('profiles')
+    .select('*')
+    .eq('username', parsed.username)
+    .maybeSingle() as ApiResult<Profile>;
+  if (exact.error || exact.data) return exact;
+
+  const { data: candidates, error } = await dataClient
+    .from('profiles')
+    .select('*')
+    .ilike('username', escapeLikeLiteral(parsed.username))
+    .limit(2);
+  if (error) return { data: null, error };
+
+  const matches = (candidates ?? []) as Profile[];
+  if (matches.length > 1) {
+    return { data: null, error: { message: 'Ambiguous username', code: 'AMBIGUOUS_USERNAME' } };
+  }
+  return { data: matches[0] ?? null, error: null };
 }
 
 /**
@@ -68,7 +113,7 @@ export async function getProfileByUsername(username: string): Promise<ApiResult<
  * guest-readable domain and has no foreign key to `profiles`, so it cannot ride
  * along on `getProfileByUsername`'s `select('*')`. The Gateway reads it
  * server-side and answers with a single boolean - see
- * gateway/src/features/profileIndexing.ts.
+ * dataClient/src/features/profileIndexing.ts.
  *
  * TRUSTED ANSWER, WITHHELD BY DEFAULT. This is no longer "return true only on an
  * explicit `{ search_engine_indexing: true }`", because the Gateway now resolves
@@ -78,7 +123,7 @@ export async function getProfileByUsername(username: string): Promise<ApiResult<
  *
  * Everything that is NOT an authoritative 200 is `false`:
  *
- *   - no gateway configured, network failure, any non-2xx (including the 404
+ *   - no dataClient configured, network failure, any non-2xx (including the 404
  *     for a username that does not exist), an unparseable body, a missing field,
  *     or a non-boolean value all resolve to `false`.
  *
@@ -94,14 +139,14 @@ export async function getProfileByUsername(username: string): Promise<ApiResult<
  * rule applies to an absent *preference*, never to an unavailable *read*.
  */
 export async function getProfileSearchEngineIndexing(username: string): Promise<boolean> {
-  const base = API_URL || '';
-  if (!base) return false;
+  if (!username) return false;
   try {
+    // Public, unauthenticated privacy directive. The Edge Function reads only
+    // the declared indexing preference and never exposes other profile fields.
+    const { url } = readInfraEnv();
+    if (!url) return false;
     const res = await fetch(
-      `${base}/api/public/profile-indexing?username=${encodeURIComponent(username)}`,
-      // The endpoint is already no-store server-side; repeating it here keeps the
-      // browser from answering a later visit from its own cache, which for a
-      // privacy directive is the wrong place to keep a stale copy.
+      `${url.replace(/\/$/, '')}/functions/v1/publicProfileIndexing?username=${encodeURIComponent(username)}`,
       { method: 'GET', headers: { 'Content-Type': 'application/json' }, cache: 'no-store' }
     );
     if (!res.ok) return false;
@@ -113,12 +158,12 @@ export async function getProfileSearchEngineIndexing(username: string): Promise<
 }
 
 export async function updateProfile(id: string, data: Partial<Profile>): Promise<ApiResult<null>> {
-  return gateway.from('profiles').update(data).eq('id', id) as Promise<ApiResult<null>>;
+  return dataClient.from('profiles').update(data).eq('id', id) as Promise<ApiResult<null>>;
 }
 
 export async function searchProfiles(query: string, excludeUserId?: string): Promise<ApiResult<Profile[]>> {
   const term = query.trim().replace(/^@/, '');
-  let q = gateway
+  let q = dataClient
     .from('profiles')
     .select('id, username, display_name, profile_pic')
     .or(`username.ilike.%${term}%,display_name.ilike.%${term}%`);
@@ -128,11 +173,11 @@ export async function searchProfiles(query: string, excludeUserId?: string): Pro
 
 export async function getProfilesByIds(ids: string[]): Promise<ApiResult<Profile[]>> {
   if (ids.length === 0) return { data: [], error: null };
-  return gateway.from('profiles').select('id, username, display_name, profile_pic').in('id', ids) as Promise<ApiResult<Profile[]>>;
+  return dataClient.from('profiles').select('id, username, display_name, profile_pic').in('id', ids) as Promise<ApiResult<Profile[]>>;
 }
 
 /**
- * An auth.users row as exposed via the gateway's `users` domain. Every signed-up
+ * An auth.users row as exposed via the dataClient's `users` domain. Every signed-up
  * account exists here, even when it has no `profiles` row yet (legacy sign-ups
  * predate profile auto-creation), so this is the canonical "all existing users"
  * source.
@@ -145,20 +190,35 @@ export interface AuthUserRow {
 }
 
 export async function getAuthUsers(): Promise<ApiResult<AuthUserRow[]>> {
-  return gateway.from('users').select('id, email, raw_user_meta_data, created_at') as Promise<ApiResult<AuthUserRow[]>>;
+  return dataClient.from('users').select('id, email, raw_user_meta_data, created_at') as Promise<ApiResult<AuthUserRow[]>>;
+}
+
+export async function findAuthUserByUsernameResult(
+  username: string
+): Promise<ApiResult<AuthUserRow | null>> {
+  const parsed = parseProfileRouteUsername(username);
+  if (!parsed.valid || !parsed.username) {
+    return { data: null, error: { message: 'Invalid profile route', code: 'INVALID_ROUTE' } };
+  }
+  const { data, error } = await getAuthUsers();
+  if (error) return { data: null, error };
+  const q = parsed.username.toLowerCase();
+  return {
+    data:
+      (data ?? []).find((row) =>
+        String(row.raw_user_meta_data?.username ?? '').toLowerCase() === q
+      ) ?? null,
+    error: null,
+  };
 }
 
 export async function findAuthUserByUsername(username: string): Promise<AuthUserRow | null> {
-  const q = username?.toLowerCase();
-  if (!q) return null;
-  const { data, error } = await getAuthUsers();
+  const { data, error } = await findAuthUserByUsernameResult(username);
   if (error) {
-    console.warn('[profiles] findAuthUserByUsername failed:', error);
+    warnProfileFailure('[profiles] findAuthUserByUsername failed:', error);
     return null;
   }
-  return (
-    (data || []).find((r) => String(r.raw_user_meta_data?.username ?? '').toLowerCase() === q) ?? null
-  );
+  return data;
 }
 
 export interface EnsureProfileUser {
@@ -181,7 +241,7 @@ function sanitizeUsername(value: string): string {
 /**
  * Guarantees a `profiles` row exists for the given auth user.
  *
- * New accounts never get a profile row created server-side (the gateway's
+ * New accounts never get a profile row created server-side (the dataClient's
  * auth endpoint only calls `admin.createUser`, and the legacy
  * `on_auth_user_created` trigger was dropped on the live users project), so
  * without this the profile page would hang on "Loading profile..." forever.
@@ -195,7 +255,7 @@ export async function ensureProfile(user: EnsureProfileUser): Promise<Profile | 
 
   const { data: existing, error: lookupError } = await getProfileById(user.id);
   if (lookupError) {
-    console.warn('[ensureProfile] Profile lookup failed:', lookupError);
+    warnProfileFailure('[ensureProfile] Profile lookup failed:', lookupError);
   }
   if (existing) return existing;
 
@@ -206,7 +266,7 @@ export async function ensureProfile(user: EnsureProfileUser): Promise<Profile | 
   const username = rawUsername || emailPrefix || `user_${user.id.slice(0, 8)}`;
   const displayName = rawDisplayName || rawUsername || emailPrefix || 'Tone User';
 
-  const { data: created, error: insertError } = await gateway
+  const { data: created, error: insertError } = await dataClient
     .from('profiles')
     .insert({ id: user.id, username, display_name: displayName })
     .select('*')
@@ -215,7 +275,7 @@ export async function ensureProfile(user: EnsureProfileUser): Promise<Profile | 
   if (insertError) {
     const { data: after } = await getProfileById(user.id);
     if (after) return after;
-    console.warn('[ensureProfile] Could not create profile:', insertError);
+    warnProfileFailure('[ensureProfile] Could not create profile:', insertError);
     return null;
   }
 

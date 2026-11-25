@@ -15,8 +15,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     from: () => ({
       select: () => ({
         or: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }),

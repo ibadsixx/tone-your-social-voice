@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { profilesApi } from '@/api';
 import { useAuth } from '@/hooks/useAuth';
 import { validateProfileVisibility, sanitizeProfilePayload } from '@/utils/profileValidation';
@@ -46,7 +46,7 @@ export const useProfile = (profileId?: string) => {
         return;
       }
 
-      setProfile(data);
+      setProfile(data as unknown as Profile);
     } catch (error) {
       console.error('Error fetching profile:', error);
     } finally {
@@ -62,7 +62,7 @@ export const useProfile = (profileId?: string) => {
   useEffect(() => {
     if (!user?.id || profileId) return; // Only subscribe to own profile changes
 
-    const channel = gateway
+    const channel = dataClient
       .channel('profile-changes')
       .on(
         'postgres_changes',
@@ -89,7 +89,7 @@ export const useProfile = (profileId?: string) => {
     }
 
     return () => {
-      gateway.removeChannel(channel);
+      dataClient.removeChannel(channel);
       if (typeof window !== 'undefined') {
         window.removeEventListener('profile:updated', handleProfileUpdated);
       }

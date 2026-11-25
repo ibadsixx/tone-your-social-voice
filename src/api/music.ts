@@ -9,7 +9,7 @@ import {
   getDomainSupabaseClient,
   isInfrastructureConfigured,
 } from '@/lib/supabase';
-import type { ApiResult } from './client';
+import type { ApiResult } from '@/lib/supabase/dataClient';
 
 const MUSIC_DOMAIN = 'music';
 

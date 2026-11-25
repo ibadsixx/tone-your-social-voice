@@ -27,7 +27,7 @@ export default defineConfig({
     reuseExistingServer: true,
     timeout: 120_000,
     env: {
-      VITE_API_GATEWAY_URL: 'https://gateway-iota-two.vercel.app',
+      VITE_INFRA_SUPABASE_URL: 'https://lwtzhnrvobiovdnzbthg.supabase.co',
     },
   },
 });

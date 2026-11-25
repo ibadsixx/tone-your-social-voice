@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -19,7 +19,7 @@ export const useMutedUsers = (targetUserId: string) => {
     if (!user) return;
 
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('muted_users')
         .select('id')
         .eq('user_id', user.id)
@@ -46,7 +46,7 @@ export const useMutedUsers = (targetUserId: string) => {
     setIsLoading(true);
     try {
       if (isMuted) {
-        const { error } = await gateway
+        const { error } = await dataClient
           .from('muted_users')
           .delete()
           .eq('user_id', user.id)
@@ -60,7 +60,7 @@ export const useMutedUsers = (targetUserId: string) => {
           description: "You'll now see posts from this user"
         });
       } else {
-        const { error } = await gateway
+        const { error } = await dataClient
           .from('muted_users')
           .insert({
             user_id: user.id,

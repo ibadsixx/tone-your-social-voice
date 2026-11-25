@@ -13,7 +13,7 @@
 // WHAT IS ASSERTED HERE. The badge is driven by a global provider that holds
 // one realtime subscription for the session and reconciles against the server
 // aggregate, so the tests drive the two inputs it actually consumes - the
-// server aggregate (`gateway.rpc('get_unread_conversation_ids')`) and the
+// server aggregate (`dataClient.rpc('get_unread_conversation_ids')`) and the
 // realtime/local events - and assert the number that reaches the icon:
 //
 //   1. Server truth: N conversations with unread -> badge N, and the set is
@@ -101,8 +101,8 @@ const defaultRpc = async (fn: string) => {
   return { data: state.serverSet, error: null };
 };
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     rpc: (fn: string) => defaultRpc(fn),
   },
 }));
@@ -164,10 +164,10 @@ beforeEach(() => {
 afterEach(async () => {
   cleanup();
   vi.restoreAllMocks();
-  // `@/lib/gateway` is mocked as a shared module object, so any rpc this file
+  // `@/lib/dataClient` is mocked as a shared module object, so any rpc this file
   // swapped in would otherwise decide the answer for every later test.
-  const { gateway } = await import('@/lib/gateway');
-  (gateway as { rpc: unknown }).rpc = defaultRpc;
+  const { dataClient } = await import('@/lib/supabase/dataClient');
+  (dataClient as { rpc: unknown }).rpc = defaultRpc;
 });
 
 describe('global Messages unread badge', () => {
@@ -288,7 +288,7 @@ describe('global Messages unread badge', () => {
     renderBadge();
     await waitFor(() => expect(count()).toBe(2));
 
-    state.serverError = { message: 'gateway down' };
+    state.serverError = { message: 'dataClient down' };
     await act(async () => { emitted(C); });
     await settle();
     // Optimistic add shows, but the failed reconcile must not blank the badge
@@ -301,11 +301,11 @@ describe('global Messages unread badge', () => {
     // The first aggregate read is held open. It was issued for user-1; by the
     // time it answers, user-1 has signed out and user-2 is signed in, so its
     // answer belongs to nobody and must not be painted anywhere.
-    const { gateway } = await import('@/lib/gateway');
+    const { dataClient } = await import('@/lib/supabase/dataClient');
     let releaseFirst: ((v: unknown) => void) | null = null;
     let call = 0;
 
-    (gateway as { rpc: unknown }).rpc = async (fn: string) => {
+    (dataClient as { rpc: unknown }).rpc = async (fn: string) => {
       if (fn !== 'get_unread_conversation_ids') return { data: null, error: null };
       call += 1;
       if (call === 1) {

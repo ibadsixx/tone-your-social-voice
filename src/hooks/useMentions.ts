@@ -1,4 +1,4 @@
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from './useAuth';
 import { createNotification } from './useNotifications';
 import { saveHashtags } from '@/utils/hashtags';
@@ -24,7 +24,7 @@ export const useMentions = () => {
   const getUserIdsFromUsernames = async (usernames: string[]): Promise<MentionedUser[]> => {
     if (usernames.length === 0) return [];
 
-    const { data, error } = await gateway
+    const { data, error } = await dataClient
       .from('profiles')
       .select('id, username, display_name')
       .in('username', usernames);
@@ -59,7 +59,7 @@ export const useMentions = () => {
 
     const mentionedUsers = await getUserIdsFromUsernames(usernames);
 
-    const { data: existingMentions, error: existingError } = await gateway
+    const { data: existingMentions, error: existingError } = await dataClient
       .from('mentions')
       .select('mentioned_user_id')
       .eq('source_type', sourceType)
@@ -88,7 +88,7 @@ export const useMentions = () => {
     }));
 
     if (mentionsToInsert.length > 0) {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('mentions')
         .insert(mentionsToInsert);
 
@@ -117,7 +117,7 @@ export const useMentions = () => {
 
   // Get mentions for a source
   const getMentions = async (sourceType: 'post' | 'comment', sourceId: string) => {
-    const { data, error } = await gateway
+    const { data, error } = await dataClient
       .from('mentions')
       .select(`
         id,

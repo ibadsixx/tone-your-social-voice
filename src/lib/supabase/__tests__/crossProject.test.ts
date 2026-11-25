@@ -4,6 +4,7 @@
 // The Supabase JS SDK and client factory are mocked; no real connection is made.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createClient } from '@supabase/supabase-js';
 import { getMyProfile } from '@/lib/supabase/crossProject';
 import {
   resetCentralAuthClient,
@@ -17,16 +18,20 @@ vi.mock('@supabase/supabase-js', () => ({
 }));
 
 vi.mock('@/lib/supabase/clientFactory', () => ({
+  getProjectClient: vi.fn(),
   getDomainSupabaseClient: vi.fn(),
   getDomainProjectConfig: vi.fn(),
   isInfrastructureConfigured: vi.fn(() => true),
 }));
 
 import {
+  getProjectClient,
   getDomainSupabaseClient,
   isInfrastructureConfigured,
 } from '@/lib/supabase/clientFactory';
 
+const mockCreateClient = vi.mocked(createClient);
+const mockGetProjectClient = vi.mocked(getProjectClient);
 const mockGetDomainSupabaseClient = vi.mocked(getDomainSupabaseClient);
 const mockIsInfrastructureConfigured = vi.mocked(isInfrastructureConfigured);
 const mockGetCentralAuthClient = vi.mocked(getCentralAuthClient);
@@ -49,20 +54,22 @@ const mockProfile = {
 beforeEach(async () => {
   resetCentralAuthClient();
   vi.resetAllMocks();
+  mockCreateClient.mockReturnValue(mockAuthClient as any);
   mockIsInfrastructureConfigured.mockReturnValue(true);
-  mockGetDomainSupabaseClient.mockResolvedValue({
-    client: mockAuthClient,
-    project: {
-      project_key: 'users_1',
-      domain: 'users',
-      project_url: 'https://users.supabase.co',
-      anon_key: 'users-anon-key',
-      status: 'active',
-      priority: 1,
-      region: 'us-east',
-      health_status: 'online',
+  mockGetProjectClient.mockResolvedValue({
+    route: {
+      project: {
+        project_key: 'users_1',
+        domain: 'users',
+        project_url: 'https://users.supabase.co',
+        anon_key: 'users-anon-key',
+        status: 'active',
+        priority: 1,
+        region: 'us-east',
+        health_status: 'online',
+      },
     },
-  });
+  } as any);
   // Initialize central auth so getCentralAuthClient() returns a client
   await initializeCentralAuth();
 });

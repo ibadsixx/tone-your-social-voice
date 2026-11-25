@@ -105,8 +105,8 @@ const baseQuery = {
   maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
 };
 
-// Mock gateway.
-vi.mock('@/lib/gateway', () => {
+// Mock dataClient.
+vi.mock('@/lib/supabase/dataClient', () => {
   const postsInsert = vi.fn().mockImplementation((data: any) => {
     hoisted.postInserts.push({ audience_type: data.audience_type });
     return {
@@ -135,7 +135,7 @@ vi.mock('@/lib/gateway', () => {
   }));
 
   return {
-    gateway: {
+    dataClient: {
       from: vi.fn((table: string) => {
         if (table === 'posts') {
           return { ...baseQuery, insert: postsInsert };

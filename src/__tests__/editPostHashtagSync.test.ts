@@ -113,8 +113,8 @@ const h = vi.hoisted(() => {
   return { store, notifications, Query };
 });
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: { from: (table: string) => new h.Query(table) },
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: { from: (table: string) => new h.Query(table) },
 }));
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { id: 'viewer-1', user_metadata: { display_name: 'Viewer' } } }),

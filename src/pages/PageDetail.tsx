@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { buildSocialUrl } from '@/utils/socialLinks';
@@ -137,6 +137,13 @@ const COUNTRY_CODES = [
   { label: '🇨🇴 Colombia +57', value: '57' },
 ];
 
+type PageFamilyMember = {
+  name: string;
+  relationship: string;
+  id?: string;
+  type?: 'person' | 'page';
+};
+
 interface PageRow {
   id: string;
   name: string;
@@ -151,7 +158,10 @@ interface PageRow {
   archived: boolean;
   links?: PageLink[] | null;
   legal_info?: Record<string, string> | null;
-  work_education?: Record<string, string> | null;
+  // The column stores nested `{ work, education }` objects (with boolean
+  // `current` flags), not a flat string map.
+  work_education?: Record<string, unknown> | null;
+  family_members?: PageFamilyMember[] | null;
 }
 
 const BUTTON_TYPES = [
@@ -256,7 +266,7 @@ const PageDetail = () => {
       case 'message': {
         const convId = await getOrCreateDM(page.admin_id);
         if (convId && page?.id) {
-          await gateway.from('conversations').update({ page_id: page.id }).eq('id', convId).maybeSingle();
+          await dataClient.from('conversations').update({ page_id: page.id }).eq('id', convId).maybeSingle();
           navigate(`/messages/${convId}`);
         }
         break;
@@ -265,10 +275,10 @@ const PageDetail = () => {
         if (!adminProfile) return;
         initiateCall(page.admin_id, {
           id: page.admin_id,
-          display_name: adminProfile.display_name || adminProfile.username || 'User',
+          displayName: adminProfile.display_name || adminProfile.username || 'User',
           username: adminProfile.username || '',
-          profile_pic: adminProfile.profile_pic || undefined,
-        }, 'audio');
+          profilePic: adminProfile.profile_pic || undefined,
+        }, 'voice');
         break;
       }
       case 'email': {
@@ -323,7 +333,7 @@ const PageDetail = () => {
     if (!user || !page) return;
     const convId = await getOrCreateDM(page.admin_id);
     if (convId) {
-      await gateway.from('conversations').update({ page_id: page.id }).eq('id', convId).maybeSingle();
+      await dataClient.from('conversations').update({ page_id: page.id }).eq('id', convId).maybeSingle();
       navigate(`/messages/${convId}`);
     }
   };
@@ -332,7 +342,7 @@ const PageDetail = () => {
     if (!id) return;
     (async () => {
       setLoading(true);
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('pages')
         .select('*')
         .eq('id', id)
@@ -360,7 +370,7 @@ const PageDetail = () => {
       // of a decorative number holding the whole page behind a spinner.
       setLoading(false);
 
-      const { data: followerData } = await gateway
+      const { data: followerData } = await dataClient
         .from('page_followers')
         .select('*')
         .eq('page_id', id);
@@ -372,7 +382,7 @@ const PageDetail = () => {
   useEffect(() => {
     if (!id) return;
     (async () => {
-      const { data } = await gateway
+      const { data } = await dataClient
         .from('page_followers')
         .select('*')
         .eq('page_id', id)
@@ -383,7 +393,7 @@ const PageDetail = () => {
       const userIds = [...new Set(followersList.map((f: any) => f.user_id).filter(Boolean))];
       let profilesMap: Record<string, any> = {};
       if (userIds.length > 0) {
-        const { data: profiles } = await gateway
+        const { data: profiles } = await dataClient
           .from('profiles')
           .select('id, display_name, username, profile_pic')
           .in('id', userIds);
@@ -402,7 +412,7 @@ const PageDetail = () => {
   useEffect(() => {
     if (!page?.admin_id) return;
     (async () => {
-      const { data } = await gateway
+      const { data } = await dataClient
         .from('profiles')
         .select('id, display_name, username, profile_pic, email')
         .eq('id', page.admin_id)
@@ -414,7 +424,7 @@ const PageDetail = () => {
   useEffect(() => {
     if (!id || !user) return;
     (async () => {
-      const { data } = await gateway
+      const { data } = await dataClient
         .from('page_followers')
         .select('user_id')
         .eq('page_id', id)
@@ -428,21 +438,21 @@ const PageDetail = () => {
   useEffect(() => {
     if (!id || !user) return;
     (async () => {
-      const { data: convs } = await gateway
+      const { data: convs } = await dataClient
         .from('conversations')
         .select('id, created_by')
         .eq('page_id', id)
         .order('updated_at', { ascending: false });
       if (!convs || convs.length === 0) return;
       const convIds = convs.map((c: any) => c.id);
-      const { data: participants } = await gateway
+      const { data: participants } = await dataClient
         .from('conversation_participants')
         .select('user_id')
         .in('conversation_id', convIds);
       if (!participants || participants.length === 0) return;
       const userIds = [...new Set<string>(participants.map((p: any) => p.user_id).filter((uid: string) => uid !== user.id))];
       if (userIds.length === 0) return;
-      const { data: profiles } = await gateway
+      const { data: profiles } = await dataClient
         .from('profiles')
         .select('id, display_name, username, profile_pic')
         .in('id', userIds);
@@ -461,8 +471,8 @@ const PageDetail = () => {
       try {
         const pattern = `%${q}%`;
         const [profilesRes, pagesRes] = await Promise.all([
-          gateway.from('profiles').select('id, display_name, username, profile_pic').or(`display_name.ilike.${pattern},username.ilike.${pattern}`).limit(10),
-          gateway.from('pages').select('id, name, profile_pic').ilike('name', pattern).limit(10),
+          dataClient.from('profiles').select('id, display_name, username, profile_pic').or(`display_name.ilike.${pattern},username.ilike.${pattern}`).limit(10),
+          dataClient.from('pages').select('id, name, profile_pic').ilike('name', pattern).limit(10),
         ]);
         const results: { id: string; name: string; type: 'person' | 'page'; profile_pic?: string | null }[] = [];
         for (const p of profilesRes.data || []) {
@@ -523,11 +533,11 @@ const PageDetail = () => {
     if (!id || !user) return;
     setFollowBusy(true);
     if (isFollowing) {
-      await gateway.from('page_followers').delete().eq('page_id', id).eq('user_id', user.id);
+      await dataClient.from('page_followers').delete().eq('page_id', id).eq('user_id', user.id);
       setIsFollowing(false);
       setFollowerCount((c) => Math.max(0, c - 1));
     } else {
-      await gateway.from('page_followers').insert({ page_id: id, user_id: user.id, role: 'follower' });
+      await dataClient.from('page_followers').insert({ page_id: id, user_id: user.id, role: 'follower' });
       setIsFollowing(true);
       setFollowerCount((c) => c + 1);
     }
@@ -585,7 +595,7 @@ const PageDetail = () => {
       updates.family_members = familyMembers;
     }
 
-    const { error } = await gateway
+    const { error } = await dataClient
       .from('pages')
       .update(updates)
       .eq('id', page.id);
@@ -611,7 +621,7 @@ const PageDetail = () => {
         if (familyMembers.length > 0 && !msg.includes('family_members')) {
           fallback.family_members = familyMembers;
         }
-        const { error: fallbackErr } = await gateway
+        const { error: fallbackErr } = await dataClient
           .from('pages')
           .update(fallback)
           .eq('id', page.id);
@@ -664,7 +674,7 @@ const PageDetail = () => {
     setUploading(true);
     const ext = file.name.split('.').pop();
     const path = `${page.id}/${Date.now()}.${ext}`;
-    const { error: uploadError } = await gateway.storage
+    const { error: uploadError } = await dataClient.storage
       .from('covers')
       .upload(path, file, { upsert: true });
     if (uploadError) {
@@ -672,9 +682,9 @@ const PageDetail = () => {
       toast({ title: 'Upload failed', description: uploadError.message, variant: 'destructive' });
       return;
     }
-    const { data: urlData } = gateway.storage.from('covers').getPublicUrl(path);
+    const { data: urlData } = dataClient.storage.from('covers').getPublicUrl(path);
     const cover_image = urlData.publicUrl;
-    const { error } = await gateway.from('pages').update({ cover_image }).eq('id', page.id);
+    const { error } = await dataClient.from('pages').update({ cover_image }).eq('id', page.id);
     setUploading(false);
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -694,7 +704,7 @@ const PageDetail = () => {
     setUploading(true);
     const ext = file.name.split('.').pop();
     const path = `page_avatars/${page.id}/${Date.now()}.${ext}`;
-    const { error: uploadError } = await gateway.storage
+    const { error: uploadError } = await dataClient.storage
       .from('avatars')
       .upload(path, file, { upsert: true });
     if (uploadError) {
@@ -702,9 +712,9 @@ const PageDetail = () => {
       toast({ title: 'Upload failed', description: uploadError.message, variant: 'destructive' });
       return;
     }
-    const { data: urlData } = gateway.storage.from('avatars').getPublicUrl(path);
+    const { data: urlData } = dataClient.storage.from('avatars').getPublicUrl(path);
     const profile_pic = urlData.publicUrl;
-    const { error } = await gateway.from('pages').update({ profile_pic }).eq('id', page.id);
+    const { error } = await dataClient.from('pages').update({ profile_pic }).eq('id', page.id);
     setUploading(false);
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -727,7 +737,7 @@ const PageDetail = () => {
     }
     setSavingButton(true);
     const url = needsLink ? buttonUrl.trim() : null;
-    const { error } = await gateway
+    const { error } = await dataClient
       .from('pages')
       .update({ button_type: selectedButtonType, button_url: url })
       .eq('id', page.id);
@@ -744,7 +754,7 @@ const PageDetail = () => {
   const handleRemoveButton = async () => {
     if (!page || !isPageAdmin) return;
     setSavingButton(true);
-    const { error } = await gateway
+    const { error } = await dataClient
       .from('pages')
       .update({ button_type: null, button_url: null })
       .eq('id', page.id);
@@ -912,7 +922,29 @@ const PageDetail = () => {
                       <div className="flex justify-end">
                         {aboutEditing ? (
                           <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={() => { setAboutEditing(false); setDescription(page.description ?? ''); setCategory(page.category ?? ''); setLinks(page.links ?? []); setLegalInfo({ ...defaultLegalInfo, ...(page.legal_info ?? {}) }); setWorkEducation({ ...defaultWork, ...((page.work_education?.work) ?? {}) }); setWorkCurrent(page.work_education?.work?.current === true || page.work_education?.work?.current === 'true'); setEducationState({ ...defaultEducation, ...((page.work_education?.education) ?? {}) }); setEducationCurrent(page.work_education?.education?.current === true || page.work_education?.education?.current === 'true'); setFamilyMembers(page.family_members ?? []); setNewMemberName(''); setNewMemberRelation('Family'); setFamilySearchQuery(''); setFamilySearchResults([]); setFamilySearchIdx(null); }}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const savedWork = (page.work_education?.work ?? {}) as Record<string, unknown>;
+                                const savedEducation = (page.work_education?.education ?? {}) as Record<string, unknown>;
+                                setAboutEditing(false);
+                                setDescription(page.description ?? '');
+                                setCategory(page.category ?? '');
+                                setLinks(page.links ?? []);
+                                setLegalInfo({ ...defaultLegalInfo, ...(page.legal_info ?? {}) });
+                                setWorkEducation({ ...defaultWork, ...savedWork } as Record<string, string>);
+                                setWorkCurrent(savedWork.current === true || savedWork.current === 'true');
+                                setEducationState({ ...defaultEducation, ...savedEducation } as Record<string, string>);
+                                setEducationCurrent(savedEducation.current === true || savedEducation.current === 'true');
+                                setFamilyMembers(page.family_members ?? []);
+                                setNewMemberName('');
+                                setNewMemberRelation('Family');
+                                setFamilySearchQuery('');
+                                setFamilySearchResults([]);
+                                setFamilySearchIdx(null);
+                              }}
+                            >
                               Cancel
                             </Button>
                             <Button variant="default" size="sm" onClick={() => { handleSave(); setAboutEditing(false); }} disabled={saving}>
@@ -1106,7 +1138,7 @@ const PageDetail = () => {
                                       onClick={async () => {
                                         const convId = await getOrCreateDM(c.id);
                                         if (convId && page?.id) {
-                                          await gateway.from('conversations').update({ page_id: page.id }).eq('id', convId).maybeSingle();
+                                          await dataClient.from('conversations').update({ page_id: page.id }).eq('id', convId).maybeSingle();
                                           navigate(`/messages/${convId}`);
                                         }
                                       }}

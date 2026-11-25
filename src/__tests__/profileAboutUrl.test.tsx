@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 
-// The About section composes many gateway-backed editors. These tests only care
+// The About section composes many dataClient-backed editors. These tests only care
 // that the subsection navigation is URL-driven, so the data layer and the heavy
 // section bodies are stubbed.
-vi.mock('@/lib/gateway', () => {
+vi.mock('@/lib/supabase/dataClient', () => {
   const makeBuilder = () => {
     const builder: Record<string, unknown> = {
       select: () => builder,
@@ -20,7 +20,7 @@ vi.mock('@/lib/gateway', () => {
     };
     return builder;
   };
-  return { gateway: { from: () => makeBuilder() } };
+  return { dataClient: { from: () => makeBuilder() } };
 });
 
 vi.mock('@/hooks/useProfile', () => {
@@ -123,6 +123,13 @@ async function waitForPath(path: string) {
   await waitFor(() => expect(screen.getByTestId('path').textContent).toBe(path));
 }
 
+// Rendering the real ProfilePage pulls in a large module graph. Under parallel
+// Vitest workers the first render can exceed Testing Library's 1s default,
+// which is a harness timing artifact, not a navigation regression.
+async function findTestId(id: string) {
+  return screen.findByTestId(id, undefined, { timeout: 3000 });
+}
+
 describe('About subsection URL navigation', () => {
   beforeEach(() => {
     getProfileByUsername.mockReset();
@@ -132,7 +139,7 @@ describe('About subsection URL navigation', () => {
   it('renders every required label at the /about URL', async () => {
     renderProfile('/profile/test/about');
 
-    await screen.findByTestId('about-overview');
+    await findTestId('about-overview');
     expect(screen.getByTestId('path').textContent).toBe('/profile/test/about');
     for (const { label } of ABOUT_SECTIONS) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
@@ -142,7 +149,7 @@ describe('About subsection URL navigation', () => {
 
   it('changes the URL and only the About content, without refetching', async () => {
     renderProfile('/profile/test/about');
-    await screen.findByTestId('about-overview');
+    await findTestId('about-overview');
 
     fireEvent.click(screen.getByRole('button', { name: 'Contact Information' }));
     await waitForPath('/profile/test/about/contactInformation');
@@ -163,14 +170,14 @@ describe('About subsection URL navigation', () => {
   it('deep-links straight into a subsection', async () => {
     renderProfile('/profile/test/about/relationships');
 
-    await screen.findByTestId('about-family');
+    await findTestId('about-family');
     expect(screen.getByTestId('path').textContent).toBe('/profile/test/about/relationships');
     expect(getProfileByUsername).toHaveBeenCalledTimes(1);
   });
 
   it('keeps URL and content in sync on browser back', async () => {
     renderProfile('/profile/test/about');
-    await screen.findByTestId('about-overview');
+    await findTestId('about-overview');
 
     fireEvent.click(screen.getByRole('button', { name: 'Contact Information' }));
     await waitForPath('/profile/test/about/contactInformation');
@@ -192,13 +199,13 @@ describe('About subsection URL navigation', () => {
   it('redirects an unknown subsection back to Overview', async () => {
     renderProfile('/profile/test/about/bogus');
 
-    await screen.findByTestId('about-overview');
+    await findTestId('about-overview');
     await waitForPath('/profile/test/about');
   });
 
   it('opens About (Overview) when the main About tab is clicked', async () => {
     renderProfile('/profile/test');
-    await screen.findByTestId('profile-header');
+    await findTestId('profile-header');
 
     // Radix tabs activate on mousedown, not click.
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'About' }));

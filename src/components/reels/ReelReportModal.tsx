@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { blockingApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 import { useHiddenContent } from '@/hooks/useHiddenContent';
@@ -122,7 +122,7 @@ const ReelReportModal = ({
     (async () => {
       console.log('[REPORT] resolving post owner', { post_id: reelId, post_type: postType });
 
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('posts')
         .select('user_id')
         .eq('id', reelId)
@@ -222,7 +222,7 @@ const ReelReportModal = ({
       } else if (actionId === 'block-creator') {
         // Insert into blocks table
         console.log(`[BLOCK] Blocking user_id=${resolvedOwnerId}`);
-        const { data: { user } } = await gateway.auth.getUser();
+        const { data: { user } } = await dataClient.auth.getUser();
         if (!user) throw new Error('Not logged in');
 
         const { error } = await blockingApi.blockUser(user.id, resolvedOwnerId!, 'full');
@@ -279,7 +279,7 @@ const ReelReportModal = ({
 
     setIsSubmitting(true);
     try {
-      const { data: { user } } = await gateway.auth.getUser();
+      const { data: { user } } = await dataClient.auth.getUser();
       if (!user) {
         toast({
           title: 'Error',
@@ -333,7 +333,7 @@ const ReelReportModal = ({
         sub_reason: reportPayload.sub_reason,
       });
 
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('reported_posts')
         .insert(reportPayload)
         .select('id')

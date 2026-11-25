@@ -1,12 +1,22 @@
-// End-to-end gateway client integration for the friend-request lifecycle.
-// Simulates the gateway (server ignores filters; client does local filtering /
+// End-to-end dataClient client integration for the friend-request lifecycle.
+// Simulates the dataClient (server ignores filters; client does local filtering /
 // join resolution) to verify that after the receiver accepts:
 //   - the accept UPDATE persists,
 //   - the sender's status query (or=(and(...),and(...))) returns 'accepted',
 //   - the sender's friends-list join query returns the friend.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, expect, beforeEach, it, vi } from 'vitest';
+import { clearCurrentAccessToken, setCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import {
+  applyPostgrestFilters,
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  jsonResponse,
+  postgrestTable,
+  prefersObjectResponse,
+  shapePostgrestRows,
+} from './infraFixtures';
 
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 const SENDER = 'sender-uuid-0001';
 const RECEIVER = 'receiver-uuid-0002';
@@ -21,47 +31,51 @@ function makeInMemoryDb() {
   ];
   return {
     friends,
-    handle(req: { url: string; method?: string; body?: unknown }) {
-      const url = new URL(req.url, 'http://mock.test');
+    handle(req: { url: string; method?: string; body?: unknown; single?: boolean }) {
+      const table = postgrestTable(req.url);
       const method = req.method || 'GET';
-      const path = url.pathname;
+      const apply = (rows: any[]) => shapePostgrestRows(applyPostgrestFilters(rows, req.url), req.single);
+      const profiles = [senderProfile, receiverProfile];
 
-      if (path === '/api/friends') {
+      if (table === 'friends') {
         if (method === 'GET') {
-          return { status: 200, json: friends };
+          const rows = applyPostgrestFilters(friends, req.url) as any[];
+          // PostgREST performs the embed server-side; model it here so the
+          // client is exercised against the same row shape it receives live.
+          const select = new URL(req.url).searchParams.get('select') ?? '';
+          const embedded = select.includes('requester_profile')
+            ? rows.map((row) => ({
+                ...row,
+                requester_profile: profiles.find((p) => p.id === row.requester_id) ?? null,
+                receiver_profile: profiles.find((p) => p.id === row.receiver_id) ?? null,
+              }))
+            : rows;
+          return { status: 200, json: shapePostgrestRows(embedded, req.single) };
         }
         if (method === 'POST') {
           const row = { id: 'new-' + friends.length, ...(req.body as object), created_at: '2026-01-01T00:00:00Z' };
           friends.push(row as any);
-          return { status: 201, json: row };
+          return { status: 201, json: shapePostgrestRows([row], req.single) };
+        }
+        if (method === 'PATCH') {
+          const id = new URL(req.url).searchParams.get('id')?.replace(/^eq\./, '');
+          const row = friends.find((f) => f.id === id);
+          if (!row) return { status: 404, json: { error: 'not found' } };
+          Object.assign(row, req.body);
+          return { status: 200, json: shapePostgrestRows([row], req.single) };
         }
       }
 
-      const putMatch = path.match(/^\/api\/v1\/friends\/([^/]+)$/);
-      if (method === 'PUT' && putMatch) {
-        const id = putMatch[1];
-        const row = friends.find((f) => f.id === id);
-        if (!row) return { status: 404, json: { error: 'not found' } };
-        Object.assign(row, req.body);
-        return { status: 200, json: row };
-      }
+      if (table === 'profiles') return { status: 200, json: apply(profiles) };
+      if (table === 'followers') return { status: 200, json: shapePostgrestRows([], req.single) };
 
-      if (path === '/api/profiles') {
-        return { status: 200, json: [senderProfile, receiverProfile] };
-      }
-
-      if (path === '/api/followers') {
-        return { status: 200, json: [] };
-      }
-
-      return { status: 404, json: { error: `no mock route for ${method} ${path}` } };
+      return { status: 404, json: { error: `no mock route for ${method} ${table}` } };
     },
   };
 }
 
 beforeEach(() => {
-  localStorage.clear();
-  localStorage.setItem('tone-auth-token', JSON.stringify({ access_token: 'test-token', refresh_token: 'test-refresh' }));
+  setCurrentAccessToken('test-token');
 
   const db = makeInMemoryDb();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -69,21 +83,21 @@ beforeEach(() => {
     const method = init?.method || 'GET';
     let body: unknown = undefined;
     if (init?.body) body = JSON.parse(init.body as string);
-    const resp = db.handle({ url, method, body });
-    return {
-      ok: resp.status < 400,
-      status: resp.status,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      json: async () => resp.json,
-    } as Response;
+    if (isInfraRegistryRequest(input)) return infraRegistryResponse();
+    const resp = db.handle({ url, method, body, single: prefersObjectResponse(init) });
+    return jsonResponse(resp.status, resp.json);
   });
   (globalThis as any).fetch = fetchMock;
 });
 
-describe('friend request lifecycle via gateway', () => {
+afterEach(() => {
+  clearCurrentAccessToken();
+});
+
+describe('friend request lifecycle via dataClient', () => {
   it('receiver accept persists and sender sees ACCEPTED status', async () => {
     // Receiver accepts the pending request.
-    const { data: updated, error } = await gateway
+    const { data: updated, error } = await dataClient
       .from('friends')
       .update({ status: 'accepted' })
       .eq('id', ROW_ID)
@@ -94,7 +108,7 @@ describe('friend request lifecycle via gateway', () => {
     expect(updated?.status).toBe('accepted');
 
     // Sender's status query should now return that friendship as accepted.
-    const { data: friendship, error: fErr } = await gateway
+    const { data: friendship, error: fErr } = await dataClient
       .from('friends')
       .select('*')
       .or(`and(requester_id.eq.${SENDER},receiver_id.eq.${RECEIVER}),and(requester_id.eq.${RECEIVER},receiver_id.eq.${SENDER})`)
@@ -106,9 +120,9 @@ describe('friend request lifecycle via gateway', () => {
   });
 
   it('sender friends-list join query returns the friend after accept', async () => {
-    await gateway.from('friends').update({ status: 'accepted' }).eq('id', ROW_ID).select().single();
+    await dataClient.from('friends').update({ status: 'accepted' }).eq('id', ROW_ID).select().single();
 
-    const { data, error } = await gateway
+    const { data, error } = await dataClient
       .from('friends')
       .select(`
         *,
@@ -129,10 +143,10 @@ describe('friend request lifecycle via gateway', () => {
   });
 
   it('receiver viewing sender page sees ACCEPTED, not Add Friend', async () => {
-    await gateway.from('friends').update({ status: 'accepted' }).eq('id', ROW_ID).select().single();
+    await dataClient.from('friends').update({ status: 'accepted' }).eq('id', ROW_ID).select().single();
 
     // Receiver (current user) visits the SENDER's profile page.
-    const { data: friendship, error } = await gateway
+    const { data: friendship, error } = await dataClient
       .from('friends')
       .select('*')
       .or(`and(requester_id.eq.${RECEIVER},receiver_id.eq.${SENDER}),and(requester_id.eq.${SENDER},receiver_id.eq.${RECEIVER})`)
@@ -146,10 +160,10 @@ describe('friend request lifecycle via gateway', () => {
   });
 
   it('receiver friends tab (fetchFriends logic) returns the sender as a friend', async () => {
-    await gateway.from('friends').update({ status: 'accepted' }).eq('id', ROW_ID).select().single();
+    await dataClient.from('friends').update({ status: 'accepted' }).eq('id', ROW_ID).select().single();
 
     const profileId = RECEIVER;
-    const { data: friendsData } = await gateway
+    const { data: friendsData } = await dataClient
       .from('friends')
       .select('created_at, requester_id, receiver_id')
       .or(`requester_id.eq.${profileId},receiver_id.eq.${profileId}`)
@@ -161,7 +175,7 @@ describe('friend request lifecycle via gateway', () => {
     const friendId = friendship.requester_id === profileId ? friendship.receiver_id : friendship.requester_id;
     expect(friendId).toBe(SENDER);
 
-    const { data: profilesData } = await gateway
+    const { data: profilesData } = await dataClient
       .from('profiles')
       .select('id, username, display_name, profile_pic')
       .in('id', [friendId]);

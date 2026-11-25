@@ -1,5 +1,5 @@
-import { gateway } from './client';
-import type { ApiResult } from './client';
+import { dataClient } from '@/lib/supabase/dataClient';
+import type { ApiResult } from '@/lib/supabase/dataClient';
 
 export type ExploreMediaType = 'photo' | 'video' | 'reel';
 
@@ -99,7 +99,7 @@ export function matchesCategory(post: ExplorePost, category: ExplorePostCategory
 }
 
 export async function getExplorePostsData(): Promise<ApiResult<ExplorePost[]>> {
-  return gateway.from('posts').select(EXPLORE_POST_SELECT)
+  return dataClient.from('posts').select(EXPLORE_POST_SELECT)
     .eq('status', 'published')
     .not('media_url', 'is', null)
     .neq('media_url', '')

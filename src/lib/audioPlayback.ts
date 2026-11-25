@@ -2,7 +2,7 @@
 //
 // Voice messages are recorded with the browser's MediaRecorder — WebM/Opus on
 // Chrome/Edge/Firefox, MP4/AAC on Safari — and stored on Cloudinary via the
-// gateway. Some browsers' <audio> element cannot decode the recorded container
+// dataClient. Some browsers' <audio> element cannot decode the recorded container
 // at all; the classic case is Safari/iOS, which cannot play WebM/Opus, so
 // HTMLMediaElement.play() rejects with NotSupportedError and the UI surfaces
 // "Failed to play audio" even though the URL loaded fine.
@@ -53,8 +53,8 @@ const CLOUDINARY_DELIVERY_RE =
   /^(https:\/\/res\.cloudinary\.com\/[^/]+\/[^/]+\/upload\/)((?:v\d+\/)?tone\/.+)$/;
 
 // Legacy voice-message rows (sent before audio_url was persisted) and any row
-// whose CDN URL is missing resolve through the gateway fallback form below.
-// The gateway's GET /storage/:bucket/* redirects that URL to the reconstructed
+// whose CDN URL is missing resolve through the dataClient fallback form below.
+// The dataClient's GET /storage/:bucket/* redirects that URL to the reconstructed
 // Cloudinary asset; appending ?format=mp3 makes it redirect to an f_mp3
 // conversion of the SAME asset instead.
 function isGatewayStorageUrl(url: string): boolean {
@@ -68,7 +68,7 @@ function alreadyConverted(url: string): boolean {
 /**
  * Resolve the URL used for <audio> playback. When the recorded mime is not
  * playable in this browser (e.g. WebM/Opus in Safari), fall through to
- * toConvertedUrl() (f_mp3 on Cloudinary URLs, ?format=mp3 on gateway URLs).
+ * toConvertedUrl() (f_mp3 on Cloudinary URLs, ?format=mp3 on dataClient URLs).
  * URLS whose mime the browser can already play are never touched.
  */
 export function voicePlaybackUrl(
@@ -95,8 +95,8 @@ export function voiceFileExtension(mime: string): string {
 
 /**
  * Uppercase the Cloudinary delivery URL of the same asset: direct delivery
- * URLs get an f_mp3 transformation inserted, gateway /api/storage/* fallback
- * URLs get ?format=mp3 so the gateway's redirect serves f_mp3. Already-
+ * URLs get an f_mp3 transformation inserted, dataClient /api/storage/* fallback
+ * URLs get ?format=mp3 so the dataClient's redirect serves f_mp3. Already-
  * converted URLs are returned unchanged. Used both by voicePlaybackUrl (static
  * canPlayType check) and as a runtime recovery when play() rejects with
  * NotSupportedError on a browser that claimed WebM support (Chrome/Brave).

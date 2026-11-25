@@ -1,16 +1,23 @@
 // Regression: the Friends API used to emit a malformed PostgREST logic tree.
 //
-// `gateway.from('friends').or('requester_id=eq.<id>,receiver_id=eq.<id>')` is
-// forwarded verbatim by the Gateway to Supabase's `.or()`. PostgREST only
-// accepts `column.operator.value` (dot) conditions inside `or=(...)` — see
+// `dataClient.from('friends').or('requester_id=eq.<id>,receiver_id=eq.<id>')`
+// produces an invalid PostgREST logic tree: PostgREST only accepts
+// `column.operator.value` (dot) conditions inside `or=(...)` — see
 // https://docs.postgrest.org/en/stable/references/api/tables_views.html#logical-operators
-// — so the tree failed to parse, the Gateway swallowed the 400 and answered
-// `[]`, and the "Invite friends to this group" dialog showed no friends.
+// — so the request 400s and the caller sees no friends.
 //
 // This test speaks to a mock server that parses the logic tree the way
 // PostgREST does, so an `=eq.` regression fails here instead of silently
 // rendering an empty dialog.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { clearCurrentAccessToken, setCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import {
+  applyPostgrestFilters,
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  jsonResponse,
+  postgrestTable,
+} from './infraFixtures';
 
 import { usersApi } from '@/api';
 
@@ -26,45 +33,42 @@ let requestedUrls: string[] = [];
 
 beforeEach(() => {
   requestedUrls = [];
-  localStorage.clear();
-  localStorage.setItem('tone-auth-token', JSON.stringify({ access_token: 'tok', refresh_token: 'ref' }));
+  setCurrentAccessToken('tok');
 
   (globalThis as any).fetch = vi.fn(async (input: RequestInfo | URL) => {
+    if (isInfraRegistryRequest(input)) return infraRegistryResponse();
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     requestedUrls.push(url);
 
-    const filters = new URL(url).searchParams.getAll('filter');
     // PostgREST logic trees use `column.operator.value`; a `column=operator.`
-    // clause inside `or=` is unparseable and the request 400s.
-    const malformed = filters.some((f) => /^or=/.test(f) && /[A-Za-z0-9_]+=[a-z]+\./.test(f));
-    if (malformed) {
-      return {
-        ok: false,
-        status: 400,
-        headers: new Headers({ 'content-type': 'application/json' }),
-        json: async () => ({ message: 'failed to parse logic tree' }),
-      } as Response;
+    // clause inside the `or` parameter is unparseable and the request 400s.
+    const orTree = new URL(url).searchParams.get('or');
+    if (orTree && /[A-Za-z0-9_]+=[a-z]+\./.test(orTree)) {
+      return jsonResponse(400, { message: 'failed to parse logic tree' });
     }
 
-    return {
-      ok: true,
-      status: 200,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      json: async () => FRIENDS,
-    } as Response;
+    // Direct Supabase applies filters server-side; mirror that so the mock
+    // represents a real PostgREST response rather than the old Gateway's
+    // whole-table reply that the client used to filter locally.
+    if (postgrestTable(url) !== 'friends') return jsonResponse(404, { error: `no mock route for ${new URL(url).pathname}` });
+    return jsonResponse(200, applyPostgrestFilters(FRIENDS, url));
   });
 });
 
 afterEach(() => {
+  clearCurrentAccessToken();
   vi.restoreAllMocks();
 });
 
 describe('Friends API `or=` filter is a valid PostgREST logic tree', () => {
-  it("uses dot notation so the Gateway/PostgREST returns the viewer's friendships", async () => {
+  it("uses dot notation so PostgREST returns the viewer's friendships", async () => {
     const { data, error } = await usersApi.getFriendsByUser(VIEWER);
 
     const orFilter = requestedUrls
-      .flatMap((u) => new URL(u).searchParams.getAll('filter'))
+      .flatMap((u) => {
+        const tree = new URL(u).searchParams.get('or');
+        return tree ? [`or=${tree}`] : [];
+      })
       .find((f) => f.startsWith('or='));
 
     expect(orFilter).toBe(`or=(requester_id.eq.${VIEWER},receiver_id.eq.${VIEWER})`);

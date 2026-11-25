@@ -70,8 +70,8 @@ vi.mock('@/hooks/useAuth', async () => {
   };
 });
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     rpc: async (fn: string) => {
       if (fn !== 'get_unread_conversation_ids') throw new Error(`unexpected rpc: ${fn}`);
       state.unreadRpcCalls += 1;
@@ -85,7 +85,7 @@ vi.mock('@/lib/gateway', () => ({
           state.slowGate = resolve as unknown as () => void;
         });
       }
-      if (state.readFails) return { data: null, error: { message: 'gateway down' } };
+      if (state.readFails) return { data: null, error: { message: 'dataClient down' } };
       return { data: { hasOnlineFriend: state.online, offlineAt: state.offlineAt }, error: null };
     },
   },
@@ -574,7 +574,7 @@ describe('failure handling and mobile-only scope', () => {
       state.presence.forEach((h) => h({}));
     });
     await waitFor(() => expect(state.onlineCalls).toBe(2));
-    // A gateway blip must not retract a dot the user is looking at.
+    // A dataClient blip must not retract a dot the user is looking at.
     expect(dot(container)).not.toBeNull();
   });
 

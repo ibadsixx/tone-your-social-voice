@@ -27,7 +27,7 @@ import { resolveMediaSrc } from '@/lib/mediaUrl';
 
 export type PublicContentKind = 'post' | 'reel' | 'photo';
 
-// MUST match gateway/src/features/sitemap.ts PUBLIC_CONTENT_PATH_PREFIX and the
+// MUST match dataClient/src/features/sitemap.ts PUBLIC_CONTENT_PATH_PREFIX and the
 // routes in src/App.tsx. A drift between the sitemap and the router would emit
 // URLs that 404, so all three are asserted against these same literals.
 export const PUBLIC_CONTENT_PATH_PREFIX: Record<PublicContentKind, string> = {

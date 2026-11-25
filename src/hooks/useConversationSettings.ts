@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 
 export interface ConversationSettings {
@@ -19,7 +19,7 @@ export interface ConversationSettings {
 
 const getCurrentUserId = async (): Promise<string | null> => {
   try {
-    const { data } = await gateway.auth.getUser();
+    const { data } = await dataClient.auth.getUser();
     return data?.user?.id ?? null;
   } catch {
     return null;
@@ -39,7 +39,7 @@ export const useConversationSettings = (conversationId?: string) => {
       const userId = await getCurrentUserId();
       if (!userId) throw new Error('Not authenticated');
 
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('conversation_settings')
         .select('*')
         .eq('conversation_id', conversationId)
@@ -53,7 +53,7 @@ export const useConversationSettings = (conversationId?: string) => {
         return;
       }
 
-      const { data: created, error: createError } = await gateway
+      const { data: created, error: createError } = await dataClient
         .from('conversation_settings')
         .insert({ conversation_id: conversationId, user_id: userId })
         .maybeSingle();
@@ -75,7 +75,7 @@ export const useConversationSettings = (conversationId?: string) => {
     if (!conversationId || !settings) return null;
 
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('conversation_settings')
         .update(patch)
         .eq('id', settings.id)
@@ -162,7 +162,7 @@ export const useConversationSettings = (conversationId?: string) => {
     }
 
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('conversations')
         .update({ chat_theme: themeId })
         .eq('id', conversationId);
@@ -245,17 +245,17 @@ export const useConversationReport = () => {
     details?: string
   ) => {
     try {
-      const { data: { user } } = await gateway.auth.getUser();
+      const { data: { user } } = await dataClient.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Delete any existing report first to allow re-reporting with new reason
-      await gateway
+      await dataClient
         .from('conversation_reports')
         .delete()
         .eq('conversation_id', conversationId)
         .eq('reporter_id', user.id);
 
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('conversation_reports')
         .insert({
           conversation_id: conversationId,

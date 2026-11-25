@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { isPostVisibleToViewer, loadFriendIds, type PostVisibilityFields } from '@/lib/postVisibility';
@@ -56,7 +56,7 @@ export const useSavedPostsList = () => {
 
     try {
       setLoading(true);
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('saved_posts')
         .select(`
           created_at,

@@ -6,13 +6,14 @@
 // symptom to clear, and each of them is asserted here:
 //
 //   1. THE WRITE NEVER RAN. `usePresence` heartbeated by calling the database
-//      function `update_last_seen()` via `gateway.rpc('update_last_seen')`.
+//      function `update_last_seen()` via `dataClient.rpc('update_last_seen')`.
 //      Measured against production before the fix, 28 of 29 profiles had
 //      `last_seen_at` exactly equal to `created_at` - the column's INSERT default.
 //      Nobody had ever been marked online. The dot was gray because there was
 //      never anything to draw, not because the comparison was wrong.
-//      Asserted as: the heartbeat goes to `POST /api/presence/heartbeat`, and
-//      `update_last_seen` is gone from the source tree entirely.
+//      Asserted as: the heartbeat is delegated to the `presence` Edge Function
+//      with `action: 'heartbeat'`, and `update_last_seen` is gone from the
+//      source tree entirely.
 //
 //   2. THE WRITER WAS MOUNTED ON A PAGE. The heartbeat lived in
 //      `pages/Messages.tsx`, so navigating to Home stopped it and the user began
@@ -40,8 +41,8 @@ import { join } from 'node:path';
 const presenceHeartbeat = vi.fn();
 const rpc = vi.fn();
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     presenceHeartbeat: () => presenceHeartbeat(),
     rpc: (...args: unknown[]) => rpc(...args),
   },
@@ -75,7 +76,7 @@ const flush = async () => {
  * wrong reason:
  *
  *   - a `//` inside a string literal (a URL) would truncate the rest of the line
- *   - a regex literal containing a quote - `/^['"]|['"]$/g` in lib/gateway.ts -
+ *   - a regex literal containing a quote - `/^['"]|['"]$/g` in lib/dataClient.ts -
  *     would be mistaken for the start of a string, and every comment after it
  *     would be read as string content
  *
@@ -213,8 +214,8 @@ describe('the freshness window vs background-tab timer throttling', () => {
 
   it('keeps the heartbeat cheap - not a per-second poll', () => {
     // do.md: do not add polling if a realtime mechanism exists. None does (see
-    // the GatewayChannel note below), so a 30s heartbeat is the architecture -
-    // but it still must not become a tight loop.
+    // the local-channel note in presenceLogout.test.tsx), so a 30s heartbeat is
+    // the architecture - but it still must not become a tight loop.
     expect(POLL_INTERVAL_MS).toBeGreaterThanOrEqual(15_000);
   });
 });
@@ -238,12 +239,12 @@ describe('usePresence - the write path', () => {
     expect(presenceHeartbeat).toHaveBeenCalledTimes(1);
   });
 
-  it('goes through the gateway endpoint, not the dead database function', async () => {
+  it('goes through the dataClient endpoint, not the dead database function', async () => {
     renderHook(() => usePresence('me'));
     await flush();
     expect(presenceHeartbeat).toHaveBeenCalled();
     // The specific regression: the old implementation heartbeat by
-    // `gateway.rpc('update_last_seen')`, which silently wrote nothing.
+    // `dataClient.rpc('update_last_seen')`, which silently wrote nothing.
     expect(rpc).not.toHaveBeenCalled();
   });
 
@@ -442,12 +443,17 @@ describe('there is still only one presence store', () => {
     expect(offenders.map((f) => f.slice(SRC.length + 1))).toEqual([]);
   });
 
-  it('reads the same last_seen_at the gateway writes', () => {
-    const gatewayClient = read('lib/gateway.ts');
-    expect(gatewayClient).toContain('/api/presence/heartbeat');
-    // No-store, because a cached 200 would report "you are online" for as long
-    // as the entry lived.
-    expect(gatewayClient).toMatch(/cache:\s*'no-store'/);
+  it('reads the same last_seen_at the dataClient writes', () => {
+    // The heartbeat is an authenticated POST to the presence Edge Function;
+    // POST responses are not cached, so a stale "you are online" cannot outlive
+    // the write the way a cached GET could.
+    const dataClientSource = read('lib/supabase/dataClient.ts');
+    expect(dataClientSource).toMatch(
+      /presenceHeartbeat\(\)\s*\{\s*return callEdgeFunction<[^>]*>\('presence',\s*\{\s*action:\s*'heartbeat'\s*\}\)/,
+    );
+    const transport = read('lib/supabase/crossProject.ts');
+    expect(transport).toMatch(/method:\s*'POST'/);
+    expect(transport).toMatch(/Authorization:\s*`Bearer \$\{token\}`/);
   });
 
   it('leaves the message-request presence privacy rule intact', () => {

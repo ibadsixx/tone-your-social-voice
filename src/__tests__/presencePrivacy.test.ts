@@ -4,7 +4,7 @@
 // them (in EITHER direction), neither may see the other's online / last-seen /
 // presence state. Acceptor status resumes presence. This tests the pure,
 // reusable logic that backs both the frontend display gate
-// (usePresencePrivacy) and the gateway redaction.
+// (usePresencePrivacy) and the dataClient redaction.
 import { describe, it, expect } from 'vitest';
 
 import {

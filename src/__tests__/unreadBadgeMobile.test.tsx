@@ -60,8 +60,8 @@ vi.mock('@/hooks/useAuth', async () => {
   };
 });
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     rpc: async (fn: string) => {
       if (fn !== 'get_unread_conversation_ids') throw new Error(`unexpected rpc: ${fn}`);
       return { data: state.serverSet, error: null };

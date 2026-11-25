@@ -9,7 +9,7 @@ import { MemoryRouter } from 'react-router-dom';
 import EditorPublish, { normalizeAudience } from '@/pages/EditorPublish';
 import { defaultPublishSettings } from '@/types/editor';
 
-// Hoisted so the gateway mock factory (executed at import time) can read it.
+// Hoisted so the dataClient mock factory (executed at import time) can read it.
 // `auth` must stay referentially stable — a fresh object per render would make
 // EditorPublish's `user`-dependent effect re-run loadProject forever.
 const hoisted = vi.hoisted(() => ({
@@ -31,7 +31,7 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn(), dismiss: vi.fn(), toasts: [] }),
 }));
 
-vi.mock('@/lib/gateway', () => {
+vi.mock('@/lib/supabase/dataClient', () => {
   const methods = [
     'select', 'eq', 'neq', 'or', 'ilike', 'in', 'not', 'order', 'limit',
     'gte', 'lte', 'contains', 'textSearch', 'update', 'insert', 'delete',
@@ -45,7 +45,7 @@ vi.mock('@/lib/gateway', () => {
     return builder;
   };
   return {
-    gateway: {
+    dataClient: {
       from: (table: string) => {
         const data = table === 'editor_projects' ? { ...hoisted.project } : null;
         return chain(data);

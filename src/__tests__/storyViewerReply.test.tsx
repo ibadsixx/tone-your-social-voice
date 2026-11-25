@@ -13,8 +13,8 @@
 //  5. The reply input is NOT shown to the story owner viewing their own story.
 //
 // Heavy child components (analytics, archive, highlight dialog, media, etc.)
-// and the gateway client are mocked; the reply send path is asserted by
-// inspecting the gateway mock calls. Note: the repo does not load
+// and the dataClient client are mocked; the reply send path is asserted by
+// inspecting the dataClient mock calls. Note: the repo does not load
 // @testing-library/jest-dom, so plain matchers are used.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -23,7 +23,7 @@ import type { ReactNode } from 'react';
 
 import StoryViewer from '@/components/StoryViewer';
 import type { Story } from '@/hooks/useStories';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 // Control the signed-in user per test (viewer vs owner).
 const auth = vi.hoisted(() => ({
@@ -85,8 +85,8 @@ vi.mock('@/hooks/useStoryReactions', () => ({
   }),
 }));
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     rpc: vi.fn(async () => ({ data: 'conv-1', error: null })),
     from: vi.fn(() => ({
       insert: vi.fn(async () => ({ error: null })),
@@ -220,17 +220,17 @@ describe('StoryViewer reply input (viewer only)', () => {
     fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
 
     await waitFor(() => {
-      expect(gateway.rpc).toHaveBeenCalledWith('get_or_create_dm', {
+      expect(dataClient.rpc).toHaveBeenCalledWith('get_or_create_dm', {
         p_user_a: 'viewer-1',
         p_user_b: 'owner-1',
       });
     });
 
     await waitFor(() => {
-      expect(gateway.from).toHaveBeenCalledWith('messages');
+      expect(dataClient.from).toHaveBeenCalledWith('messages');
     });
 
-    const insertMock = (gateway.from as ReturnType<typeof vi.fn>).mock.results[0].value.insert;
+    const insertMock = (dataClient.from as ReturnType<typeof vi.fn>).mock.results[0].value.insert;
     expect(insertMock).toHaveBeenCalledWith({
       conversation_id: 'conv-1',
       sender_id: 'viewer-1',

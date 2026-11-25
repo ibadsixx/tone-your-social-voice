@@ -12,6 +12,15 @@ verify_jwt = false
 [functions.transcribe-audio]
 verify_jwt = false
 
+# These functions verify the central Auth JWT in their own code. Platform-level
+# JWT verification would reject that cross-project token before the function
+# runs, so it must be disabled for these two deployments.
+[functions.feedTimeline]
+verify_jwt = false
+
+[functions.getProfile]
+verify_jwt = false
+
 [db]
 host = "localhost"
 port = 54323

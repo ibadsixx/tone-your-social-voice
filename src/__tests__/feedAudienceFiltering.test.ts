@@ -1,5 +1,5 @@
 // The Gateway filters every `posts` read by audience
-// (gateway/src/features/contentVisibility.ts), which is the real enforcement.
+// (dataClient/src/features/contentVisibility.ts), which is the real enforcement.
 // These tests pin the client-side layer that mirrors it on the surfaces the
 // Gateway cannot see as a *content* read: a mention row, a saved-post bookmark
 // and the Reels rail each join to `posts` from a table of their own, and the

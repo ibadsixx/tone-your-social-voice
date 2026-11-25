@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 
@@ -18,7 +18,7 @@ export const useHashtagFollow = (hashtagTag: string) => {
 
       try {
         // First get the hashtag ID
-        const { data: hashtagData } = await gateway
+        const { data: hashtagData } = await dataClient
           .from('hashtags' as any)
           .select('id')
           .eq('tag', hashtagTag.toLowerCase())
@@ -32,7 +32,7 @@ export const useHashtagFollow = (hashtagTag: string) => {
         setHashtagId((hashtagData as any).id);
 
         // Check if user is following this hashtag
-        const { data } = await gateway
+        const { data } = await dataClient
           .from('hashtag_follows' as any)
           .select('id')
           .eq('user_id', user.id)
@@ -59,7 +59,7 @@ export const useHashtagFollow = (hashtagTag: string) => {
     try {
       if (isFollowing) {
         // Unfollow
-        const { error } = await gateway
+        const { error } = await dataClient
           .from('hashtag_follows' as any)
           .delete()
           .eq('user_id', user.id)
@@ -71,7 +71,7 @@ export const useHashtagFollow = (hashtagTag: string) => {
         toast.success('Unfollowed hashtag');
       } else {
         // Follow
-        const { error } = await gateway
+        const { error } = await dataClient
           .from('hashtag_follows' as any)
           .insert({
             user_id: user.id,

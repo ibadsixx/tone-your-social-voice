@@ -124,8 +124,8 @@ const tableQuery = (table: string) => {
   return self;
 };
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     from: (table: string) => (table === 'posts' ? postsQuery({}) : tableQuery(table)),
     postReactionUsers: () =>
       Promise.resolve({
@@ -245,7 +245,7 @@ describe('the viewer renders the shared action components', () => {
     expect((await screen.findByTestId('share-modal')).getAttribute('data-post')).toBe(REEL_ID);
   });
 
-  it('shows the gateway reaction total through the shared picker', async () => {
+  it('shows the dataClient reaction total through the shared picker', async () => {
     await renderLoadedViewer();
 
     // Four reactions, none from the viewer, rendered by `StaticReactionIcon`
@@ -462,8 +462,11 @@ describe('sign-out drops the cached action state', () => {
     const { join } = await import('node:path');
     const src = readFileSync(join(__dirname, '..', 'hooks', 'useAuth.tsx'), 'utf8');
 
-    const clearAt = src.indexOf('clearPostActionsForUser');
-    const signOutAt = src.indexOf('gateway.auth.signOut()');
+    const clearAt = src.indexOf('clearPostActionsForUser(user?.id)');
+    // Central Auth is reached through the `centralSignOut` alias imported from
+    // `centralAuth`; the direct-Supabase facade no longer exposes an auth
+    // signOut call at this call site.
+    const signOutAt = src.indexOf('centralSignOut()');
     expect(clearAt).toBeGreaterThan(-1);
     expect(signOutAt).toBeGreaterThan(-1);
     // Reaction, save and comment state is cached for the length of a session, so

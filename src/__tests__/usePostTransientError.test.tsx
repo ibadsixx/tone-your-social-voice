@@ -15,18 +15,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 
 const mockGetPostById = vi.fn();
-const mockIsVisible = vi.fn(() => true);
-const mockLoadFriendIds = vi.fn(async () => new Set<string>());
+const mockIsVisible = vi.fn((_post: unknown, _viewerId: string, _friendIds: Set<string>) => true);
+const mockLoadFriendIds = vi.fn(async (_userId?: string) => new Set<string>());
 const mockToast = vi.fn();
 
+type GetPostByIdArgs = [postId: string];
+type LoadFriendIdsArgs = [userId?: string];
+type IsVisibleArgs = [post: unknown, viewerId: string, friendIds: Set<string>];
+
 vi.mock('@/api', () => ({
-  postsApi: { getPostById: (...args: unknown[]) => mockGetPostById(...args) },
+  postsApi: { getPostById: (...args: GetPostByIdArgs) => mockGetPostById(...args) },
 }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: null }) }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mockToast }) }));
 vi.mock('@/lib/postVisibility', () => ({
-  loadFriendIds: (...args: unknown[]) => mockLoadFriendIds(...args),
-  isPostVisibleToViewer: (...args: unknown[]) => mockIsVisible(...args),
+  loadFriendIds: (...args: LoadFriendIdsArgs) => mockLoadFriendIds(...args),
+  isPostVisibleToViewer: (...args: IsVisibleArgs) => mockIsVisible(...args),
 }));
 
 import { usePost } from '@/hooks/usePost';
@@ -133,7 +137,7 @@ describe('usePost state classification', () => {
   it('7. a transient error recovers on the bounded retry and the public post loads', async () => {
     await withFakeTimers(async () => {
       mockGetPostById
-        .mockResolvedValueOnce({ data: null, error: { message: 'gateway blip', code: '500' } })
+        .mockResolvedValueOnce({ data: null, error: { message: 'dataClient blip', code: '500' } })
         .mockResolvedValueOnce({ data: post(), error: null });
       const { result } = renderHook(() => usePost(UUID));
       await advanceRetry();
@@ -146,10 +150,10 @@ describe('usePost state classification', () => {
 
   it('7b. refetch after a transient error loads the post and clears the error', async () => {
     await withFakeTimers(async () => {
-      mockGetPostById.mockResolvedValue({ data: null, error: { message: 'gateway down', code: '502' } });
+      mockGetPostById.mockResolvedValue({ data: null, error: { message: 'dataClient down', code: '502' } });
       const { result } = renderHook(() => usePost(UUID));
       await advanceRetry();
-      expect(result.current.error).toBe('gateway down');
+      expect(result.current.error).toBe('dataClient down');
       expect(result.current.notFound).toBe(false);
 
       mockGetPostById.mockResolvedValue({ data: post(), error: null });

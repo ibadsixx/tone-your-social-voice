@@ -5,21 +5,30 @@
 // Request is created — and is never re-classified by each subsequent message
 // ("Don't let the category change with every message").
 //
-// The authoritative classifier is implemented in the GATEWAY
-// (gateway/src/features/messageRequestCategory.ts): the gateway computes the
-// category on insert for the sender/receiver pair. The client's
-// `ensureMessageRequest` always re-fuses every send through the same
-// check-before-create, so a later send that would suggest a different category
-// must NOT touch the existing row. The client fallback
-// (determineMessageRequestCategory) mirrors the EXACT messages.md rules against
-// actual accepted friendships, so this also encodes:
+// The category is decided exactly ONCE, on the first message-request insert.
+// `ensureMessageRequest` re-fuses every send through the same check-before-create,
+// so a later send that would suggest a different category must NOT touch the
+// existing row. The classifier (determineMessageRequestCategory) mirrors the
+// EXACT messages.md rules against actual accepted friendships, so this also
+// encodes:
 //   Test 1 — mutual friend C between A and B        -> you_may_know
 //   Test 2 — zero mutual friends                    -> spam
 // plus the spec sharpness rule that a PENDING friend request is NOT a
 // substitute for mutual friendship.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, expect, beforeEach, it, vi } from 'vitest';
+import { clearCurrentAccessToken, setCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import {
+  applyPostgrestFilters,
+  applyPostgrestOrder,
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  jsonResponse,
+  postgrestTable,
+  prefersObjectResponse,
+  shapePostgrestRows,
+} from './infraFixtures';
 
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { ensureMessageRequest, determineMessageRequestCategory } from '@/lib/messageRequests';
 
 export const __notifications: unknown[] = [];
@@ -35,14 +44,6 @@ const MUTUAL = 'mutual-friend-0001';
 
 let notifications: unknown[] = [];
 
-function applyServerFilter(rows: any[], filter: string | undefined): any[] {
-  if (!filter) return rows;
-  const eq = /^([^=]+)=eq\.(.+)$/.exec(filter);
-  if (eq) return rows.filter(r => String(r[eq[1]]) === eq[2]);
-  const neq = /^([^=]+)=neq\.(.+)$/.exec(filter);
-  if (neq) return rows.filter(r => String(r[neq[1]]) !== neq[2]);
-  return rows; // or=(...) etc. — additional eq filters below still narrow rows
-}
 
 function makeInMemoryDb(opts?: { friends?: any[]; restricted?: any[] }) {
   const messageRequests: any[] = [];
@@ -50,18 +51,12 @@ function makeInMemoryDb(opts?: { friends?: any[]; restricted?: any[] }) {
   const restricted: any[] = opts?.restricted ?? [];
 
   return {
-    handle(req: { url: string; method?: string; body?: unknown }) {
-      const url = new URL(req.url, 'http://mock.test');
+    handle(req: { url: string; method?: string; body?: unknown; single?: boolean }) {
+      const table = postgrestTable(req.url);
       const method = req.method || 'GET';
-      const path = url.pathname;
-      const filters = url.searchParams.getAll('filter');
-      const apply = (rows: any[]) => {
-        if (!filters.length) return rows;
-        if (filters.length === 1) return applyServerFilter(rows, filters[0]);
-        return rows.filter(r => filters.every(f => applyServerFilter([r], f).length > 0));
-      };
+      const apply = (rows: any[]) => shapePostgrestRows(applyPostgrestOrder(applyPostgrestFilters(rows, req.url), req.url), req.single);
 
-      if (path === '/api/message_requests') {
+      if (table === 'message_requests') {
         if (method === 'GET') {
           return { status: 200, json: messageRequests };
         }
@@ -84,15 +79,15 @@ function makeInMemoryDb(opts?: { friends?: any[]; restricted?: any[] }) {
         }
       }
 
-      if (path === '/api/friends') {
+      if (table === 'friends') {
         return { status: 200, json: apply(friends) };
       }
 
-      if (path === '/api/restricted_users') {
+      if (table === 'restricted_users') {
         return { status: 200, json: apply(restricted) };
       }
 
-      return { status: 404, json: { error: `no mock route for ${method} ${path}` } };
+      return { status: 404, json: { error: `no mock route for ${method} ${table}` } };
     },
     messageRequests,
   };
@@ -100,29 +95,29 @@ function makeInMemoryDb(opts?: { friends?: any[]; restricted?: any[] }) {
 
 function installDb(db: ReturnType<typeof makeInMemoryDb>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (isInfraRegistryRequest(input)) return infraRegistryResponse();
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method || 'GET';
     let body: unknown = undefined;
     if (init?.body) body = JSON.parse(init.body as string);
-    const resp = db.handle({ url, method, body });
-    return {
-      ok: resp.status < 400,
-      status: resp.status,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      json: async () => resp.json,
-    } as Response;
+    const resp = db.handle({ url, method, body, single: prefersObjectResponse(init) });
+    return jsonResponse(resp.status, resp.json);
   });
   (globalThis as any).fetch = fetchMock;
 }
 
 beforeEach(() => {
   localStorage.clear();
-  localStorage.setItem('tone-auth-token', JSON.stringify({ access_token: 'test-token', refresh_token: 'test-refresh' }));
+  setCurrentAccessToken('test-token');
   notifications = [];
 
   installDb(makeInMemoryDb());
   notifications = __notifications;
   __notifications.length = 0;
+});
+
+afterEach(() => {
+  clearCurrentAccessToken();
 });
 
 describe('fallback classification uses ACTUAL mutual accepted friendships (messages.md)', () => {
@@ -196,7 +191,7 @@ describe('Message Request category is decided once at first-request creation', (
       category: 'spam',
     });
 
-    const all = (await gateway.from('message_requests').select('*')).data || [];
+    const all = (await dataClient.from('message_requests').select('*')).data || [];
     expect(all).toHaveLength(1);
     expect(all[0]).toMatchObject({
       sender_id: SENDER,
@@ -211,7 +206,7 @@ describe('Message Request category is decided once at first-request creation', (
   });
 
   it('keeps the exact category written at creation when later messages send without one', async () => {
-    // First request carries the resolved (gateway-supplied) category.
+    // First request carries the resolved (dataClient-supplied) category.
     await ensureMessageRequest({
       senderId: SENDER,
       receiverId: RECEIVER,
@@ -223,7 +218,7 @@ describe('Message Request category is decided once at first-request creation', (
       await ensureMessageRequest({ senderId: SENDER, receiverId: RECEIVER });
     }
 
-    const all = (await gateway.from('message_requests').select('*')).data || [];
+    const all = (await dataClient.from('message_requests').select('*')).data || [];
     expect(all).toHaveLength(1);
     expect(all[0].status).toBe('pending');
     expect(all[0].category).toBe('spam');

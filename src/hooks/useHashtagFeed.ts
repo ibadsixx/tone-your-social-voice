@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { isPublicAudience } from '@/lib/postVisibility';
 import { fetchEngagementForPosts } from '@/lib/postEngagement';
 
@@ -54,7 +55,7 @@ export const useHashtagFeed = (tag: string) => {
         setLoading(true);
 
         // First, get the hashtag ID
-        const { data: hashtagData, error: hashtagError } = await gateway
+        const { data: hashtagData, error: hashtagError } = await dataClient
           .from('hashtags' as any)
           .select('id')
           .eq('tag', tag.toLowerCase())
@@ -67,7 +68,7 @@ export const useHashtagFeed = (tag: string) => {
         }
 
         // Get all post IDs linked to this hashtag
-        const { data: links, error: linksError } = await gateway
+        const { data: links, error: linksError } = await dataClient
           .from('hashtag_links' as any)
           .select('source_id')
           .eq('hashtag_id', (hashtagData as any).id)
@@ -87,7 +88,7 @@ export const useHashtagFeed = (tag: string) => {
         const postIds = (links as any[]).map((link: any) => link.source_id);
 
         // Fetch the actual posts
-        const { data: postsData, error: postsError } = await gateway
+        const { data: postsData, error: postsError } = await dataClient
           .from('posts')
           .select(`
             *,
@@ -124,7 +125,7 @@ export const useHashtagFeed = (tag: string) => {
 
         // Likes and comments for the whole page, in two round trips. These used
         // to be fetched per post, which re-read the whole `likes` and `comments`
-        // tables once per post because the gateway ignores filters.
+        // tables once per post because the dataClient ignores filters.
         const { likesByPostId, commentsByPostId } = await fetchEngagementForPosts(
           (postsData || []).map((post) => post.id)
         );

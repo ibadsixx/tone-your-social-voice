@@ -1,6 +1,6 @@
 // Group settings validation shared by the create dialog and the "About this
 // group" editor. Mirrors the authoritative checks in the API Gateway
-// (gateway/src/features/groupSettings.ts); the backend re-validates everything.
+// (dataClient/src/features/groupSettings.ts); the backend re-validates everything.
 
 export const GROUP_PRIVACY_VALUES = ['public', 'private', 'closed'] as const;
 export type GroupPrivacy = (typeof GROUP_PRIVACY_VALUES)[number];

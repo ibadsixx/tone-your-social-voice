@@ -6,7 +6,7 @@
 //  3. timeupdate advances the current-time half (`0:01 / 0:05` while playing).
 //  4. The readout never contains Infinity/NaN regardless of element state.
 //
-// The gateway client is mocked so loadAudioUrl resolves to a gateway fallback
+// The dataClient client is mocked so loadAudioUrl resolves to a dataClient fallback
 // URL (the legacy-row path exercises the same readout); jsdom's media element
 // never loads metadata, which is exactly the "duration not available yet"
 // scenario the spec asks to cover.
@@ -16,8 +16,8 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 
 import { MessageBubble, type Message } from '@/components/messages/MessageBubble';
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     storage: {
       from: () => ({
         getPublicUrl: (path: string) => ({
@@ -49,7 +49,7 @@ describe('MessageBubble voice time readout', () => {
   it('renders a single `current / duration` readout (0:00 / 0:05 before playback)', async () => {
     render(<MessageBubble message={LEGACY_VOICE} currentUserId="u2" />);
 
-    // loadAudioUrl resolves via the mocked gateway; the recorded duration is
+    // loadAudioUrl resolves via the mocked dataClient; the recorded duration is
     // shown while jsdom's element has no metadata yet.
     await waitFor(() => {
       expect(screen.getByText('0:00 / 0:05')).toBeTruthy();

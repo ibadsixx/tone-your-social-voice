@@ -1,4 +1,4 @@
-// Real-browser WebRTC test against the DEPLOYED Gateway and Supabase-backed
+// Real-browser WebRTC test against deployed Edge Functions and Supabase-backed
 // signaling. Tokens are injected into the page; they are never printed or put
 // in URLs. Uses fake media devices because no physical devices are available.
 
@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
 interface AuthContext {
-  gateway: string;
+  edgeBaseUrl: string;
   host: { id: string; token: string; email: string };
   viewer: { id: string; token: string; email: string };
   outsider: { id: string; token: string; email: string };
@@ -39,7 +39,7 @@ const auth: AuthContext = JSON.parse(readFileSync(AUTH_FILE, 'utf8'));
 let deployedSessionId = '';
 
 async function api(path: string, token: string, body?: unknown) {
-  const response = await fetch(`${auth.gateway}${path}`, {
+  const response = await fetch(`${auth.edgeBaseUrl}/functions/v1/live${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -54,7 +54,7 @@ async function api(path: string, token: string, body?: unknown) {
 }
 
 test.beforeAll(async () => {
-  const created = await api('/api/live/sessions', auth.host.token, {
+  const created = await api('/sessions', auth.host.token, {
     stream_type: 'video',
     title: `Phase 5 deployed browser test ${Date.now()}`,
     audience_type: 'public',
@@ -63,7 +63,7 @@ test.beforeAll(async () => {
   deployedSessionId = String(created.json.id);
 
   for (const token of [auth.viewer.token, auth.outsider.token]) {
-    const joined = await api(`/api/live/sessions/${deployedSessionId}/participants`, token, {});
+    const joined = await api(`/sessions/${deployedSessionId}/participants`, token, {});
     expect(joined.status).toBe(201);
   }
 });
@@ -87,7 +87,7 @@ async function openParticipant(
     user: user.id,
     role,
     media: 'video',
-    gateway: auth.gateway,
+    edgeBaseUrl: auth.edgeBaseUrl,
   });
   await page.goto(`/e2e/live-p2p-harness.html?${params.toString()}`, { waitUntil: 'domcontentloaded' });
   await expect.poll(() => status(page), { message: `${role}: harness started` }).not.toBeUndefined();
@@ -110,7 +110,11 @@ async function expectConnected(page: Page, label: string, expectedPeers: number)
   }, { message: `${label}: selected candidate pairs` }).toBe(expectedPeers);
 }
 
-test.describe('Tone Live deployed authenticated WebRTC', () => {
+// The old Gateway's session/participant CRUD endpoints no longer exist, and the
+// `live` Edge Function deliberately exposes only signaling tickets. This spec
+// needs a direct-Supabase harness rewrite before it can run again; skipping it
+// makes that external dependency explicit instead of suggesting a working API.
+test.describe.skip('Tone Live deployed authenticated WebRTC (needs direct-Supabase harness)', () => {
   test('two authenticated users connect, toggle devices, end, and leave', async ({ browser }) => {
     const host = await openParticipant(browser, auth.host, 'host');
     const viewer = await openParticipant(browser, auth.viewer, 'viewer');
@@ -136,7 +140,7 @@ test.describe('Tone Live deployed authenticated WebRTC', () => {
     await host.evaluate(() => (window as unknown as { __phase5Actions: { setVideoEnabled: (v: boolean) => void } }).__phase5Actions.setVideoEnabled(true));
     await expect.poll(async () => (await status(host)).localVideoEnabled, { message: 'camera on' }).toBe(true);
 
-    const ended = await api(`/api/live/sessions/${deployedSessionId}/end`, auth.host.token);
+    const ended = await api(`/sessions/${deployedSessionId}/end`, auth.host.token);
     expect(ended.status).toBe(200);
     await expect.poll(async () => (await status(host)).sessionEnded, { message: 'host saw session-ended' }).toBe(true);
     await expect.poll(async () => (await status(viewer)).sessionEnded, { message: 'viewer saw session-ended' }).toBe(true);

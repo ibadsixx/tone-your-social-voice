@@ -11,12 +11,23 @@
 // SENDER) was filtered out of A's own Chats. The fix also marks the other
 // participant of any request where A is the SENDER as visible.
 //
-// This drives the real gateway client + the real fetch/filter helpers against
+// This drives the real dataClient client + the real fetch/filter helpers against
 // an in-memory model of the relevant tables, and asserts the sender's
 // conversation survives the inbox filter.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, expect, beforeEach, it, vi } from 'vitest';
+import { clearCurrentAccessToken, setCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import {
+  applyPostgrestFilters,
+  applyPostgrestOrder,
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  jsonResponse,
+  postgrestTable,
+  prefersObjectResponse,
+  shapePostgrestRows,
+} from './infraFixtures';
 
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import {
   fetchVisibleDmUserIds,
   filterRequestConversations,
@@ -24,25 +35,6 @@ import {
 } from '@/hooks/useConversations';
 import { ensureMessageRequest } from '@/lib/messageRequests';
 
-// Applies a single gateway `filter` param (e.g. `conversation_id=eq.<id>`,
-// `user_id=neq.<id>`, `conversation_id=in.(<ids>)`) to rows, mirroring the real
-// gateway server's applySupabaseFilters so the Chats query is exercised
-// end-to-end (server-side + client-side re-filter).
-function applyServerFilter(rows: any[], filter: string | undefined): any[] {
-  if (!filter) return rows;
-  const eq = /^([^=]+)=eq\.(.+)$/.exec(filter);
-  if (eq) return rows.filter(r => String(r[eq[1]]) === eq[2]);
-  const neq = /^([^=]+)=neq\.(.+)$/.exec(filter);
-  if (neq) return rows.filter(r => String(r[neq[1]]) !== neq[2]);
-  const inM = /^([^=]+)=in\.\(([^)]*)\)$/.exec(filter);
-  if (inM) {
-    const vals = new Set(inM[2] ? inM[2].split(',') : []);
-    return rows.filter(r => vals.has(String(r[inM[1]])));
-  }
-  const or = /^or=\((.*)\)$/.exec(filter);
-  if (or) return rows; // callers below use eq/neq/in only
-  return rows;
-}
 
 const A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; // sender
 const B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'; // non-friend recipient
@@ -64,21 +56,16 @@ function makeInMemoryDb() {
     { conversation_id: C, sender_id: A, receiver_id: B, content: 'hi', created_at: '2026-01-01T00:00:00Z' },
   ];
 
-  const qs = (url: URL) => Object.fromEntries(url.searchParams.entries());
 
   return {
-    handle(req: { url: string; method?: string; body?: unknown }) {
-      const url = new URL(req.url, 'http://mock.test');
+    handle(req: { url: string; method?: string; body?: unknown; single?: boolean }) {
+      const table = postgrestTable(req.url);
       const method = req.method || 'GET';
-      const path = url.pathname;
-      const params = qs(url);
 
-      if (path === '/api/message_requests') {
+      if (table === 'message_requests') {
         if (method === 'GET') {
           let rows: any[] = messageRequests;
-          if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-          if (params['sender_id']) rows = rows.filter(r => r.sender_id === params['sender_id']);
-          if (params['receiver_id']) rows = rows.filter(r => r.receiver_id === params['receiver_id']);
+      rows = applyPostgrestOrder(applyPostgrestFilters(rows, req.url), req.url);
           return { status: 200, json: rows };
         }
         if (method === 'POST') {
@@ -96,67 +83,62 @@ function makeInMemoryDb() {
         }
       }
 
-      if (path === '/api/conversation_participants') {
+      if (table === 'conversation_participants') {
         let rows = participants.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        if (params['user_id']) rows = rows.filter(r => r.user_id === params['user_id']);
-        if (params['conversation_id']) rows = rows.filter(r => r.conversation_id === params['conversation_id']);
+      rows = applyPostgrestOrder(applyPostgrestFilters(rows, req.url), req.url);
         return { status: 200, json: rows };
       }
 
-      if (path === '/api/conversations') {
+      if (table === 'conversations') {
         let rows = conversations.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        if (params['id']) rows = conversations.filter(c => c.id === params['id']);
+      rows = applyPostgrestOrder(applyPostgrestFilters(rows, req.url), req.url);
         return { status: 200, json: rows };
       }
 
-      if (path === '/api/profiles') {
+      if (table === 'profiles') {
         let rows = profiles.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        if (params['id']) rows = profiles.filter(p => p.id === params['id']);
+      rows = applyPostgrestOrder(applyPostgrestFilters(rows, req.url), req.url);
         return { status: 200, json: rows };
       }
 
-      if (path === '/api/messages') {
+      if (table === 'messages') {
         let rows = messages.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        if (params['conversation_id']) rows = messages.filter(m => m.conversation_id === params['conversation_id']);
+      rows = applyPostgrestOrder(applyPostgrestFilters(rows, req.url), req.url);
         return { status: 200, json: rows };
       }
 
-      if (path === '/api/notifications') {
+      if (table === 'notifications') {
         return { status: 201, json: { id: 'notif', ...(req.body as object) } };
       }
 
-      if (path === '/api/friends') {
+      if (table === 'friends') {
         return { status: 200, json: friends };
       }
 
-      return { status: 404, json: { error: `no mock route for ${method} ${path}` } };
+      return { status: 404, json: { error: `no mock route for ${method} ${table}` } };
     },
   };
 }
 
 beforeEach(() => {
   localStorage.clear();
-  localStorage.setItem('tone-auth-token', JSON.stringify({ access_token: 'test-token', refresh_token: 'test-refresh' }));
+  setCurrentAccessToken('test-token');
 
   const db = makeInMemoryDb();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (isInfraRegistryRequest(input)) return infraRegistryResponse();
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method || 'GET';
     let body: unknown = undefined;
     if (init?.body) body = JSON.parse(init.body as string);
-    const resp = db.handle({ url, method, body });
-    return {
-      ok: resp.status < 400,
-      status: resp.status,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      json: async () => resp.json,
-    } as Response;
+    const resp = db.handle({ url, method, body, single: prefersObjectResponse(init) });
+    return jsonResponse(resp.status, resp.json);
   });
   (globalThis as any).fetch = fetchMock;
+});
+
+afterEach(() => {
+  clearCurrentAccessToken();
 });
 
 describe('sender Chats visibility after messaging a non-friend', () => {
@@ -227,7 +209,7 @@ describe('sender Chats visibility after messaging a non-friend', () => {
   it('returns the initiated conversation from the exact sender Chats query', async () => {
     // Full end-to-end: send as A, run the *exact* fetchConversationsDirectly(A)
     // the sender Chats list uses, assert C comes back with B as the peer.
-    await gateway
+    await dataClient
       .from('messages')
       .insert({ conversation_id: C, sender_id: A, receiver_id: B, content: 'hi' });
     await ensureMessageRequest({ senderId: A, receiverId: B, conversationId: C, category: 'spam' });
@@ -243,7 +225,7 @@ describe('sender Chats visibility after messaging a non-friend', () => {
   it('recognizes the sender in either inbox participant slot', async () => {
     // The exact query must return C regardless of the ordering of the two
     // participant rows the inbox stores (messages.md: user1_id/user2_id).
-    await gateway
+    await dataClient
       .from('messages')
       .insert({ conversation_id: C, sender_id: A, receiver_id: B, content: 'hi' });
     await ensureMessageRequest({ senderId: A, receiverId: B, conversationId: C, category: 'spam' });

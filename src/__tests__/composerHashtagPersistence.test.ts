@@ -17,19 +17,19 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // REAL implementation — a stubbed hook would prove only that the mock was
 // called, and what has to hold is that the call actually reaches the two
 // hashtag tables. The `profiles` lookup the mention half performs is answered
-// empty by the gateway stub, which is exactly what a caption with no matching
+// empty by the dataClient stub, which is exactly what a caption with no matching
 // username looks like.
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'viewer-1' } }) }));
 vi.mock('@/hooks/useNotifications', () => ({ createNotification: vi.fn() }));
 
 /**
- * The real extractor and writer, against a recording stub of the gateway. Only
+ * The real extractor and writer, against a recording stub of the dataClient. Only
  * the two tables this path touches are answered; everything else rejects so an
  * unexpected write is loud rather than silent.
  */
 const written: Array<{ table: string; op: string; rows: unknown }> = [];
 
-vi.mock('@/lib/gateway', () => {
+vi.mock('@/lib/supabase/dataClient', () => {
   const chain: Record<string, unknown> = {
     select: () => chain,
     onConflict: () => chain,
@@ -40,7 +40,7 @@ vi.mock('@/lib/gateway', () => {
   };
 
   return {
-    gateway: {
+    dataClient: {
       from: (table: string) => ({
         select: () => chain,
         upsert: (row: unknown, _opts?: unknown) => {

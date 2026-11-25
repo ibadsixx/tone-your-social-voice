@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, XCircle, Database } from 'lucide-react';
@@ -12,7 +12,7 @@ const SupabaseTest = () => {
     const testConnection = async () => {
       try {
         // Test basic connection by checking if we can query profiles table
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('profiles')
           .select('id', { count: 'exact' })
           .limit(0);

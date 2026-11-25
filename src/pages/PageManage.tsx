@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -50,17 +50,17 @@ const PageManage = () => {
       // render as numbers on the quick-link cards, so the page stops waiting as
       // soon as the page row lands and the counts fill in behind it.
       const countsPromise = Promise.all([
-        gateway
+        dataClient
           .from('page_followers')
           .select('*', { count: 'exact', head: true })
           .eq('page_id', id),
-        gateway
+        dataClient
           .from('page_posts')
           .select('*', { count: 'exact', head: true })
           .eq('page_id', id),
       ]);
 
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('pages')
         .select('id, name, profile_pic, description, category, created_at')
         .eq('id', id)

@@ -6,21 +6,12 @@
 // a profile cost the same as reading the whole thing no matter how much of it
 // the visitor would ever see.
 //
-// This module talks to the Gateway's paginated, authorization-gated
-// `GET /api/profiles/:id/content` instead, which serves one item per request
-// with a `(created_at, id)` cursor and never returns a row the viewer is not
-// allowed to read.
-//
-// DEPLOYMENT ORDER. The endpoint is newer than some deployed Gateway builds, so
-// until the Gateway carrying it is live every request would 404. Rather than
-// ship a broken Profile page, `endpointAvailable` latches off on a 404/405 and
-// the reader transparently falls back to the old whole-table read, sliced
-// in memory. The fallback is honest about itself: it cannot honour "one request
-// = one item" (the generic read has no `limit`), it just keeps the page working.
-// Once the Gateway is deployed the next page load takes the cursor path and the
-// fallback is never touched again.
-import { API_URL } from './client';
-import type { ApiResult } from './client';
+// Paged profile content is served by the `profileContent` Edge Function, which
+// verifies the viewer's central Auth JWT and applies the same visibility rules
+// as the `posts` project before returning a cursor page. The frontend holds no
+// privileged credentials and never reads another viewer's private rows directly.
+import type { ApiResult } from '@/lib/supabase/dataClient';
+import { callEdgeFunction } from '@/lib/supabase/crossProject';
 import { getUserPosts } from './posts';
 
 export type ProfileContentKind = 'posts' | 'photos' | 'reels' | 'shared';
@@ -117,23 +108,10 @@ const KIND_PARAM: Record<ProfileContentKind, string> = {
   shared: 'shared',
 };
 
-/** Same session read every other dedicated-endpoint caller uses. */
-function getAccessToken(): string | null {
-  try {
-    const sessionStr = localStorage.getItem('tone-auth-token');
-    if (sessionStr) {
-      const session = JSON.parse(sessionStr);
-      return typeof session?.access_token === 'string' ? session.access_token : null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
 /**
- * Latched off the first time the Gateway answers 404/405 for the content route.
- * A transport error or a 500 does NOT latch: those are worth retrying.
+ * Latched off if the Edge Function is not yet deployed. A transport error or a
+ * 500 does NOT latch: those are worth retrying. The fallback is a direct
+ * Supabase read, not a Gateway fallback.
  */
 let endpointAvailable: boolean | null = null;
 
@@ -190,48 +168,24 @@ function errorResult(message: string, code?: string): ApiResult<ProfileContentPa
   return { data: null, error: { message, code } };
 }
 
-async function fetchFromGateway(
+async function fetchFromFunction(
   profileId: string,
   kind: ProfileContentKind,
   cursor: string | null,
-  limit: number,
-  signal?: AbortSignal
-): Promise<ApiResult<ProfileContentPage> & { missing?: boolean }> {
-  const base = API_URL || '';
-  if (!base) return errorResult('VITE_API_GATEWAY_URL not configured');
+  limit: number
+): Promise<ApiResult<ProfileContentPage>> {
+  const result = await callEdgeFunction<
+    { profileId: string; kind: string; cursor: string | null; limit: number },
+    { items: unknown[]; has_more: boolean; next_cursor: string | null }
+  >('profileContent', {
+    profileId,
+    kind: KIND_PARAM[kind],
+    cursor,
+    limit,
+  });
 
-  const params = new URLSearchParams({ kind: KIND_PARAM[kind], limit: String(limit) });
-  if (cursor) params.set('cursor', cursor);
-
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = getAccessToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  let res: Response;
-  try {
-    res = await fetch(`${base}/api/profiles/${encodeURIComponent(profileId)}/content?${params.toString()}`, {
-      method: 'GET',
-      headers,
-      cache: 'no-store',
-      signal,
-    });
-  } catch (err) {
-    return errorResult(String(err));
-  }
-
-  if (res.status === 404 || res.status === 405) {
-    return { data: null, error: null, missing: true };
-  }
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    const message =
-      (isRecord(body) && (body.message || body.error) ? String(body.message || body.error) : '') ||
-      res.statusText ||
-      `Profile content request failed (${res.status})`;
-    return errorResult(message, String(res.status));
-  }
-
-  const json = await res.json();
+  if (result.error) return errorResult(result.error.message);
+  const json = result.data;
   const rawItems = isRecord(json) && Array.isArray(json.items) ? json.items : [];
   const items = rawItems.map(toItem).filter((item): item is ProfileContentPost => item !== null);
   return {
@@ -246,10 +200,9 @@ async function fetchFromGateway(
 }
 
 /**
- * Compatibility path for a Gateway that predates the content route: one whole
- * table read, then a slice. It preserves the *behaviour* (the section shows the
- * right items, ordered, with no duplicates) but not the request shape, because
- * the generic read ignores `limit` — see the note at the top of this file.
+ * Compatibility path when the Edge Function is unavailable: one direct
+ * Supabase read, then a slice. It preserves the section behaviour (ordered,
+ * de-duplicated items) but not the one-item-per-request shape.
  */
 async function fetchFallback(
   profileId: string,
@@ -302,17 +255,19 @@ export async function getProfileContentPage(
   const cursor = options.cursor ?? null;
 
   if (endpointAvailable !== false) {
-    const result = await fetchFromGateway(profileId, kind, cursor, limit, options.signal);
-    if (!result.missing) {
-      endpointAvailable = true;
-      return result as ApiResult<ProfileContentPage>;
+    try {
+      const result = await fetchFromFunction(profileId, kind, cursor, limit);
+      if (!result.error) {
+        endpointAvailable = true;
+        return result;
+      }
+      // A missing deployment (404) latches off; other errors are returned so a
+      // transient function failure is not mistaken for absent configuration.
+      if (!/status 404|not found/i.test(result.error.message)) return result;
+    } catch {
+      // Transport errors are retried on the next request.
     }
-    // The route is not deployed yet. Latch and use the fallback from now on.
     endpointAvailable = false;
-    console.warn(
-      '[profile-content] Gateway content route unavailable; falling back to the whole-table read. ' +
-        'Deploy the Gateway to switch Profile paging to one item per request.'
-    );
   }
 
   return fetchFallback(profileId, kind, cursor, limit);

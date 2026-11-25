@@ -5,35 +5,28 @@
 // no `message_reads` row for the current user, reusing the existing read-state
 // architecture — now runs for every chat type in fetchConversationsDirectly.
 //
-// This drives the real gateway client + fetchConversationsDirectly against an
+// This drives the real dataClient client + fetchConversationsDirectly against an
 // in-memory model of the tables and asserts:
 //   - DM/group/channel conversations all report per-user unread counts,
 //   - messages the user SENT never count (even with no read row),
 //   - messages the user HAS read don't count,
 //   - marking a conversation read drops ITS count to 0 without touching others,
 //   - a brand-new empty conversation reports 0 and doesn't error.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, expect, beforeEach, it, vi } from 'vitest';
+import { clearCurrentAccessToken, setCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import {
+  applyPostgrestFilters,
+  applyPostgrestOrder,
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  jsonResponse,
+  postgrestTable,
+} from './infraFixtures';
 
 import { fetchConversationsDirectly } from '@/hooks/useConversations';
 
 type Row = Record<string, unknown>;
 
-// Applies a single gateway `filter` param (eq/neq/in) to rows, mirroring the
-// real gateway server's applySupabaseFilters. The gateway client ALSO re-applies
-// filters client-side, so double-filtering is idempotent here.
-function applyServerFilter(rows: Row[], filter: string | undefined): Row[] {
-  if (!filter) return rows;
-  const eq = /^([^=]+)=eq\.(.+)$/.exec(filter);
-  if (eq) return rows.filter(r => String(r[eq[1]]) === eq[2]);
-  const neq = /^([^=]+)=neq\.(.+)$/.exec(filter);
-  if (neq) return rows.filter(r => String(r[neq[1]]) !== neq[2]);
-  const inM = /^([^=]+)=in\.\(([^)]*)\)$/.exec(filter);
-  if (inM) {
-    const vals = new Set(inM[2] ? inM[2].split(',') : []);
-    return rows.filter(r => vals.has(String(r[inM[1]])));
-  }
-  return rows;
-}
 
 const ME = 'me-uuid-0000';
 const ALICE = 'alice-uuid-0001';
@@ -83,52 +76,20 @@ function makeInMemoryDb() {
     { message_id: 'm-dm-3', user_id: ME },
   ];
 
-  const qs = (url: URL) => Object.fromEntries(url.searchParams.entries());
-
   return {
     messages,
     messageReads,
     handle(req: { url: string; method?: string }): { status: number; json: Row[] } {
-      const url = new URL(req.url, 'http://mock.test');
-      const path = url.pathname;
-      const params = qs(url);
+      const table = postgrestTable(req.url);
 
-      if (path === '/api/conversation_participants') {
-        let rows = participants.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      if (path === '/api/conversations') {
-        let rows = conversations.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      if (path === '/api/profiles') {
-        let rows = profiles.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      if (path === '/api/friends') {
-        let rows = friends.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      if (path === '/api/message_requests') {
-        let rows = messageRequests.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      if (path === '/api/messages') {
-        let rows = messages.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      if (path === '/api/message_reads') {
-        let rows = messageReads.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      return { status: 404, json: [{ error: `no mock route for ${path}` }] };
+      if (table === 'conversation_participants') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(participants, req.url), req.url) };
+      if (table === 'conversations') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(conversations, req.url), req.url) };
+      if (table === 'profiles') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(profiles, req.url), req.url) };
+      if (table === 'friends') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(friends, req.url), req.url) };
+      if (table === 'message_requests') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(messageRequests, req.url), req.url) };
+      if (table === 'messages') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(messages, req.url), req.url) };
+      if (table === 'message_reads') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(messageReads, req.url), req.url) };
+      return { status: 404, json: [{ error: `no mock route for ${table}` }] };
     },
   };
 }
@@ -136,25 +97,21 @@ function makeInMemoryDb() {
 let db: ReturnType<typeof makeInMemoryDb>;
 
 beforeEach(() => {
-  localStorage.clear();
-  localStorage.setItem(
-    'tone-auth-token',
-    JSON.stringify({ access_token: 'test-token', refresh_token: 'test-refresh' })
-  );
+  setCurrentAccessToken('test-token');
 
   db = makeInMemoryDb();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (isInfraRegistryRequest(input)) return infraRegistryResponse();
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method || 'GET';
     const resp = db.handle({ url, method });
-    return {
-      ok: resp.status < 400,
-      status: resp.status,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      json: async () => resp.json,
-    } as Response;
+    return jsonResponse(resp.status, resp.json);
   });
   (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock;
+});
+
+afterEach(() => {
+  clearCurrentAccessToken();
 });
 
 function unreadFor(chats: { conversation_id: string; unread_count: number }[], id: string): number {

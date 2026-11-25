@@ -1,21 +1,32 @@
-// Global request de-duplication at the gateway client.
+// Global request de-duplication at the direct Supabase data client.
 //
-// The Gateway ignores `select`/`limit`/`offset`/`order` and equality filters, so
-// every `GET /api/<table>` is a whole-table read. Several components read the same
-// table in the same tick — `Post` calls `useProfile()` once per post, and Layout,
-// Stories and NewPost each read the viewer's own profile — so one feed page issued
-// a dozen identical full-table reads.
+// Several components read the same table in the same tick — `Post` calls
+// `useProfile()` once per post, and Layout, Stories and NewPost each read the
+// viewer's own profile — so one feed page issued a dozen identical reads.
 //
-// The client now coalesces concurrent identical GETs. These tests pin both the win
-// and the two properties that make it safe: it is never shared across viewers, and
-// it is never stale.
+// Reads go to the routed project's PostgREST endpoint (`/rest/v1/<table>`)
+// with the viewer's central Auth JWT. PostgREST applies select/filters itself;
+// there is no in-browser request cache to share. These tests pin the properties
+// that still matter: each caller's query stays isolated by viewer and by shape,
+// results are never reused after a request settles, and errors are not hidden.
 //
 // The audience/authorization matrix itself is covered by postVisibility.test.ts
-// and the Gateway's contentVisibilityTest.ts.
+// and by the project RLS policies.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  clearCurrentAccessToken,
+  setCurrentAccessToken,
+} from '@/lib/supabase/sessionTokenProvider';
+import {
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  postgrestFilters,
+  postgrestTable,
+} from './infraFixtures';
 
-const TOKEN = { access_token: 'token-viewer-a' };
+const TOKEN_A = 'token-viewer-a';
+const TOKEN_B = 'token-viewer-b';
 
 type FetchCall = { table: string; token: string | null };
 
@@ -30,7 +41,7 @@ const TABLE_ROWS: Record<string, unknown[]> = {
   ],
 };
 
-describe('gateway: in-flight GET coalescing', () => {
+describe('dataClient: concurrent read isolation', () => {
   const realFetch = globalThis.fetch;
   let calls: FetchCall[];
   let inFlight: number;
@@ -39,65 +50,86 @@ describe('gateway: in-flight GET coalescing', () => {
   let responseDelayMs: number;
 
   beforeEach(() => {
-    localStorage.setItem('tone-auth-token', JSON.stringify(TOKEN));
+    setCurrentAccessToken(TOKEN_A);
     calls = [];
     inFlight = 0;
     maxInFlight = 0;
     responseDelayMs = 0;
 
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const table = String(input).split('/api/')[1]?.split('?')[0] ?? '';
-      const headers = (init?.headers ?? {}) as Record<string, string>;
-      const token = headers.Authorization ? headers.Authorization.replace('Bearer ', '') : null;
+      if (isInfraRegistryRequest(input)) return infraRegistryResponse();
+      const table = postgrestTable(input);
+      const headers = new Headers(init?.headers);
+      const authorization = headers.get('Authorization');
+      const token = authorization ? authorization.replace('Bearer ', '') : null;
       calls.push({ table, token });
       inFlight += 1;
       maxInFlight = Math.max(maxInFlight, inFlight);
-      // Yield, so a request that is not shared stays observable as separate.
+      // Yield, so overlapping requests are observable as separate.
       await new Promise((resolve) => setTimeout(resolve, responseDelayMs));
       inFlight -= 1;
-      return {
-        ok: true,
+      const select = new URL(String(input)).searchParams.get('select');
+      let rows = TABLE_ROWS[table] ?? [];
+      for (const filter of postgrestFilters(input)) {
+        const match = filter.match(/^([^=]+)=eq\.(.*)$/);
+        if (match) rows = rows.filter((row) => String((row as Record<string, unknown>)[match[1]]) === match[2]);
+      }
+      // Preserve the old in-memory mock's join behaviour: the caller asking for
+      // the profile relation sees it; the plain caller must not inherit it.
+      const withJoin = rows.map((row) => {
+        const fields = row as Record<string, unknown>;
+        return table === 'posts' && select?.includes('profiles!')
+          ? { ...fields, profiles: { username: 'ada' } }
+          : fields;
+      });
+      const projected = !select || select === '*' || select.includes('!')
+        ? withJoin
+        : withJoin.map((row) => Object.fromEntries(
+          select.split(',').map((column) => [column.trim(), (row as Record<string, unknown>)[column.trim()]])
+        ));
+      return new Response(JSON.stringify(projected), {
         status: 200,
-        statusText: 'OK',
-        headers: { get: () => 'application/json' },
-        json: async () => TABLE_ROWS[table] ?? [],
-      } as unknown as Response;
+        headers: { 'content-type': 'application/json' },
+      });
     }) as unknown as typeof fetch;
   });
 
   afterEach(() => {
+    clearCurrentAccessToken();
     globalThis.fetch = realFetch;
     vi.restoreAllMocks();
   });
 
   /** Reads one profile the way `useProfile` does, i.e. a full-table GET. */
   async function readOwnProfile() {
-    const { gateway } = await import('@/lib/gateway');
-    return gateway.from('profiles').select('*').eq('id', 'u1').maybeSingle();
+    const { dataClient } = await import('@/lib/supabase/dataClient');
+    return dataClient.from('profiles').select('*').eq('id', 'u1').maybeSingle();
   }
 
-  it('collapses concurrent identical reads into one network request', async () => {
+  it('keeps ten concurrent profile reads correct and authenticated', async () => {
     // Ten posts on the feed each call useProfile() for the viewer's own profile.
-    await Promise.all(Array.from({ length: 10 }, () => readOwnProfile()));
+    // The direct client does not cache these in the browser; every call must
+    // still reach the routed project with the viewer's JWT and return the row.
+    const results = await Promise.all(Array.from({ length: 10 }, () => readOwnProfile()));
 
-    expect(calls).toHaveLength(1);
-    expect(calls[0].table).toBe('profiles');
+    expect(calls).toHaveLength(10);
+    expect(calls.every((call) => call.table === 'profiles' && call.token === TOKEN_A)).toBe(true);
+    expect(maxInFlight).toBe(10);
+    expect(results.every((result) => result.data?.id === 'u1' && result.error === null)).toBe(true);
   });
 
   it('still issues independent reads for different tables', async () => {
-    const { gateway } = await import('@/lib/gateway');
+    const { dataClient } = await import('@/lib/supabase/dataClient');
     await Promise.all([
-      gateway.from('profiles').select('*'),
-      gateway.from('posts').select('*'),
-      gateway.from('comments').select('*'),
+      dataClient.from('profiles').select('*'),
+      dataClient.from('posts').select('*'),
+      dataClient.from('comments').select('*'),
     ]);
 
     expect(calls.map((c) => c.table).sort()).toEqual(['comments', 'posts', 'profiles']);
   });
 
   it('never shares a read between two different viewers', async () => {
-    const { gateway } = await import('@/lib/gateway');
-
     // Hold the response open so the first read is provably still in flight when
     // the second viewer starts, and wait a macrotask first so the first read has
     // already captured viewer A's token. Otherwise the token flip below would
@@ -107,14 +139,14 @@ describe('gateway: in-flight GET coalescing', () => {
     const asA = readOwnProfile();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    localStorage.setItem('tone-auth-token', JSON.stringify({ access_token: 'token-viewer-b' }));
+    setCurrentAccessToken(TOKEN_B);
     const asB = readOwnProfile();
 
     const [a, b] = await Promise.all([asA, asB]);
 
     // Two viewers, same table, same tick: two separate reads, never one shared.
     expect(calls).toHaveLength(2);
-    expect(calls.map((c) => c.token).sort()).toEqual(['token-viewer-a', 'token-viewer-b']);
+    expect(calls.map((c) => c.token).sort()).toEqual([TOKEN_A, TOKEN_B]);
     expect(a.error).toBeNull();
     expect(b.error).toBeNull();
     // And the two really were concurrent, so the separation is what caused the
@@ -132,12 +164,12 @@ describe('gateway: in-flight GET coalescing', () => {
   });
 
   it('gives each caller its own rows, so one query cannot leak joins into another', async () => {
-    const { gateway } = await import('@/lib/gateway');
+    const { dataClient } = await import('@/lib/supabase/dataClient');
 
     // Two different queries against the same table, concurrently. One resolves a
     // join onto its rows; the other must not see it.
-    const withJoin = gateway.from('posts').select('*, profiles!posts_user_id_fkey (username)');
-    const plain = gateway.from('posts').select('*');
+    const withJoin = dataClient.from('posts').select('*, profiles!posts_user_id_fkey (username)');
+    const plain = dataClient.from('posts').select('*');
 
     const [joined, plainRes] = await Promise.all([withJoin, plain]);
 
@@ -148,11 +180,11 @@ describe('gateway: in-flight GET coalescing', () => {
   });
 
   it('applies each caller its own select, even on a shared read', async () => {
-    const { gateway } = await import('@/lib/gateway');
+    const { dataClient } = await import('@/lib/supabase/dataClient');
 
     const [wide, narrow] = await Promise.all([
-      gateway.from('profiles').select('*'),
-      gateway.from('profiles').select('username'),
+      dataClient.from('profiles').select('*'),
+      dataClient.from('profiles').select('username'),
     ]);
 
     const wideRows = wide.data as Array<Record<string, unknown>>;
@@ -161,27 +193,24 @@ describe('gateway: in-flight GET coalescing', () => {
     expect(Object.keys(narrowRows[0])).toEqual(['username']);
   });
 
-  it('does not share a failed read in a way that hides the error', async () => {
+  it('does not hide a failed read from either caller', async () => {
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
-      const table = String(input).split('/api/')[1]?.split('?')[0] ?? '';
-      calls.push({ table, token: TOKEN.access_token });
+      if (isInfraRegistryRequest(input)) return infraRegistryResponse();
+      calls.push({ table: postgrestTable(input), token: TOKEN_A });
       await new Promise((resolve) => setTimeout(resolve, 0));
-      return {
-        ok: false,
+      return new Response(JSON.stringify({ message: 'boom' }), {
         status: 500,
-        statusText: 'Server Error',
-        headers: { get: () => 'application/json' },
-        json: async () => ({ message: 'boom' }),
-      } as unknown as Response;
+        headers: { 'content-type': 'application/json' },
+      });
     }) as unknown as typeof fetch;
 
-    const { gateway } = await import('@/lib/gateway');
+    const { dataClient } = await import('@/lib/supabase/dataClient');
     const [a, b] = await Promise.all([
-      gateway.from('profiles').select('*'),
-      gateway.from('profiles').select('*'),
+      dataClient.from('profiles').select('*'),
+      dataClient.from('profiles').select('*'),
     ]);
 
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
     expect(a.error?.message).toBe('boom');
     expect(b.error?.message).toBe('boom');
   });

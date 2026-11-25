@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 
-// ProfilePage pulls in the profile shell and the gateway-backed API. These
+// ProfilePage pulls in the profile shell and the dataClient-backed API. These
 // tests only care that the Friends/Mentions/Scheduled sections are URL-driven,
 // so the heavy/network-dependent pieces are stubbed out per-section testids.
 vi.mock('@/hooks/useAuth', () => {

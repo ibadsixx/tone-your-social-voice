@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   loadInfrastructureProjects,
-  getInfrastructureProjectByDomain,
+  getActiveProjectsByDomain,
   clearRegistryCache,
 } from '@/lib/supabase/registry';
 import { getInfrastructureClient } from '@/lib/supabase/infrastructureClient';
@@ -19,7 +19,9 @@ vi.mock('@/lib/supabase/infrastructureClient', () => ({
   resetInfrastructureClient: vi.fn(),
 }));
 
-const mockGetInfrastructureClient = vi.mocked(getInfrastructureClient);
+// Mocked Supabase clients are intentionally loose; the SDK's generic builder
+// types cannot describe a partial test double.
+const mockGetInfrastructureClient = vi.mocked(getInfrastructureClient) as any;
 
 const mockProjects: InfrastructureProject[] = [
   {
@@ -86,9 +88,30 @@ describe('loadInfrastructureProjects', () => {
     expect(mockFrom).toHaveBeenCalledWith('infrastructure_projects_public');
     expect(mockFrom).not.toHaveBeenCalledWith('infrastructure_projects');
 
-    // Verify only approved fields are selected
+    // Verify only approved fields are selected. Routing metadata is requested
+    // first; the loader falls back to the base fields for older deployments.
     const mockSelectCall = mockSelect.mock.calls[0];
     expect(mockSelectCall[0]).toBe(
+      'project_key, domain, project_url, anon_key, status, priority, region, health_status,responsibility, operation_types, read_destination, write_destination, partition_key'
+    );
+  });
+
+  it('falls back to base fields when routing metadata columns are absent', async () => {
+    const order = vi.fn()
+      .mockResolvedValueOnce({
+        data: null,
+        error: { message: 'column projects.responsibility does not exist', code: '42703' },
+      })
+      .mockResolvedValueOnce({ data: mockProjects, error: null });
+    const select = vi.fn().mockReturnValue({ order });
+    const from = vi.fn().mockReturnValue({ select });
+    mockGetInfrastructureClient.mockReturnValue({ from });
+
+    const projects = await loadInfrastructureProjects();
+
+    expect(projects).toEqual(mockProjects);
+    expect(select).toHaveBeenCalledTimes(2);
+    expect(select.mock.calls[1][0]).toBe(
       'project_key, domain, project_url, anon_key, status, priority, region, health_status'
     );
   });
@@ -154,16 +177,14 @@ describe('loadInfrastructureProjects', () => {
   });
 });
 
-describe('getInfrastructureProjectByDomain', () => {
-  it('returns the lowest-priority active project for a domain', () => {
-    const result = getInfrastructureProjectByDomain(mockProjects, 'posts');
-    expect(result).toBeDefined();
-    expect(result?.project_key).toBe('posts_1');
+describe('getActiveProjectsByDomain', () => {
+  it('returns every active project for a domain without choosing one', () => {
+    const result = getActiveProjectsByDomain(mockProjects, 'posts');
+    expect(result.map((project) => project.project_key)).toEqual(['posts_1', 'posts_2']);
   });
 
-  it('returns undefined for a domain with no active projects', () => {
-    const result = getInfrastructureProjectByDomain(mockProjects, 'nonexistent');
-    expect(result).toBeUndefined();
+  it('returns an empty array for a domain with no active projects', () => {
+    expect(getActiveProjectsByDomain(mockProjects, 'nonexistent')).toEqual([]);
   });
 
   it('does not return inactive projects even if they match the domain', () => {
@@ -177,8 +198,8 @@ describe('getInfrastructureProjectByDomain', () => {
       region: 'us-east',
       health_status: 'offline',
     }];
-    const result = getInfrastructureProjectByDomain(projectsWithInactive, 'posts');
-    expect(result?.status).toBe('active');
-    expect(result?.project_key).not.toBe('posts_inactive');
+    const result = getActiveProjectsByDomain(projectsWithInactive, 'posts');
+    expect(result.every((project) => project.status === 'active')).toBe(true);
+    expect(result.map((project) => project.project_key)).not.toContain('posts_inactive');
   });
 });

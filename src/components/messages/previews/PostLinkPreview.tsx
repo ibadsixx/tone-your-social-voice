@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { User, FileText } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -32,7 +32,7 @@ export const PostLinkPreview = ({ postId }: PostLinkPreviewProps) => {
     let cancelled = false;
     const fetchPost = async () => {
       try {
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('posts')
           .select(`
             id,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -135,7 +135,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
   const fetchProfileDetails = async () => {
     try {
       // Fetch profile_details
-      const { data: details, error: detailsError } = await gateway
+      const { data: details, error: detailsError } = await dataClient
         .from('profile_details')
         .select('*')
         .eq('profile_id', profileId);
@@ -143,7 +143,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
       if (detailsError) throw detailsError;
 
       // Fetch complete profile data including new fields
-      const { data: profile, error: profileError } = await gateway
+      const { data: profile, error: profileError } = await dataClient
         .from('profiles')
         .select(`
           email,
@@ -319,7 +319,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
     
     // Load current visibility settings from profile for work_education
     if (section === 'work_education') {
-      const { data: profile } = await gateway
+      const { data: profile } = await dataClient
         .from('profiles')
         .select('function_visibility, company_visibility, college_visibility, high_school_visibility')
         .eq('id', profileId)
@@ -336,7 +336,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
       // If the saved function isn't one of the preset options, pre-select
       // "Other" and pre-fill the custom job-title field so it stays editable.
       const savedFunction = formData.job_function;
-      if (savedFunction && !jobFunctions.includes(savedFunction)) {
+      if (typeof savedFunction === 'string' && savedFunction && !jobFunctions.includes(savedFunction)) {
         formData.job_function = 'Other';
         setCustomFunction(savedFunction);
       } else {
@@ -391,7 +391,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
         // Apply sanitization for proper casing
         const sanitizedData = sanitizeProfilePayload(updateData);
 
-        const { error } = await gateway
+        const { error } = await dataClient
           .from('profiles')
           .update(sanitizedData)
           .eq('id', profileId);
@@ -412,7 +412,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
         if (editForm.gender) updateData.gender = editForm.gender;
         if (editForm.pronouns) updateData.pronouns = editForm.pronouns;
         if (editForm.birth_date) updateData.birth_date = editForm.birth_date;
-        if (editForm.birth_year) updateData.birth_year = parseInt(editForm.birth_year) || null;
+        if (editForm.birth_year) updateData.birth_year = parseInt(String(editForm.birth_year), 10) || null;
         
         // Add visibility settings to update data
         if (visibilityForm.phone_visibility) updateData.phone_visibility = visibilityForm.phone_visibility;
@@ -425,7 +425,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
         // Apply sanitization for proper casing
         const sanitizedData = sanitizeProfilePayload(updateData);
 
-        const { error } = await gateway
+        const { error } = await dataClient
           .from('profiles')
           .update(sanitizedData)
           .eq('id', profileId);
@@ -434,7 +434,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
       } else {
         // Handle other sections with profile_details table
         // Delete existing details for this section
-        await gateway
+        await dataClient
           .from('profile_details')
           .delete()
           .eq('profile_id', profileId)
@@ -451,7 +451,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
           }));
 
         if (detailsToInsert.length > 0) {
-          const { error } = await gateway
+          const { error } = await dataClient
             .from('profile_details')
             .insert(detailsToInsert);
 
@@ -582,6 +582,12 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
     );
   };
 
+  // editForm is a heterogeneous map; each individual field has one known type.
+  const editText = (key: string): string => {
+    const value = editForm[key];
+    return typeof value === 'string' ? value : value == null ? '' : String(value);
+  };
+
   const renderEditForm = (section: string) => {
     const fields = getSectionFields(section);
     
@@ -597,7 +603,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
                 <Label>Email</Label>
                 <div className="flex items-center gap-2">
                   <Input
-                    value={editForm.email || ''}
+                    value={editText('email')}
                     readOnly
                     className="bg-muted"
                   />
@@ -617,11 +623,11 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
                 </div>
                 <div className="flex gap-2">
                   <CountrySelector
-                    value={editForm.phone_country_code || '+1'}
+                    value={editText('phone_country_code') || '+1'}
                     onChange={(code) => setEditForm(prev => ({ ...prev, phone_country_code: code }))}
                   />
                   <Input
-                    value={editForm.phone_number || ''}
+                    value={editText('phone_number')}
                     onChange={(e) => setEditForm(prev => ({ ...prev, phone_number: e.target.value }))}
                     placeholder="123-456-7890"
                     className="flex-1"
@@ -639,7 +645,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
                   />
                 </div>
                 <SocialLinksManager
-                  value={editForm.websites_social_links || []}
+                  value={(editForm.websites_social_links as SocialLink[] | undefined) || []}
                   onChange={(links) => setEditForm(prev => ({ ...prev, websites_social_links: links }))}
                 />
               </div>
@@ -659,7 +665,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
                     onChange={(value) => setVisibilityForm(prev => ({ ...prev, gender_visibility: value }))}
                   />
                 </div>
-                <Select value={editForm.gender || ''} onValueChange={(value) => setEditForm(prev => ({ ...prev, gender: value }))}>
+                <Select value={editText('gender')} onValueChange={(value) => setEditForm(prev => ({ ...prev, gender: value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select gender..." />
                   </SelectTrigger>
@@ -680,7 +686,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
                     onChange={(value) => setVisibilityForm(prev => ({ ...prev, pronouns_visibility: value }))}
                   />
                 </div>
-                <Select value={editForm.pronouns || ''} onValueChange={(value) => setEditForm(prev => ({ ...prev, pronouns: value }))}>
+                <Select value={editText('pronouns')} onValueChange={(value) => setEditForm(prev => ({ ...prev, pronouns: value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select pronouns..." />
                   </SelectTrigger>
@@ -706,13 +712,13 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
                   <PopoverTrigger asChild>
                     <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !editForm.birth_date && "text-muted-foreground")}>
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {editForm.birth_date ? format(editForm.birth_date, "PPP") : <span>Pick a date</span>}
+                      {editForm.birth_date ? format(editForm.birth_date as Date, "PPP") : <span>Pick a date</span>}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
                     <Calendar
                       mode="single"
-                      selected={editForm.birth_date}
+                      selected={editForm.birth_date as Date | undefined}
                       onSelect={(date) => setEditForm(prev => ({ ...prev, birth_date: date }))}
                       initialFocus
                       className="pointer-events-auto"
@@ -732,7 +738,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
                 </div>
                 <Input
                   type="number"
-                  value={editForm.birth_year || ''}
+                  value={editText('birth_year')}
                   onChange={(e) => setEditForm(prev => ({ ...prev, birth_year: e.target.value }))}
                   placeholder="1990"
                   min="1900"
@@ -764,13 +770,13 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
               <LocationAutocomplete
                 label={field.label}
                 placeholder={field.placeholder}
-                value={editForm[field.name] || ''}
+                value={editText(field.name)}
                 onChange={(value) => updateFormField(field.name, value)}
               />
             ) : field.name === 'job_function' ? (
               <>
                 <Label htmlFor={field.name}>{field.label}</Label>
-                <Select value={editForm[field.name] || ''} onValueChange={(value) => {
+                <Select value={editText(field.name)} onValueChange={(value) => {
                   updateFormField(field.name, value);
                   if (value !== 'Other') setCustomFunction('');
                 }}>
@@ -821,7 +827,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
                 {field.type === 'textarea' ? (
                   <Textarea
                     id={field.name}
-                    value={editForm[field.name] || ''}
+                    value={editText(field.name)}
                     onChange={(e) => updateFormField(field.name, e.target.value)}
                     placeholder={field.placeholder}
                   />
@@ -829,7 +835,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
                   <Input
                     id={field.name}
                     type={field.type}
-                    value={editForm[field.name] || ''}
+                    value={editText(field.name)}
                     onChange={(e) => updateFormField(field.name, e.target.value)}
                     placeholder={field.placeholder}
                   />

@@ -30,7 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { blockingApi, profilesApi } from '@/api';
 import { leaveGroupConversation } from '@/api/conversations';
 import { createNotification } from '@/hooks/useNotifications';
@@ -129,7 +129,7 @@ const Messages = () => {
     if (!currentUserId) return;
     setArchivedLoading(true);
     try {
-      const { data, error } = await gateway.rpc('get_archived_conversations', {
+      const { data, error } = await dataClient.rpc('get_archived_conversations', {
         p_user_id: currentUserId
       });
       if (!error) setArchivedConversations(data || []);
@@ -141,13 +141,13 @@ const Messages = () => {
   };
 
   const archiveConversation = async (convId: string) => {
-    await gateway.rpc('archive_conversation', { p_conversation_id: convId });
+    await dataClient.rpc('archive_conversation', { p_conversation_id: convId });
     refetchConversations();
     fetchArchived();
   };
 
   const unarchiveConversation = async (convId: string) => {
-    await gateway.rpc('unarchive_conversation', { p_conversation_id: convId });
+    await dataClient.rpc('unarchive_conversation', { p_conversation_id: convId });
     refetchConversations();
     fetchArchived();
   };
@@ -162,7 +162,7 @@ const Messages = () => {
     } else {
       const conversationId = await getOrCreateDM(userId);
       if (conversationId) {
-        await gateway.rpc('archive_conversation', { p_conversation_id: conversationId });
+        await dataClient.rpc('archive_conversation', { p_conversation_id: conversationId });
         setShowAddPeople(false);
         fetchArchived();
       }
@@ -234,7 +234,7 @@ const Messages = () => {
       return;
     }
     const delay = setTimeout(async () => {
-      const { data } = await gateway
+      const { data } = await dataClient
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .neq('id', currentUserId)
@@ -311,7 +311,7 @@ const Messages = () => {
           localStorage.setItem('tone_device_id', deviceId);
         }
 
-        await gateway.from('trusted_devices').upsert({
+        await dataClient.from('trusted_devices').upsert({
           user_id: currentUserId,
           device_id: deviceId,
           user_agent: navigator.userAgent,
@@ -319,7 +319,7 @@ const Messages = () => {
           last_used_at: new Date().toISOString(),
         }, { onConflict: 'user_id,device_id' });
 
-        const { data: dbDevices } = await gateway
+        const { data: dbDevices } = await dataClient
           .from('trusted_devices')
           .select('*')
           .eq('user_id', currentUserId)
@@ -360,7 +360,7 @@ const Messages = () => {
       deviceId = crypto.randomUUID();
       localStorage.setItem('tone_device_id', deviceId);
     }
-    gateway.from('trusted_devices').upsert({
+    dataClient.from('trusted_devices').upsert({
       user_id: currentUserId,
       device_id: deviceId,
       user_agent: navigator.userAgent,
@@ -422,7 +422,7 @@ const Messages = () => {
 
   // Voice messages: the audio blob is uploaded by MessageInput, then the
   // message itself is created here through the existing `sendAudioMessage`
-  // pipeline (gateway `messages` table insert + realtime announce — the same
+  // pipeline (dataClient `messages` table insert + realtime announce — the same
   // table path text messages use, never the legacy `create_message_with_audio`
   // RPC). The boolean return tells MessageInput whether to keep the recording
   // preview (failure) or dismiss it (success).
@@ -453,7 +453,7 @@ const Messages = () => {
     if (resolvedConvInfo?.type !== 'channel') return;
 
     const channelName = resolvedGroupName || 'channel';
-    const { data: followers } = await gateway
+    const { data: followers } = await dataClient
       .from('conversation_participants')
       .select('user_id')
       .eq('conversation_id', activeConversationId)
@@ -554,7 +554,7 @@ const Messages = () => {
     let cancelled = false;
     (async () => {
       try {
-        const { data: parts } = await gateway
+        const { data: parts } = await dataClient
           .from('conversation_participants')
           .select('user_id')
           .eq('conversation_id', activeConversationId)
@@ -562,11 +562,11 @@ const Messages = () => {
         const otherId = (parts as any)?.[0]?.user_id as string | undefined;
         if (!otherId) return;
         const [{ data: convData }, { data: profileData }] = await Promise.all([
-          gateway.from('conversations')
+          dataClient.from('conversations')
             .select('type, name, description, group_image')
             .eq('id', activeConversationId)
             .maybeSingle(),
-          gateway.from('profiles')
+          dataClient.from('profiles')
             .select('id, username, display_name, profile_pic, last_seen_at')
             .eq('id', otherId)
             .maybeSingle(),
@@ -1791,7 +1791,7 @@ const PeopleSelectorContent: React.FC<PeopleSelectorContentProps> = ({ selectedP
     const delay = setTimeout(async () => {
       setLoading(true);
       try {
-        const { data } = await gateway
+        const { data } = await dataClient
           .from('profiles')
           .select('id, display_name, username, profile_pic')
           .ilike('display_name', `%${searchQuery}%`)

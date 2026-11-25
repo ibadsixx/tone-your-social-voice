@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { GraduationCap, Loader2, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useColleges, type College } from '@/hooks/useColleges';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 interface CollegeAutocompleteProps {
   label: string;
@@ -128,7 +128,7 @@ export const CollegeAutocomplete = ({
     
     setAddLoading(true);
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('colleges')
         .insert([{ name: newCollegeName.trim() }])
         .select('id, name')

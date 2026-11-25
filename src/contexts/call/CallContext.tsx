@@ -99,7 +99,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [clearCallTimeout, user?.id]);
 
   // Fire-and-forget publish of `call-ended` with retry. If the callee's SSE
-  // connection is mid-reconnect (e.g. the gateway's 300s Vercel cap just killed
+  // connection is mid-reconnect (e.g. the dataClient's 300s Vercel cap just killed
   // the stream), the first publish reports delivered=0 and would otherwise be
   // lost forever — leaving the peer stuck non-idle and auto-replying busy to
   // every future call. A couple of spaced retries covers typical reconnect gaps.
@@ -621,11 +621,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetCallState();
         return;
       } else if (delivery.delivered === 0) {
-        // delivered counts only subscribers on the gateway instance that served
-        // this publish. With the gateway's cross-instance Realtime bus, the
+        // delivered counts only subscribers on the dataClient instance that served
+        // this publish. With the dataClient's cross-instance Realtime bus, the
         // callee may still receive the call on another instance, so this is no
         // longer a reliable offline signal; the No Answer timeout handles it.
-        console.warn('[Call] call-request delivered to 0 local subscribers (callee may be on another gateway instance)');
+        console.warn('[Call] call-request delivered to 0 local subscribers (callee may be on another dataClient instance)');
       }
 
       callTimeoutRef.current = setTimeout(() => {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import {
   VideoLayer,
@@ -69,7 +69,7 @@ export const useEditorProject = (projectId?: string) => {
     try {
       console.log('[useEditorProject] ========================================');
       console.log('[useEditorProject] Fetching project from database:', id);
-      const { data, error: fetchError } = await gateway
+      const { data, error: fetchError } = await dataClient
         .from('editor_projects')
         .select('*')
         .eq('id', id)
@@ -120,7 +120,7 @@ export const useEditorProject = (projectId?: string) => {
 
     try {
       console.log('[useEditorProject] Creating new project in database...');
-      const { data, error: createError } = await gateway
+      const { data, error: createError } = await dataClient
         .from('editor_projects')
         .insert({
           owner_id: user.id,
@@ -161,7 +161,7 @@ export const useEditorProject = (projectId?: string) => {
     try {
       const dataToSave = projectData || project.project_json;
       
-      const { error: updateError } = await gateway
+      const { error: updateError } = await dataClient
         .from('editor_projects')
         .update({
           title: project.title,

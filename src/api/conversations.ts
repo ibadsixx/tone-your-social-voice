@@ -1,67 +1,31 @@
-import { gateway, API_URL } from './client';
-import type { ApiResult } from './client';
+import { dataClient } from '@/lib/supabase/dataClient';
+import type { ApiResult } from '@/lib/supabase/dataClient';
+import { callEdgeFunction } from '@/lib/supabase/crossProject';
 import type { Conversation, Message } from './types';
 import { encodeCallLogContent } from '@/lib/callLog';
 
-function getAccessToken(): string | null {
-  try {
-    const sessionStr = localStorage.getItem('tone-auth-token');
-    if (sessionStr) {
-      const session = JSON.parse(sessionStr);
-      return session?.access_token ?? null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
 export async function getConversationsByIds(ids: string[]): Promise<ApiResult<Conversation[]>> {
-  return gateway.from('conversations').select('id, type, name, description, created_at, updated_at').in('id', ids) as Promise<ApiResult<Conversation[]>>;
+  return dataClient.from('conversations').select('id, type, name, description, created_at, updated_at').in('id', ids) as Promise<ApiResult<Conversation[]>>;
 }
 
-// Leaves a group conversation via the dedicated Gateway endpoint
-// (DELETE /api/v1/conversations/:id/leave). The Gateway verifies the caller is
-// a member and removes ONLY their own membership row — the conversation, its
-// messages, and the other members are never touched.
+// Server-authoritative conversation membership/moderation. The `conversations`
+// Edge Function verifies the caller's central Auth JWT and their role in the
+// conversation before performing (or refusing) the write.
+function callConversationsFunction<T>(
+  operation: string,
+  input: Record<string, unknown>
+): Promise<ApiResult<T>> {
+  return callEdgeFunction<{ operation: string; input: Record<string, unknown> }, T>(
+    'conversations',
+    { operation, input }
+  ) as Promise<ApiResult<T>>;
+}
+
 export async function leaveGroupConversation(conversationId: string): Promise<ApiResult<null>> {
-  if (!conversationId) {
-    return { data: null, error: { message: 'Missing conversation id' } };
-  }
-  if (!API_URL) {
-    return { data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } };
-  }
-  try {
-    const token = getAccessToken();
-    const res = await fetch(
-      `${API_URL}/api/v1/conversations/${encodeURIComponent(conversationId)}/leave`,
-      {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      }
-    );
-    if (res.status === 204) return { data: null, error: null };
-    const body = await res.json().catch(() => null);
-    return {
-      data: null,
-      error: {
-        message: body?.error || body?.message || `Failed to leave group (${res.status})`,
-        code: String(res.status),
-      },
-    };
-  } catch (err) {
-    return { data: null, error: { message: String(err) } };
-  }
+  if (!conversationId) return { data: null, error: { message: 'Missing conversation id' } };
+  return callConversationsFunction<null>('leave', { conversationId });
 }
 
-// Publishes a Channel post via the dedicated Gateway endpoint
-// (POST /api/v1/conversations/:id/publish). The Gateway verifies the caller is
-// the channel owner or moderator BEFORE the insert, so a follower can never
-// publish by calling Supabase directly. The returned row matches the shape the
-// messages hook inserts, so the caller's post-send handling stays identical.
 export async function publishChannelPost(
   conversationId: string,
   payload: {
@@ -71,47 +35,10 @@ export async function publishChannelPost(
     attachmentUrl?: string | null;
   }
 ): Promise<ApiResult<Record<string, unknown> | null>> {
-  if (!conversationId) {
-    return { data: null, error: { message: 'Missing conversation id' } };
-  }
-  if (!API_URL) {
-    return { data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } };
-  }
-  try {
-    const token = getAccessToken();
-    const res = await fetch(
-      `${API_URL}/api/v1/conversations/${encodeURIComponent(conversationId)}/publish`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(payload),
-      }
-    );
-    if (res.status === 201) {
-      const data = await res.json().catch(() => null);
-      return { data, error: null };
-    }
-    const body = await res.json().catch(() => null);
-    return {
-      data: null,
-      error: {
-        message: body?.error || body?.message || `Failed to publish (${res.status})`,
-        code: String(res.status),
-      },
-    };
-  } catch (err) {
-    return { data: null, error: { message: String(err) } };
-  }
+  if (!conversationId) return { data: null, error: { message: 'Missing conversation id' } };
+  return callConversationsFunction<Record<string, unknown>>('publish', { conversationId, ...payload });
 }
 
-// Removes a channel member via the dedicated Gateway endpoint
-// (DELETE /api/v1/conversations/:id/members/:memberId). The Gateway verifies the
-// caller is the channel owner BEFORE any write, so a follower/moderator can never
-// remove another member by calling Supabase directly. The channel owner and the
-// caller cannot be removed; self-removal must use unfollow_channel (Leave) instead.
 export async function removeChannelMember(
   conversationId: string,
   memberId: string
@@ -119,49 +46,23 @@ export async function removeChannelMember(
   if (!conversationId || !memberId) {
     return { data: null, error: { message: 'Missing conversation or member id' } };
   }
-  if (!API_URL) {
-    return { data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } };
-  }
-  try {
-    const token = getAccessToken();
-    const res = await fetch(
-      `${API_URL}/api/v1/conversations/${encodeURIComponent(conversationId)}/members/${encodeURIComponent(memberId)}`,
-      {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      }
-    );
-    if (res.status === 204) return { data: null, error: null };
-    const body = await res.json().catch(() => null);
-    return {
-      data: null,
-      error: {
-        message: body?.error || body?.message || `Failed to remove member (${res.status})`,
-        code: String(res.status),
-      },
-    };
-  } catch (err) {
-    return { data: null, error: { message: String(err) } };
-  }
+  return callConversationsFunction<null>('removeMember', { conversationId, memberId });
 }
 
 export async function getConversationsByPage(pageId: string): Promise<ApiResult<Conversation[]>> {
-  return gateway.from('conversations').select('id, type, name, description, created_at, updated_at').eq('page_id', pageId).order('updated_at', { ascending: false }) as Promise<ApiResult<Conversation[]>>;
+  return dataClient.from('conversations').select('id, type, name, description, created_at, updated_at').eq('page_id', pageId).order('updated_at', { ascending: false }) as Promise<ApiResult<Conversation[]>>;
 }
 
 export async function createConversation(data: Partial<Conversation>): Promise<ApiResult<Conversation>> {
-  return gateway.from('conversations').insert(data).select().single() as Promise<ApiResult<Conversation>>;
+  return dataClient.from('conversations').insert(data).select().single() as Promise<ApiResult<Conversation>>;
 }
 
 export async function updateConversation(id: string, data: Partial<Conversation>): Promise<ApiResult<null>> {
-  return gateway.from('conversations').update(data).eq('id', id) as Promise<ApiResult<null>>;
+  return dataClient.from('conversations').update(data).eq('id', id) as Promise<ApiResult<null>>;
 }
 
 export async function getMessages(conversationId: string, page: number = 0, limit: number = 50): Promise<ApiResult<Message[]>> {
-  return gateway.from('messages').select(`
+  return dataClient.from('messages').select(`
     id, conversation_id, sender_id, content, encrypted_content, encryption_iv,
     attachment_url, image_url, media_url, is_image, is_gif, gif_url,
     is_sticker, sticker_url, sticker_id, sticker_set,
@@ -172,7 +73,7 @@ export async function getMessages(conversationId: string, page: number = 0, limi
 }
 
 export async function sendMessage(data: Partial<Message>): Promise<ApiResult<Message>> {
-  return gateway.from('messages').insert(data).select(`
+  return dataClient.from('messages').insert(data).select(`
     id, conversation_id, sender_id, content, encrypted_content, encryption_iv,
     attachment_url, image_url, media_url, is_image, message_type, reply_to_id, created_at,
     sender_profile:profiles!messages_sender_id_fkey(username, display_name, profile_pic)
@@ -180,7 +81,7 @@ export async function sendMessage(data: Partial<Message>): Promise<ApiResult<Mes
 }
 
 export async function deleteMessage(messageId: string, senderId: string): Promise<ApiResult<null>> {
-  return gateway.from('messages').delete().eq('id', messageId).eq('sender_id', senderId) as Promise<ApiResult<null>>;
+  return dataClient.from('messages').delete().eq('id', messageId).eq('sender_id', senderId) as Promise<ApiResult<null>>;
 }
 
 // Facebook-style call-log entry: one system message per call, written by the
@@ -204,7 +105,7 @@ export async function sendCallLogMessage(
       return { data: null, error: dmError || { message: 'Failed to resolve DM conversation' } };
     }
 
-    const result = await gateway.from('messages').insert({
+    const result = (await dataClient.from('messages').insert({
       conversation_id: conversationId,
       sender_id: senderId,
       receiver_id: otherUserId,
@@ -221,9 +122,9 @@ export async function sendCallLogMessage(
       message_type: 'text',
     }).select(`
       id, conversation_id, sender_id, content, created_at, message_type, is_system
-    `).single() as Promise<ApiResult<Message>>;
+    `).single()) as ApiResult<Message>;
 
-    // The gateway client's postgres_changes listeners never fire (no server
+    // The dataClient client's postgres_changes listeners never fire (no server
     // push), so announce the insert ourselves — open chats/lists listen for
     // this event to show the entry without a reload.
     if (!result.error && result.data) {
@@ -239,19 +140,19 @@ export async function sendCallLogMessage(
 }
 
 export async function getConversationMedia(conversationId: string): Promise<ApiResult<Message[]>> {
-  return gateway.from('messages').select('id, image_url, media_url, gif_url, sticker_url, attachment_url, is_image, is_gif, is_sticker, created_at, sender_id').eq('conversation_id', conversationId).or('image_url.neq.null,media_url.neq.null,gif_url.neq.null,sticker_url.neq.null,attachment_url.neq.null').order('created_at', { ascending: false }) as Promise<ApiResult<Message[]>>;
+  return dataClient.from('messages').select('id, image_url, media_url, gif_url, sticker_url, attachment_url, is_image, is_gif, is_sticker, created_at, sender_id').eq('conversation_id', conversationId).or('image_url.neq.null,media_url.neq.null,gif_url.neq.null,sticker_url.neq.null,attachment_url.neq.null').order('created_at', { ascending: false }) as Promise<ApiResult<Message[]>>;
 }
 
 export async function getConversationFiles(conversationId: string): Promise<ApiResult<Message[]>> {
-  return gateway.from('messages').select('id, attachment_url, created_at, sender_id').eq('conversation_id', conversationId).not('attachment_url', 'is', null).order('created_at', { ascending: false }) as Promise<ApiResult<Message[]>>;
+  return dataClient.from('messages').select('id, attachment_url, created_at, sender_id').eq('conversation_id', conversationId).not('attachment_url', 'is', null).order('created_at', { ascending: false }) as Promise<ApiResult<Message[]>>;
 }
 
 export async function getConversationLinks(conversationId: string): Promise<ApiResult<Message[]>> {
-  return gateway.from('messages').select('id, content, created_at, sender_id').eq('conversation_id', conversationId).not('content', 'is', null).order('created_at', { ascending: false }) as Promise<ApiResult<Message[]>>;
+  return dataClient.from('messages').select('id, content, created_at, sender_id').eq('conversation_id', conversationId).not('content', 'is', null).order('created_at', { ascending: false }) as Promise<ApiResult<Message[]>>;
 }
 
 export async function getMessageById(id: string): Promise<ApiResult<Message>> {
-  return gateway.from('messages').select(`
+  return dataClient.from('messages').select(`
     id, conversation_id, sender_id, content, encrypted_content, encryption_iv,
     attachment_url, image_url, media_url, is_image, is_gif, gif_url,
     is_sticker, sticker_url, sticker_id, sticker_set,
@@ -262,11 +163,11 @@ export async function getMessageById(id: string): Promise<ApiResult<Message>> {
 }
 
 export async function getReplyPreview(id: string): Promise<ApiResult<Message>> {
-  return gateway.from('messages').select('id, content, image_url, media_url, attachment_url, is_image, sender_profile:profiles!messages_sender_id_fkey(display_name)').eq('id', id).single() as Promise<ApiResult<Message>>;
+  return dataClient.from('messages').select('id, content, image_url, media_url, attachment_url, is_image, sender_profile:profiles!messages_sender_id_fkey(display_name)').eq('id', id).single() as Promise<ApiResult<Message>>;
 }
 
 export async function getReplyPreviews(ids: string[]): Promise<ApiResult<Message[]>> {
-  return gateway.from('messages').select('id, content, image_url, media_url, attachment_url, is_image, sender_profile:profiles!messages_sender_id_fkey(display_name)').in('id', ids) as Promise<ApiResult<Message[]>>;
+  return dataClient.from('messages').select('id, content, image_url, media_url, attachment_url, is_image, sender_profile:profiles!messages_sender_id_fkey(display_name)').in('id', ids) as Promise<ApiResult<Message[]>>;
 }
 
 export async function getOrCreateDM(currentUserId: string, otherUserId: string): Promise<ApiResult<string | null>> {
@@ -279,7 +180,7 @@ export async function getOrCreateDM(currentUserId: string, otherUserId: string):
     if (resolveError) return { data: null, error: resolveError };
     if (conversationId) return { data: conversationId, error: null };
 
-    const { data: created, error: createError } = await gateway
+    const { data: created, error: createError } = await dataClient
       .from('conversations')
       .insert({ type: 'dm', created_by: currentUserId })
       .select('id')
@@ -290,7 +191,7 @@ export async function getOrCreateDM(currentUserId: string, otherUserId: string):
     const newConversationId = created.id;
 
     for (const userId of [currentUserId, otherUserId]) {
-      const { error: participantError } = await gateway
+      const { error: participantError } = await dataClient
         .from('conversation_participants')
         .insert({ conversation_id: newConversationId, user_id: userId });
       if (participantError) {
@@ -315,7 +216,7 @@ export async function resolveSharedDmConversation(currentUserId: string, otherUs
   }
 
   try {
-    const { data: myParts } = await gateway
+    const { data: myParts } = await dataClient
       .from('conversation_participants')
       .select('conversation_id')
       .eq('user_id', currentUserId);
@@ -324,7 +225,7 @@ export async function resolveSharedDmConversation(currentUserId: string, otherUs
 
     if (myParts && myParts.length > 0) {
       const myIds = myParts.map(p => p.conversation_id);
-      const { data: both } = await gateway
+      const { data: both } = await dataClient
         .from('conversation_participants')
         .select('conversation_id')
         .in('conversation_id', myIds)
@@ -332,7 +233,7 @@ export async function resolveSharedDmConversation(currentUserId: string, otherUs
 
       const sharedIds = [...new Set((both || []).map(p => p.conversation_id))];
       if (sharedIds.length > 0) {
-        const { data: convs } = await gateway
+        const { data: convs } = await dataClient
           .from('conversations')
           .select('id, type')
           .in('id', sharedIds);
@@ -353,7 +254,7 @@ export async function markConversationMessagesRead(conversationId: string, userI
   }
 
   try {
-    const { data: settings } = await gateway
+    const { data: settings } = await dataClient
       .from('conversation_settings')
       .select('read_receipts_enabled')
       .eq('conversation_id', conversationId)
@@ -363,7 +264,7 @@ export async function markConversationMessagesRead(conversationId: string, userI
       return { data: null, error: null };
     }
 
-    const { data: msgs } = await gateway
+    const { data: msgs } = await dataClient
       .from('messages')
       .select('id')
       .eq('conversation_id', conversationId)
@@ -371,7 +272,7 @@ export async function markConversationMessagesRead(conversationId: string, userI
     const ids = (msgs || []).map(m => m.id);
     if (ids.length === 0) return { data: null, error: null };
 
-    const { data: existing } = await gateway
+    const { data: existing } = await dataClient
       .from('message_reads')
       .select('message_id')
       .in('message_id', ids)
@@ -380,7 +281,7 @@ export async function markConversationMessagesRead(conversationId: string, userI
 
     for (const messageId of ids) {
       if (existingSet.has(messageId)) continue;
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('message_reads')
         .insert({ message_id: messageId, user_id: userId });
       if (error) return { data: null, error };
@@ -398,14 +299,14 @@ export async function getConversationReadStatus(conversationId: string, userId: 
   }
 
   try {
-    const { data: msgs } = await gateway
+    const { data: msgs } = await dataClient
       .from('messages')
       .select('id')
       .eq('conversation_id', conversationId);
     const ids = (msgs || []).map(m => m.id);
     if (ids.length === 0) return { data: [], error: null };
 
-    const { data: reads } = await gateway
+    const { data: reads } = await dataClient
       .from('message_reads')
       .select('message_id, user_id')
       .in('message_id', ids);
@@ -422,7 +323,7 @@ export async function getMyReadMessageIds(messageIds: string[], userId: string):
   }
 
   try {
-    const { data: reads } = await gateway
+    const { data: reads } = await dataClient
       .from('message_reads')
       .select('message_id')
       .in('message_id', messageIds)
@@ -439,7 +340,7 @@ export async function markMessageDelivered(messageId: string): Promise<ApiResult
   }
 
   try {
-    const { error } = await gateway
+    const { error } = await dataClient
       .from('messages')
       .update({ delivered_at: new Date().toISOString() } as Record<string, unknown>)
       .eq('id', messageId);

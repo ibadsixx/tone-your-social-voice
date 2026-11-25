@@ -1,55 +1,24 @@
-import { gateway, API_URL } from './client';
-import type { ApiResult } from './client';
+import { dataClient } from '@/lib/supabase/dataClient';
+import type { ApiResult } from '@/lib/supabase/dataClient';
+import { callEdgeFunction } from '@/lib/supabase/crossProject';
 import type {
   Group, GroupMember, GroupPost, GroupFollow, GroupPin, GroupRule,
   GroupMembersList, GroupMemberActionResult, GroupRestrictionType,
 } from './types';
 import type { GroupPrivacy } from '@/lib/groupSettings';
 
-function getAccessToken(): string | null {
-  try {
-    const sessionStr = localStorage.getItem('tone-auth-token');
-    if (sessionStr) {
-      const session = JSON.parse(sessionStr);
-      return session?.access_token ?? null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-// All group settings/rules writes go through the API Gateway's authorized
-// v1/group endpoints (the Gateway resolves the owner server-side). The
-// browser never writes these tables directly.
-async function callGateway<T>(path: string, init: RequestInit): Promise<ApiResult<T>> {
-  if (!API_URL) {
-    return { data: null, error: { message: 'VITE_API_GATEWAY_URL not configured' } };
-  }
-  try {
-    const token = getAccessToken();
-    const res = await fetch(`${API_URL}${path}`, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(init.headers || {}),
-      },
-    });
-    const body = res.status === 204 ? null : await res.json().catch(() => null);
-    if (!res.ok) {
-      return {
-        data: null,
-        error: {
-          message: (body as { error?: string } | null)?.error || `Request failed (${res.status})`,
-          code: String(res.status),
-        },
-      };
-    }
-    return { data: body as T, error: null };
-  } catch (err) {
-    return { data: null, error: { message: String(err) } };
-  }
+// Group settings, rules and moderation are server-authoritative. The browser
+// sends the operation to the `groups` Edge Function, which verifies the caller's
+// central Auth JWT and the group owner/moderator role before writing to the
+// groups project. No privileged write is performed directly from the client.
+function callGroupsFunction<T>(
+  operation: string,
+  input: Record<string, unknown>
+): Promise<ApiResult<T>> {
+  return callEdgeFunction<{ operation: string; input: Record<string, unknown> }, T>('groups', {
+    operation,
+    input,
+  }) as Promise<ApiResult<T>>;
 }
 
 export async function createGroupSecure(input: {
@@ -57,50 +26,33 @@ export async function createGroupSecure(input: {
   description?: string | null;
   privacy: GroupPrivacy | string;
 }): Promise<ApiResult<Group>> {
-  return callGateway<Group>('/api/v1/groups', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
+  return callGroupsFunction<Group>('createGroup', input);
 }
 
 export async function updateGroupSettings(
   groupId: string,
   input: { name: string; description?: string | null; privacy: GroupPrivacy | string }
 ): Promise<ApiResult<Group>> {
-  return callGateway<Group>(`/api/v1/groups/${encodeURIComponent(groupId)}/settings`, {
-    method: 'PUT',
-    body: JSON.stringify(input),
-  });
+  return callGroupsFunction<Group>('updateSettings', { groupId, ...input });
 }
 
 export async function updateGroupCover(
   groupId: string,
   coverImage: string | null
 ): Promise<ApiResult<Group>> {
-  return callGateway<Group>(`/api/v1/groups/${encodeURIComponent(groupId)}/cover`, {
-    method: 'PUT',
-    body: JSON.stringify({ cover_image: coverImage }),
-  });
+  return callGroupsFunction<Group>('updateCover', { groupId, cover_image: coverImage });
 }
 
 export async function setGroupRulesEnabled(groupId: string, enabled: boolean): Promise<ApiResult<Group>> {
-  return callGateway<Group>(`/api/v1/groups/${encodeURIComponent(groupId)}/rules-enabled`, {
-    method: 'PUT',
-    body: JSON.stringify({ rules_enabled: enabled }),
-  });
+  return callGroupsFunction<Group>('setRulesEnabled', { groupId, rules_enabled: enabled });
 }
 
 export async function getGroupRules(groupId: string): Promise<ApiResult<GroupRule[]>> {
-  return callGateway<GroupRule[]>(`/api/v1/groups/${encodeURIComponent(groupId)}/rules`, {
-    method: 'GET',
-  });
+  return callGroupsFunction<GroupRule[]>('getRules', { groupId });
 }
 
 export async function addGroupRule(groupId: string, ruleText: string): Promise<ApiResult<GroupRule[]>> {
-  return callGateway<GroupRule[]>(`/api/v1/groups/${encodeURIComponent(groupId)}/rules`, {
-    method: 'POST',
-    body: JSON.stringify({ rule_text: ruleText }),
-  });
+  return callGroupsFunction<GroupRule[]>('addRule', { groupId, rule_text: ruleText });
 }
 
 export async function updateGroupRule(
@@ -108,27 +60,18 @@ export async function updateGroupRule(
   ruleId: string,
   ruleText: string
 ): Promise<ApiResult<GroupRule[]>> {
-  return callGateway<GroupRule[]>(
-    `/api/v1/groups/${encodeURIComponent(groupId)}/rules/${encodeURIComponent(ruleId)}`,
-    { method: 'PUT', body: JSON.stringify({ rule_text: ruleText }) }
-  );
+  return callGroupsFunction<GroupRule[]>('updateRule', { groupId, ruleId, rule_text: ruleText });
 }
 
 export async function deleteGroupRule(groupId: string, ruleId: string): Promise<ApiResult<GroupRule[]>> {
-  return callGateway<GroupRule[]>(
-    `/api/v1/groups/${encodeURIComponent(groupId)}/rules/${encodeURIComponent(ruleId)}`,
-    { method: 'DELETE' }
-  );
+  return callGroupsFunction<GroupRule[]>('deleteRule', { groupId, ruleId });
 }
 
 export async function reorderGroupRules(
   groupId: string,
   orderedIds: string[]
 ): Promise<ApiResult<GroupRule[]>> {
-  return callGateway<GroupRule[]>(`/api/v1/groups/${encodeURIComponent(groupId)}/rules/reorder`, {
-    method: 'PUT',
-    body: JSON.stringify({ ordered_ids: orderedIds }),
-  });
+  return callGroupsFunction<GroupRule[]>('reorderRules', { groupId, ordered_ids: orderedIds });
 }
 
 const GROUP_SELECT_WITH_MEMBERS = `
@@ -164,78 +107,66 @@ const GROUP_MEMBER_SELECT = `
 // --- Groups ---
 
 export async function getGroupById(id: string): Promise<ApiResult<Group>> {
-  return gateway.from('groups').select('*').eq('id', id).single() as Promise<ApiResult<Group>>;
+  return dataClient.from('groups').select('*').eq('id', id).single() as Promise<ApiResult<Group>>;
 }
 
 export async function getGroupsWithMembers(): Promise<ApiResult<(Group & { group_members: GroupMember[] })[]>> {
-  return gateway.from('groups').select(GROUP_SELECT_WITH_MEMBERS).order('created_at', { ascending: false }) as Promise<ApiResult<(Group & { group_members: GroupMember[] })[]>>;
+  return dataClient.from('groups').select(GROUP_SELECT_WITH_MEMBERS).order('created_at', { ascending: false }) as Promise<ApiResult<(Group & { group_members: GroupMember[] })[]>>;
 }
 
 export async function getGroupsByUser(userId: string): Promise<ApiResult<Group[]>> {
-  return gateway.from('groups').select('*').eq('admin_id', userId).order('created_at', { ascending: false }) as Promise<ApiResult<Group[]>>;
+  return dataClient.from('groups').select('*').eq('admin_id', userId).order('created_at', { ascending: false }) as Promise<ApiResult<Group[]>>;
 }
 
 export async function createGroup(data: Partial<Group>): Promise<ApiResult<Group>> {
-  return gateway.from('groups').insert(data).select().single() as Promise<ApiResult<Group>>;
+  return dataClient.from('groups').insert(data).select().single() as Promise<ApiResult<Group>>;
 }
 
 export async function updateGroup(id: string, data: Partial<Group>): Promise<ApiResult<null>> {
-  return gateway.from('groups').update(data).eq('id', id) as Promise<ApiResult<null>>;
+  return dataClient.from('groups').update(data).eq('id', id) as Promise<ApiResult<null>>;
 }
 
 export async function deleteGroup(id: string): Promise<ApiResult<null>> {
-  return gateway.from('groups').delete().eq('id', id) as Promise<ApiResult<null>>;
+  return dataClient.from('groups').delete().eq('id', id) as Promise<ApiResult<null>>;
 }
 
 // --- Group Members ---
 
 export async function getGroupMembers(groupId: string): Promise<ApiResult<GroupMember[]>> {
-  return gateway.from('group_members').select(GROUP_MEMBER_SELECT).eq('group_id', groupId) as Promise<ApiResult<GroupMember[]>>;
+  return dataClient.from('group_members').select(GROUP_MEMBER_SELECT).eq('group_id', groupId) as Promise<ApiResult<GroupMember[]>>;
 }
 
 export async function joinGroup(groupId: string, userId: string, role: string = 'member'): Promise<ApiResult<null>> {
-  return gateway.from('group_members').insert({ group_id: groupId, user_id: userId, role }) as Promise<ApiResult<null>>;
+  return dataClient.from('group_members').insert({ group_id: groupId, user_id: userId, role }) as Promise<ApiResult<null>>;
 }
 
 export async function leaveGroup(groupId: string, userId: string): Promise<ApiResult<null>> {
-  return gateway.from('group_members').delete().eq('group_id', groupId).eq('user_id', userId) as Promise<ApiResult<null>>;
+  return dataClient.from('group_members').delete().eq('group_id', groupId).eq('user_id', userId) as Promise<ApiResult<null>>;
 }
 
 export async function addGroupMembers(groupId: string, userIds: string[], role: string = 'member'): Promise<ApiResult<null>> {
   const rows = userIds.map(user_id => ({ group_id: groupId, user_id, role }));
-  return gateway.from('group_members').insert(rows) as Promise<ApiResult<null>>;
+  return dataClient.from('group_members').insert(rows) as Promise<ApiResult<null>>;
 }
 
-// These writes go through the API Gateway's authorized group-member endpoints:
-// the caller's identity is resolved from the Bearer token server-side, and the
-// owner→moderator→member hierarchy (plus ban/restriction semantics) is enforced
-// there, never in the browser.
+// These writes go through the `groups` Edge Function: the caller's identity is
+// resolved from the verified central Auth JWT, and the owner→moderator→member
+// hierarchy (plus ban/restriction semantics) is enforced there, never here.
 
 export async function getGroupMembersSecure(groupId: string): Promise<ApiResult<GroupMembersList>> {
-  return callGateway<GroupMembersList>(`/api/v1/groups/${encodeURIComponent(groupId)}/members`, {
-    method: 'GET',
-  });
+  return callGroupsFunction<GroupMembersList>('getMembers', { groupId });
 }
 
 export async function addGroupMembersSecure(groupId: string, userIds: string[]): Promise<ApiResult<GroupMemberActionResult>> {
-  return callGateway<GroupMemberActionResult>(`/api/v1/groups/${encodeURIComponent(groupId)}/members`, {
-    method: 'POST',
-    body: JSON.stringify({ user_ids: userIds }),
-  });
+  return callGroupsFunction<GroupMemberActionResult>('addMembers', { groupId, user_ids: userIds });
 }
 
 export async function joinGroupSecure(groupId: string, userId: string): Promise<ApiResult<GroupMemberActionResult>> {
-  return callGateway<GroupMemberActionResult>(`/api/v1/groups/${encodeURIComponent(groupId)}/members`, {
-    method: 'POST',
-    body: JSON.stringify({ user_id: userId }),
-  });
+  return callGroupsFunction<GroupMemberActionResult>('join', { groupId, user_id: userId });
 }
 
 export async function leaveGroupSecure(groupId: string, userId: string): Promise<ApiResult<GroupMemberActionResult>> {
-  return callGateway<GroupMemberActionResult>(
-    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
-    { method: 'DELETE' }
-  );
+  return callGroupsFunction<GroupMemberActionResult>('leave', { groupId, user_id: userId });
 }
 
 export async function removeGroupMemberSecure(
@@ -243,10 +174,7 @@ export async function removeGroupMemberSecure(
   memberId: string,
   reason?: string | null
 ): Promise<ApiResult<GroupMemberActionResult>> {
-  return callGateway<GroupMemberActionResult>(
-    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}`,
-    { method: 'DELETE', body: JSON.stringify({ reason: reason ?? null }) }
-  );
+  return callGroupsFunction<GroupMemberActionResult>('removeMember', { groupId, memberId, reason: reason ?? null });
 }
 
 export async function reportGroupMemberSecure(
@@ -254,10 +182,7 @@ export async function reportGroupMemberSecure(
   memberId: string,
   input: { reason: string; description?: string | null }
 ): Promise<ApiResult<GroupMemberActionResult>> {
-  return callGateway<GroupMemberActionResult>(
-    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}/report`,
-    { method: 'POST', body: JSON.stringify(input) }
-  );
+  return callGroupsFunction<GroupMemberActionResult>('reportMember', { groupId, memberId, ...input });
 }
 
 export async function restrictGroupMemberSecure(
@@ -265,10 +190,7 @@ export async function restrictGroupMemberSecure(
   memberId: string,
   input: { restriction_type: GroupRestrictionType; ends_at?: string | null; reason?: string | null; rule_id?: string | null }
 ): Promise<ApiResult<GroupMemberActionResult>> {
-  return callGateway<GroupMemberActionResult>(
-    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}/restrict`,
-    { method: 'POST', body: JSON.stringify(input) }
-  );
+  return callGroupsFunction<GroupMemberActionResult>('restrictMember', { groupId, memberId, ...input });
 }
 
 export async function unrestrictGroupMemberSecure(
@@ -276,10 +198,7 @@ export async function unrestrictGroupMemberSecure(
   memberId: string,
   input?: { restriction_type?: GroupRestrictionType }
 ): Promise<ApiResult<GroupMemberActionResult>> {
-  return callGateway<GroupMemberActionResult>(
-    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}/unrestrict`,
-    { method: 'POST', body: JSON.stringify(input || {}) }
-  );
+  return callGroupsFunction<GroupMemberActionResult>('unrestrictMember', { groupId, memberId, ...(input || {}) });
 }
 
 export async function banGroupMemberSecure(
@@ -287,38 +206,32 @@ export async function banGroupMemberSecure(
   memberId: string,
   input: { ends_at?: string | null; reason?: string | null; rule_id?: string | null }
 ): Promise<ApiResult<GroupMemberActionResult>> {
-  return callGateway<GroupMemberActionResult>(
-    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}/ban`,
-    { method: 'POST', body: JSON.stringify(input) }
-  );
+  return callGroupsFunction<GroupMemberActionResult>('banMember', { groupId, memberId, ...input });
 }
 
 export async function unbanGroupMemberSecure(
   groupId: string,
   memberId: string
 ): Promise<ApiResult<GroupMemberActionResult>> {
-  return callGateway<GroupMemberActionResult>(
-    `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}/unban`,
-    { method: 'POST', body: JSON.stringify({}) }
-  );
+  return callGroupsFunction<GroupMemberActionResult>('unbanMember', { groupId, memberId });
 }
 
 // --- Group Posts ---
 
 export async function getGroupPosts(groupId: string): Promise<ApiResult<GroupPost[]>> {
-  return gateway.from('group_posts').select(GROUP_POST_SELECT).eq('group_id', groupId).order('created_at', { ascending: false }) as Promise<ApiResult<GroupPost[]>>;
+  return dataClient.from('group_posts').select(GROUP_POST_SELECT).eq('group_id', groupId).order('created_at', { ascending: false }) as Promise<ApiResult<GroupPost[]>>;
 }
 
 export async function createGroupPost(groupId: string, postId: string, sharedBy: string): Promise<ApiResult<null>> {
-  return gateway.from('group_posts').insert({ group_id: groupId, post_id: postId, shared_by: sharedBy }) as Promise<ApiResult<null>>;
+  return dataClient.from('group_posts').insert({ group_id: groupId, post_id: postId, shared_by: sharedBy }) as Promise<ApiResult<null>>;
 }
 
 export async function getUserGroupPosts(groupId: string, userId: string): Promise<ApiResult<GroupPost[]>> {
-  return gateway.from('group_posts').select(GROUP_POST_SELECT).eq('group_id', groupId).eq('shared_by', userId).order('created_at', { ascending: false }) as Promise<ApiResult<GroupPost[]>>;
+  return dataClient.from('group_posts').select(GROUP_POST_SELECT).eq('group_id', groupId).eq('shared_by', userId).order('created_at', { ascending: false }) as Promise<ApiResult<GroupPost[]>>;
 }
 
 export async function getGroupMediaPosts(groupId: string): Promise<ApiResult<GroupPost[]>> {
-  return gateway.from('group_posts').select(`
+  return dataClient.from('group_posts').select(`
     id, created_at,
     post:post_id (media_url, media_type)
   `).eq('group_id', groupId).order('created_at', { ascending: false }) as Promise<ApiResult<GroupPost[]>>;
@@ -327,31 +240,31 @@ export async function getGroupMediaPosts(groupId: string): Promise<ApiResult<Gro
 // --- Group Follows (inverse: row = unfollowed) ---
 
 export async function getGroupFollowStatus(groupId: string, userId: string): Promise<ApiResult<GroupFollow>> {
-  return gateway.from('group_follows').select('id').eq('group_id', groupId).eq('user_id', userId).maybeSingle() as Promise<ApiResult<GroupFollow>>;
+  return dataClient.from('group_follows').select('id').eq('group_id', groupId).eq('user_id', userId).maybeSingle() as Promise<ApiResult<GroupFollow>>;
 }
 
 export async function unfollowGroup(groupId: string, userId: string): Promise<ApiResult<null>> {
-  return gateway.from('group_follows').insert({ group_id: groupId, user_id: userId }) as Promise<ApiResult<null>>;
+  return dataClient.from('group_follows').insert({ group_id: groupId, user_id: userId }) as Promise<ApiResult<null>>;
 }
 
 export async function followGroup(groupId: string, userId: string): Promise<ApiResult<null>> {
-  return gateway.from('group_follows').delete().eq('group_id', groupId).eq('user_id', userId) as Promise<ApiResult<null>>;
+  return dataClient.from('group_follows').delete().eq('group_id', groupId).eq('user_id', userId) as Promise<ApiResult<null>>;
 }
 
 // --- Group Pins ---
 
 export async function getUserPinnedGroups(userId: string): Promise<ApiResult<GroupPin[]>> {
-  return gateway.from('group_pins').select('group_id').eq('user_id', userId) as Promise<ApiResult<GroupPin[]>>;
+  return dataClient.from('group_pins').select('group_id').eq('user_id', userId) as Promise<ApiResult<GroupPin[]>>;
 }
 
 export async function getGroupPinStatus(groupId: string, userId: string): Promise<ApiResult<GroupPin>> {
-  return gateway.from('group_pins').select('id').eq('group_id', groupId).eq('user_id', userId).maybeSingle() as Promise<ApiResult<GroupPin>>;
+  return dataClient.from('group_pins').select('id').eq('group_id', groupId).eq('user_id', userId).maybeSingle() as Promise<ApiResult<GroupPin>>;
 }
 
 export async function pinGroup(groupId: string, userId: string): Promise<ApiResult<null>> {
-  return gateway.from('group_pins').insert({ group_id: groupId, user_id: userId }) as Promise<ApiResult<null>>;
+  return dataClient.from('group_pins').insert({ group_id: groupId, user_id: userId }) as Promise<ApiResult<null>>;
 }
 
 export async function unpinGroup(groupId: string, userId: string): Promise<ApiResult<null>> {
-  return gateway.from('group_pins').delete().eq('group_id', groupId).eq('user_id', userId) as Promise<ApiResult<null>>;
+  return dataClient.from('group_pins').delete().eq('group_id', groupId).eq('user_id', userId) as Promise<ApiResult<null>>;
 }

@@ -47,8 +47,8 @@ vi.mock('@/api', async (importOriginal) => {
   };
 });
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: { from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }) },
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: { from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }) },
 }));
 
 vi.mock('framer-motion', () => ({

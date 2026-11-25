@@ -45,7 +45,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { mediaAppUrl } from '@/lib/mediaUrl';
 import { parseGroupShareContent } from '@/lib/groupShare';
 import { MessageLinkPreview } from './MessageLinkPreview';
@@ -61,7 +61,7 @@ import {
 export interface Message {
   id: string;
   content?: string;
-  message_type?: 'text' | 'image' | 'gif' | 'sticker' | 'audio' | 'video' | 'file';
+  message_type?: 'text' | 'image' | 'gif' | 'sticker' | 'audio' | 'video' | 'file' | 'poll';
   media_url?: string;
   attachment_url?: string;
   image_url?: string;
@@ -295,24 +295,24 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     setAudioError(null);
     retriedConvertedRef.current = false;
 
-    // The gateway uploads media to Cloudinary and its client exposes NO
+    // The dataClient uploads media to Cloudinary and its client exposes NO
     // createSignedUrl (that API is Supabase-storage-only), so the previous call
     // threw TypeError and playback always surfaced "Failed to load audio". Use
     // the same resolution every other upload in the app uses (getPublicUrl):
     // prefer the Cloudinary CDN URL persisted on the row at send time
     // (audio_url), otherwise getPublicUrl() — which returns the exact CDN URL
-    // cached from this session's own upload, or the gateway
-    // /api/storage/message_audios/* URL that the gateway's existing GET route
+    // cached from this session's own upload, or the dataClient
+    // /api/storage/message_audios/* URL that the dataClient's existing GET route
     // 302-redirects to the reconstructed Cloudinary asset. That covers the
     // sender, receivers, refreshes and legacy rows that have no audio_url.
     // voicePlaybackUrl additionally asks for an MP3 conversion of the same
     // asset when this browser cannot play the recorded container (e.g.
     // WebM/Opus in Safari/iOS): it rewrites direct Cloudinary URLs to an
-    // f_mp3 delivery, and appends ?format=mp3 to gateway fallback URLs so the
-    // gateway redirects to the converted asset too — so play() works instead
+    // f_mp3 delivery, and appends ?format=mp3 to dataClient fallback URLs so the
+    // dataClient redirects to the converted asset too — so play() works instead
     // of rejecting with NotSupportedError.
     try {
-      const { data } = gateway.storage
+      const { data } = dataClient.storage
         .from('message_audios')
         .getPublicUrl(message.audio_path);
       const sourceUrl = message.audio_url || data.publicUrl;
@@ -357,7 +357,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         console.error('Error playing audio:', error);
         const name =
           typeof error === 'object' && error !== null
-            ? ((error as { name?: unknown }).name ?? '')
+            ? ((error as { name?: string }).name ?? '')
             : '';
         logVoicePlaybackError({
           phase: 'play',

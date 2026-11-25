@@ -5,7 +5,7 @@ import { RelationshipSelector } from '@/components/RelationshipSelector';
 import { FamilyMembersSection } from '@/components/FamilyMembersSection';
 import { VisibilitySelector, Visibility } from '@/components/VisibilitySelector';
 import { useToast } from '@/hooks/use-toast';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { sanitizeProfilePayload, normalizeVisibilityValue } from '@/utils/profileValidation';
 import { Save, X, Edit, Users2 } from 'lucide-react';
 
@@ -42,13 +42,13 @@ export const FamilyAndRelationships: React.FC<FamilyAndRelationshipsProps> = ({
 
   const checkFriendshipStatus = async () => {
     try {
-      const { data: { user } } = await gateway.auth.getUser();
+      const { data: { user } } = await dataClient.auth.getUser();
       if (!user?.id || isOwnProfile) {
         setViewerCanSeeFriend(false);
         return;
       }
 
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('friends')
         .select('status')
         .or(`and(requester_id.eq.${user.id},receiver_id.eq.${profileId}),and(requester_id.eq.${profileId},receiver_id.eq.${user.id})`)
@@ -65,7 +65,7 @@ export const FamilyAndRelationships: React.FC<FamilyAndRelationshipsProps> = ({
 
   const loadRelationshipData = async () => {
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('profiles')
         .select('relationship_status, relationship_visibility')
         .eq('id', profileId)
@@ -102,7 +102,7 @@ export const FamilyAndRelationships: React.FC<FamilyAndRelationshipsProps> = ({
       // Apply sanitization for proper database format
       const sanitizedData = sanitizeProfilePayload(updateData);
 
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('profiles')
         .update(sanitizedData)
         .eq('id', profileId);

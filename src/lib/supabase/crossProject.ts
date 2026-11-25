@@ -31,12 +31,12 @@ function getFunctionUrl(functionName: string): string {
  * Call an Edge Function with the current central Auth JWT.
  * The function verifies the JWT server-side and enforces authorization.
  */
-async function callEdgeFunction<TRequest, TResponse>(
+export async function callEdgeFunction<TRequest, TResponse>(
   functionName: string,
   body?: TRequest
 ): Promise<{
   data: TResponse | null;
-  error: { message: string } | null;
+  error: { message: string; code?: string } | null;
 }> {
   const authError = getCentralAuthInitError();
   if (authError) {
@@ -119,7 +119,7 @@ export async function getMyProfile(): Promise<{
     profile_pic?: string | null;
     [key: string]: unknown;
   } | null;
-  error: { message: string } | null;
+  error: { message: string; code?: string } | null;
 }> {
   return callEdgeFunction<{ profileId?: string }, unknown>('getProfile', {}).then(
     (result) => {

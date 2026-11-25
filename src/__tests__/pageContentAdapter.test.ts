@@ -75,8 +75,8 @@ function createBuilder(data: unknown) {
   return b;
 }
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     from: (table: string) => {
       fromCalls.push(table);
       return createBuilder(TABLES[table] ?? []);

@@ -8,7 +8,7 @@
 // and nothing weaker. Being signed in yourself is not a friend. A pending message
 // request is not a friend. A blocked user is not a friend. An arbitrary Tone user
 // is not a friend. All of those are decided server-side, in
-// gateway/src/features/onlineFriends.ts, out of the app's existing
+// dataClient/src/features/onlineFriends.ts, out of the app's existing
 // accepted-friendship and blocking logic - so this file cannot drift from the rules
 // the rest of the product uses by deciding friendship differently.
 //
@@ -69,16 +69,16 @@ import {
   type ReactNode,
 } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { getMessageRealtime, subscribeToMessages } from '@/lib/messageRealtime';
 
 /** Coalesce a burst of wake-ups into one read. */
 const REFRESH_DEBOUNCE_MS = 300;
 
 /**
- * The realtime event the gateway publishes when a user's presence TRANSITIONS to
+ * The realtime event the dataClient publishes when a user's presence TRANSITIONS to
  * online. Its payload is intentionally empty - see
- * gateway/src/features/onlineFriends.ts - so it carries no information beyond "your
+ * dataClient/src/features/onlineFriends.ts - so it carries no information beyond "your
  * cached answer may now be stale" and this listener never learns who came online.
  */
 const PRESENCE_UPDATED_EVENT = 'presence.updated';
@@ -103,13 +103,13 @@ interface ServerAnswer {
  * The server's authoritative answer, or null to keep the previous one.
  *
  * On any kind of failure the PREVIOUS answer is kept, for the same reason the
- * unread badge keeps its previous set: a transient gateway or network blip must not
+ * unread badge keeps its previous set: a transient dataClient or network blip must not
  * make a dot the user is already looking at disappear, and it certainly must not be
  * reported as "nobody is online".
  */
 async function fetchServerAnswer(previous: ServerAnswer | null): Promise<ServerAnswer | null> {
   try {
-    const { data, error } = await gateway.presenceOnlineFriends();
+    const { data, error } = await dataClient.presenceOnlineFriends();
     if (error) return null;
     if (!data || typeof data.hasOnlineFriend !== 'boolean') return null;
     return {

@@ -4,11 +4,13 @@ import { X, Mic, Video, MicOff, VideoOff, Users, Globe, Lock, StopCircle, Hand }
 import { useLiveStream } from '@/contexts/LiveStreamContext';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 const LiveStream = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user: authUser } = useAuth();
 
   const {
     stream,
@@ -49,17 +51,8 @@ const LiveStream = () => {
   const isEnding = useRef(false);
 
   useEffect(() => {
-    // Get current user id from session
-    try {
-      const sessionStr = localStorage.getItem('tone-auth-token');
-      if (sessionStr) {
-        const session = JSON.parse(sessionStr);
-        setMyUserId(session?.user?.id ?? null);
-      }
-    } catch {
-      setMyUserId(null);
-    }
-  }, []);
+    setMyUserId(authUser?.id ?? null);
+  }, [authUser]);
 
   // Load available media devices on mount
   useEffect(() => {

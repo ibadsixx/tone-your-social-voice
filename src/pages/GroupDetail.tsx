@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { groupsApi, postsApi } from '@/api';
 import type { GroupRule } from '@/api/types';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -542,13 +542,13 @@ const GroupDetailPage = () => {
       const ext = file.name.split('.').pop();
       const path = `${groupId}/cover.${ext}`;
 
-      const { error: uploadError } = await gateway.storage
+      const { error: uploadError } = await dataClient.storage
         .from('group_covers')
         .upload(path, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = gateway.storage
+      const { data: { publicUrl } } = dataClient.storage
         .from('group_covers')
         .getPublicUrl(path);
 

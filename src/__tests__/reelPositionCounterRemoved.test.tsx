@@ -43,8 +43,8 @@ let currentUser: { id: string } | null = { id: 'owner-1' };
 /** Set false to render a viewer for a reel that is not in the list at all. */
 let listAvailable = true;
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     from: (table: string) => {
       if (table === 'posts') {
         const self: Record<string, unknown> = {

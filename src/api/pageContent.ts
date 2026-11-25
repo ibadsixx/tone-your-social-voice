@@ -18,8 +18,8 @@
 // component's cursor contract is still honoured (it just completes in a single
 // request), which keeps the page and the profile on one code path.
 
-import { gateway } from '@/lib/gateway';
-import type { ApiResult } from './client';
+import { dataClient } from '@/lib/supabase/dataClient';
+import type { ApiResult } from '@/lib/supabase/dataClient';
 import type {
   ProfileContentFetcher,
   ProfileContentKind,
@@ -109,7 +109,7 @@ export function createPageContentFetcher(
 
     try {
       // 1. The post ids linked to this page.
-      const { data: links, error: linksError } = await gateway
+      const { data: links, error: linksError } = await dataClient
         .from('page_posts')
         .select('*')
         .eq('page_id', page.id);
@@ -132,7 +132,7 @@ export function createPageContentFetcher(
       // 2. The posts themselves.
       const postRows: Array<Record<string, unknown>> = [];
       for (const ids of chunk(postIds, ID_CHUNK)) {
-        const { data: posts, error: postsError } = await gateway
+        const { data: posts, error: postsError } = await dataClient
           .from('posts')
           .select('*')
           .in('id', ids);
@@ -155,7 +155,7 @@ export function createPageContentFetcher(
       ];
       const authors = new Map<string, ProfileContentAuthor>();
       for (const ids of chunk(authorIds, ID_CHUNK)) {
-        const { data: profiles } = await gateway
+        const { data: profiles } = await dataClient
           .from('profiles')
           .select('id, username, display_name, profile_pic')
           .in('id', ids);

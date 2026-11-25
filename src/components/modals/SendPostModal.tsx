@@ -9,7 +9,7 @@ import { Search, Users, MessageSquare, Hash } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useFriends } from '@/hooks/useFriends';
 import { useGroups } from '@/hooks/useGroups';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -76,7 +76,7 @@ export const SendPostModal = ({ isOpen, onClose, postId, postContent }: SendPost
     try {
       for (const recipient of selectedRecipients) {
         if (recipient.type === 'friend') {
-          await gateway.from('messages').insert({
+          await dataClient.from('messages').insert({
             sender_id: user.id,
             receiver_id: recipient.id,
             content: postContent ? `Shared a post: ${postContent.slice(0, 100)}...` : 'Shared a post',

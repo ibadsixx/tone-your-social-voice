@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import PageContainer from '@/components/PageContainer';
 import { usePhotoUpload } from '@/hooks/usePhotoUpload';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import PhotoUploadDialog from '@/components/PhotoUploadDialog';
 import QRCode from 'qrcode';
 import YourInformationAndPermissions from '@/components/YourInformationAndPermissions';
@@ -128,7 +128,7 @@ const Settings = () => {
     if (!user?.id) return;
 
     try {
-      const { data: profile, error } = await gateway
+      const { data: profile, error } = await dataClient
         .from('profiles')
         .select('bio, display_name')
         .eq('id', user.id)
@@ -150,7 +150,7 @@ const Settings = () => {
 
     try {
       // Get profile data
-      const { data: profile, error: profileError } = await gateway
+      const { data: profile, error: profileError } = await dataClient
         .from('profiles')
         .select('*')
         .eq('id', user.id)
@@ -250,7 +250,7 @@ const Settings = () => {
       // Update profile in database
       const displayName = `${personalDetails.firstName} ${personalDetails.lastName}`.trim();
       
-      const { error: profileError } = await gateway
+      const { error: profileError } = await dataClient
         .from('profiles')
         .update({
           display_name: displayName,
@@ -262,7 +262,7 @@ const Settings = () => {
 
       // Update email in auth if changed
       if (personalDetails.email !== user.email) {
-        const { error: emailError } = await gateway.auth.updateUser({
+        const { error: emailError } = await dataClient.auth.updateUser({
           email: personalDetails.email
         });
 
@@ -321,8 +321,8 @@ const Settings = () => {
         throw new Error('Password must contain uppercase, lowercase, numbers, and special characters');
       }
 
-      // Verify the current password against the gateway (real sign-in).
-      const { error: signInError } = await gateway.auth.signInWithPassword({
+      // Verify the current password against the dataClient (real sign-in).
+      const { error: signInError } = await dataClient.auth.signInWithPassword({
         email: user?.email || '',
         password: passwordData.currentPassword
       });
@@ -331,12 +331,12 @@ const Settings = () => {
         throw new Error('Current password is incorrect');
       }
 
-      // The gateway's PUT /api/auth/user only accepts profile metadata
+      // The dataClient's PUT /api/auth/user only accepts profile metadata
       // (display_name, avatar_url, bio, location, website) — it cannot change
       // passwords, so report that honestly instead of a fake success.
       toast({
         title: 'Password Change Unavailable',
-        description: 'Your current password was verified, but the gateway does not support changing passwords yet.',
+        description: 'Your current password was verified, but the dataClient does not support changing passwords yet.',
         variant: 'destructive'
       });
 
@@ -365,7 +365,7 @@ const Settings = () => {
   // Check for existing MFA factors on component mount
   useEffect(() => {
     let mounted = true;
-    gateway.auth.mfa.listFactors().then(({ data }) => {
+    dataClient.auth.mfa.listFactors().then(({ data }) => {
       if (!mounted) return;
       const totpFactor = (data.totp || []).find((f: any) => f.status === 'verified');
       setTotpData(prev => ({
@@ -381,7 +381,7 @@ const Settings = () => {
     setTotpSetupLoading(true);
 
     try {
-      const { data, error } = await gateway.auth.mfa.enroll({
+      const { data, error } = await dataClient.auth.mfa.enroll({
         factorType: 'totp',
         friendlyName: 'Tone Authenticator'
       });
@@ -413,13 +413,13 @@ const Settings = () => {
     setTotpLoading(true);
 
     try {
-      const { data: challengeData, error: challengeError } = await gateway.auth.mfa.challenge({
+      const { data: challengeData, error: challengeError } = await dataClient.auth.mfa.challenge({
         factorId: totpData.factor_id
       });
 
       if (challengeError) throw challengeError;
 
-      const { data: verifyData, error: verifyError } = await gateway.auth.mfa.verify({
+      const { data: verifyData, error: verifyError } = await dataClient.auth.mfa.verify({
         factorId: totpData.factor_id,
         challengeId: challengeData.id,
         code: totpData.verification_code
@@ -435,7 +435,7 @@ const Settings = () => {
         secret: ''
       }));
 
-      gateway.auth.refreshSession().catch(() => {});
+      dataClient.auth.refreshSession().catch(() => {});
 
       toast({
         title: 'Success',
@@ -459,13 +459,13 @@ const Settings = () => {
       let factorId = totpData.factor_id;
 
       if (!factorId) {
-        const { data } = await gateway.auth.mfa.listFactors();
+        const { data } = await dataClient.auth.mfa.listFactors();
         factorId = (data.totp || []).find((f: any) => f.status === 'verified')?.id;
       }
 
       if (!factorId) throw new Error('No verified two-factor factor found');
 
-      const { error } = await gateway.auth.mfa.unenroll({
+      const { error } = await dataClient.auth.mfa.unenroll({
         factorId
       });
 
@@ -477,7 +477,7 @@ const Settings = () => {
         factor_id: undefined
       }));
 
-      gateway.auth.refreshSession().catch(() => {});
+      dataClient.auth.refreshSession().catch(() => {});
 
       toast({
         title: 'Success',

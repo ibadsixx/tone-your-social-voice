@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -44,7 +44,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
   const fetchFriends = async () => {
     try {
       // First get the friendship records
-      const { data: friendsData, error } = await gateway
+      const { data: friendsData, error } = await dataClient
         .from('friends')
         .select('created_at, requester_id, receiver_id')
         .or(`requester_id.eq.${profileId},receiver_id.eq.${profileId}`)
@@ -64,7 +64,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
       });
 
       // Fetch the profiles for all friends
-      const { data: profilesData, error: profilesError } = await gateway
+      const { data: profilesData, error: profilesError } = await dataClient
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .in('id', friendIds);
@@ -99,7 +99,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     try {
       console.log('Fetching following for profile:', profileId);
       // Get following records from followers table (standardized)
-      const { data: followingData, error } = await gateway
+      const { data: followingData, error } = await dataClient
         .from('followers')
         .select('created_at, following_id')
         .eq('follower_id', profileId);
@@ -113,7 +113,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
 
       // Get profile data for followed users
       const followingIds = followingData.map(follow => follow.following_id);
-      const { data: profilesData, error: profilesError } = await gateway
+      const { data: profilesData, error: profilesError } = await dataClient
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .in('id', followingIds);
@@ -142,7 +142,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     try {
       console.log('Fetching followers for profile:', profileId);
       // Get follower records from followers table (standardized)
-      const { data: followersData, error } = await gateway
+      const { data: followersData, error } = await dataClient
         .from('followers')
         .select('created_at, follower_id')
         .eq('following_id', profileId);
@@ -156,7 +156,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
 
       // Get profile data for followers
       const followerIds = followersData.map(follow => follow.follower_id);
-      const { data: profilesData, error: profilesError } = await gateway
+      const { data: profilesData, error: profilesError } = await dataClient
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .in('id', followerIds);
@@ -184,7 +184,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
   const checkPrivacySettings = async () => {
     try {
       // Get the profile's privacy settings
-      const { data: profileData, error } = await gateway
+      const { data: profileData, error } = await dataClient
         .from('profiles')
         .select('friends_visibility, following_visibility')
         .eq('id', profileId)
@@ -204,7 +204,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
           canViewFriends = true;
         } else if (friendsVisibility === 'friends' && user) {
           // Check if viewer is friends with profile owner
-          const { data: friendshipData } = await gateway
+          const { data: friendshipData } = await dataClient
             .from('friends')
             .select('id')
             .or(`and(requester_id.eq.${user.id},receiver_id.eq.${profileId}),and(requester_id.eq.${profileId},receiver_id.eq.${user.id})`)
@@ -242,7 +242,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     }
   };
 
-  // Real relationship totals straight from the gateway. The friends /
+  // Real relationship totals straight from the dataClient. The friends /
   // following / followers COUNT is public profile metadata (do.md): it is
   // returned even when the corresponding list is hidden, so these numbers are
   // fetched independently of `canViewFriends` / `canViewFollowing` and are
@@ -250,7 +250,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
   // request failed and the caller should fall back to the list lengths.
   const fetchCounts = async (): Promise<{ friends: number; following: number; followers: number }> => {
     try {
-      const { data, error } = await gateway.relationshipCounts(profileId);
+      const { data, error } = await dataClient.relationshipCounts(profileId);
       if (error || !data) throw error || new Error('Relationship counts unavailable');
       return {
         friends: typeof data.friends_count === 'number' ? data.friends_count : -1,
@@ -280,7 +280,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
         privacySettings.canViewFriends ? fetchFriends() : [],
         privacySettings.canViewFollowing ? fetchFollowing() : [],
         fetchFollowers(), // Followers are always visible (do.md: guest/auth/owner all see it)
-        fetchCounts() // Real totals from the gateway, independent of list visibility
+        fetchCounts() // Real totals from the dataClient, independent of list visibility
       ]);
 
       console.log('Fetched data:', { 
@@ -289,7 +289,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
         followers: followers.length 
       });
 
-      // The count is public metadata: prefer the gateway's real totals, fall
+      // The count is public metadata: prefer the dataClient's real totals, fall
       // back to the visible list lengths only if the counts request failed.
       setData({
         friends,
@@ -319,7 +319,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     if (!user) return;
 
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('followers')
         .delete()
         .eq('follower_id', user.id)
@@ -347,7 +347,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     if (!user) return;
 
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('followers')
         .insert({
           follower_id: user.id,
@@ -378,11 +378,11 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     try {
       // Look up the exact friendship row(s) between these two users and delete
       // by their `id`. We must NOT delete via the .or(...)/.eq('status') filter
-      // alone: the gateway's bulk-delete route drops the `or(...)` operator
+      // alone: the dataClient's bulk-delete route drops the `or(...)` operator
       // (applySupabaseFilters only handles eq/neq/gt/.../in), so a delete that
       // relies on the server-side filter would match EVERY row with
       // status='accepted' — unfriending one person wiped the whole friends list.
-      const { data: friendshipRows, error: lookupError } = await gateway
+      const { data: friendshipRows, error: lookupError } = await dataClient
         .from('friends')
         .select('id')
         .or(`and(requester_id.eq.${user.id},receiver_id.eq.${userId}),and(requester_id.eq.${userId},receiver_id.eq.${user.id})`)
@@ -391,7 +391,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
       if (lookupError) throw lookupError;
 
       for (const row of (friendshipRows || []) as Array<{ id: string }>) {
-        const { error: deleteError } = await gateway
+        const { error: deleteError } = await dataClient
           .from('friends')
           .delete()
           .eq('id', row.id);
@@ -422,7 +422,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
       await unfriendUser(userId);
       
       // Then block via RPC (uses blocks table)
-      const { error } = await gateway.rpc('block_user', {
+      const { error } = await dataClient.rpc('block_user', {
         p_blocker: user.id,
         p_blocked: userId,
         p_block_type: 'full'
@@ -450,7 +450,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     if (!user) return false;
 
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('followers')
         .select('id')
         .eq('follower_id', user.id)
@@ -468,7 +468,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
     fetchAllData();
 
     // Subscribe to changes in friends table
-    const friendsChannel = gateway
+    const friendsChannel = dataClient
       .channel('friends-changes')
       .on(
         'postgres_changes',
@@ -485,7 +485,7 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
       .subscribe();
 
     // Subscribe to changes in followers table
-    const followersChannel = gateway
+    const followersChannel = dataClient
       .channel('followers-changes')
       .on(
         'postgres_changes',
@@ -502,8 +502,8 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
       .subscribe();
 
     return () => {
-      gateway.removeChannel(friendsChannel);
-      gateway.removeChannel(followersChannel);
+      dataClient.removeChannel(friendsChannel);
+      dataClient.removeChannel(followersChannel);
     };
   }, [profileId]);
 

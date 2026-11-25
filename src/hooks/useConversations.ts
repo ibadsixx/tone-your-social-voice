@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type RefObject } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import { usePageSwitch } from '@/contexts/PageSwitchContext';
 import {
@@ -80,8 +80,8 @@ export const VOICE_MESSAGE_SELECT = `
   sender_profile:profiles!messages_sender_id_fkey(username, display_name, profile_pic)
 `;
 
-// Create the voice-message row through the SAME gateway table-based path the
-// text/image/video send flow uses (`gateway.from('messages').insert(...)`).
+// Create the voice-message row through the SAME dataClient table-based path the
+// text/image/video send flow uses (`dataClient.from('messages').insert(...)`).
 // The `messages` RLS policy (`participants_can_insert_messages`) enforces
 // sender identity, participant membership and block checks against the real
 // `conversation_participants` relation server-side, and the DB trigger
@@ -126,7 +126,7 @@ export async function insertVoiceMessageRow(params: {
     reply_to_id: null,
   } as Record<string, unknown>;
 
-  const result = await gateway
+  const result = await dataClient
     .from('messages')
     .insert(insertPayload)
     .select(VOICE_MESSAGE_SELECT)
@@ -174,14 +174,14 @@ export async function fetchVisibleDmUserIds(userId: string): Promise<{
     // which put three round trips in front of the inbox for no reason. One wave.
     const [friendsRes, inRequestsRes, outRequestsRes] = await Promise.all([
       // Accepted friends (both directions).
-      gateway
+      dataClient
         .from('friends')
         .select('requester_id, receiver_id')
         .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`)
         .eq('status', 'accepted'),
       // Accepted message requests also surface in Chats: a request I accepted
       // makes its sender a normal inbox peer.
-      gateway.from('message_requests').select('sender_id, status').eq('receiver_id', userId),
+      dataClient.from('message_requests').select('sender_id, status').eq('receiver_id', userId),
       // Requests where I am the SENDER: I initiated the DM, so that conversation
       // shows in MY Chats regardless of acceptance status — the recipient sees it
       // in Pending (Maybe-you-know / Spam) until they accept. Visibility is driven
@@ -189,7 +189,7 @@ export async function fetchVisibleDmUserIds(userId: string): Promise<{
       // the `messages` the user sent (fetchSentConversationIds). Selecting only
       // columns that exist on `message_requests` keeps this working on schemas
       // that don't carry a conversation_id column.
-      gateway.from('message_requests').select('receiver_id').eq('sender_id', userId),
+      dataClient.from('message_requests').select('receiver_id').eq('sender_id', userId),
     ]);
 
     const friends = friendsRes.data;
@@ -232,7 +232,7 @@ export async function fetchVisibleDmUserIds(userId: string): Promise<{
 async function fetchSentConversationIds(userId: string): Promise<Set<string>> {
   const ids = new Set<string>();
   try {
-    const { data } = await gateway
+    const { data } = await dataClient
       .from('messages')
       .select('conversation_id')
       .eq('sender_id', userId);
@@ -257,13 +257,26 @@ async function fetchSentConversationIds(userId: string): Promise<Set<string>> {
 //   - the user has SENT a message in it (`sentInConversationIds`; a robust
 //     fallback that survives a missing `message_requests` row, mirroring the
 //     DB's `get_conversations_with_info` fallback).
-export function filterRequestConversations(
-  convs: { id: string; type: string }[],
+// Columns selected from `conversations` for the inbox. The dataClient's generated
+// row type only models the key columns, so the selected enrichment columns are
+// described here where they are consumed.
+type ConversationRow = {
+  id: string;
+  type: string;
+  name?: string | null;
+  description?: string | null;
+  group_image?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export function filterRequestConversations<T extends { id: string; type: string }>(
+  convs: T[],
   firstOtherPerConv: Map<string, string>,
   visibleUserIds: Set<string>,
   visitedConversationIds: Set<string> = new Set(),
   sentInConversationIds: Set<string> = new Set()
-): { id: string; type: string }[] {
+): T[] {
   return convs.filter(conv => {
     if (conv.type !== 'dm') return true;
     if (visitedConversationIds.has(conv.id)) return true;
@@ -291,7 +304,7 @@ export async function resolveDmReceiver(params: {
   )?.other_user?.id;
   if (fromInbox) return fromInbox;
 
-  const { data: participants } = await gateway
+  const { data: participants } = await dataClient
     .from('conversation_participants')
     .select('user_id')
     .eq('conversation_id', conversationId)
@@ -316,7 +329,7 @@ export async function isReadOnlyPendingConversation(
 ): Promise<boolean> {
   if (!conversationId || !currentUserId) return false;
   try {
-    const { data: conv } = await gateway
+    const { data: conv } = await dataClient
       .from('conversations')
       .select('type')
       .eq('id', conversationId)
@@ -326,7 +339,7 @@ export async function isReadOnlyPendingConversation(
     }
     const otherId = await resolveDmReceiver({ conversationId, currentUserId });
     if (!otherId || otherId === currentUserId) return false;
-    const { data: request } = await gateway
+    const { data: request } = await dataClient
       .from('message_requests')
       .select('id')
       .eq('sender_id', otherId)
@@ -365,7 +378,7 @@ async function fetchGroupOnlineCounts(
   const counts = new Map<string, number>();
   if (groupConvIds.length === 0) return counts;
 
-  const { data: groupParts } = await gateway
+  const { data: groupParts } = await dataClient
     .from('conversation_participants')
     .select('conversation_id, user_id')
     .in('conversation_id', groupConvIds)
@@ -374,7 +387,7 @@ async function fetchGroupOnlineCounts(
   const groupMemberIds = [...new Set((groupParts || []).map(p => p.user_id))];
   let profileMap = new Map<string, string | undefined>();
   if (groupMemberIds.length > 0) {
-    const { data: groupProfiles } = await gateway
+    const { data: groupProfiles } = await dataClient
       .from('profiles')
       .select('id, last_seen_at')
       .in('id', groupMemberIds);
@@ -400,7 +413,7 @@ async function computeUnreadCounts(convIds: string[], userId: string): Promise<M
   const unreadMap = new Map<string, number>();
   if (convIds.length === 0) return unreadMap;
 
-  const { data: msgs } = await gateway
+  const { data: msgs } = await dataClient
     .from('messages')
     .select('id, conversation_id, sender_id, created_at')
     .in('conversation_id', convIds)
@@ -475,7 +488,7 @@ export function applyConversationActivityUpdate(
 }
 
 export async function fetchConversationsDirectly(userId: string): Promise<Conversation[]> {
-  const { data: participants } = await gateway
+  const { data: participants } = await dataClient
     .from('conversation_participants')
     .select('conversation_id')
     .eq('user_id', userId);
@@ -489,7 +502,7 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
 
   const convIds = participants.map(p => p.conversation_id);
 
-  const { data: convs } = await gateway
+  const { data: convs } = await dataClient
     .from('conversations')
     .select('id, type, name, description, group_image, created_at, updated_at')
     .in('id', convIds);
@@ -501,7 +514,7 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
   // result — they were awaited in sequence, so each one cost a full round trip
   // before the filter could run at all. One parallel wave.
   const [otherPartsRes, visibleDmRes, sentConvIdsRes] = await Promise.all([
-    gateway
+    dataClient
       .from('conversation_participants')
       .select('conversation_id, user_id')
       .in('conversation_id', convIds)
@@ -522,7 +535,7 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
   });
 
   const visibleConvs = filterRequestConversations(
-    convs,
+    convs as unknown as ConversationRow[],
     firstOtherPerConv,
     visibleUserIds,
     visitedConversationIds,
@@ -539,11 +552,11 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
   // were four more round trips, strictly one after another, at the tail of a
   // chain that already had ~9 of them. Same wave.
   const [profilesRes, messagesRes, groupOnlineCounts, unreadMap] = await Promise.all([
-    gateway
+    dataClient
       .from('profiles')
       .select('id, username, display_name, profile_pic, last_seen_at')
       .in('id', otherUserIds),
-    gateway
+    dataClient
       .from('messages')
       .select('conversation_id, content, audio_path, created_at')
       .in('conversation_id', convIds2)
@@ -560,7 +573,10 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
     computeUnreadCounts(convIds2, userId),
   ]);
 
-  const profileMap = new Map((profilesRes.data || []).map(p => [p.id, p]));
+  const profileMap = new Map<string, NonNullable<Conversation['other_user']>>(
+    ((profilesRes.data || []) as unknown as NonNullable<Conversation['other_user']>[])
+      .map(p => [p.id, p])
+  );
 
   const lastMsgMap = new Map<string, { content: string; audio_path?: string | null; created_at: string }>();
   (messagesRes.data || []).forEach(msg => {
@@ -603,7 +619,7 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
 }
 
 async function fetchPageConversationsDirectly(pageId: string, userId: string): Promise<Conversation[]> {
-  const { data: convs } = await gateway
+  const { data: convs } = await dataClient
     .from('conversations')
     .select('id, type, name, description, created_at, updated_at')
     .eq('page_id', pageId);
@@ -612,7 +628,7 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
 
   const convIds = convs.map(c => c.id);
 
-  const { data: otherParts } = await gateway
+  const { data: otherParts } = await dataClient
     .from('conversation_participants')
     .select('conversation_id, user_id')
     .in('conversation_id', convIds)
@@ -626,20 +642,29 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
   });
 
   const otherUserIds = [...new Set(firstOtherPerConv.values())];
-  const { data: profilesData } = await gateway
+  const { data: profilesData } = await dataClient
     .from('profiles')
     .select('id, username, display_name, profile_pic, last_seen_at')
     .in('id', otherUserIds);
 
-  const profileMap = new Map((profilesData || []).map(p => [p.id, p]));
+  const profileMap = new Map<string, NonNullable<Conversation['other_user']>>(
+    ((profilesData || []) as unknown as NonNullable<Conversation['other_user']>[])
+      .map(p => [p.id, p])
+  );
 
   const { visibleUserIds, visitedConversationIds } = await fetchVisibleDmUserIds(userId);
   const pageSentIds = await fetchSentConversationIds(userId);
-  const visibleConvs = filterRequestConversations(convs, firstOtherPerConv, visibleUserIds, visitedConversationIds, pageSentIds);
+  const visibleConvs = filterRequestConversations(
+    convs as unknown as ConversationRow[],
+    firstOtherPerConv,
+    visibleUserIds,
+    visitedConversationIds,
+    pageSentIds
+  );
   const convIds2 = visibleConvs.map(c => c.id);
   if (convIds2.length === 0) return [];
 
-  const { data: allMessages } = await gateway
+  const { data: allMessages } = await dataClient
     .from('messages')
     .select('conversation_id, content, audio_path, created_at')
     .in('conversation_id', convIds2)
@@ -883,7 +908,7 @@ export const useConversations = (currentUserId?: string) => {
 
     try {
       // Fetch messages with sender profile using explicit foreign key hint
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('messages')
         .select(`
           id,
@@ -925,7 +950,7 @@ export const useConversations = (currentUserId?: string) => {
       // Filter out messages cleared by this user (soft-delete)
       let clearedAt: string | null = null;
       if (data && data.length > 0) {
-        const { data: clearRecord } = await gateway
+        const { data: clearRecord } = await dataClient
           .from('conversation_clears')
           .select('cleared_at')
           .eq('user_id', currentUserId)
@@ -941,8 +966,9 @@ export const useConversations = (currentUserId?: string) => {
         (data?.reverse() || [])
           .filter(msg => !clearedAt || msg.created_at >= clearedAt)
           .map(async (msg: MessageRow) => {
-          const base = {
+          const base: Message = {
             ...msg,
+            message_type: msg.message_type as Message['message_type'],
             reply_to: null,
             seen: false,
             delivered: !!msg.delivered_at
@@ -961,13 +987,15 @@ export const useConversations = (currentUserId?: string) => {
         .map(m => m.reply_to_id);
 
       if (replyIds.length > 0) {
-        const { data: replyData, error: replyError } = await gateway
+        const { data: replyData, error: replyError } = await dataClient
           .from('messages')
           .select('id, content, image_url, media_url, attachment_url, is_image, sender_profile:profiles!messages_sender_id_fkey(display_name)')
           .in('id', replyIds);
 
         if (!replyError && replyData) {
-          const replyMap = new Map(replyData.map(r => [r.id, r]));
+          const replyMap = new Map<string, NonNullable<Message['reply_to']>>(
+            (replyData as unknown as NonNullable<Message['reply_to']>[]).map(r => [r.id, r])
+          );
           formattedMessages.forEach(msg => {
             if (msg.reply_to_id && replyMap.has(msg.reply_to_id)) {
               msg.reply_to = replyMap.get(msg.reply_to_id) || null;
@@ -1099,7 +1127,7 @@ export const useConversations = (currentUserId?: string) => {
       c => c.conversation_id === conversationId
     )?.type;
     if (!convType) {
-      const { data: convRow } = await gateway
+      const { data: convRow } = await dataClient
         .from('conversations')
         .select('type')
         .eq('id', conversationId)
@@ -1165,7 +1193,7 @@ export const useConversations = (currentUserId?: string) => {
         data = result.data;
         error = result.error;
       } else {
-        const result = await gateway
+        const result = await dataClient
           .from('messages')
           .insert(insertPayload)
           .select(MESSAGE_SELECT)
@@ -1203,7 +1231,7 @@ export const useConversations = (currentUserId?: string) => {
 
       // If reply_to_id exists, fetch the reply_to message data and add to messages state immediately
       if (data && replyToId) {
-        const { data: replyData } = await gateway
+        const { data: replyData } = await dataClient
           .from('messages')
           .select('id, content, image_url, media_url, attachment_url, is_image, sender_profile:profiles!messages_sender_id_fkey(display_name)')
           .eq('id', replyToId)
@@ -1245,8 +1273,8 @@ export const useConversations = (currentUserId?: string) => {
         });
       }
 
-      // Announce the new message over the gateway's SSE hub so the other
-      // participants' open clients show it live (gateway is the only entry
+      // Announce the new message over the dataClient's SSE hub so the other
+      // participants' open clients show it live (dataClient is the only entry
       // point; the client postgres_changes listeners never fire). A DM/channel
       // targets its single other participant; a GROUP fans out to EVERY other
       // member (resolved from conversation_participants, never a DM's single
@@ -1255,10 +1283,10 @@ export const useConversations = (currentUserId?: string) => {
       // failure never fails the send.
       if (data?.id) {
         try {
-          const messageCreatedEvent = { type: 'message.created', conversationId, messageId: data.id };
+          const messageCreatedEvent = { type: 'message.created' as const, conversationId, messageId: data.id };
 
           if (isGroupSend) {
-            const { data: memberRows } = await gateway
+            const { data: memberRows } = await dataClient
               .from('conversation_participants')
               .select('user_id')
               .eq('conversation_id', conversationId)
@@ -1339,7 +1367,7 @@ export const useConversations = (currentUserId?: string) => {
   // same message-request guard, same receiver/conversation-type resolution,
   // same optimistic append + Chats-list bump, same realtime announce, same
   // non-friend message-request registration — and the row is created through
-  // the same gateway table-based `messages` insert the text path uses
+  // the same dataClient table-based `messages` insert the text path uses
   // (insertVoiceMessageRow), never a raw hand-rolled insert and never the
   // legacy `create_message_with_audio` RPC (its deployed body references a
   // misspelled `convesation_participants` relation and fails with 42P01).
@@ -1371,7 +1399,7 @@ export const useConversations = (currentUserId?: string) => {
       c => c.conversation_id === conversationId
     )?.type;
     if (!convType) {
-      const { data: convRow } = await gateway
+      const { data: convRow } = await dataClient
         .from('conversations')
         .select('type')
         .eq('id', conversationId)
@@ -1399,7 +1427,7 @@ export const useConversations = (currentUserId?: string) => {
         return false;
       }
 
-      // Create the message row through the same gateway table-based path
+      // Create the message row through the same dataClient table-based path
       // text messages use. RLS (participants_can_insert_messages) enforces
       // sender identity + participant membership + block checks against the
       // real `conversation_participants` relation server-side, and the DB's
@@ -1450,19 +1478,19 @@ export const useConversations = (currentUserId?: string) => {
         createdAt: sentAt,
       });
 
-      // Announce over the gateway's SSE hub exactly like a text send: a
+      // Announce over the dataClient's SSE hub exactly like a text send: a
       // DM/channel targets its single other participant, a GROUP fans out to
       // EVERY other member, so receivers show the message live. Best-effort: a
       // publish failure never fails the send.
       try {
         const messageCreatedEvent = {
-          type: 'message.created',
+          type: 'message.created' as const,
           conversationId,
           messageId: created.data.id as string,
         };
 
         if (isGroupSend) {
-          const { data: memberRows } = await gateway
+          const { data: memberRows } = await dataClient
             .from('conversation_participants')
             .select('user_id')
             .eq('conversation_id', conversationId)
@@ -1607,7 +1635,7 @@ export const useConversations = (currentUserId?: string) => {
       if (error) throw error;
 
       if (actingPageId && data) {
-        await gateway
+        await dataClient
           .from('conversations')
           .update({ page_id: actingPageId })
           .eq('id', data)
@@ -1653,9 +1681,9 @@ export const useConversations = (currentUserId?: string) => {
     }, 500);
   }, [fetchConversations]);
 
-  // Set up real-time subscriptions. The gateway is the only entry point and
+  // Set up real-time subscriptions. The dataClient is the only entry point and
   // its client-side postgres_changes listeners never fire, so we subscribe to
-  // the gateway's SSE hub on our own `user:<currentUserId>` channel instead.
+  // the dataClient's SSE hub on our own `user:<currentUserId>` channel instead.
   // A sender publishes `message.created` (etc.) to the receiver's channel after
   // a DB insert; this listener turns those events into live UI updates.
   const activeConversationIdRef = useRef<string | null>(activeConversationId);
@@ -1678,7 +1706,7 @@ export const useConversations = (currentUserId?: string) => {
       // Single message fetch powers BOTH paths: the Chats-list preview/timestamp
       // optimistically moved to the top (below), and the inline append when this
       // chat is currently open on screen.
-      const { data: msgData } = await gateway
+      const { data: msgData } = await dataClient
         .from('messages')
         .select(`
           id, conversation_id, sender_id, content, encrypted_content, encryption_iv,
@@ -1738,7 +1766,7 @@ export const useConversations = (currentUserId?: string) => {
 
       let replyData = null;
       if (msgData.reply_to_id) {
-        const { data: replyResult } = await gateway
+        const { data: replyResult } = await dataClient
           .from('messages')
           .select('id, content, image_url, media_url, attachment_url, is_image, sender_profile:profiles!messages_sender_id_fkey(display_name)')
           .eq('id', msgData.reply_to_id)
@@ -1807,7 +1835,7 @@ export const useConversations = (currentUserId?: string) => {
     }
   }, [currentUserId, fetchConversations]);
 
-  // Fallback polling so messages still arrive live even if the gateway SSE
+  // Fallback polling so messages still arrive live even if the dataClient SSE
   // subscription is unavailable (e.g. Vercel serverless keeps the stream
   // short-lived or the cross-instance bus is unconfigured). SSE is the fast
   // path and stays primary; this just guarantees no-refresh delivery as a
@@ -1830,7 +1858,7 @@ export const useConversations = (currentUserId?: string) => {
       const id = activeConversationIdRef.current;
       if (!id) return;
       try {
-        const { data: newest } = await gateway
+        const { data: newest } = await dataClient
           .from('messages')
           .select('id')
           .eq('conversation_id', id)
@@ -1862,7 +1890,7 @@ export const useConversations = (currentUserId?: string) => {
   }, [fetchMessages]);
 
   // Call-log events (dispatched by sendCallLogMessage after a successful
-  // insert). The gateway client's postgres_changes listeners never fire, so
+  // insert). The dataClient client's postgres_changes listeners never fire, so
   // this is what makes an open chat show the new entry without a reload.
   useEffect(() => {
     if (!currentUserId) return;
@@ -1929,13 +1957,13 @@ export const useConversations = (currentUserId?: string) => {
       if (allConvs.length === 0) return;
 
       const userIds = [...new Set(allConvs.map(c => c.other_user?.id).filter(Boolean))];
-      const { data: profiles } = await gateway
+      const { data: profiles } = await dataClient
         .from('profiles')
         .select('id, last_seen_at')
         .in('id', userIds);
 
       if (profiles) {
-        // Annotated because the gateway client's `select()` is untyped and infers
+        // Annotated because the dataClient client's `select()` is untyped and infers
         // the row literal `[p.id, p.last_seen_at]` as a union, which made this
         // Map a `Map<unknown, unknown>` and leaked `unknown` into every consumer -
         // including the value written onto `other_user.last_seen_at`, where
@@ -1945,7 +1973,7 @@ export const useConversations = (currentUserId?: string) => {
         );
         // Diagnose an unreadable clock once, here, where the full set of partner
         // timestamps is in hand. A reader whose system clock is behind the
-        // gateway's gets every dot refused by `isOnline`'s lower bound, and
+        // dataClient's gets every dot refused by `isOnline`'s lower bound, and
         // without this the only symptom is "everyone is gray" - a fresh bug
         // report with nothing pointing at the cause. Reads the values out of the
         // map this round already built, so it adds no request, no state change
@@ -1955,7 +1983,7 @@ export const useConversations = (currentUserId?: string) => {
           if (!conv.other_user) return conv;
           const newLastSeen = lastSeenMap.get(conv.other_user.id);
           // A null/absent `last_seen_at` is kept rather than written through:
-          // that is the shape the gateway returns for a partner whose presence
+          // that is the shape the dataClient returns for a partner whose presence
           // it has redacted (non-friend with a pending message request), and
           // overwriting with null would be correct only by accident.
           if (!newLastSeen || newLastSeen === conv.other_user.last_seen_at) return conv;

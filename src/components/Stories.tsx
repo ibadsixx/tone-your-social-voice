@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useStories } from '@/hooks/useStories';
 import StoryViewer from './StoryViewer';
 import { Skeleton } from '@/components/ui/skeleton';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useNavigate } from 'react-router-dom';
 
@@ -32,7 +32,7 @@ const Stories = () => {
   useEffect(() => {
     const fetchCurrentUserProfile = async () => {
       if (!user) return;
-      const { data } = await gateway
+      const { data } = await dataClient
         .from('profiles')
         .select('profile_pic, display_name')
         .eq('id', user.id)

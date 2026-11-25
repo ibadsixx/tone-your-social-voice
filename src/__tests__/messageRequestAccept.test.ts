@@ -9,13 +9,24 @@
 //   - restores the normal chat UI (no more read-only pending preview)
 //   - leaves the sender's existing conversation unchanged (not duplicated)
 //
-// This drives the real gateway client + the real conversation API / hook
+// This drives the real dataClient client + the real conversation API / hook
 // helpers against an in-memory model of the relevant tables, and asserts every
 // acceptance invariant above — including that resolveSharedDmConversation is
 // find-only (accepting can never mint a new DM).
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, expect, beforeEach, it, vi } from 'vitest';
+import { clearCurrentAccessToken, setCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import {
+  applyPostgrestFilters,
+  applyPostgrestOrder,
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  jsonResponse,
+  postgrestTable,
+  prefersObjectResponse,
+  shapePostgrestRows,
+} from './infraFixtures';
 
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { resolveSharedDmConversation } from '@/api/conversations';
 import { ensureMessageRequest } from '@/lib/messageRequests';
 import {
@@ -32,21 +43,6 @@ vi.mock('@/hooks/useNotifications', () => ({
   createNotification: (n: unknown) => (__notifications as unknown[]).push(n),
 }));
 
-// Applies a single gateway `filter` param (eq / neq / in / or) to rows,
-// mirroring the real gateway server's applySupabaseFilters.
-function applyServerFilter(rows: any[], filter: string | undefined): any[] {
-  if (!filter) return rows;
-  const eq = /^([^=]+)=eq\.(.+)$/.exec(filter);
-  if (eq) return rows.filter(r => String(r[eq[1]]) === eq[2]);
-  const neq = /^([^=]+)=neq\.(.+)$/.exec(filter);
-  if (neq) return rows.filter(r => String(r[neq[1]]) !== neq[2]);
-  const inM = /^([^=]+)=in\.\(([^)]*)\)$/.exec(filter);
-  if (inM) {
-    const vals = new Set(inM[2] ? inM[2].split(',') : []);
-    return rows.filter(r => vals.has(String(r[inM[1]])));
-  }
-  return rows; // or(...) etc.
-}
 
 const A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; // sender (initiated the DM)
 const B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'; // non-friend recipient
@@ -85,19 +81,14 @@ function makeInMemoryDb(opts?: { bSent?: boolean }) {
     ...(opts?.bSent === false ? [] : [{ id: 'm3', conversation_id: C, sender_id: B, receiver_id: A, content: '3rd', created_at: '2026-01-01T00:00:03Z' }]),
   ];
 
-  const qs = (url: URL) => Object.fromEntries(url.searchParams.entries());
-  const filters = (url: URL) => url.searchParams.getAll('filter');
 
   return {
-    handle(req: { url: string; method?: string; body?: unknown }) {
-      const url = new URL(req.url, 'http://mock.test');
+    handle(req: { url: string; method?: string; body?: unknown; single?: boolean }) {
+      const table = postgrestTable(req.url);
       const method = req.method || 'GET';
-      const path = url.pathname;
-      const params = qs(url);
-      const fs = filters(url);
-      const apply = (rows: any[]) => (fs.length ? (fs.length > 1 ? rows.filter(r => fs.every(f => applyServerFilter([r], f).length > 0)) : applyServerFilter(rows, fs[0])) : rows);
+      const apply = (rows: any[]) => shapePostgrestRows(applyPostgrestOrder(applyPostgrestFilters(rows, req.url), req.url), req.single);
 
-      if (path === '/api/message_requests') {
+      if (table === 'message_requests') {
         if (method === 'GET') {
           return { status: 200, json: apply(messageRequests) };
         }
@@ -113,28 +104,28 @@ function makeInMemoryDb(opts?: { bSent?: boolean }) {
         }
       }
 
-      // Gateway PUT with an id=eq. filter goes to /api/v1/:table/:id.
-      const putId = /^\/api\/v1\/message_requests\/([^/]+)$/.exec(path);
-      if (putId && method === 'PUT') {
-        const row = messageRequests.find(r => r.id === putId[1]);
+      // PostgREST updates are PATCH with `?id=eq.<id>`, not Gateway PUTs.
+      if (method === 'PATCH' && table === 'message_requests') {
+        const id = new URL(req.url).searchParams.get('id')?.replace(/^eq\./, '');
+        const row = messageRequests.find(r => r.id === id);
         if (!row) return { status: 404, json: { error: 'not found' } };
         Object.assign(row, req.body as object, { updated_at: '2026-01-01T00:00:01Z' });
         return { status: 200, json: row };
       }
 
-      if (path === '/api/conversation_participants') {
+      if (table === 'conversation_participants') {
         return { status: 200, json: apply(participants.slice()) };
       }
 
-      if (path === '/api/conversations') {
+      if (table === 'conversations') {
         return { status: 200, json: apply(conversations.slice()) };
       }
 
-      if (path === '/api/profiles') {
+      if (table === 'profiles') {
         return { status: 200, json: apply(profiles.slice()) };
       }
 
-      if (path === '/api/messages') {
+      if (table === 'messages') {
         if (method === 'POST') {
           const row = {
             id: 'm' + (messages.length + 1),
@@ -147,11 +138,11 @@ function makeInMemoryDb(opts?: { bSent?: boolean }) {
         return { status: 200, json: apply(messages.slice()) };
       }
 
-      if (path === '/api/friends') {
+      if (table === 'friends') {
         return { status: 200, json: apply(friends.slice()) };
       }
 
-      return { status: 404, json: { error: `no mock route for ${method} ${path}` } };
+      return { status: 404, json: { error: `no mock route for ${method} ${table}` } };
     },
     conversations,
     messageRequests,
@@ -162,33 +153,33 @@ let db: ReturnType<typeof makeInMemoryDb>;
 
 beforeEach(() => {
   localStorage.clear();
-  localStorage.setItem('tone-auth-token', JSON.stringify({ access_token: 'test-token', refresh_token: 'test-refresh' }));
+  setCurrentAccessToken('test-token');
 
   db = makeInMemoryDb();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (isInfraRegistryRequest(input)) return infraRegistryResponse();
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method || 'GET';
     let body: unknown = undefined;
     if (init?.body) body = JSON.parse(init.body as string);
-    const resp = db.handle({ url, method, body });
-    return {
-      ok: resp.status < 400,
-      status: resp.status,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      json: async () => resp.json,
-    } as Response;
+    const resp = db.handle({ url, method, body, single: prefersObjectResponse(init) });
+    return jsonResponse(resp.status, resp.json);
   });
   (globalThis as any).fetch = fetchMock;
+});
+
+afterEach(() => {
+  clearCurrentAccessToken();
 });
 
 describe('final Message Request acceptance behavior', () => {
   it('keeps the SAME conversation, flips status, clears Pending, surfaces Chats, retains history, no duplicates', async () => {
     // 1) Accept flips the request status to accepted (the hook's own update).
-    await gateway.from('message_requests').update({ status: 'accepted' }).eq('id', 'req-1');
+    await dataClient.from('message_requests').update({ status: 'accepted' }).eq('id', 'req-1');
 
     // 2) NO new conversation is created — the conversations table still holds
     //    exactly the one DM the sender created, with the SAME id.
-    const allReqs = (await gateway.from('message_requests').select('*')).data || [];
+    const allReqs = (await dataClient.from('message_requests').select('*')).data || [];
     expect(allReqs).toHaveLength(1);
     expect(allReqs[0]).toMatchObject({ id: 'req-1', sender_id: A, receiver_id: B, status: 'accepted' });
 
@@ -201,7 +192,7 @@ describe('final Message Request acceptance behavior', () => {
     expect(db.conversations).toHaveLength(1); // resolve never mints a new DM
 
     // 4) The request is removed from the recipient's Pending list.
-    const pending = (await gateway.from('message_requests').select('*').eq('status', 'pending')).data || [];
+    const pending = (await dataClient.from('message_requests').select('*').eq('status', 'pending')).data || [];
     expect(pending).toHaveLength(0);
 
     // 5) The SAME conversation now appears in the recipient's Chats, with the
@@ -224,7 +215,7 @@ describe('final Message Request acceptance behavior', () => {
   });
 
   it('surfaces an accepted request sender in the recipient Chats filter (pending-made-visible)', async () => {
-    await gateway.from('message_requests').update({ status: 'accepted' }).eq('id', 'req-1');
+    await dataClient.from('message_requests').update({ status: 'accepted' }).eq('id', 'req-1');
 
     const { visibleUserIds, visitedConversationIds } = await fetchVisibleDmUserIds(B);
     expect(visibleUserIds.has(A)).toBe(true);
@@ -251,10 +242,10 @@ describe('final Message Request acceptance behavior', () => {
     // 4th message). ensureMessageRequest must respect the ACCEPTED request row
     // (it is not status=pending anymore) and stop — no second insert, no
     // duplicate notification, and the conversation stays the SAME one.
-    await gateway.from('message_requests').update({ status: 'accepted' }).eq('id', 'req-1');
+    await dataClient.from('message_requests').update({ status: 'accepted' }).eq('id', 'req-1');
     __notifications.length = 0;
 
-    await gateway.from('messages').insert({
+    await dataClient.from('messages').insert({
       conversation_id: C,
       sender_id: A,
       receiver_id: B,
@@ -262,13 +253,13 @@ describe('final Message Request acceptance behavior', () => {
     });
     await ensureMessageRequest({ senderId: A, receiverId: B, conversationId: C });
 
-    const allRequests = (await gateway.from('message_requests').select('*')).data || [];
+    const allRequests = (await dataClient.from('message_requests').select('*')).data || [];
     expect(allRequests).toHaveLength(1);
     expect(allRequests[0]).toMatchObject({ id: 'req-1', status: 'accepted' });
     expect(__notifications).toHaveLength(0); // no "sent you a message" for the accepted pair
 
     // Neither party's Chats should ever show a DIFFERENT conversation.
-    const convs = await gateway.from('conversations').select('id');
+    const convs = await dataClient.from('conversations').select('id');
     expect(convs.data?.length).toBe(1);
     expect(convs.data?.[0].id).toBe(C);
     const chatsB = await fetchConversationsDirectly(B);
@@ -289,21 +280,17 @@ describe('final Message Request acceptance behavior', () => {
     // Only an explicit accept opens B's composer AND surfaces the chat.
     const pendingOnly = makeInMemoryDb({ bSent: false });
     const fetchMock2 = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (isInfraRegistryRequest(input)) return infraRegistryResponse();
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const method = init?.method || 'GET';
       let body: unknown = undefined;
       if (init?.body) body = JSON.parse(init.body as string);
-      const resp = pendingOnly.handle({ url, method, body });
-      return {
-        ok: resp.status < 400,
-        status: resp.status,
-        headers: new Headers({ 'content-type': 'application/json' }),
-        json: async () => resp.json,
-      } as Response;
+      const resp = pendingOnly.handle({ url, method, body, single: prefersObjectResponse(init) });
+      return jsonResponse(resp.status, resp.json);
     });
     (globalThis as any).fetch = fetchMock2;
 
-    const before = ((await gateway.from('messages').select('*')).data || []).length;
+    const before = ((await dataClient.from('messages').select('*')).data || []).length;
 
     // The RECIPIENT is refused...
     expect(await assertCanSendMessage(C, B)).toBe(false);
@@ -313,7 +300,7 @@ describe('final Message Request acceptance behavior', () => {
     // The read-only treatment is still active, and NOTHING was written by the
     // guard itself (no message insert), and the request is STILL pending.
     expect(await isReadOnlyPendingConversation(C, B)).toBe(true);
-    const after = ((await gateway.from('messages').select('*')).data || []).length;
+    const after = ((await dataClient.from('messages').select('*')).data || []).length;
     expect(after).toBe(before); // no reply leaked into the shared conversation
     expect(pendingOnly.messageRequests).toHaveLength(1);
     expect(pendingOnly.messageRequests[0].status).toBe('pending'); // status must NOT flip
@@ -327,7 +314,7 @@ describe('final Message Request acceptance behavior', () => {
 
     // Once the recipient EXPLICITLY accepts, the guard opens up and the SAME
     // conversation surfaces in the recipient's Chats.
-    await gateway.from('message_requests').update({ status: 'accepted' }).eq('id', 'req-1');
+    await dataClient.from('message_requests').update({ status: 'accepted' }).eq('id', 'req-1');
     expect(await assertCanSendMessage(C, B)).toBe(true);
     expect(await isReadOnlyPendingConversation(C, B)).toBe(false);
     const chatsBAfter = await fetchConversationsDirectly(B);

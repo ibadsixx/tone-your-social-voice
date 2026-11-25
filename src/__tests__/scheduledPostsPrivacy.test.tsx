@@ -1,14 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import type { Post } from '@/api/types';
 
 // ScheduledPostsTab must verify the authenticated user against the viewed
 // profile owner at load time: a non-owner (even reachable without the redirect)
 // must never trigger a scheduled-post request and must see the private state.
 // The auth mock is a static owner, so the ownership gate is exercised through
-// the viewed profile id (repo convention: mock factories never close over
-// module-level state).
+// the viewed profile id. The user object must be *stable* across renders: the
+// component's effect depends on `user`, so a fresh object each render would
+// re-run the effect and set state forever.
+const { owner } = vi.hoisted(() => ({ owner: { id: 'owner' } }));
 vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ user: { id: 'owner' }, loading: false }),
+  useAuth: () => ({ user: owner, loading: false }),
 }));
 
 const toastSpy = vi.fn();
@@ -20,13 +23,13 @@ vi.mock('@/api/posts', () => ({
   getScheduledPosts: vi.fn(),
 }));
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: { from: vi.fn() },
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: { from: vi.fn() },
 }));
 
 vi.mock('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
-  motion: { div: ({ children, ...props }: Record<string, unknown>) => <div {...props}>{children}</div> },
+  motion: { div: ({ children, ...props }: Record<string, unknown>) => <div {...props}>{children as React.ReactNode}</div> },
 }));
 
 vi.mock('lucide-react', () => ({
@@ -93,7 +96,7 @@ describe('ScheduledPostsTab privacy', () => {
   });
 
   it('renders the owner\u2019s scheduled posts when access is allowed', async () => {
-    vi.mocked(getScheduledPosts).mockResolvedValue({ data: [scheduledPost], error: null });
+    vi.mocked(getScheduledPosts).mockResolvedValue({ data: [scheduledPost as unknown as Post], error: null });
     render(<ScheduledPostsTab profileId="owner" />);
 
     expect(await screen.findByText('Draft content')).toBeTruthy();

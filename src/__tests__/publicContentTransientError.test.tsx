@@ -66,7 +66,7 @@ describe('transient fetch failure on a public post', () => {
 
     expect(await screen.findByText(/couldn't load this post/i)).toBeTruthy();
     // The load-bearing assertion: no robots tag at all, so the URL is not told
-    // to drop out of the index because of a momentary gateway failure.
+    // to drop out of the index because of a momentary dataClient failure.
     expect(robots()).toBeNull();
     // And it is not treated as unavailable content either.
     expect(screen.queryByText(/isn't available/i)).toBeNull();

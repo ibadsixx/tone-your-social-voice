@@ -12,8 +12,8 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { gateway } from '@/lib/gateway';
-import type { ReactionContentType, ReactionUser, ReactionUsersPage } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
+import type { ReactionContentType, ReactionUser, ReactionUsersPage } from '@/lib/supabase/dataClient';
 import {
   REACTIONS_LIST,
   STATIC_REACTION_ICONS,
@@ -147,8 +147,8 @@ export const ReactionUsersModal = ({
 
       try {
         const result = await (contentType === 'post'
-          ? gateway.postReactionUsers(contentId, options)
-          : gateway.commentReactionUsers(contentId, options));
+          ? dataClient.postReactionUsers(contentId, options)
+          : dataClient.commentReactionUsers(contentId, options));
 
         // A newer request (filter change, close, or a different target) started
         // while this one was in flight; drop the stale response.

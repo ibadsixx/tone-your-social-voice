@@ -3,7 +3,7 @@
 // Enhanced with comprehensive logging, URL validation, and audio volume persistence
 
 import { useCallback, useRef, useEffect, useState } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 interface AutosaveOptions {
   debounceMs?: number;
@@ -140,7 +140,7 @@ export function useAutosave(
     setState(prev => ({ ...prev, isSaving: true, error: null }));
 
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('editor_projects')
         .update({
           project_json: projectData,

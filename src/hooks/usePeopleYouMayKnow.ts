@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { FRIEND_REQUEST_SENT_EVENT } from '@/hooks/useFriendship';
@@ -61,12 +61,12 @@ export const usePeopleYouMayKnow = (limit: number = 10): UsePeopleYouMayKnowRetu
       setLoading(true);
       setError(null);
 
-      // Recommendations are computed server-side by the gateway
+      // Recommendations are computed server-side by the dataClient
       // (features/peopleYouMayKnow.ts): mutual accepted friends, shared groups,
       // follow relationships, privacy/block/opt-out filtering, scoring,
       // diversity and the limit are all decided there — the browser never
       // fetches a full user/profile table.
-      const { data, error: rpcError } = await gateway.rpc('get_people_you_may_know', {
+      const { data, error: rpcError } = await dataClient.rpc('get_people_you_may_know', {
         p_user_id: user.id,
         p_limit: limit,
       });
@@ -115,7 +115,7 @@ export const usePeopleYouMayKnow = (limit: number = 10): UsePeopleYouMayKnowRetu
 
     try {
       // Insert friendship request
-      const { error: friendshipError } = await gateway
+      const { error: friendshipError } = await dataClient
         .from('friends')
         .insert({
           requester_id: user.id,
@@ -124,7 +124,7 @@ export const usePeopleYouMayKnow = (limit: number = 10): UsePeopleYouMayKnowRetu
         });
 
       if (friendshipError) {
-        // Duplicate key error (request already exists). The gateway client
+        // Duplicate key error (request already exists). The dataClient client
         // reports `error.code` as the HTTP status, so 409 (and 23505 if ever
         // surfaced directly) both mean "already sent" — not a failure.
         if (friendshipError.code === '409' || friendshipError.code === '23505') {
@@ -138,7 +138,7 @@ export const usePeopleYouMayKnow = (limit: number = 10): UsePeopleYouMayKnowRetu
       }
 
       // Also add to followers
-      const { error: followError } = await gateway
+      const { error: followError } = await dataClient
         .from('followers')
         .insert({
           follower_id: user.id,

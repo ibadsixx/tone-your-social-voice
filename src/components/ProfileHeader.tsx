@@ -1,5 +1,5 @@
 import { ReactNode, useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -82,7 +82,7 @@ const ProfileHeader = ({
   const { uploadPhoto, uploading } = usePhotoUpload();
   const { otherNames } = useOtherNames(profile.id);
   const { friendship, sendRequest, cancelRequest, acceptRequest, rejectRequest, unfriend } = useFriendship(profile.id, user?.id);
-  const { followStatus, follow, unfollow } = useFollow(profile.id, user?.id);
+  const { followStatus, follow, unfollow, refetch: refetchFollowStatus } = useFollow(profile.id, user?.id);
   const { blockStatus, blockUser, unblockUser } = useBlocks(profile.id, user?.id);
   const { hasReported, refreshReportStatus } = useProfileReports(isOwnProfile ? undefined : profile.id);
   const hasActiveStories = useHasActiveStories(profile.id);
@@ -93,7 +93,7 @@ const ProfileHeader = ({
 
   const handleSendFriendRequest = async () => {
     await sendRequest();
-    followStatus.refetch();
+    refetchFollowStatus();
   };
 
   const renderFriendshipButton = () => {

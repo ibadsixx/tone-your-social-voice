@@ -6,10 +6,11 @@
 // and outbound signal delivery.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { getEdgeBaseUrl, getEdgeFunctionUrl } from '@/lib/supabase/edgeTransport';
 import { LiveSignalingClient } from './liveSignalingClient';
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: { auth: { refreshSession: vi.fn(async () => ({})) } },
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: { auth: { refreshSession: vi.fn(async () => ({})) } },
 }));
 
 const OPEN = 1;
@@ -42,6 +43,12 @@ class FakeWebSocket {
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
+// Long-lived transports receive the Infrastructure Edge Function base URL, not
+// an API Gateway base URL. The tests below assert the derived Function URLs.
+const EDGE_BASE = getEdgeBaseUrl();
+const ticketUrl = getEdgeFunctionUrl('live/sessions/session-1/signaling-ticket');
+const socketBase = EDGE_BASE.replace(/^https:\/\//, 'wss://').replace(/^http:\/\//, 'ws://').replace(/\/$/, '');
+
 function ticketResponse(ticket: string) {
   return {
     ok: true,
@@ -73,7 +80,7 @@ describe('Tone Live signaling client', () => {
   it('exchanges an authenticated HTTP ticket and never puts the access token in the URL', async () => {
     const states: string[] = [];
     const client = new LiveSignalingClient({
-      gatewayUrl: 'https://gateway.example',
+      edgeBaseUrl: EDGE_BASE,
       sessionId: 'session-1',
       getAuthToken: () => 'LONG_LIVED_ACCESS_TOKEN',
       onMessage: () => {},
@@ -84,12 +91,12 @@ describe('Tone Live signaling client', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://gateway.example/api/live/sessions/session-1/signaling-ticket');
+    expect(url).toBe(ticketUrl);
     expect(init.method).toBe('POST');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer LONG_LIVED_ACCESS_TOKEN');
 
     expect(sockets.length).toBe(1);
-    expect(sockets[0].url).toContain('wss://gateway.example/api/live/signaling');
+    expect(sockets[0].url).toContain(`${socketBase}/functions/v1/live/signaling`);
     expect(sockets[0].url).toContain('ticket=TICKET-1');
     expect(sockets[0].url).not.toContain('LONG_LIVED_ACCESS_TOKEN');
     expect(states[0]).toBe('connecting');
@@ -98,7 +105,7 @@ describe('Tone Live signaling client', () => {
 
   it('resumes from the durable cursor with a fresh single-use ticket after reconnect', async () => {
     const client = new LiveSignalingClient({
-      gatewayUrl: 'https://gateway.example',
+      edgeBaseUrl: EDGE_BASE,
       sessionId: 'session-1',
       getAuthToken: () => 'ACCESS',
       onMessage: () => {},
@@ -108,10 +115,10 @@ describe('Tone Live signaling client', () => {
     await client.connect();
     sockets[0].emit('open');
     sockets[0].emit('message', {
-      data: JSON.stringify({ type: 'connected', gatewaySeq: 10, id: 'c1', sessionId: 'session-1' }),
+      data: JSON.stringify({ type: 'connected', sequence: 10, id: 'c1', sessionId: 'session-1' }),
     });
     sockets[0].emit('message', {
-      data: JSON.stringify({ type: 'offer', gatewaySeq: 12, id: 'm1', sessionId: 'session-1', fromUserId: 'user-b' }),
+      data: JSON.stringify({ type: 'offer', sequence: 12, id: 'm1', sessionId: 'session-1', fromUserId: 'user-b' }),
     });
     expect(client.getCursor()).toBe(12);
 
@@ -129,7 +136,7 @@ describe('Tone Live signaling client', () => {
 
   it('sends outbound signals only while connected', async () => {
     const client = new LiveSignalingClient({
-      gatewayUrl: 'https://gateway.example',
+      edgeBaseUrl: EDGE_BASE,
       sessionId: 'session-1',
       getAuthToken: () => 'ACCESS',
       onMessage: () => {},

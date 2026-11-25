@@ -27,7 +27,7 @@ vi.mock('@/api', () => ({
   },
 }));
 
-vi.mock('@/lib/gateway', () => {
+vi.mock('@/lib/supabase/dataClient', () => {
   function builder(table: string) {
     const result = { data: [] as unknown[], error: null as Error | null };
     const chain: Record<string, unknown> = {};
@@ -51,7 +51,7 @@ vi.mock('@/lib/gateway', () => {
     });
     return chain;
   }
-  return { gateway: { from: (table: string) => builder(table), storage: { from: () => ({}) } } };
+  return { dataClient: { from: (table: string) => builder(table), storage: { from: () => ({}) } } };
 });
 
 beforeEach(() => {

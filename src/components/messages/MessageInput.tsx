@@ -17,7 +17,7 @@ import { GifPicker } from './GifPicker';
 import { GifItem } from '@/hooks/useGifSearch';
 import { AudioRecording } from '@/hooks/useAudioRecorder';
 import { useToast } from '@/hooks/use-toast';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { v4 as uuidv4 } from 'uuid';
 import { voiceFileExtension } from '@/lib/audioPlayback';
 import { logVoiceUpload } from '@/lib/voiceDiagnostics';
@@ -225,7 +225,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       // Upload to Supabase Storage (through the Gateway); the response carries
       // the Cloudinary CDN URL (data.url) which is persisted on the message row
       // (audio_url) so playback works for the recipient too.
-      const { data: uploadData, error: uploadError } = await gateway.storage
+      const { data: uploadData, error: uploadError } = await dataClient.storage
         .from('message_audios')
         .upload(filePath, recording.blob, {
           cacheControl: '3600',

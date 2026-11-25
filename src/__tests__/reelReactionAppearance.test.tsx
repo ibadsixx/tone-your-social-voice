@@ -281,8 +281,8 @@ const aggregate = () => {
   };
 };
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     from: (table: string) => {
       if (table === 'reactions') return buildReactionsTable();
       if (table === 'posts') {

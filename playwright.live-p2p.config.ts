@@ -25,7 +25,7 @@ export default defineConfig({
   webServer: [
     {
       command: 'node e2e/mock-signaling-server.mjs',
-      url: `http://127.0.0.1:${MOCK_PORT}/api/live/signaling`,
+      url: `http://127.0.0.1:${MOCK_PORT}/functions/v1/live/signaling`,
       reuseExistingServer: true,
       timeout: 30_000,
     },
@@ -35,7 +35,7 @@ export default defineConfig({
       reuseExistingServer: true,
       timeout: 120_000,
       env: {
-        VITE_API_GATEWAY_URL: `http://127.0.0.1:${MOCK_PORT}`,
+        VITE_INFRA_SUPABASE_URL: `http://127.0.0.1:${MOCK_PORT}`,
       },
     },
   ],

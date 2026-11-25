@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { isPublicAudience } from '@/lib/postVisibility';
 import { fetchEngagementForPosts } from '@/lib/postEngagement';
 import { useAuth } from './useAuth';
@@ -73,7 +73,7 @@ export const useFollowedHashtagsFeed = () => {
         setError(null);
 
         // Get hashtags the user follows
-        const { data: follows, error: followsError } = await gateway
+        const { data: follows, error: followsError } = await dataClient
           .from('hashtag_follows' as any)
           .select('hashtag_id')
           .eq('user_id', user.id);
@@ -98,7 +98,7 @@ export const useFollowedHashtagsFeed = () => {
         const hashtagIds = (follows as any[]).map((f: any) => f.hashtag_id);
 
         // Get hashtag details
-        const { data: hashtagsData, error: hashtagsError } = await gateway
+        const { data: hashtagsData, error: hashtagsError } = await dataClient
           .from('hashtags' as any)
           .select('id, tag')
           .in('id', hashtagIds);
@@ -117,7 +117,7 @@ export const useFollowedHashtagsFeed = () => {
         setHashtagsLoading(false);
 
         // Get all post IDs from hashtag_links for followed hashtags
-        const { data: links, error: linksError } = await gateway
+        const { data: links, error: linksError } = await dataClient
           .from('hashtag_links' as any)
           .select('source_id')
           .in('hashtag_id', hashtagIds)
@@ -141,7 +141,7 @@ export const useFollowedHashtagsFeed = () => {
         const postIds = [...new Set((links as any[]).map((link: any) => link.source_id))];
 
         // Fetch the actual posts
-        const { data: postsData, error: postsError } = await gateway
+        const { data: postsData, error: postsError } = await dataClient
           .from('posts')
           .select(`
             *,
@@ -180,7 +180,7 @@ export const useFollowedHashtagsFeed = () => {
 
         // Likes and comments for the whole page, in two round trips. These used
         // to be fetched per post, which re-read the whole `likes` and `comments`
-        // tables once per post because the gateway ignores filters.
+        // tables once per post because the dataClient ignores filters.
         const { likesByPostId, commentsByPostId } = await fetchEngagementForPosts(
           (postsData || []).map((post) => post.id)
         );
@@ -205,7 +205,7 @@ export const useFollowedHashtagsFeed = () => {
     fetchFollowedHashtagsPosts();
 
     // Set up real-time subscription for new posts
-    const channel = gateway
+    const channel = dataClient
       .channel('followed-hashtags-posts')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'hashtag_links' }, () => {
         fetchFollowedHashtagsPosts();
@@ -213,7 +213,7 @@ export const useFollowedHashtagsFeed = () => {
       .subscribe();
 
     return () => {
-      gateway.removeChannel(channel);
+      dataClient.removeChannel(channel);
     };
   }, [user, retry]);
 

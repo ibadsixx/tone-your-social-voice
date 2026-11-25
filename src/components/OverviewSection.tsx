@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useOtherNames } from '@/hooks/useOtherNames';
 import { useFriends } from '@/hooks/useFriends';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { buildSocialUrl } from '@/utils/socialLinks';
 import { normalizeVisibilityValue } from '@/utils/profileValidation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -130,7 +130,7 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
 
       try {
         // Fetch extended profile data with related information
-        const { data: profile, error } = await gateway
+        const { data: profile, error } = await dataClient
           .from('profiles')
           .select(`
             *,
@@ -145,7 +145,7 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
 
         if (profile) {
           // Places (current city) live in profile_details, not profiles.
-          const { data: place, error: placeError } = await gateway
+          const { data: place, error: placeError } = await dataClient
             .from('profile_details')
             .select('field_value')
             .eq('profile_id', profileId)
@@ -164,7 +164,7 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
         }
 
         // Fetch family relationships
-        const { data: family, error: familyError } = await gateway
+        const { data: family, error: familyError } = await dataClient
           .from('family_relationships')
           .select(`
             id,
@@ -202,7 +202,6 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
       case 'friends':
         return isFriend;
       case 'only_me':
-      case 'private':
         return false;
       default:
         return false;

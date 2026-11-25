@@ -6,13 +6,13 @@
 // `create_message_with_audio` RPC, whose deployed body references the
 // misspelled relation and fails with 42P01 — the same class of monolith-era
 // chat RPC that can no longer run against the split conversation/message
-// database. The fix routes voice creation through the SAME gateway table-based
+// database. The fix routes voice creation through the SAME dataClient table-based
 // `messages` insert the working text path uses (insertVoiceMessageRow), so RLS
 // (participants_can_insert_messages) enforces participant membership against
 // the real `conversation_participants` relation server-side.
 //
 // These tests pin the regression: the row must be inserted via
-// `gateway.from('messages').insert(...)` with the full voice payload (including
+// `dataClient.from('messages').insert(...)` with the full voice payload (including
 // the Cloudinary audio_url captured at upload time), the
 // `create_message_with_audio` RPC must never be invoked, and the created row
 // (audio fields + sender profile) must come back in the same round trip.
@@ -43,7 +43,7 @@ const hoisted = vi.hoisted(() => ({
   error: null as { message?: string } | null,
 }));
 
-vi.mock('@/lib/gateway', () => {
+vi.mock('@/lib/supabase/dataClient', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const builder: Record<string, any> = {};
   const reset = () => {
@@ -70,7 +70,7 @@ vi.mock('@/lib/gateway', () => {
   };
   reset();
   return {
-    gateway: {
+    dataClient: {
       from: (table: string) => {
         hoisted.calls.from.push(table);
         return builder;
@@ -83,7 +83,7 @@ vi.mock('@/lib/gateway', () => {
   };
 });
 
-describe('insertVoiceMessageRow (voice-message creation, gateway table path)', () => {
+describe('insertVoiceMessageRow (voice-message creation, dataClient table path)', () => {
   beforeEach(() => {
     hoisted.calls.from = [];
     hoisted.calls.inserts = [];

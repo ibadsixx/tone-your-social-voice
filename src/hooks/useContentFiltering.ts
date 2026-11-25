@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { blockingApi } from '@/api';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -47,16 +47,16 @@ export const useContentFiltering = () => {
           // Fetch hidden content - separate queries for content and profiles
           // content_id entries are "See less" (single reel)
           // profile_id entries are "Hide profile" (all content from creator)
-          gateway
+          dataClient
             .from('hidden_content')
             .select('content_id, profile_id, content_type')
             .eq('user_id', user.id),
           blockingApi.getRestrictedUsers(user.id),
-          gateway
+          dataClient
             .from('muted_users')
             .select('muted_user_id')
             .eq('user_id', user.id),
-          gateway
+          dataClient
             .from('content_preferences')
             .select('owner_id')
             .eq('user_id', user.id)

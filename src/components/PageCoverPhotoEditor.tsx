@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Camera, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { postsApi } from '@/api';
 import { POST_CREATED_EVENT } from '@/hooks/useHomeFeed';
 
@@ -100,7 +100,7 @@ const PageCoverPhotoEditor = ({ pageId, coverImage, canEdit, onUploaded, onPostC
     // this link is what makes the cover change visible on the page at all. The
     // Gateway checks the caller administers the page, stamps `shared_by` and
     // forces the post public.
-    const { error: linkError } = await gateway.from('page_posts').insert({
+    const { error: linkError } = await dataClient.from('page_posts').insert({
       page_id: pageId,
       post_id: state.postId,
       shared_by: user.id,
@@ -120,14 +120,14 @@ const PageCoverPhotoEditor = ({ pageId, coverImage, canEdit, onUploaded, onPostC
     try {
       const ext = file.name.split('.').pop();
       const path = `${pageId}/${Date.now()}.${ext}`;
-      const { error: uploadError } = await gateway.storage
+      const { error: uploadError } = await dataClient.storage
         .from('covers')
         .upload(path, file, { upsert: true });
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = gateway.storage.from('covers').getPublicUrl(path);
+      const { data: urlData } = dataClient.storage.from('covers').getPublicUrl(path);
       const cover_image = urlData.publicUrl;
-      const { error } = await gateway.from('pages').update({ cover_image }).eq('id', pageId);
+      const { error } = await dataClient.from('pages').update({ cover_image }).eq('id', pageId);
       if (error) throw error;
 
       // The new cover is always kept, even if the post below fails — the owner

@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { getScheduledPosts } from '@/api/posts';
 import SchedulePostModal from './SchedulePostModal';
 import {
@@ -65,7 +65,7 @@ const ScheduledPostsTab = ({ profileId }: { profileId?: string }) => {
 
       if (error) throw error;
 
-      setScheduledPosts((data as ScheduledPost[]) || []);
+      setScheduledPosts((data as unknown as ScheduledPost[]) || []);
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -81,7 +81,7 @@ const ScheduledPostsTab = ({ profileId }: { profileId?: string }) => {
     if (!editingPost) return;
 
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('posts')
         .update({
           scheduled_at: newScheduledAt.toISOString()
@@ -108,7 +108,7 @@ const ScheduledPostsTab = ({ profileId }: { profileId?: string }) => {
 
   const handlePublishNow = async (post: ScheduledPost) => {
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('posts')
         .update({
           status: 'published',
@@ -136,7 +136,7 @@ const ScheduledPostsTab = ({ profileId }: { profileId?: string }) => {
 
   const handleDelete = async (post: ScheduledPost) => {
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('posts')
         .delete()
         .eq('id', post.id);

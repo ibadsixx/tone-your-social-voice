@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from './useAuth';
 import { isPostVisibleToViewer, loadFriendIds, type PostVisibilityFields } from '@/lib/postVisibility';
 
@@ -60,7 +60,7 @@ export const useMentionsFeed = (targetUserId?: string) => {
       setLoading(true);
 
       // Fetch mentions where the target user is mentioned
-      const { data: mentionsData, error: mentionsError } = await gateway
+      const { data: mentionsData, error: mentionsError } = await dataClient
         .from('mentions')
         .select('*')
         .eq('mentioned_user_id', effectiveUserId)
@@ -69,7 +69,7 @@ export const useMentionsFeed = (targetUserId?: string) => {
       if (mentionsError) throw mentionsError;
 
       // Fetch tags where the target user was tagged in posts
-      const { data: tagsData, error: tagsError } = await gateway
+      const { data: tagsData, error: tagsError } = await dataClient
         .from('post_tags')
         .select('id, post_id, tagged_by, created_at')
         .eq('tagged_user_id', effectiveUserId)
@@ -107,7 +107,7 @@ export const useMentionsFeed = (targetUserId?: string) => {
         // the viewer IS allowed to read is not filtered away below.
         const friendIds = await loadFriendIds(user?.id);
 
-        const { data: postsData, error: postsError } = await gateway
+        const { data: postsData, error: postsError } = await dataClient
           .from('posts')
           .select('id, content, user_id, created_at, audience_type, visibility')
           .in('id', postIds);
@@ -116,7 +116,7 @@ export const useMentionsFeed = (targetUserId?: string) => {
 
         if (postsData && postsData.length > 0) {
           // Defense in depth: the Gateway already filters every `posts` read by
-          // audience (gateway/src/features/contentVisibility.ts), but a mention
+          // audience (dataClient/src/features/contentVisibility.ts), but a mention
           // row is not a content read — the client must not re-surface a
           // friends/only_me post to someone who may not see it.
           const visiblePosts = (postsData as unknown as PostVisibilityFields[]).filter(
@@ -124,7 +124,7 @@ export const useMentionsFeed = (targetUserId?: string) => {
           );
 
           const postUserIds = visiblePosts.map(p => p.user_id);
-          const { data: postAuthors } = await gateway
+          const { data: postAuthors } = await dataClient
             .from('profiles')
             .select('id, username, display_name, profile_pic')
             .in('id', postUserIds);
@@ -140,7 +140,7 @@ export const useMentionsFeed = (targetUserId?: string) => {
       const commentIds = commentMentions.map(m => m.source_id);
       let commentsWithAuthors: any[] = [];
       if (commentIds.length > 0) {
-        const { data: commentsData, error: commentsError } = await gateway
+        const { data: commentsData, error: commentsError } = await dataClient
           .from('comments')
           .select('id, content, user_id, post_id, created_at')
           .in('id', commentIds);
@@ -149,7 +149,7 @@ export const useMentionsFeed = (targetUserId?: string) => {
 
         if (commentsData && commentsData.length > 0) {
           const commentUserIds = commentsData.map(c => c.user_id);
-          const { data: commentAuthors } = await gateway
+          const { data: commentAuthors } = await dataClient
             .from('profiles')
             .select('id, username, display_name, profile_pic')
             .in('id', commentUserIds);
@@ -190,7 +190,7 @@ export const useMentionsFeed = (targetUserId?: string) => {
     if (!isSelf) return;
 
     // Set up realtime subscription for new mentions
-    const channel = gateway
+    const channel = dataClient
       .channel('mentions-changes')
       .on(
         'postgres_changes',
@@ -219,7 +219,7 @@ export const useMentionsFeed = (targetUserId?: string) => {
       .subscribe();
 
     return () => {
-      gateway.removeChannel(channel);
+      dataClient.removeChannel(channel);
     };
   }, [effectiveUserId, isSelf]);
 

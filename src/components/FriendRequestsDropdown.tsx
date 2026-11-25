@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { UserPlus, UserCheck, X, Loader2, User, Users } from 'lucide-react';
 import { usePeopleYouMayKnow, SuggestedPerson } from '@/hooks/usePeopleYouMayKnow';
 import { usePendingFriendRequests } from '@/hooks/usePendingFriendRequests';
@@ -51,7 +51,7 @@ const FriendRequestsDropdown: React.FC = () => {
     if (!user?.id) return;
     setLoadingSent(true);
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('friends')
         .select(`
           id,

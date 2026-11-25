@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useReactions } from '@/hooks/useReactions';
 import { useComments } from '@/hooks/useComments';
 import { useSavedPosts } from '@/hooks/useSavedPosts';
@@ -123,7 +123,7 @@ const ReelViewer = () => {
         // viewer IS allowed to open is still in the navigation list.
         const friendIds = await loadFriendIds(user?.id);
 
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('posts')
           .select('id, user_id, audience_type, visibility, status')
           .eq('type', 'reel')
@@ -187,7 +187,7 @@ const ReelViewer = () => {
 
       try {
         setLoading(true);
-        const { data, error: fetchError } = await gateway
+        const { data, error: fetchError } = await dataClient
           .from('posts')
           .select(`
             id,
@@ -577,7 +577,7 @@ const ReelViewer = () => {
                     label: 'See less',
                     icon: EyeOff,
                     disabled: isHidingReel,
-                    onSelect: () => hideReel(reel.id),
+                    onSelect: () => { void hideReel(reel.id); },
                   },
                   {
                     id: 'feedback',

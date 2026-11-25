@@ -5,7 +5,7 @@ import { X, Minus, Phone, Video } from 'lucide-react';
 import { useConversations } from '@/hooks/useConversations';
 import { MessageInput } from '@/components/messages/MessageInput';
 import type { GifItem } from '@/hooks/useGifSearch';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { getMessageRealtime } from '@/lib/messageRealtime';
 import { useCall } from '@/contexts/CallContext';
 import { parseCallLog, callLogLabel, formatCallDuration } from '@/lib/callLog';
@@ -86,7 +86,7 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
 
   const handleSendGif = async (gif: GifItem) => {
     if (!conversationId) return;
-    const { data: inserted, error } = await gateway
+    const { data: inserted, error } = await dataClient
       .from('messages')
       .insert({
         conversation_id: conversationId,
@@ -102,7 +102,7 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
       console.error('Error sending GIF:', error);
       return;
     }
-    // Announce over the gateway SSE hub so the receiver's open client shows it
+    // Announce over the dataClient SSE hub so the receiver's open client shows it
     // live (best-effort; the polling fallback covers this too).
     if (inserted?.id) {
       try {
@@ -121,7 +121,7 @@ export const MiniChatWindow: React.FC<MiniChatWindowProps> = ({
     // recipient. The Maybe-you-know / Spam category is computed client-side
     // from the existing classification semantics (see src/lib/messageRequests).
     try {
-      const { data: friend } = await gateway
+      const { data: friend } = await dataClient
         .from('friends')
         .select('id')
         .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${user.id}),and(requester_id.eq.${user.id},receiver_id.eq.${currentUserId})`)

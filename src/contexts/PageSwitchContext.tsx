@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 export type ActingPage = {
   id: string;
@@ -62,7 +62,7 @@ export const PageSwitchProvider = ({ children }: { children: ReactNode }) => {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await gateway
+        const { data } = await dataClient
           .from('pages')
           .select('id, name, cover_image, profile_pic')
           .eq('id', actingPage.id)

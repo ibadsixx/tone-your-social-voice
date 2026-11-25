@@ -145,7 +145,7 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: stableToast }),
 }));
 
-vi.mock('@/lib/gateway', () => {
+vi.mock('@/lib/supabase/dataClient', () => {
   /** Minimal thenable chain so `.select().eq().eq().order()` resolves. */
   const makeQuery = (table: string) => {
     const filters: Array<[string, unknown]> = [];
@@ -189,7 +189,7 @@ vi.mock('@/lib/gateway', () => {
   };
 
   return {
-    gateway: {
+    dataClient: {
       from: (table: string) => makeQuery(table),
       channel: (name: string) => {
         state.channels.push(name);

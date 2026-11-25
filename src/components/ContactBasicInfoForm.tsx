@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { Plus, X, Save, Globe, Users, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { validateProfileVisibility, sanitizeProfilePayload, formatVisibilityForDb, normalizeVisibilityValue } from '@/utils/profileValidation';
@@ -159,7 +159,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
     }
 
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('friends')
         .select('status')
         .or(`and(requester_id.eq.${user.id},receiver_id.eq.${profileId}),and(requester_id.eq.${profileId},receiver_id.eq.${user.id})`)
@@ -176,7 +176,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
 
   const loadProfileData = async () => {
     try {
-      const { data: profile, error } = await gateway
+      const { data: profile, error } = await dataClient
         .from('profiles')
         .select(`
           email,
@@ -261,7 +261,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
       // Apply sanitization which handles the proper casing for each field
       const sanitizedData = sanitizeProfilePayload(updateData);
 
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('profiles')
         .update(sanitizedData)
         .eq('id', profileId);

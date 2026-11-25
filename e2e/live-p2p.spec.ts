@@ -2,7 +2,7 @@
 // Two and three independent Chromium contexts acquire real (fake-device)
 // microphone media, exchange SDP/ICE through a local signaling double, and
 // establish real RTCPeerConnection media channels. This test does NOT assert
-// production Gateway behavior; the production Gateway has its own unit tests.
+// production Edge Function behavior; those Functions have their own sources.
 
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
@@ -34,10 +34,10 @@ interface HarnessStatus {
   error: string | null;
 }
 
-const MOCK_GATEWAY = 'http://127.0.0.1:8787';
+const MOCK_EDGE_BASE = 'http://127.0.0.1:8787';
 
 function harnessUrl(session: string, user: string, media: 'audio' | 'video' = 'audio'): string {
-  const params = new URLSearchParams({ session, user, gateway: MOCK_GATEWAY });
+  const params = new URLSearchParams({ session, user, edgeBaseUrl: MOCK_EDGE_BASE });
   if (media === 'video') params.set('media', 'video');
   return `/e2e/live-p2p-harness.html?${params.toString()}`;
 }
@@ -173,7 +173,7 @@ test.describe('Tone Live real-browser P2P', () => {
     }).__phase5Actions.leave());
     await expect.poll(async () => (await status(alice)).peers, { message: 'host sees viewer leave' }).toBe(0);
 
-    const ended = await fetch(`${MOCK_GATEWAY}/api/live/sessions/${session}/end`, { method: 'POST' });
+    const ended = await fetch(`${MOCK_EDGE_BASE}/functions/v1/live/sessions/${session}/end`, { method: 'POST' });
     expect(ended.status).toBe(200);
     await expect.poll(async () => (await status(alice)).sessionEnded, { message: 'host sees session ended' }).toBe(true);
   });

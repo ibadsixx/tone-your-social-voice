@@ -114,7 +114,11 @@ describe('Guest Mentions restriction (do.md)', () => {
   it('redirects a guest away from /mentions to the Posts feed without rendering mentions', async () => {
     renderProfile('/profile/test/mentions');
 
-    await waitFor(() => expect(screen.getByTestId('path').textContent).toBe('/profile/test'));
+    // Under parallel workers the first real ProfilePage render can exceed the
+    // 1s default; this is a harness timing artifact, not a routing regression.
+    await waitFor(() => expect(screen.getByTestId('path').textContent).toBe('/profile/test'), {
+      timeout: 3000,
+    });
     expect(screen.queryByTestId('mentions-section')).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Mentions' })).toBeNull();
     expect(screen.getByTestId('profile-header')).toBeTruthy();

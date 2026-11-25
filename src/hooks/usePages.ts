@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -92,9 +92,9 @@ export const usePages = () => {
       // parallel and derive the per-page counts and the viewer's own follow state
       // from the same rows, so a list and its badge can never disagree.
       const [pagesRes, followersRes, pagePostsRes] = await Promise.all([
-        gateway.from('pages').select('*'),
-        gateway.from('page_followers').select('*'),
-        gateway.from('page_posts').select('*'),
+        dataClient.from('pages').select('*'),
+        dataClient.from('page_followers').select('*'),
+        dataClient.from('page_posts').select('*'),
       ]);
 
       if (pagesRes.error) throw pagesRes.error;
@@ -207,7 +207,7 @@ export const usePages = () => {
     if (!user) return;
 
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('page_followers')
         .insert({ page_id: pageId, user_id: user.id, role: 'follower' });
 
@@ -230,7 +230,7 @@ export const usePages = () => {
     if (!user) return;
 
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('page_followers')
         .delete()
         .eq('page_id', pageId)
@@ -255,7 +255,7 @@ export const usePages = () => {
     if (!user) return;
 
     try {
-      const { data: newPage, error: createError } = await gateway
+      const { data: newPage, error: createError } = await dataClient
         .from('pages')
         .insert({ 
           name, 
@@ -269,7 +269,7 @@ export const usePages = () => {
       if (createError) throw createError;
 
       // Auto-follow the created page as admin
-      const { error: followError } = await gateway
+      const { error: followError } = await dataClient
         .from('page_followers')
         .insert({ page_id: newPage.id, user_id: user.id, role: 'admin' });
 

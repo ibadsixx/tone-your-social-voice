@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 export interface SearchResult {
   id: string;
@@ -40,10 +40,10 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
       // trips in a row. One parallel wave instead; error precedence is unchanged.
       const [profilesRes, pagesRes, groupsRes, hashtagsRes] = await Promise.all([
         // RLS automatically excludes blocked users
-        gateway.from('profiles').select('id, display_name, username, profile_pic').limit(5),
-        gateway.from('pages').select('id, name, description').limit(5),
-        gateway.from('groups').select('id, name, description').limit(5),
-        gateway.from('hashtags').select('id, tag, follower_count').order('follower_count', { ascending: false }).limit(5),
+        dataClient.from('profiles').select('id, display_name, username, profile_pic').limit(5),
+        dataClient.from('pages').select('id, name, description').limit(5),
+        dataClient.from('groups').select('id, name, description').limit(5),
+        dataClient.from('hashtags').select('id, tag, follower_count').order('follower_count', { ascending: false }).limit(5),
       ]);
 
       const { data: profiles, error: profilesError } = profilesRes;
@@ -110,14 +110,14 @@ export const useSearch = (query: string, debounceMs: number = 300) => {
       // bodies per keystroke. One parallel wave; error precedence is unchanged.
       const [profilesRes, pagesRes, groupsRes, hashtagsRes] = await Promise.all([
         // RLS automatically excludes blocked users
-        gateway
+        dataClient
           .from('profiles')
           .select('id, display_name, username, profile_pic')
           .or(`display_name.ilike.${searchPattern},username.ilike.${searchPattern}`)
           .limit(20),
-        gateway.from('pages').select('id, name, description').ilike('name', searchPattern).limit(5),
-        gateway.from('groups').select('id, name, description').ilike('name', searchPattern).limit(5),
-        gateway.from('hashtags').select('id, tag, follower_count').ilike('tag', searchPattern).limit(5),
+        dataClient.from('pages').select('id, name, description').ilike('name', searchPattern).limit(5),
+        dataClient.from('groups').select('id, name, description').ilike('name', searchPattern).limit(5),
+        dataClient.from('hashtags').select('id, tag, follower_count').ilike('tag', searchPattern).limit(5),
       ]);
 
       const { data: profiles, error: profilesError } = profilesRes;

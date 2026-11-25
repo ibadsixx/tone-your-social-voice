@@ -21,7 +21,7 @@ import { SharedMediaModal } from './SharedMediaModal';
 import { ReportMessageModal } from './ReportMessageModal';
 import { useToast } from '@/hooks/use-toast';
 import { EmojiAsset } from '@/components/EmojiAsset';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { blockingApi, groupsApi } from '@/api';
 import { deleteCachedConversationKey } from '@/lib/conversationEncryption';
 import {
@@ -182,7 +182,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   const [showMessagingControls, setShowMessagingControls] = useState(false);
   const [showEncryptionDialog, setShowEncryptionDialog] = useState(false);
   const [encryptionView, setEncryptionView] = useState<'check' | 'details' | 'keys'>('check');
-  const [selectedParticipantKeys, setSelectedParticipantKeys] = useState<Record<string, unknown> | null>(null);
+  const [selectedParticipantKeys, setSelectedParticipantKeys] = useState<ParticipantData | null>(null);
   const [showLimitDialog, setShowLimitDialog] = useState(false);
   const [isRestricted, setIsRestricted] = useState(false);
   const [restrictLoading, setRestrictLoading] = useState(false);
@@ -243,7 +243,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
   }> | null>(null);
 
   useEffect(() => {
-    gateway.auth.getUser().then(({ data }) => {
+    dataClient.auth.getUser().then(({ data }) => {
       if (data?.user) setCurrentUserId(data.user.id);
     });
   }, []);
@@ -254,7 +254,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
       setGroupMembers(null);
       (async () => {
         try {
-          const { data: parts } = await gateway
+          const { data: parts } = await dataClient
             .from('conversation_participants')
             .select('user_id, role')
             .eq('conversation_id', conversationId);
@@ -269,11 +269,11 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
             setGroupMembers([]);
             return;
           }
-          const { data: profilesData } = await gateway
+          const { data: profilesData } = await dataClient
             .from('profiles')
             .select('id, username, display_name, profile_pic, last_seen_at')
             .in('id', userIds);
-          // The gateway aggregates a domain read across every readable project
+          // The dataClient aggregates a domain read across every readable project
           // and flattens the results, so the SAME profile can be returned once
           // per project for a single user. Dedupe by the unique user id — never
           // by username / display name / avatar — so the creator/admin and
@@ -324,12 +324,12 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     let cancelled = false;
     (async () => {
       try {
-        const { data: convData } = await gateway
+        const { data: convData } = await dataClient
           .from('conversations')
           .select('created_by')
           .eq('id', conversationId)
           .maybeSingle();
-        const { data: roleData } = await gateway
+        const { data: roleData } = await dataClient
           .from('conversation_participants')
           .select('role')
           .eq('conversation_id', conversationId)
@@ -357,12 +357,12 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
       setEncryptionStatus('loading');
       (async () => {
         try {
-          const { data, error } = await gateway.rpc('get_encryption_details', {
+          const { data, error } = await dataClient.rpc('get_encryption_details', {
             p_conversation_id: conversationId
           });
           if (error) throw error;
           const parsed = data ? encryptionDetailsSchema.parse(data) : null;
-          setEncryptionData(parsed);
+          setEncryptionData(parsed as EncryptionDetails | null);
           const hasKeys = parsed?.participants?.some(p => p.devices?.length > 0) ?? false;
           setEncryptionStatus(hasKeys ? 'encrypted' : 'not-encrypted');
         } catch {
@@ -423,14 +423,14 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     setShowEncryptionDialog(true);
     
     try {
-      const { data, error } = await gateway.rpc('get_encryption_details', {
+      const { data, error } = await dataClient.rpc('get_encryption_details', {
         p_conversation_id: conversationId
       });
       
       if (error) throw error;
       
       const parsed = data ? encryptionDetailsSchema.parse(data) : null;
-      setEncryptionData(parsed);
+      setEncryptionData(parsed as EncryptionDetails | null);
       const hasKeys = parsed?.participants?.some(p => p.devices?.length > 0) ?? false;
       setEncryptionStatus(hasKeys ? 'encrypted' : 'not-encrypted');
       
@@ -549,11 +549,11 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     setClearingHistory(true);
     
     try {
-      const { data: { user } } = await gateway.auth.getUser();
+      const { data: { user } } = await dataClient.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Upsert a clear marker — messages are soft-hidden from this user's view
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('conversation_clears')
         .upsert({
           user_id: user.id,
@@ -623,7 +623,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     console.log('[ChatInfoPanel] group image upload result', { conversationId, url });
 
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('conversations')
         .update({ group_image: url })
         .eq('id', conversationId);
@@ -667,7 +667,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
 
     setRenaming(true);
     try {
-      const { data, error } = await gateway.rpc('rename_group_conversation', {
+      const { data, error } = await dataClient.rpc('rename_group_conversation', {
         p_conversation_id: conversationId,
         p_name: trimmedName,
       });
@@ -729,7 +729,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
     if (!conversationId || !memberToPromote) return;
     setPromoting(true);
     try {
-      const { error } = await gateway.rpc('promote_group_member', {
+      const { error } = await dataClient.rpc('promote_group_member', {
         p_conversation_id: conversationId,
         p_member_id: memberToPromote.user_id,
       });
@@ -1396,7 +1396,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
                           const cid = conversationId;
                           if (!cid) return;
                           try {
-                            await gateway.rpc('verify_conversation_encryption', {
+                            await dataClient.rpc('verify_conversation_encryption', {
                               p_conversation_id: cid
                             });
                             const now = new Date();
@@ -1522,7 +1522,7 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
                               const cid = conversationId;
                               if (!cid) return;
                               try {
-                                await gateway.rpc('verify_conversation_encryption', {
+                                await dataClient.rpc('verify_conversation_encryption', {
                                   p_conversation_id: cid,
                                   p_key_fingerprint: device.key_fingerprint,
                                   p_verified_user_id: selectedParticipantKeys.user_id as string

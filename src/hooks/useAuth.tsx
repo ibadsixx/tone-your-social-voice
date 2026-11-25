@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
   signInWithPassword,
-  signUp,
-  signOut,
+  signUp as centralSignUp,
+  signOut as centralSignOut,
   getSession,
   getUser,
   refreshSession,
@@ -18,7 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { endPresenceSession } from '@/hooks/usePresence';
 import { clearPostActionsForUser } from '@/lib/postActionCache';
 
-interface GatewayUser {
+interface AuthUser {
   id: string;
   email?: string;
   user_metadata?: Record<string, unknown>;
@@ -27,18 +27,18 @@ interface GatewayUser {
   factors?: { id?: string; status?: string; factor_type?: string }[];
 }
 
-interface GatewaySession {
+interface AuthSession {
   access_token: string;
   refresh_token: string;
   expires_in: number;
   expires_at: number;
   token_type: string;
-  user: GatewayUser;
+  user: AuthUser;
 }
 
 interface AuthContextType {
-  user: GatewayUser | null;
-  session: GatewaySession | null;
+  user: AuthUser | null;
+  session: AuthSession | null;
   loading: boolean;
   mfaRequired: boolean;
   completeMfa: (code: string) => Promise<{ error: any }>;
@@ -50,8 +50,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<GatewayUser | null>(null);
-  const [session, setSession] = useState<GatewaySession | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaFactorId, setMfaFactorId] = useState<string | undefined>(undefined);
@@ -59,7 +59,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // New accounts never get a profiles row created server-side; creating it on
   // every session/sign-in ensures it exists before any page tries to read it.
-  const ensureUserProfile = (authUser: GatewayUser | null | undefined) => {
+  const ensureUserProfile = (authUser: AuthUser | null | undefined) => {
     if (!authUser?.id) return;
     profilesApi
       .ensureProfile({
@@ -91,7 +91,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (mounted) {
               sessionResolved = true;
               window.clearTimeout(loadingTimeout);
-              setSession(session as GatewaySession | null);
+              setSession(session as AuthSession | null);
               setUser(session?.user ?? null);
               setLoading(false);
               ensureUserProfile(session?.user ?? null);
@@ -116,7 +116,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               // Only update user if we actually got a session — avoids a slow
               // network response resetting user to null after a concurrent login
               if (session) {
-                setSession(session as GatewaySession | null);
+                setSession(session as AuthSession | null);
                 setUser(session.user);
                 ensureUserProfile(session.user);
               }
@@ -166,17 +166,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const signUp = async (email: string, password: string, username: string, displayName: string) => {
     try {
       const redirectUrl = `${window.location.origin}/`;
-      
-      const { error } = await signUp({
+
+      const { data, error } = await centralSignUp({
         email,
         password,
         options: {
           emailRedirectTo: redirectUrl,
           data: {
             username,
-            display_name: displayName
-          }
-        }
+            display_name: displayName,
+          },
+        },
       });
 
       if (error) {
@@ -188,15 +188,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return { error };
       }
 
-      // Accounts are created pre-confirmed server-side (no email verification).
-      // Auto sign-in so registration gives immediate access.
-      const { error: signInError } = await signInWithPassword({ email, password });
-      if (signInError) {
+      setMfaRequired(false);
+      setMfaFactorId(undefined);
+
+      const session = data?.session as AuthSession | null | undefined;
+      if (session) {
+        // Autoconfirm returns a session directly — no second password round trip.
+        setSession(session);
+        setUser((session.user as AuthUser) ?? (data?.user as AuthUser) ?? null);
+        ensureUserProfile((session.user as AuthUser) ?? (data?.user as AuthUser) ?? null);
         toast({
-          title: "Account created",
-          description: "Your account is ready. Please sign in.",
+          title: "Welcome to Tone",
+          description: "Your account is ready.",
         });
-        return { error: null };
+      } else {
+        toast({
+          title: "Check your email",
+          description: "Confirm your email to finish signing up.",
+        });
       }
 
       return { error: null };
@@ -226,6 +235,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           variant: "destructive"
         });
         return { error: result.error };
+      }
+
+      const session = result.data?.session as AuthSession | null | undefined;
+      if (session) {
+        // Set state directly so a successful login still updates the UI if the
+        // mount-time auth listener was never attached.
+        setSession(session);
+        setUser((session.user as AuthUser) ?? null);
+        ensureUserProfile((session.user as AuthUser) ?? null);
       }
 
       if (result.data?.mfaRequired) {
@@ -322,12 +340,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // held for the length of a session, so without this the next person to sign
     // in on this device would briefly see the previous account's likes and
     // bookmarks on every post. It is dropped before the session is destroyed, and
-    // regardless of whether the gateway call below succeeds: what is on screen
+    // regardless of whether the dataClient call below succeeds: what is on screen
     // belongs to the account that is signing out either way.
     clearPostActionsForUser(user?.id);
 
     try {
-      const { error } = await signOut();
+      const { error } = await centralSignOut();
 
       if (error) {
         toast({

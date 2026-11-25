@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { postsApi } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 import { POST_CREATED_EVENT } from '@/hooks/useHomeFeed';
@@ -26,7 +26,7 @@ export type PhotoStage = 'validation' | 'upload' | 'profile' | 'announcement';
 
 export class PhotoUpdateError extends Error {
   readonly stage: PhotoStage;
-  /** The underlying gateway/storage rejection, kept for logging (do.md §7). */
+  /** The underlying dataClient/storage rejection, kept for logging (do.md §7). */
   readonly reason?: unknown;
 
   constructor(stage: PhotoStage, message: string, reason?: unknown) {
@@ -40,7 +40,7 @@ export class PhotoUpdateError extends Error {
 /**
  * Ceiling for a single profile/cover image.
  *
- * The signed direct upload to Cloudinary has no size limit, but the gateway's
+ * The signed direct upload to Cloudinary has no size limit, but the dataClient's
  * proxied multipart fallback runs on Vercel, which rejects a body over ~4.5MB
  * with a bare `413 FUNCTION_PAYLOAD_TOO_LARGE`. Past this point we would rather
  * say so in a sentence the user can act on than surface an opaque platform
@@ -124,7 +124,7 @@ const extensionOf = (file: File | Blob, fallback = 'jpg'): string => {
   return fallback;
 };
 
-/** Turn a gateway/storage rejection into something a user can act on. */
+/** Turn a dataClient/storage rejection into something a user can act on. */
 const describeStorageFailure = (reason: unknown, label: string): string => {
   const message =
     (reason as { message?: string } | null)?.message ||
@@ -165,7 +165,7 @@ export const uploadPhotoToStorage = async (
     .toString(36)
     .slice(2, 10)}.${extension}`;
 
-  const { error } = await gateway.storage
+  const { error } = await dataClient.storage
     .from(bucket)
     .upload(fileName, file, {
       contentType: file.type || `image/${extension}`,
@@ -189,7 +189,7 @@ export const uploadPhotoToStorage = async (
     );
   }
 
-  const { data } = gateway.storage.from(bucket).getPublicUrl(fileName);
+  const { data } = dataClient.storage.from(bucket).getPublicUrl(fileName);
   const publicUrl = data.publicUrl;
   if (import.meta.env.DEV) {
     console.debug('[usePhotoUpload] getPublicUrl:', { bucket, fileName, publicUrl });
@@ -211,7 +211,7 @@ export const saveProfileImage = async (
   imageUrl: string,
   extra?: Record<string, unknown>
 ): Promise<void> => {
-  const { error } = await gateway
+  const { error } = await dataClient
     .from('profiles')
     .update({ [field]: imageUrl, ...extra })
     .eq('id', userId);
@@ -219,7 +219,7 @@ export const saveProfileImage = async (
   if (error) {
     throw new PhotoUpdateError(
       'profile',
-      profileSaveMessage(error, label),
+      photoErrorMessage(error, field === 'profile_pic' ? 'profile picture' : 'cover photo'),
       error
     );
   }

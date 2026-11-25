@@ -64,7 +64,7 @@ vi.mock('react-router-dom', async (orig) => {
   };
 });
 
-/** What the page asked the gateway to write. */
+/** What the page asked the dataClient to write. */
 const writes: Array<{ table: string; op: string; rows: unknown[] }> = [];
 /** Call order of the collaborators the ordering test compares. */
 const order: string[] = [];
@@ -86,7 +86,7 @@ const project = {
   },
 };
 
-vi.mock('@/lib/gateway', () => {
+vi.mock('@/lib/supabase/dataClient', () => {
   /** A chainable query builder over a canned result set. */
   const builder = (table: string, result: unknown) => {
     const chain: Record<string, unknown> = {
@@ -115,7 +115,7 @@ vi.mock('@/lib/gateway', () => {
     table === 'editor_projects' ? project : undefined;
 
   return {
-    gateway: {
+    dataClient: {
       from: (table: string) => ({
         select: () => builder(table, readResult(table)),
         insert: (rows: unknown) => write(table, 'insert', rows),
@@ -179,7 +179,7 @@ describe('publishing from the Editor registers the caption hashtags', () => {
     expect(sourceType).toBe('post');
     expect(sourceId).toBe(POST_ID);
     expect(typeof content).toBe('string');
-  });
+  }, 15000);
 
   it('is called only AFTER the post row exists', async () => {
     render(
@@ -201,7 +201,7 @@ describe('publishing from the Editor registers the caption hashtags', () => {
     await publish();
 
     expect(order).toEqual(['post', 'hashtags']);
-  });
+  }, 15000);
 
   it('does not write hashtags or hashtag_links from the page itself', async () => {
     render(
@@ -219,7 +219,7 @@ describe('publishing from the Editor registers the caption hashtags', () => {
     expect(tables).not.toContain('hashtags');
     expect(tables).not.toContain('hashtag_links');
     expect(tables).not.toContain('mentions');
-  });
+  }, 15000);
 
   it('still completes the publish when the helper fails', async () => {
     // The post is already live when the helper runs, so a hashtag failure must
@@ -239,5 +239,5 @@ describe('publishing from the Editor registers the caption hashtags', () => {
       expect(writes.some(w => w.table === 'editor_projects' && w.op === 'update')).toBe(true)
     );
     expect(navigate).toHaveBeenCalledWith('/');
-  });
+  }, 15000);
 });

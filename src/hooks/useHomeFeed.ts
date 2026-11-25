@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { postsApi } from '@/api';
-import { gateway } from '@/lib/gateway';
+import type { FeedCursor, FeedErrorCode } from '@/api/posts';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { isPostVisibleToViewer, loadFriendIds } from '@/lib/postVisibility';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -57,9 +58,10 @@ export interface HomeFeedPost {
   group_name?: string | null;
   group_id?: string | null;
   /**
-   * The owning Page when this post was published "as a Page". The Gateway
-   * resolves it from the `page_posts` link and attaches it, so the shared card
-   * renders the Page's name/image instead of the admin's personal identity.
+   * The owning Page when this post was published "as a Page". Optional feed
+   * enrichment may attach it; when present the card renders the Page's
+   * name/image instead of the admin's personal identity. It is not required by
+   * the core timeline read.
    */
   page?: {
     id: string;
@@ -101,8 +103,39 @@ export interface HomeFeedPost {
   } | null;
 }
 
-// The gateway has no server push for table changes. `GatewayChannel`
-// (src/lib/gateway.ts) stores `postgres_changes` callbacks but never opens a
+export type FeedStatus =
+  | 'idle'
+  | 'loading'
+  | 'ready'
+  | 'no-posts'
+  | 'none-visible'
+  | 'routing'
+  | 'auth'
+  | 'rls'
+  | 'query';
+
+/** Feed-scoped error: the status survives after the message is shown. */
+class FeedRequestError extends Error {
+  constructor(readonly status: FeedStatus, message: string) {
+    super(message);
+    this.name = 'FeedRequestError';
+  }
+}
+
+function statusForFeedError(code: FeedErrorCode | undefined, message: string): FeedStatus {
+  if (code === 'AUTH_REQUIRED') return 'auth';
+  if (code === 'FEED_ROUTE_MISSING' || code === 'FEED_ROUTE_AMBIGUOUS') return 'routing';
+  if (code === 'RLS_DENIED') return 'rls';
+  if (code === 'QUERY_FAILED') return 'query';
+  // Older/mocked clients can still expose a code on the error object itself.
+  if (/jwt|session|auth/i.test(message)) return 'auth';
+  if (/ambiguous|registry|routing|infrastructure|not configured/i.test(message)) return 'routing';
+  if (/permission denied|row-level security|rls/i.test(message)) return 'rls';
+  return 'query';
+}
+
+// The dataClient has no server push for table changes. Its channel wrapper
+// stores `postgres_changes` callbacks but never opens a
 // WebSocket and never invokes them, so every "realtime" subscription in the app
 // is inert and polling is the only way a viewer learns about content published
 // by somebody else.
@@ -141,10 +174,18 @@ function mapFeedPosts(
       ? post.media_type as 'image' | 'video'
       : null,
     shared_post: post.shared_post,
-    group_name: post.group_posts?.[0]?.groups?.name || null,
-    group_id: post.group_posts?.[0]?.groups?.id || null,
-    // The owning Page, when the Gateway attributed this row to one. Passed
-    // straight through to `Post` so a page post shows the Page, not the admin.
+    // The trusted Edge Function sends validated, flattened attribution. The
+    // nested join is only a fallback for the guest direct-read path, where RLS
+    // governs group visibility. Never let an absent fallback clear a value the
+    // enforcing boundary already verified.
+    group_name: typeof post.group_name === 'string'
+      ? post.group_name
+      : post.group_posts?.[0]?.groups?.name || null,
+    group_id: typeof post.group_id === 'string'
+      ? post.group_id
+      : post.group_posts?.[0]?.groups?.id || null,
+    // The owning Page, when the trusted feed read attributed this row to one.
+    // Passed straight through to `Post` so a page post shows the Page.
     page: post.page ?? null,
   })) as unknown as HomeFeedPost[]).filter(p =>
     (!p.group_id || !unfollowedGroupIds.includes(p.group_id)) &&
@@ -158,45 +199,29 @@ function mapFeedPosts(
 // Groups the user has explicitly unfollowed — their posts are hidden from the feed.
 async function loadUnfollowedGroupIds(userId?: string): Promise<string[]> {
   if (!userId) return [];
-  const { data: unfollowRows } = await gateway
-    .from('group_follows' as any)
+  const { data: unfollowRows } = await dataClient
+    .from('group_follows')
     .select('group_id')
     .eq('user_id', userId);
   return ((unfollowRows || []) as Array<{ group_id: string }>).map(row => row.group_id);
 }
 
 // Audience filtering lives in the canonical @/lib/postVisibility module and is
-// mirrored in the Gateway (which is the enforcing boundary, because the
-// gateway's service-role reads bypass RLS). Keeping ONE implementation here is
-// what stops the three copies from drifting again.
+// mirrored in the feedTimeline Edge Function (the enforcing boundary for a
+// signed-in viewer, whose central JWT is not accepted by the posts project).
+// Keeping ONE implementation here is what stops the copies from drifting again.
 
 /**
- * One page of the feed.
- *
- * Sized for balance rather than by guesswork (do.md §4): a post card is roughly
- * half a viewport tall, so 10 covers two full screens plus scroll room without
- * making the first paint carry a heavy list. The timeline itself is fetched in
- * one request, so the page size now costs a render rather than a round trip.
+ * One server page of the feed. A post card is roughly half a viewport tall, so
+ * 10 covers two full screens plus scroll room. The server reads `limit + 1`
+ * rows to learn whether another page exists; it never truncates the timeline
+ * at a fixed maximum.
  */
 const POSTS_PER_PAGE = 10;
 
 /**
- * A position in the feed, used instead of an offset (do.md §8, §9).
- *
- * `created_at` is not unique — many posts can share a timestamp — so `id` is
- * carried alongside it to break the tie. An offset cannot do this: a post
- * created while the user is scrolling shifts every later page by one row, which
- * duplicates one post and silently drops another.
- */
-type FeedCursor = { created_at: string; id: string };
-
-function cursorOf(post: { id: string; created_at: string }): FeedCursor {
-  return { created_at: post.created_at, id: post.id };
-}
-
-/**
- * Total order: newest first, `id` breaking ties. Deterministic, so the same
- * timeline always yields the same sequence and the cursor can binary-search it.
+ * Total order: newest first, `id` breaking ties. Deterministic, so two pages
+ * can be compared without relying on array positions or offset arithmetic.
  */
 function compareFeedPosts(
   a: { created_at: string; id: string },
@@ -205,27 +230,6 @@ function compareFeedPosts(
   if (a.created_at !== b.created_at) return a.created_at < b.created_at ? 1 : -1;
   if (a.id === b.id) return 0;
   return a.id < b.id ? 1 : -1;
-}
-
-/** Index of the first post strictly after `cursor` — where the next page starts. */
-function indexAfterCursor(feed: HomeFeedPost[], cursor: FeedCursor | null): number {
-  if (!cursor) return 0;
-  let lo = 0;
-  let hi = feed.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    // `> 0` means strictly older than the cursor, i.e. comes after it.
-    if (compareFeedPosts(feed[mid], cursor) > 0) hi = mid;
-    else lo = mid + 1;
-  }
-  return lo;
-}
-
-/** The next page after `cursor`, or an empty array at the end of the feed. */
-function pageAfter(feed: HomeFeedPost[], cursor: FeedCursor | null): HomeFeedPost[] {
-  const start = indexAfterCursor(feed, cursor);
-  if (start >= feed.length) return [];
-  return feed.slice(start, start + POSTS_PER_PAGE);
 }
 
 /** Dedupe by post id, keeping the first occurrence (do.md §10). */
@@ -241,139 +245,150 @@ function dedupeById<T extends { id: string }>(posts: T[]): T[] {
 }
 
 export const useHomeFeed = () => {
-  // `posts` is what the user has been shown. `timeline` is the whole authorized
-  // feed, read once; pages are revealed from it as the user scrolls.
+  // The server owns the timeline. This hook holds only the pages already shown,
+  // plus the `(created_at, id)` cursor returned with the last page. No silent
+  // 500-row cap and no client-side slice of an incomplete feed.
   const [posts, setPosts] = useState<HomeFeedPost[]>([]);
-  const [timeline, setTimeline] = useState<HomeFeedPost[]>([]);
-  const [cursor, setCursor] = useState<FeedCursor | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [feedStatus, setFeedStatus] = useState<FeedStatus>('idle');
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Mirrors of the two values `loadMore` reads. They keep `loadMore` referentially
+  // Mirrors of the values `loadMore` reads. They keep the callback referentially
   // stable, which matters because it is an IntersectionObserver callback: a new
-  // function identity on every cursor advance would tear down and rebuild the
-  // observer mid-scroll.
-  const timelineRef = useRef<HomeFeedPost[]>([]);
+  // identity on every cursor advance would tear down the observer mid-scroll.
   const cursorRef = useRef<FeedCursor | null>(null);
+  const hasMoreRef = useRef(false);
 
   // Re-entrancy guard (do.md §7). IntersectionObserver can fire several times
-  // for one approach to the sentinel; only one page may be revealed per call.
+  // for one approach to the sentinel; only one server page may be read per call.
   const loadMoreInFlight = useRef(false);
 
   const advanceCursor = useCallback((next: FeedCursor | null) => {
     cursorRef.current = next;
-    setCursor(next);
   }, []);
 
-  const setTimelineBoth = useCallback((next: HomeFeedPost[]) => {
-    timelineRef.current = next;
-    setTimeline(next);
+  const setHasMoreBoth = useCallback((next: boolean) => {
+    hasMoreRef.current = next;
+    setHasMore(next);
   }, []);
 
   /**
-   * The one request the feed makes. It returns every post this viewer may see,
-   * in a stable total order, with no pagination applied.
+   * Read one server page. The enforcing boundary is the registered posts
+   * project (direct RLS for a guest, the narrow cross-project Edge Function for
+   * a signed-in viewer); `mapFeedPosts` re-applies the audience matrix as
+   * defence-in-depth before anything is put in state.
    */
-  const fetchTimeline = useCallback(async (): Promise<HomeFeedPost[]> => {
-    // The feed read and the two lookups that feed the client-side filter are
-    // independent, so they start together.
-    //
-    // This is not a privacy trade-off. The Gateway is the enforcing boundary
-    // (service-role reads bypass RLS) and already returns only rows this viewer
-    // may see, so the timeline is correctly scoped whatever the lookups
-    // return. `mapFeedPosts` then applies the same matrix again before anything
-    // is put in state, so the client check stays defence-in-depth and no
-    // unfiltered row is ever rendered. The lookups are still re-read on every
-    // check, so a just-accepted friendship is never served from a stale set.
-    const [unfollowedGroupIds, friendIds, { data, error }] = await Promise.all([
+  const readPage = useCallback(async (pageCursor: FeedCursor | null) => {
+    const [unfollowedGroupIds, friendIds, result] = await Promise.all([
       loadUnfollowedGroupIds(user?.id),
       loadFriendIds(user?.id),
-      postsApi.getFeedTimeline(),
+      postsApi.getFeedTimeline({ cursor: pageCursor, limit: POSTS_PER_PAGE }),
     ]);
 
-    if (error) throw error;
+    if (result.error) {
+      const status = statusForFeedError(result.feedErrorCode, result.error.message);
+      // Sanitized: error code and counts only. No tokens, content or user ids.
+      console.warn('[useHomeFeed] feed read failed', { status, code: result.error.code ?? null });
+      throw new FeedRequestError(status, result.error.message);
+    }
 
-    // Diagnostic: log whether any LIVE posts are present in the raw feed response
-    const livePostsInResponse = (data || []).filter((p: Record<string, unknown>) =>
-      p.live_session_id && p.status === 'live'
-    );
-    console.log('[useHomeFeed] Feed response received', 'totalPosts:', data?.length ?? 0,
-      'livePostsInResponse:', livePostsInResponse.length,
-      'livePostIds:', livePostsInResponse.map((p: Record<string, unknown>) => p.id).join(','));
-
+    const data = result.data ?? [];
     const mapped = mapFeedPosts(data, unfollowedGroupIds, user?.id, friendIds);
-    const livePostsMapped = mapped.filter((p: Record<string, unknown>) =>
-      p.live_session_id && p.status === 'live'
-    );
-    console.log('[useHomeFeed] After visibility filter', 'mappedPosts:', mapped.length,
-      'livePostsVisible:', livePostsMapped.length,
-      'livePostIds:', livePostsMapped.map((p: Record<string, unknown>) => p.id).join(','));
+    const mappedPosts = dedupeById(mapped).sort(compareFeedPosts);
+    const rawCount = result.rawCount ?? data.length;
+    const more = result.hasMore === true;
+    const next = result.nextCursor ?? null;
 
-    return dedupeById(mapped)
-      .sort(compareFeedPosts);
+    // A page that claims to continue without a cursor cannot be paged safely.
+    if (more && !next) {
+      throw new FeedRequestError('query', 'The feed page is incomplete');
+    }
+
+    const status: FeedStatus = rawCount === 0 && mappedPosts.length === 0
+      ? 'no-posts'
+      : mappedPosts.length === 0
+        ? 'none-visible'
+        : 'ready';
+
+    // Sanitized diagnostic: counts only, never rows, tokens or identifiers.
+    console.debug('[useHomeFeed] feed page', {
+      rawCount,
+      visibleCount: mappedPosts.length,
+      more,
+      status,
+    });
+    return { posts: mappedPosts, hasMore: more, nextCursor: next, status };
   }, [user]);
 
   const fetchPosts = useCallback(async (resetPosts = false) => {
     try {
       setLoading(true);
-      const list = await fetchTimeline();
-      setTimelineBoth(list);
+      const page = await readPage(resetPosts ? null : cursorRef.current);
 
       if (resetPosts) {
         // An explicit refresh restarts from the top; anything already on screen
         // is replaced, which is what "refresh" means to the user.
-        const first = pageAfter(list, null);
-        setPosts(first);
-        advanceCursor(first.length ? cursorOf(first[first.length - 1]) : null);
-      } else {
-        const fresh = pageAfter(list, cursorRef.current);
-        if (fresh.length) {
-          setPosts(prev => dedupeById([...prev, ...fresh]));
-          advanceCursor(cursorOf(fresh[fresh.length - 1]));
-        }
+        setPosts(page.posts);
+      } else if (page.posts.length) {
+        setPosts(prev => dedupeById([...prev, ...page.posts]).sort(compareFeedPosts));
       }
 
+      // Advance even when every raw row on this page was filtered out: the
+      // server cursor is what prevents the feed from stalling on a hidden page.
+      if (page.nextCursor || resetPosts) advanceCursor(page.nextCursor);
+      setHasMoreBoth(page.hasMore);
+      setFeedStatus(page.status);
       setError(null);
-    } catch (error: any) {
+    } catch (caught) {
       // The already-revealed posts are deliberately left in state: a failed
       // re-read must not destroy a feed the user is reading (do.md §14).
-      setError(error?.message || 'Failed to load posts');
-      toast({
-        title: 'Error',
-        description: 'Failed to load posts',
-        variant: 'destructive'
-      });
+      const failure = caught instanceof FeedRequestError
+        ? caught
+        : new FeedRequestError('query', caught instanceof Error ? caught.message : 'Failed to load posts');
+      setFeedStatus(failure.status);
+      setError(failure.message);
+      if (!posts.length) {
+        toast({
+          title: 'Error',
+          description: 'Failed to load posts',
+          variant: 'destructive'
+        });
+      }
     } finally {
       setLoading(false);
     }
-  }, [fetchTimeline, advanceCursor, setTimelineBoth, toast]);
+  }, [readPage, advanceCursor, setHasMoreBoth, toast, posts.length]);
 
   /**
-   * Reveal the next page. This is a read from the already-fetched timeline, not
-   * a request, so it cannot fail, cannot race and cannot leave the feed empty
-   * (do.md §6, §7, §14).
+   * Fetch and append the next server page. `hasMore` and the cursor come from
+   * the feed response, never from array offsets, so a post published mid-scroll
+   * cannot shift or duplicate the remaining pages.
    */
-  const loadMore = useCallback(() => {
-    if (loadMoreInFlight.current) return;
+  const loadMore = useCallback(async () => {
+    if (loadMoreInFlight.current || !hasMoreRef.current || !cursorRef.current) return;
     loadMoreInFlight.current = true;
     try {
-      const fresh = pageAfter(timelineRef.current, cursorRef.current);
-      // No rows after the cursor means the end of the feed: stop (do.md §13).
-      if (!fresh.length) return;
-      setPosts(prev => dedupeById([...prev, ...fresh]));
-      advanceCursor(cursorOf(fresh[fresh.length - 1]));
+      const page = await readPage(cursorRef.current);
+      if (page.posts.length) {
+        setPosts(prev => dedupeById([...prev, ...page.posts]).sort(compareFeedPosts));
+      }
+      if (page.nextCursor) advanceCursor(page.nextCursor);
+      setHasMoreBoth(page.hasMore);
+      setFeedStatus(page.status);
+      setError(null);
+    } catch (caught) {
+      const failure = caught instanceof FeedRequestError
+        ? caught
+        : new FeedRequestError('query', caught instanceof Error ? caught.message : 'Failed to load posts');
+      setFeedStatus(failure.status);
+      setError(failure.message);
     } finally {
       loadMoreInFlight.current = false;
     }
-  }, [advanceCursor]);
-
-  /** Is there anything left to reveal? Drives the sentinel and the end marker. */
-  const hasMore = useMemo(
-    () => indexAfterCursor(timeline, cursor) < timeline.length,
-    [timeline, cursor]
-  );
+  }, [readPage, advanceCursor, setHasMoreBoth]);
 
   const refresh = useCallback(() => {
     fetchPosts(true);
@@ -388,48 +403,31 @@ export const useHomeFeed = () => {
   // Silent check for posts that appeared since the feed was loaded (e.g. by other
   // users or from another surface), and for posts that have only just become
   // authorized — a Friends-only post whose viewer has since accepted the author
-  // must appear without a manual refresh (do.md §12).
+  // must appear without a manual refresh (do.md §12). Only the newest server
+  // page is polled; it is a freshness check, not a re-download of all history.
   const checkForNewPosts = useCallback(async () => {
     if (newPostsCheckInFlight.current) return;
     newPostsCheckInFlight.current = true;
     try {
-      // Started together with the feed read for the same reason as `fetchPosts`:
-      // the two lookups are inputs to the client-side filter, not prerequisites
-      // for the request itself.
-      const [unfollowedGroupIds, friendIds, { data, error }] = await Promise.all([
-        loadUnfollowedGroupIds(user?.id),
-        loadFriendIds(user?.id),
-        postsApi.getFeedTimeline(),
-      ]);
-      if (error || !data || data.length === 0) return;
-
-      const latest = dedupeById(mapFeedPosts(data, unfollowedGroupIds, user?.id, friendIds))
-        .sort(compareFeedPosts);
-      if (!latest.length) return;
+      const page = await readPage(null);
+      if (!page.posts.length) return;
 
       setPosts(prev => {
         const known = new Set(prev.map(p => p.id));
         // Only rows strictly newer than everything already on screen may jump to
-        // the top. A row that sorts *after* the first revealed post is older
-        // history the user has not reached yet; prepending it would reorder the
-        // feed and, for a row the user has already scrolled past, look like a
-        // duplicate. Those rows stay in the timeline and are revealed in order
-        // by `loadMore`, which keeps the cursor honest (do.md §9).
+        // the top. Older rows belong to pages the user has not reached yet.
         const boundary = prev[0];
-        const fresh = latest.filter(
+        const fresh = page.posts.filter(
           p => !known.has(p.id) && (!boundary || compareFeedPosts(p, boundary) < 0)
         );
         return fresh.length > 0 ? [...fresh, ...prev] : prev;
       });
-
-      // Keep the timeline current so `hasMore` and later pages see the new rows.
-      setTimelineBoth(dedupeById([...latest, ...timelineRef.current]).sort(compareFeedPosts));
     } catch {
       // Polling must never disrupt the UI — ignore transient failures.
     } finally {
       newPostsCheckInFlight.current = false;
     }
-  }, [user, setTimelineBoth]);
+  }, [readPage]);
 
   const toggleLike = useCallback(async (postId: string) => {
     if (!user) return;
@@ -441,9 +439,9 @@ export const useHomeFeed = () => {
       const existingLike = post.likes?.find(l => l.user_id === user.id);
 
       if (existingLike) {
-        await gateway.from('likes').delete().eq('id', existingLike.id);
+        await dataClient.from('likes').delete().eq('id', existingLike.id);
       } else {
-        await gateway.from('likes').insert({
+        await dataClient.from('likes').insert({
           post_id: postId,
           user_id: user.id
         });
@@ -513,7 +511,7 @@ export const useHomeFeed = () => {
       if (location) {
         // First check if this location already exists
         if (location.provider_place_id && location.provider !== 'custom') {
-          const { data: existing } = await gateway
+          const { data: existing } = await dataClient
             .from('locations')
             .select('id')
             .eq('provider', location.provider)
@@ -527,7 +525,7 @@ export const useHomeFeed = () => {
 
         // Create new location if it doesn't exist
         if (!locationId) {
-          const { data: newLocation, error: locationError } = await gateway
+          const { data: newLocation, error: locationError } = await dataClient
             .from('locations')
             .insert({
               provider: location.provider,
@@ -548,13 +546,13 @@ export const useHomeFeed = () => {
         }
       }
       // Prepare audience data. A post published while acting as a Page belongs
-      // to that Page, and a Page is public by design — the Gateway serves
-      // `pages` and `page_posts` to guests. The composer's personal audience
-      // (its default is `friends`) therefore does NOT apply to a page post: a
-      // page post is public. Persisting the personal `friends` default here is
-      // what previously made every page post invisible to everyone but the
-      // admin, because the Gateway's audience enforcement hid it from the
-      // page's viewers and PageDetail dropped the unmatched `page_posts` link.
+      // to that Page, and a Page is public by design — `pages` and `page_posts`
+      // are readable without a session. The composer's personal audience (its
+      // default is `friends`) therefore does NOT apply to a page post: a page
+      // post is public. Persisting the personal `friends` default here is what
+      // previously made every page post invisible to everyone but the admin,
+      // because visibility enforcement hid it from the page's viewers and
+      // PageDetail dropped the unmatched `page_posts` link.
       const audienceData = pageId ? {
         audience_type: 'public',
         audience_user_ids: null,
@@ -607,7 +605,7 @@ export const useHomeFeed = () => {
           mediaType
         });
 
-        const { error: uploadError, data: uploadData } = await gateway.storage
+        const { error: uploadError, data: uploadData } = await dataClient.storage
           .from(bucket)
           .upload(fileName, file, {
             contentType: file.type,
@@ -621,7 +619,7 @@ export const useHomeFeed = () => {
 
         console.log('[createPost] Upload successful:', uploadData);
 
-        const { data: urlData } = gateway.storage
+        const { data: urlData } = dataClient.storage
           .from(bucket)
           .getPublicUrl(fileName);
 
@@ -689,20 +687,19 @@ export const useHomeFeed = () => {
             tagged_by: user.id,
           }));
         if (tagRows.length > 0) {
-          const { error: tagErr } = await gateway.from('post_tags').insert(tagRows);
+          const { error: tagErr } = await dataClient.from('post_tags').insert(tagRows);
           if (tagErr) console.error('[createPost] Failed to insert post_tags:', tagErr);
         }
       }
 
       // Associate a post published while acting as a Page with that Page. The
-      // Gateway validates that the authenticated user is the page's admin and
-      // stamps `shared_by`, so this can only ever link the caller's own posts
-      // to a page they manage. The link is best-effort: the post itself is
-      // already published, so a failed association is reported without losing
-      // the post.
+      // direct data-client write stamps `shared_by` with the caller's id and is
+      // subject to the posts project's own policies. The link is best-effort:
+      // the post itself is already published, so a failed association is
+      // reported without losing the post.
       let pageLinked = true;
       if (pageId && postId && !scheduledAt) {
-        const { error: pageLinkError } = await gateway
+        const { error: pageLinkError } = await dataClient
           .from('page_posts')
           .insert({ page_id: pageId, post_id: postId, shared_by: user.id });
         if (pageLinkError) {
@@ -825,9 +822,10 @@ export const useHomeFeed = () => {
   return {
     posts,
     loading,
-    // Feed-scoped error, so a failed feed can render its own error state without
-    // touching the state of any other Home section.
+    // Feed-scoped error and status, so a failed feed can render its own state
+    // without touching any other Home section (and never looks like "empty").
     error,
+    feedStatus,
     hasMore,
     loadMore,
     refresh,

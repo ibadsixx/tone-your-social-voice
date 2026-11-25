@@ -5,7 +5,7 @@
 // contract: when somebody else publishes, an authorized viewer must see it
 // without a reload, and an unauthorized viewer must never see it arrive.
 //
-// Root cause this guards against: `GatewayChannel` in src/lib/gateway.ts stores
+// Root cause this guards against: `GatewayChannel` in src/lib/dataClient.ts stores
 // `postgres_changes` callbacks but never opens a WebSocket and never invokes
 // them, so there is no server push for table changes anywhere in the app. The
 // feed therefore depends entirely on client-side invalidation, and before this
@@ -30,8 +30,8 @@ vi.mock('@/api', () => ({
   },
 }));
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     from: () => ({
       select: () => ({
         eq: () => Promise.resolve({ data: [], error: null }),

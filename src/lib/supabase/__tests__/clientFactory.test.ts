@@ -18,7 +18,7 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(),
 }));
 
-const mockCreateClient = vi.mocked(createClient);
+const mockCreateClient = vi.mocked(createClient) as any;
 
 const mockProject: InfrastructureProject = {
   project_key: 'music_1',

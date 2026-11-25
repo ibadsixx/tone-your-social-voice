@@ -41,7 +41,7 @@ const state = vi.hoisted(() => ({
   gate: null as null | { promise: Promise<void>; release: () => void },
 }));
 
-vi.mock('@/lib/gateway', () => {
+vi.mock('@/lib/supabase/dataClient', () => {
   const resultFor = (table: string): Result => {
     if (table === 'pages') return state.pages;
     if (table === 'page_posts') return state.page_posts;
@@ -80,7 +80,7 @@ vi.mock('@/lib/gateway', () => {
     return chain;
   };
 
-  return { gateway: { from: (table: string) => builder(table) } };
+  return { dataClient: { from: (table: string) => builder(table) } };
 });
 
 const VIEWER = 'u1';

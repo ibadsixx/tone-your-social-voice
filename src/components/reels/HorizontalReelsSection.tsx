@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { Film, Play, ChevronRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -105,7 +105,7 @@ const HorizontalReelsSection = () => {
       // filtered by the same rule everywhere rather than guessed at.
       const friendIds = await loadFriendIds(user?.id);
 
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('posts')
         .select(`
           id,

@@ -37,7 +37,7 @@
 // subscription, no per-render request.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useFriendRequestLiveUpdates } from '@/hooks/useFriendRequestLiveUpdates';
@@ -87,7 +87,7 @@ export const PendingFriendRequestsProvider = ({ children }: { children: ReactNod
     const generation = generationRef.current;
     if (!silent) setLoading(true);
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('friends')
         .select(`
           id,
@@ -170,7 +170,7 @@ export const PendingFriendRequestsProvider = ({ children }: { children: ReactNod
     setActionLoading(requestId);
     const generation = generationRef.current;
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('friends')
         .update({ status })
         .eq('id', requestId)

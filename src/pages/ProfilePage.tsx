@@ -1,14 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useMatch } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { profilesApi } from '@/api';
 import type { Profile } from '@/api/profiles';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
 import ProfileHeader from '@/components/ProfileHeader';
 import ProfileTabs from '@/components/ProfileTabs';
 import PageContainer from '@/components/PageContainer';
+import ProfileLoadFailureNotice from '@/components/profile/ProfileLoadFailureNotice';
 import {
   sectionToFilter,
   profileSectionPath,
@@ -24,17 +23,25 @@ import {
   sectionToTab,
   profileTabPath,
 } from '@/lib/profileTabs';
+import { parseProfileRouteIdentifier } from '@/lib/profileRoute';
+import {
+  classifyProfileLoadFailure,
+  describeProfileLoadFailure,
+} from '@/lib/profileLoadFailure';
+import type { ProfileLoadFailure, ProfileLoadErrorLike } from '@/lib/profileLoadFailure';
+import { getCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
 import { useProfileSeo } from '@/hooks/useProfileSeo';
 
 const ProfilePage = () => {
   const { username, section } = useParams<{ username: string; section?: string }>();
   const { user } = useAuth();
-  const { toast } = useToast();
   const navigate = useNavigate();
-  
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [failure, setFailure] = useState<ProfileLoadFailure | null>(null);
+  const requestIdRef = useRef(0);
 
   // The owner's "Permit search engines beyond Tone to reference your profile?"
   // answer decides whether this page may be indexed. This is also what puts a
@@ -42,31 +49,93 @@ const ProfilePage = () => {
   // leaves pointing at "/" for every route.
   useProfileSeo(username, profile);
 
-  useEffect(() => {
-    if (username) {
-      fetchProfile();
-    }
-  }, [username, user]);
+  const fail = (error: ProfileLoadErrorLike | ProfileLoadFailure) => {
+    const classified = 'kind' in error ? error : classifyProfileLoadFailure(error);
+    console.warn(describeProfileLoadFailure(classified));
+    setProfile(null);
+    setIsOwnProfile(false);
+    setFailure(classified);
+  };
 
   const fetchProfile = async () => {
-    if (!username) return;
-    
-    try {
-      let { data, error } = await profilesApi.getProfileByUsername(username);
+    const requestId = ++requestIdRef.current;
+    const isCurrent = () => requestId === requestIdRef.current;
+    setLoading(true);
+    setFailure(null);
 
-      // The account may predate profile auto-creation, so it exists in
-      // auth.users but has no `profiles` row yet. Look it up and create the
-      // row on the fly instead of 404ing.
-      if (!error && !data) {
-        const authUser = await profilesApi.findAuthUserByUsername(username);
+    // A bad :identifier segment is a route parsing problem. It must never issue
+    // a doomed query and then report "profile not found".
+    const routeId = parseProfileRouteIdentifier(username);
+    if (routeId.kind === 'invalid') {
+      fail(classifyProfileLoadFailure({ code: 'INVALID_ROUTE' }));
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // An id-shaped URL addresses the `id` column. Querying `username=eq.<id>`
+      // used to find nothing and produce the reported fake 404.
+      if (routeId.kind === 'id') {
+        const byId = await profilesApi.getProfileById(routeId.id);
+        if (!isCurrent()) return;
+        if (byId.error) {
+          fail(byId.error);
+          return;
+        }
+        if (!byId.data) {
+          // An absent JWT makes a signed-in viewer look anonymous to RLS; that
+          // is a session failure, not proof that the profile does not exist.
+          if (user && !(await getCurrentAccessToken())) {
+            if (!isCurrent()) return;
+            fail(classifyProfileLoadFailure({ code: 'NO_SESSION' }));
+            return;
+          }
+          navigate('/404');
+          return;
+        }
+        setProfile(byId.data);
+        setIsOwnProfile(user?.id === byId.data.id);
+        return;
+      }
+
+      let { data, error } = await profilesApi.getProfileByUsername(routeId.username);
+      if (!isCurrent()) return;
+
+      if (error) {
+        // Registry/route failures, auth failures and RLS errors land here.
+        // None of them is evidence that the username is unknown.
+        fail(error);
+        return;
+      }
+
+      if (!data && user) {
+        // Only a verified central Auth session may look up or create a profile
+        // row. Without a propagated JWT the query ran as an anonymous viewer;
+        // treating its empty result as "missing" would hide a session failure.
+        if (!(await getCurrentAccessToken())) {
+          if (!isCurrent()) return;
+          fail(classifyProfileLoadFailure({ code: 'NO_SESSION' }));
+          return;
+        }
+
+        const authResult = await profilesApi.findAuthUserByUsernameResult(routeId.username);
+        if (!isCurrent()) return;
+        if (authResult.error) {
+          fail(authResult.error);
+          return;
+        }
+
+        const authUser = authResult.data;
         if (authUser) {
           const created = await profilesApi.ensureProfile({
             id: authUser.id,
             email: authUser.email,
             user_metadata: authUser.raw_user_meta_data,
           });
+          if (!isCurrent()) return;
           if (created?.username) {
             const retried = await profilesApi.getProfileByUsername(created.username);
+            if (!isCurrent()) return;
             data = retried.data;
             error = retried.error;
           }
@@ -74,25 +143,32 @@ const ProfilePage = () => {
       }
 
       if (error) {
-        console.error('Profile fetch error:', error);
+        fail(error);
+        return;
+      }
+
+      // An empty readable result is the only genuine missing-profile case.
+      if (!data) {
+        if (!isCurrent()) return;
         navigate('/404');
         return;
       }
 
-      if (!data) {
-        navigate('/404');
-        return;
-      }
-      
       setProfile(data);
       setIsOwnProfile(user?.id === data.id);
-    } catch (error) {
-      console.error('Profile fetch error:', error);
-      navigate('/404');
+    } catch (caught) {
+      if (!isCurrent()) return;
+      const errorLike: ProfileLoadErrorLike =
+        caught instanceof Error ? { message: caught.message } : { message: 'unknown error' };
+      fail(errorLike);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   };
+
+  useEffect(() => {
+    void fetchProfile();
+  }, [username, user?.id]);
 
   // The active profile tab is derived from the URL, so deep links, refresh and
   // browser back/forward all stay in sync. Unknown segments are redirected:
@@ -170,9 +246,9 @@ const ProfilePage = () => {
       </PageContainer>
     );
   }
+  if (failure) return <ProfileLoadFailureNotice failure={failure} onRetry={() => { void fetchProfile(); }} />;
   if (!profile) {
-    // This shouldn't render since we navigate to /404, but just in case
-    navigate('/404');
+    // Navigation to /404 happens only for a readable but empty lookup.
     return null;
   }
 

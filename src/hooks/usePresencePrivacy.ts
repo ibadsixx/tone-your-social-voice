@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 // Presence privacy for non-friend PENDING message requests (see messages.md).
 //
 // While two users are NOT friends and have a PENDING message request between
 // them (in EITHER direction), neither may see the other's online / last-seen /
 // presence state — the sender must not learn the recipient is active. This is
-// the client-side display gate; the gateway ALSO redacts `last_seen_at` /
+// the client-side display gate; the dataClient ALSO redacts `last_seen_at` /
 // `manual_status` from `/api/profiles` so presence is genuinely unavailable, not
 // merely hidden. Once the request is accepted (or the two become friends),
 // presence resumes under the normal friendship/privacy rules.
@@ -83,11 +83,11 @@ export function usePresencePrivacy(currentUserId?: string) {
     if (!currentUserId) return;
 
     const [{ data: friendRows }, { data: reqRows }] = await Promise.all([
-      gateway
+      dataClient
         .from('friends')
         .select('requester_id, receiver_id')
         .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`),
-      gateway
+      dataClient
         .from('message_requests')
         .select('sender_id, receiver_id, status')
         .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`),

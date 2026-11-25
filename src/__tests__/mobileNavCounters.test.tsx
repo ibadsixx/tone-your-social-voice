@@ -18,7 +18,7 @@
 //   * the `notifications-changes` postgres_changes channel -> refetch, for
 //     notifications. One test fires this to prove the WIRING is intact — the
 //     handler reaches the refetch — and that is all it proves. `GatewayChannel` in
-//     `src/lib/gateway.ts` is a stub whose `subscribe()` sets a boolean and calls
+//     `src/lib/dataClient.ts` is a stub whose `subscribe()` sets a boolean and calls
 //     back with 'SUBSCRIBED'; it stores `postgres_changes` callbacks in a private
 //     array that nothing ever invokes. So this channel is not a delivery path in
 //     production, and a passing run here must not be read as "the badge is
@@ -97,7 +97,7 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: stableToast }),
 }));
 
-vi.mock('@/lib/gateway', () => {
+vi.mock('@/lib/supabase/dataClient', () => {
   /** Minimal thenable chain so `.select().eq().eq().order()` resolves. */
   const makeQuery = (table: string) => {
     const filters: Array<[string, unknown]> = [];
@@ -141,7 +141,7 @@ vi.mock('@/lib/gateway', () => {
   };
 
   return {
-    gateway: {
+    dataClient: {
       from: (table: string) => makeQuery(table),
       channel: (name: string) => {
         state.channels.push(name);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { createNotification } from '@/hooks/useNotifications';
@@ -133,7 +133,7 @@ export const useReactions = (
    * A reel is one `posts` row rendered by two surfaces — the feed's `Post` card
    * and the fullscreen `/reels/:id` viewer — and both drive this same hook.
    * Without this, reacting on one left the other showing the old value until it
-   * remounted: the gateway's `postgres_changes` shim stores callbacks without
+   * remounted: the dataClient's `postgres_changes` shim stores callbacks without
    * ever opening the stream, so nothing pushed a correction either.
    */
   const [peer, setPeer] = useState<{
@@ -151,7 +151,7 @@ export const useReactions = (
     return null;
   };
 
-  // Convert a raw per-type count map (from the gateway) into the per-key
+  // Convert a raw per-type count map (from the dataClient) into the per-key
   // ReactionCount[] the summary component renders.
   const reactionCountsFromTypes = (types: Record<string, number> | undefined): ReactionCount[] => {
     const acc: Record<string, number> = {};
@@ -177,7 +177,7 @@ export const useReactions = (
   const fetchCounts = useCallback(async () => {
     if (!postId) return;
     try {
-      const { data, error } = await gateway.postReactionCount(postId);
+      const { data, error } = await dataClient.postReactionCount(postId);
       if (error || !data) throw error || new Error('Reaction count unavailable');
       setCounts({
         count: typeof data.reaction_count === 'number' ? data.reaction_count : 0,
@@ -199,7 +199,7 @@ export const useReactions = (
       // This mode never selects identity rows for other reactors. The Gateway
       // returns aggregate counts plus only the authenticated viewer's own
       // reaction state.
-      const { data, error } = await gateway.postReactionUsers(postId, { includeUsers: false });
+      const { data, error } = await dataClient.postReactionUsers(postId, { includeUsers: false });
       if (error || !data) throw error || new Error('Reaction state unavailable');
       setCounts({
         count: typeof data.reaction_count === 'number' ? data.reaction_count : 0,
@@ -220,7 +220,7 @@ export const useReactions = (
       await fetchCounts();
       if (userId) {
         try {
-          const { data, error } = await gateway
+          const { data, error } = await dataClient
             .from('reactions')
             .select('*')
             .eq('post_id', postId)
@@ -338,7 +338,7 @@ export const useReactions = (
     fetchReactions();
 
     // Subscribe to realtime changes
-    const channel = gateway
+    const channel = dataClient
       .channel(`reactions-${postId}`)
       .on(
         'postgres_changes',
@@ -355,7 +355,7 @@ export const useReactions = (
       .subscribe();
 
     return () => {
-      gateway.removeChannel(channel);
+      dataClient.removeChannel(channel);
     };
   }, [postId, enabled, fetchReactions]);
 
@@ -417,7 +417,7 @@ export const useReactions = (
       if (existingReaction) {
         if (isRemoval) {
           // Same reaction - remove it
-          await gateway
+          await dataClient
             .from('reactions')
             .delete()
             .eq('id', existingReaction.id);
@@ -427,7 +427,7 @@ export const useReactions = (
           setReactions(prev => prev.filter(r => r.id !== existingReaction.id));
         } else {
           // Different reaction - update it
-          await gateway
+          await dataClient
             .from('reactions')
             .update({ type: dbReactionType as any })
             .eq('id', existingReaction.id);
@@ -442,7 +442,7 @@ export const useReactions = (
         }
       } else {
         // No existing reaction - create one
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('reactions')
           .insert({
             post_id: postId,
@@ -493,7 +493,7 @@ export const useReactions = (
     if (!existingReaction) return;
 
     try {
-      await gateway
+      await dataClient
         .from('reactions')
         .delete()
         .eq('id', existingReaction.id);

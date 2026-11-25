@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { VideoEditingPreview } from '@/components/video-preview/VideoEditingPreview';
 import { VideoUploadData, VideoEdits } from '@/types/videoEditing';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { Loader2 } from 'lucide-react';
 
 export default function EditPreview() {
@@ -102,7 +102,7 @@ export default function EditPreview() {
       status: 'published',
     };
 
-    const { error: postError } = await gateway.from('posts').insert([postData]);
+    const { error: postError } = await dataClient.from('posts').insert([postData]);
 
     if (postError) {
       console.error('[EditPreview] ❌ Post creation error:', postError);

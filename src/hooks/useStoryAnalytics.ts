@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 
 export interface StoryView {
@@ -53,12 +53,12 @@ export const useStoryAnalytics = (storyId: string) => {
       setLoading(true);
 
       const [viewsResponse, reactionsResponse] = await Promise.all([
-        gateway
+        dataClient
           .from('story_views')
           .select('*')
           .eq('story_id', storyId)
           .order('viewed_at', { ascending: false }),
-        gateway
+        dataClient
           .from('story_reactions')
           .select('*')
           .eq('story_id', storyId)
@@ -79,7 +79,7 @@ export const useStoryAnalytics = (storyId: string) => {
       const uniqueProfileIds = [...new Set(profileIds)];
 
       const { data: profilesData, error: profilesError } = uniqueProfileIds.length
-        ? await gateway
+        ? await dataClient
             .from('profiles')
             .select('id, username, display_name, profile_pic')
             .in('id', uniqueProfileIds)

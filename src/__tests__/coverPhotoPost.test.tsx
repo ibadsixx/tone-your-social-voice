@@ -1,13 +1,23 @@
 // End-to-end flow for the automatic cover-photo-change post (pro.md):
 //
 //   cover upload  ->  storage upload  ->  profile.cover_pic update
-//                 ->  automatic post insert  ->  posts domain
+//                 ->  automatic post insert  ->  posts project
 //
-// These tests drive the real CoverPhotoEditor handler against a mocked gateway
-// (global fetch) and assert the database write actually happens — and only
-// happens when BOTH the storage upload and the profile update succeed.
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+// These tests drive the real CoverPhotoEditor handler against a mocked fetch
+// (the direct-Supabase client) and assert the database write actually happens —
+// and only happens when BOTH the storage upload and the profile update succeed.
+import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/react';
+import { clearCurrentAccessToken, setCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import {
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  jsonResponse,
+  MOCK_ORIGIN,
+  postgrestTable,
+  prefersObjectResponse,
+  shapePostgrestRows,
+} from './infraFixtures';
 
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { id: 'alice-uuid' }, loading: false }),
@@ -21,20 +31,9 @@ vi.mock('@/hooks/use-toast', () => ({
 import CoverPhotoEditor from '@/components/cover/CoverPhotoEditor';
 import { POST_CREATED_EVENT } from '@/hooks/useHomeFeed';
 
-const BASE = 'http://mock.test';
-const POSTS_URL = `${BASE}/api/posts`;
-const STORAGE_PREFIX = `${BASE}/api/storage/covers/`;
-const PROFILE_URL = `${BASE}/api/v1/profiles/alice-uuid`;
-const COVER_URL = 'https://cdn.test/covers/alice-1712345678.jpg';
-
-function jsonResponse(status: number, body: unknown): Response {
-  return {
-    ok: status < 400,
-    status,
-    headers: new Headers({ 'content-type': 'application/json' }),
-    json: async () => body,
-  } as Response;
-}
+const STORAGE_PREFIX = `${MOCK_ORIGIN}/storage/v1/object/covers/`;
+const POSTS_PATH = new URL(`${MOCK_ORIGIN}/rest/v1/posts`).pathname;
+const PROFILES_PATH = new URL(`${MOCK_ORIGIN}/rest/v1/profiles`).pathname;
 
 interface RouteStatus {
   storageUpload?: number;
@@ -44,29 +43,39 @@ interface RouteStatus {
 let statuses: RouteStatus;
 let fetchMock: ReturnType<typeof vi.fn>;
 let postBodies: Array<Record<string, unknown>>;
+let coverPaths: string[];
 
 function installFetch(status: RouteStatus = {}) {
   statuses = status;
   postBodies = [];
+  coverPaths = [];
   fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
+    if (isInfraRegistryRequest(input)) return infraRegistryResponse();
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method || 'GET';
 
     if (url.startsWith(STORAGE_PREFIX) && method === 'POST') {
       const s = statuses.storageUpload ?? 200;
-      return jsonResponse(s, s < 400 ? { url: COVER_URL, path: 'alice/c.jpg' } : { message: 'upload failed' });
+      if (s >= 400) return jsonResponse(s, { message: 'upload failed' });
+      const path = url.slice(STORAGE_PREFIX.length);
+      coverPaths.push(path);
+      return jsonResponse(s, { Key: path, Id: `obj-${coverPaths.length}` });
     }
-    if (url === PROFILE_URL && method === 'PUT') {
+
+    const path = new URL(url, MOCK_ORIGIN).pathname;
+    if (path === PROFILES_PATH && method === 'PATCH') {
       const s = statuses.profileUpdate ?? 200;
-      return jsonResponse(s, s < 400 ? {} : { message: 'update failed' });
+      return jsonResponse(s, s < 400 ? shapePostgrestRows([{ id: 'alice-uuid' }], prefersObjectResponse(init)) : { message: 'update failed' });
     }
-    if (url === POSTS_URL && method === 'POST') {
+
+    if (path === POSTS_PATH && method === 'POST') {
       postBodies.push(JSON.parse(String(init?.body)));
-      return jsonResponse(201, { id: `post-${postBodies.length}` });
+      return jsonResponse(201, shapePostgrestRows([{ id: `post-${postBodies.length}` }], prefersObjectResponse(init)));
     }
+
     throw new Error(`no mock route for ${method} ${url}`);
   });
-  (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock;
+  (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
 }
 
 function stubImageAndCanvas() {
@@ -96,15 +105,16 @@ function uploadCover(container: HTMLElement) {
 const profile = { id: 'alice-uuid', cover_pic: null as string | null, cover_position_y: 0 };
 
 beforeEach(() => {
-  localStorage.clear();
-  localStorage.setItem('tone-auth-token', JSON.stringify({ access_token: 'test-token', refresh_token: 'test-refresh' }));
+  setCurrentAccessToken('test-token');
   toastSpy.mockClear();
   installFetch();
   stubImageAndCanvas();
 });
 
 afterEach(() => {
+  clearCurrentAccessToken();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('CoverPhotoEditor automatic cover-photo-change post', () => {
@@ -124,9 +134,10 @@ describe('CoverPhotoEditor automatic cover-photo-change post', () => {
     expect(postBodies[0]).toEqual({
       user_id: 'alice-uuid',
       content: '',
-      media_url: COVER_URL,
+      media_url: coverPaths[0],
       type: 'cover_photo_update',
     });
+    expect(coverPaths[0]).toContain('/covers/');
     expect(String(postBodies[0].content)).not.toContain('changed their cover photo');
     // Feeds are notified so the new post shows up without a manual reload.
     expect(events.length).toBe(1);
@@ -165,9 +176,9 @@ describe('CoverPhotoEditor automatic cover-photo-change post', () => {
     await waitFor(() => expect(postBodies).toHaveLength(2));
 
     expect(postBodies.every((b) => b.type === 'cover_photo_update')).toBe(true);
-    // Exactly one POST /api/posts per successful update — never more.
+    // Exactly one posts insert per successful update — never more.
     const postCalls = fetchMock.mock.calls.filter(
-      ([url, init]) => String(url) === POSTS_URL && init?.method === 'POST'
+      ([url, init]) => new URL(String(url), MOCK_ORIGIN).pathname === POSTS_PATH && init?.method === 'POST'
     );
     expect(postCalls).toHaveLength(2);
   });

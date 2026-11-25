@@ -6,7 +6,7 @@
 //
 // The bug being pinned: each hook kept its own `useState`, so a reaction on the
 // viewer left the feed card stale until it happened to remount, and nothing
-// pushed a correction either, because the gateway's `postgres_changes` shim
+// pushed a correction either, because the dataClient's `postgres_changes` shim
 // stores callbacks without ever opening the stream.
 //
 // The Gateway is faked as a small in-memory store rather than a canned stub, so a
@@ -65,7 +65,7 @@ const builder = (
   table: StoreName,
   filters: Record<string, unknown> = {},
   pending: Pending = null,
-  tableName = table
+  tableName: string = table
 ) => {
   /** Applies the queued write (if any) and returns the awaited result. */
   const settle = () => {
@@ -165,8 +165,8 @@ const reactionRead = (postId: string) => {
   return Promise.resolve({ data: snapshot, error: null });
 };
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     postReactionUsers: (postId: string) => reactionRead(postId),
     postReactionCount: (postId: string) => {
       const { reaction_count, reaction_types } = reactionAggregate(postId);

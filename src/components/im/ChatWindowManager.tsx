@@ -4,7 +4,7 @@ import { X, Loader2, MessageCircle, Search } from 'lucide-react';
 import { MiniChatWindow } from './MiniChatWindow';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocation } from 'react-router-dom';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -96,12 +96,12 @@ export const ChatWindowManager: React.FC = () => {
     const fetchContacts = async () => {
       try {
         const [friendsRes, convsRes] = await Promise.all([
-          gateway
+          dataClient
             .from('friends')
             .select('requester_id, receiver_id')
             .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
             .eq('status', 'accepted'),
-          gateway
+          dataClient
             .from('conversation_participants')
             .select('conversation_id, user_id')
             .neq('user_id', currentUserId)
@@ -114,7 +114,7 @@ export const ChatWindowManager: React.FC = () => {
         });
 
         if (convsRes.data?.length) {
-          const { data: myConvs } = await gateway
+          const { data: myConvs } = await dataClient
             .from('conversation_participants')
             .select('conversation_id')
             .eq('user_id', currentUserId);
@@ -134,13 +134,13 @@ export const ChatWindowManager: React.FC = () => {
           return;
         }
 
-        const { data: profiles } = await gateway
+        const { data: profiles } = await dataClient
           .from('profiles')
           .select('id, username, display_name, profile_pic')
           .in('id', allIds);
 
-        const profileMap = new Map(
-          (profiles || []).map((p) => [p.id, p])
+        const profileMap = new Map<string, ChatContact>(
+          (profiles || []).map((p) => [p.id as string, p as ChatContact])
         );
 
         // Some users (especially legacy accounts that predate profile
@@ -150,7 +150,7 @@ export const ChatWindowManager: React.FC = () => {
         const missingIds = allIds.filter((id) => !profileMap.has(id));
         if (missingIds.length) {
           try {
-            const { data: authUsers } = await gateway
+            const { data: authUsers } = await dataClient
               .from('users')
               .select('id, raw_user_meta_data')
               .in('id', missingIds);

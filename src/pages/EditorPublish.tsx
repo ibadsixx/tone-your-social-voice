@@ -25,7 +25,7 @@ import PageContainer from '@/components/PageContainer';
 import { useAuth } from '@/hooks/useAuth';
 import { useMentions } from '@/hooks/useMentions';
 import { usersApi } from '@/api';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { toast } from '@/hooks/use-toast';
 import { EditorProject } from '@/hooks/useEditorProject';
 import { PublishSettings, TaggedPerson, PublishLocation, ProductDetails, AudienceType, defaultPublishSettings } from '@/types/editor';
@@ -125,7 +125,7 @@ export default function EditorPublish() {
   const loadProject = async (id: string) => {
     setIsLoading(true);
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('editor_projects')
         .select('*')
         .eq('id', id)
@@ -163,7 +163,7 @@ export default function EditorPublish() {
       
       if (existingDraftId) {
         // Load draft post data from database
-        const { data: draftPost, error: draftError } = await gateway
+        const { data: draftPost, error: draftError } = await dataClient
           .from('posts')
           .select('*')
           .eq('id', existingDraftId)
@@ -229,7 +229,7 @@ export default function EditorPublish() {
       const projectJson = project.project_json as any;
       const updatedJson = { ...projectJson, publishSettings: newSettings };
       
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('editor_projects')
         .update({ 
           project_json: updatedJson,
@@ -365,7 +365,7 @@ export default function EditorPublish() {
       let result;
       if (existingDraftId) {
         // Update existing draft
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('posts')
           .update(draftData)
           .eq('id', existingDraftId)
@@ -377,7 +377,7 @@ export default function EditorPublish() {
         console.log('[EditorPublish] Draft updated:', result.id);
       } else {
         // Create new draft
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('posts')
           .insert([draftData])
           .select()
@@ -388,7 +388,7 @@ export default function EditorPublish() {
         
         // Store draft post ID in project
         const updatedJson = { ...projectJson, draftPostId: result.id };
-        await gateway
+        await dataClient
           .from('editor_projects')
           .update({ project_json: updatedJson })
           .eq('id', project.id);
@@ -491,7 +491,7 @@ export default function EditorPublish() {
       let postResult;
       if (existingDraftId) {
         // Update existing draft to published
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('posts')
           .update(postData)
           .eq('id', existingDraftId)
@@ -503,7 +503,7 @@ export default function EditorPublish() {
         console.log('[EditorPublish] Draft promoted to published:', postResult.id);
       } else {
         // Create new post
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('posts')
           .insert([postData])
           .select()
@@ -542,7 +542,7 @@ export default function EditorPublish() {
         const videoDuration = videoClip.duration || project.project_json.settings?.duration || 5;
         const storyDuration = Math.min(Math.round(videoDuration), 15);
         
-        await gateway.from('stories').insert([
+        await dataClient.from('stories').insert([
           {
             user_id: user.id,
             media_url: videoClip.src,
@@ -556,7 +556,7 @@ export default function EditorPublish() {
       }
 
       // Update project status to 'done'
-      await gateway
+      await dataClient
         .from('editor_projects')
         .update({ status: 'done' })
         .eq('id', project.id);

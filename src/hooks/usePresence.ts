@@ -1,17 +1,17 @@
 import { useEffect, useRef } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 // Presence (do.md "online presence indicator").
 //
 // The indicator is `profiles.last_seen_at` compared against a freshness window,
 // and this file is the WRITE side of that. It used to call the database function
-// `update_last_seen()` through `gateway.rpc`, which resolved the row with
+// `update_last_seen()` through `dataClient.rpc`, which resolved the row with
 // `WHERE id = auth.uid()` and updated zero rows without reporting an error. The
 // consequence was silent and total: in production 28 of 29 profiles had
 // `last_seen_at` exactly equal to `created_at` (the column's INSERT default), so
 // every user has always been "offline" and the conversation dot was permanently
 // gray. The write now goes through `POST /api/presence/heartbeat`, which the
-// gateway answers from the verified bearer token and a service-role write.
+// dataClient answers from the verified bearer token and a service-role write.
 //
 // This is deliberately the SAME presence store the reader already uses. There is
 // no second presence system, and no parallel `is_online` column: the dot, the
@@ -73,10 +73,10 @@ export const OFFLINE_THRESHOLD_MS = 150000;
  * the comparison was never able to reject.
  *
  * WHERE THE OFFSET COMES FROM. The column is written with the GATEWAY's clock, not
- * the writer's: `writePresenceHeartbeat` in the gateway calls `new Date()` and
+ * the writer's: `writePresenceHeartbeat` in the dataClient calls `new Date()` and
  * sends the result, so the writer's own device clock cannot skew the value. What
- * can skew it is the READER's, and `isOnline` compares the gateway's stamp against
- * the browser's `Date.now()`. A reader whose clock is behind the gateway's is the
+ * can skew it is the READER's, and `isOnline` compares the dataClient's stamp against
+ * the browser's `Date.now()`. A reader whose clock is behind the dataClient's is the
  * whole failure. A laptop that boots on a dead RTC battery and has not yet
  * resynchronised is the ordinary case, and a permanent offset is a permanent
  * wrong answer rather than a temporary one.
@@ -101,16 +101,16 @@ export const MAX_CLOCK_SKEW_MS = 60000;
 /**
  * The value `profiles.last_seen_at` is set to when a user explicitly logs out.
  *
- * MUST stay byte-equal to `PRESENCE_LOGGED_OUT_AT` in `gateway/src/features/
+ * MUST stay byte-equal to `PRESENCE_LOGGED_OUT_AT` in `dataClient/src/features/
  * presence.ts`. The two are in different repositories, so there is no shared
- * constant to import, and there is no runtime negotiation either - the gateway
+ * constant to import, and there is no runtime negotiation either - the dataClient
  * answers the POST with the value it wrote, but the OTHER user's client reads the
- * raw column and has to recognise the marker on its own. A gateway deploy that
+ * raw column and has to recognise the marker on its own. A dataClient deploy that
  * changed this without the frontend would silently degrade to "logged-out users
  * show as offline only after the freshness window", which is the original bug.
  *
  * It is the Unix epoch rather than `null` for reasons that are spelled out at
- * length on the gateway constant. The two that matter here:
+ * length on the dataClient constant. The two that matter here:
  *
  *   - `null` cannot be used, because the presence refresh in `useConversations`
  *     deliberately keeps the previously held value when the server sends none -
@@ -167,7 +167,7 @@ export function isOnline(lastSeenAt?: string | null): boolean {
   // The lower bound, and the reason a dot could previously stay green with no
   // upper limit at all. See MAX_CLOCK_SKEW_MS: a stamp from the future makes the
   // age negative, and a negative age satisfies the freshness test forever, so a
-  // reader whose clock is behind the gateway's saw every partner as permanently
+  // reader whose clock is behind the dataClient's saw every partner as permanently
   // online. Rejecting it here makes the window two-sided, which is what a
   // freshness window has to be to mean anything.
   if (age < -MAX_CLOCK_SKEW_MS) return false;
@@ -208,7 +208,7 @@ export function reportClockSkew(stamps: Array<string | null | undefined>): numbe
       `[presence] ${ahead} of ${stamps.length} partner timestamps are more than ` +
         `${MAX_CLOCK_SKEW_MS / 1000}s ahead of this device's clock, so they are ` +
         'being read as offline. If every dot is unexpectedly gray, check this ' +
-        "device's system clock - the gateway stamps presence with its own clock, " +
+        "device's system clock - the dataClient stamps presence with its own clock, " +
         'so the offset is local.'
     );
   }
@@ -277,7 +277,7 @@ let presenceWritePaused = false;
  *
  *   1. PAUSE, so the heartbeat stops writing.
  *   2. DRAIN, so writes already dispatched have settled. Without this, a
- *      heartbeat sent moments before sign-out can still land at the gateway
+ *      heartbeat sent moments before sign-out can still land at the dataClient
  *      AFTER the marker and overwrite it with `now`, putting the green dot
  *      straight back for another full freshness window. Draining makes the marker
  *      provably the last write of the session rather than probably the last.
@@ -290,7 +290,7 @@ let presenceWritePaused = false;
  * authenticated caller id to write for.
  *
  * There is no `untrack()` to call: Tone has no Realtime presence channel. See the
- * note on `gateway.presenceLogout` for what exists instead.
+ * note on `dataClient.presenceLogout` for what exists instead.
  *
  * NEVER REJECTS. A presence write that fails must not prevent a sign-out - the
  * user asked to leave, and holding them in the app because a cosmetic row did not
@@ -306,7 +306,7 @@ export async function endPresenceSession(): Promise<void> {
   await drainPresenceWrites();
 
   try {
-    const { error } = await gateway.presenceLogout();
+    const { error } = await dataClient.presenceLogout();
     if (error) {
       // Worth a log but not worth failing the sign-out. This is also the one
       // place a failure is visible at all: previously a logout wrote nothing and
@@ -387,7 +387,7 @@ export function usePresence(userId?: string | null) {
       // this effect is still live, and the interval is still ticking until
       // React tears the effect down after the auth state change propagates.
       if (presenceWritePaused) return;
-      const write = trackPresenceWrite(gateway.presenceHeartbeat());
+      const write = trackPresenceWrite(dataClient.presenceHeartbeat());
       write.then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
@@ -410,7 +410,7 @@ export function usePresence(userId?: string | null) {
         }
         lastResultRef.current = 'ok';
       }).catch((err) => {
-        // `gateway.presenceHeartbeat()` resolves rather than rejecting today, so
+        // `dataClient.presenceHeartbeat()` resolves rather than rejecting today, so
         // this arm is defensive. It is here because a rejection with no handler
         // becomes an unhandled rejection, which in a browser surfaces as a global
         // error event - so a single failed beat would be reported as an
@@ -448,7 +448,7 @@ export function usePresence(userId?: string | null) {
     const onUnload = () => {
       if (cancelled) return;
       if (presenceWritePaused) return;
-      trackPresenceWrite(gateway.presenceHeartbeat()).then(() => undefined);
+      trackPresenceWrite(dataClient.presenceHeartbeat()).then(() => undefined);
     };
     window.addEventListener('pagehide', onUnload);
 

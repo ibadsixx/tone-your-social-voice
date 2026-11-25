@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -15,7 +15,7 @@ import {
  * the fullscreen `/reels/:id` viewer — and both drive the *same*
  * `saved_posts` row through this one hook. They still each held their own
  * `useState`, so saving on one surface left the other showing the old bookmark
- * until it happened to remount, and nothing pushed a correction: the gateway's
+ * until it happened to remount, and nothing pushed a correction: the dataClient's
  * `postgres_changes` shim stores callbacks without ever opening the stream.
  *
  * `isSaved` is tri-state on purpose. `null` means "not known yet", which is a
@@ -105,7 +105,7 @@ export const useSavedPosts = (postId: string) => {
 
     const checkIfSaved = async () => {
       try {
-        const { data, error } = await gateway
+        const { data, error } = await dataClient
           .from('saved_posts')
           .select('id')
           .eq('user_id', user.id)
@@ -161,7 +161,7 @@ export const useSavedPosts = (postId: string) => {
     setIsLoading(true);
     try {
       if (currentlySaved) {
-        const { error } = await gateway
+        const { error } = await dataClient
           .from('saved_posts')
           .delete()
           .eq('user_id', user.id)
@@ -176,7 +176,7 @@ export const useSavedPosts = (postId: string) => {
           description: "Post removed from your saved items"
         });
       } else {
-        const { error } = await gateway
+        const { error } = await dataClient
           .from('saved_posts')
           .insert({
             user_id: user.id,

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { isPublicAudience } from '@/lib/postVisibility';
 import { useToast } from '@/hooks/use-toast';
 
@@ -37,7 +37,7 @@ export const useExplorePosts = () => {
       setLoading(true);
       const currentOffset = resetPosts ? 0 : offset;
       
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('posts')
         .select(`
           *,

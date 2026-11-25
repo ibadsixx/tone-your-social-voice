@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -28,13 +28,13 @@ export const useProfileReports = (reportedUserId?: string) => {
       const fileExt = file.name.split('.').pop();
       const fileName = `${reporterUserId}/${Date.now()}.${fileExt}`;
 
-      const { error: uploadError } = await gateway.storage
+      const { error: uploadError } = await dataClient.storage
         .from('report-evidence')
         .upload(fileName, file);
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = gateway.storage
+      const { data: { publicUrl } } = dataClient.storage
         .from('report-evidence')
         .getPublicUrl(fileName);
 
@@ -56,7 +56,7 @@ export const useProfileReports = (reportedUserId?: string) => {
     setLoading(true);
     try {
       // Check for existing pending report first
-      const { data: existingReport } = await gateway
+      const { data: existingReport } = await dataClient
         .from('profile_reports')
         .select('id, status')
         .eq('reported_user_id', targetUserId)
@@ -78,7 +78,7 @@ export const useProfileReports = (reportedUserId?: string) => {
         imageUrl = await uploadReportEvidence(evidenceFile, user.id);
       }
 
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('profile_reports')
         .insert({
           reported_user_id: targetUserId,
@@ -126,7 +126,7 @@ export const useProfileReports = (reportedUserId?: string) => {
 
     setLoading(true);
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('profile_reports')
         .select('id, status')
         .eq('reported_user_id', reportedUserId)
@@ -180,7 +180,7 @@ export const useAdminReports = () => {
 
     setLoading(true);
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('profile_reports')
         .select(`
           *,
@@ -206,7 +206,7 @@ export const useAdminReports = () => {
 
   const updateReportStatus = async (reportId: string, status: 'reviewed' | 'resolved') => {
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('profile_reports')
         .update({ status })
         .eq('id', reportId);

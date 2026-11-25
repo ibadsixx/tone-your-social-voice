@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2 } from 'lucide-react';
@@ -44,7 +44,7 @@ export const ReportPostDialog = ({ open, onOpenChange, postId }: ReportPostDialo
 
     setIsSubmitting(true);
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('reported_posts')
         .insert({
           post_id: postId,

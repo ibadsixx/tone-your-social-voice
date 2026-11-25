@@ -34,13 +34,13 @@
 // and this file does neither. But it should not be assumed that the badge is
 // push-delivered, because it is not, and the reason is worth knowing:
 //
-//   * `notifications-changes` is registered through `gateway.channel(...)`, and
-//     `GatewayChannel` in `src/lib/gateway.ts` is a STUB: `subscribe()` sets a
+//   * `notifications-changes` is registered through `dataClient.channel(...)`, and
+//     `GatewayChannel` in `src/lib/dataClient.ts` is a STUB: `subscribe()` sets a
 //     boolean and calls back with `'SUBSCRIBED'`, `postgres_changes` handlers are
 //     stored in `_listeners`, and nothing ever invokes them. There is no WebSocket
 //     and no server push behind this client's postgres_changes. (The same stub is
 //     why `callLog.ts` needs the `tone:call-log` window-event bridge.)
-//   * The transport that genuinely delivers is the gateway's SSE hub on
+//   * The transport that genuinely delivers is the dataClient's SSE hub on
 //     `user:<myId>`, which is why the reconnect resync below is registered there.
 //
 // So the badge is kept correct by the pre-existing 15 s visibility-aware interval,
@@ -65,7 +65,7 @@
 //      responses are dropped.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { notificationsApi, profilesApi } from '@/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -240,7 +240,7 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
     //
     // WHY A RE-READ AND NOT A PATCH. Nothing that happened while the stream was
     // down is recoverable from events: the events were not delivered, and there is
-    // no replay buffer. The gateway also caps its SSE functions at 300 s, so a
+    // no replay buffer. The dataClient also caps its SSE functions at 300 s, so a
     // reconnect is a normal event on a long-lived session, not an edge case. The
     // count is therefore read again from the server, which is the only thing that
     // can be correct after a gap.
@@ -256,7 +256,7 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
     });
 
     // Set up realtime subscription
-    const notificationsChannel = gateway
+    const notificationsChannel = dataClient
       .channel('notifications-changes')
       .on(
         'postgres_changes',
@@ -287,7 +287,7 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
     void fetchNotifications();
 
     return () => {
-      gateway.removeChannel(notificationsChannel);
+      dataClient.removeChannel(notificationsChannel);
       if (pollInterval) clearInterval(pollInterval);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', handleVisibility);

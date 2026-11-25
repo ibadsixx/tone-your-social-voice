@@ -1,6 +1,6 @@
 // Profile-picture and cover-photo upload, driven through the REAL hook against
-// a mocked global fetch — so the real gateway client, the real storage shim and
-// the real `postsApi.createPost` all run. Only the network is faked.
+// a mocked global fetch — so the real direct-Supabase client, the real storage
+// shim and the real `postsApi.createPost` all run. Only the network is faked.
 //
 // The behaviour these lock down is *failure attribution*. The old flow put the
 // storage upload, the profile-row write and the announcement-post insert in one
@@ -13,8 +13,18 @@
 // Each test therefore checks three things independently: what reached the
 // network, what ended up on the profile row, and what the user was told.
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { clearCurrentAccessToken, setCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import {
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  jsonResponse,
+  MOCK_ORIGIN,
+  postgrestTable,
+  prefersObjectResponse,
+  shapePostgrestRows,
+} from './infraFixtures';
 
 const toastSpy = vi.fn();
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: toastSpy }) }));
@@ -27,54 +37,24 @@ import {
   validatePhotoFile,
 } from '@/hooks/usePhotoUpload';
 
-const BASE = 'http://mock.test';
 const USER = 'alice-uuid';
-const SIGN_URL = `${BASE}/api/storage/sign`;
-const STORAGE_PREFIX = `${BASE}/api/storage/`;
-const PROFILE_URL = `${BASE}/api/v1/profiles/${USER}`;
-const POSTS_URL = `${BASE}/api/posts`;
-const CLOUDINARY_URL = 'https://api.cloudinary.com/v1_1/testcloud/auto/upload';
+const STORAGE_PREFIX = `${MOCK_ORIGIN}/storage/v1/object/`;
+const PROFILES_PATH = new URL(`${MOCK_ORIGIN}/rest/v1/profiles`).pathname;
+const POSTS_PATH = new URL(`${MOCK_ORIGIN}/rest/v1/posts`).pathname;
 
-/** Cloudinary's delivery URL for a given public_id, as the real API returns. */
-const cdnUrl = (publicId: string) =>
-  `https://res.cloudinary.com/testcloud/image/upload/v1/tone/${publicId}.png`;
-
-function jsonResponse(status: number, body: unknown): Response {
-  return {
-    ok: status < 400,
-    status,
-    headers: new Headers({ 'content-type': 'application/json' }),
-    json: async () => body,
-    text: async () => JSON.stringify(body),
-  } as Response;
-}
-
-function textResponse(status: number, body: string): Response {
-  return {
-    ok: status < 400,
-    status,
-    headers: new Headers({ 'content-type': 'text/plain' }),
-    // Vercel answers its own rejections with text, which is exactly why the
-    // old `res.json()` path threw and lost the reason.
-    json: async () => {
-      throw new SyntaxError('Unexpected token');
-    },
-    text: async () => body,
-  } as Response;
+/** A real Response with a status line, for non-JSON storage failures. */
+function textResponse(status: number, body: string, statusText: string): Response {
+  return new Response(body, { status, statusText, headers: { 'content-type': 'text/plain' } });
 }
 
 interface RouteStatus {
-  /** `POST /api/storage/sign` — the gateway's signing step. */
-  sign?: number;
-  /** The direct POST to api.cloudinary.com. */
-  cloudinary?: number;
-  /** `POST /api/storage/:bucket/*` — the gateway's proxied fallback. */
+  /** Direct Supabase Storage upload (no signing hop). */
   storage?: number;
   profile?: number;
   posts?: number;
-  /** Raw body for a rejecting route, to emulate a platform-level failure. */
+  /** Raw body for a rejecting storage route. */
   storageBody?: unknown;
-  /** When set, the storage route answers with this plain text (not JSON). */
+  /** When set, the storage route answers with plain text, not JSON. */
   storageRaw?: string;
 }
 
@@ -82,10 +62,10 @@ let statuses: RouteStatus;
 let fetchMock: ReturnType<typeof vi.fn>;
 let postBodies: Array<Record<string, unknown>>;
 let profileWrites: Array<Record<string, unknown>>;
-/** The `public_id` of every upload, whichever route carried it. */
+/** The object path of every upload, for both buckets. */
 let uploadPaths: string[];
 
-/** Install a fetch that mimics the gateway: sign -> cloudinary, or proxy -> gateway. */
+/** Install a fetch that mimics direct Supabase storage + PostgREST tables. */
 function installFetch(next: RouteStatus = {}) {
   statuses = next;
   postBodies = [];
@@ -93,83 +73,48 @@ function installFetch(next: RouteStatus = {}) {
   uploadPaths = [];
 
   fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
+    if (isInfraRegistryRequest(input)) return infraRegistryResponse();
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method || 'GET';
-    const body = init?.body as FormData | undefined;
-
-    if (url === SIGN_URL && method === 'POST') {
-      const s = statuses.sign ?? 200;
-      if (s >= 400) return jsonResponse(s, { error: 'no signing today' });
-      // The shim asks to sign the exact path it will upload to.
-      const asked = JSON.parse(String(init?.body || '{}')).path as string;
-      return jsonResponse(s, {
-        uploadUrl: CLOUDINARY_URL,
-        cloudName: 'testcloud',
-        apiKey: 'key-123',
-        timestamp: '1700000000',
-        folder: 'tone',
-        // The shim posts the caller's path back as `public_id`, so echoing it
-        // here makes each upload's URL genuinely distinct, as in production.
-        publicId: asked,
-        signature: 'sig-abc',
-      });
-    }
-
-    if (url === CLOUDINARY_URL && method === 'POST') {
-      const publicId = String(body?.get('public_id') ?? 'unknown');
-      uploadPaths.push(publicId);
-      const s = statuses.cloudinary ?? 200;
-      if (s >= 400) {
-        return jsonResponse(s, {
-          error: { message: 'Cloudinary rejected the file' },
-        });
-      }
-      return jsonResponse(200, {
-        secure_url: cdnUrl(publicId),
-      });
-    }
 
     if (url.startsWith(STORAGE_PREFIX) && method === 'POST') {
       const path = url.slice(STORAGE_PREFIX.length);
       uploadPaths.push(path);
       const s = statuses.storage ?? 200;
       if (statuses.storageRaw !== undefined) {
-        return textResponse(s, statuses.storageRaw);
+        return textResponse(s, statuses.storageRaw, 'Request Entity Too Large');
       }
       if (s >= 400) {
         return statuses.storageBody
           ? jsonResponse(s, statuses.storageBody)
-          : jsonResponse(s, { message: 'Cloudinary rejected the file' });
+          : jsonResponse(s, { message: 'upload rejected' });
       }
-      return jsonResponse(s, { url: cdnUrl(path), path });
+      return jsonResponse(200, { Key: path, Id: `obj-${uploadPaths.length}` });
     }
 
-    if (url === PROFILE_URL && method === 'PUT') {
+    const path = new URL(url, MOCK_ORIGIN).pathname;
+    if (path === PROFILES_PATH && method === 'PATCH') {
       const s = statuses.profile ?? 200;
       if (s >= 400) return jsonResponse(s, { message: 'profile write rejected' });
       profileWrites.push(JSON.parse(String(init?.body)));
-      return jsonResponse(200, { id: USER });
+      return jsonResponse(200, shapePostgrestRows([{ id: USER }], prefersObjectResponse(init)));
     }
 
-    if (url === POSTS_URL && method === 'POST') {
+    if (path === POSTS_PATH && method === 'POST') {
       const s = statuses.posts ?? 201;
       if (s >= 400) return jsonResponse(s, { message: 'post insert rejected' });
       postBodies.push(JSON.parse(String(init?.body)));
-      return jsonResponse(s, { id: `post-${postBodies.length}` });
+      return jsonResponse(s, shapePostgrestRows([{ id: `post-${postBodies.length}` }], prefersObjectResponse(init)));
     }
 
     throw new Error(`no mock route for ${method} ${url}`);
   });
 
-  (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock;
+  (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
 }
 
-/**
- * Cloudinary rejecting the file does not fail the upload on its own — the shim
- * falls back to the gateway's proxied path, which runs the same provider and so
- * rejects it too. A genuine upload failure needs both routes to fail.
- */
-const TOTAL_UPLOAD_FAILURE = { cloudinary: 500, storage: 500 };
+/** A genuine upload failure: the storage request itself is rejected. */
+const TOTAL_UPLOAD_FAILURE = { storage: 500 };
 
 const pngFile = (name = 'pic.png', bytes = 64) =>
   new File([new Uint8Array(bytes)], name, { type: 'image/png' });
@@ -198,29 +143,26 @@ const toastText = () =>
     .map(([t]: any[]) => `${t?.title ?? ''} | ${t?.description ?? ''}`)
     .join(' || ');
 
-/** Uploads that reached Cloudinary OR the gateway proxy, whichever carried it. */
+/** Uploads that reached direct storage. */
 const uploadCalls = () => uploadPaths.length;
 
 beforeEach(() => {
-  localStorage.clear();
-  localStorage.setItem(
-    'tone-auth-token',
-    JSON.stringify({ access_token: 'test-token', refresh_token: 'test-refresh' })
-  );
+  setCurrentAccessToken('test-token');
   toastSpy.mockClear();
   installFetch();
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 afterEach(() => {
+  clearCurrentAccessToken();
   vi.restoreAllMocks();
 });
 
 describe('profile picture: add and replace both work end to end', () => {
-  it('uploads, persists the returned media URL, and announces it', async () => {
+  it('uploads, persists the returned media path, and announces it', async () => {
     const { result } = await run(pngFile(), 'profile');
 
-    expect(result).toMatch(/^https:\/\//);
+    expect(result).toMatch(/^alice-uuid\/avatars\//);
     expect(uploadCalls()).toBe(1);
     expect(profileWrites).toHaveLength(1);
     expect(profileWrites[0].profile_pic).toBe(result);
@@ -229,14 +171,14 @@ describe('profile picture: add and replace both work end to end', () => {
     expect(toastText()).toContain('Profile picture updated and posted successfully');
   });
 
-  it('persists a real media URL, never a local blob/object URL', async () => {
+  it('persists a real storage path, never a local blob/object URL', async () => {
     // do.md §13: storing only the local blob URL passes every client-side check
     // and then shows nothing after a refresh.
     const { result } = await run(pngFile(), 'profile');
 
     expect(result).not.toMatch(/^blob:/);
     expect(result).not.toMatch(/^data:/);
-    expect(String(profileWrites[0].profile_pic)).toContain('cloudinary.com');
+    expect(String(profileWrites[0].profile_pic)).toContain('/avatars/');
   });
 
   it('replacing an existing picture writes only the new URL', async () => {
@@ -248,9 +190,12 @@ describe('profile picture: add and replace both work end to end', () => {
     // one, and never a second profile row.
     expect(profileWrites[1].profile_pic).not.toBe(profileWrites[0].profile_pic);
     const putUrls = fetchMock.mock.calls
-      .filter(([u, i]) => String(u) === PROFILE_URL && i?.method === 'PUT')
+      .filter(([u, i]) => new URL(String(u), MOCK_ORIGIN).pathname === PROFILES_PATH && i?.method === 'PATCH')
       .map(([u]) => String(u));
-    expect(putUrls).toEqual([PROFILE_URL, PROFILE_URL]);
+    expect(putUrls).toEqual([
+      `${MOCK_ORIGIN}/rest/v1/profiles?id=eq.${USER}`,
+      `${MOCK_ORIGIN}/rest/v1/profiles?id=eq.${USER}`,
+    ]);
   });
 
   it('keeps the previous picture when the new upload fails', async () => {
@@ -271,9 +216,9 @@ describe('profile picture: add and replace both work end to end', () => {
 
     const order = fetchMock.mock.calls.map(([url, init]) => {
       const u = String(url);
-      if (u.startsWith(STORAGE_PREFIX) || u.startsWith('https://api.cloudinary.com')) return 'upload';
-      if (u === PROFILE_URL) return 'profile';
-      if (u === POSTS_URL) return 'post';
+      if (u.startsWith(STORAGE_PREFIX)) return 'upload';
+      if (new URL(u, MOCK_ORIGIN).pathname === PROFILES_PATH) return 'profile';
+      if (new URL(u, MOCK_ORIGIN).pathname === POSTS_PATH) return 'post';
       return 'other';
     });
 
@@ -287,7 +232,7 @@ describe('cover photo: add and replace both work end to end', () => {
   it('uploads, persists cover_pic, resets the crop offset, and announces it', async () => {
     const { result } = await run(pngFile('cover.png'), 'cover');
 
-    expect(result).toMatch(/^https:\/\//);
+    expect(result).toMatch(/^alice-uuid\/covers\//);
     expect(profileWrites[0].cover_pic).toBe(result);
     expect(profileWrites[0].cover_position_y).toBe(0);
     expect(postBodies).toHaveLength(1);
@@ -296,9 +241,9 @@ describe('cover photo: add and replace both work end to end', () => {
   });
 
   it('stores a profile picture and a cover photo under different media paths', async () => {
-    // The Cloudinary provider ignores the bucket, so the path is the only
-    // namespace. If both shapes collided, a cover upload landing in the same
-    // millisecond as a profile upload would silently overwrite the avatar.
+    // The storage path is the only namespace. If both shapes collided, a cover
+    // upload landing in the same millisecond as a profile upload would silently
+    // overwrite the avatar.
     await run(pngFile('a.png'), 'profile');
     await run(pngFile('b.png'), 'cover');
 
@@ -319,7 +264,7 @@ describe('cover photo: add and replace both work end to end', () => {
 
 describe('a failed announcement post is not reported as a failed upload', () => {
   // This is the regression the old single-`try` flow caused: the picture was in
-  // Cloudinary and the profile row was already written, yet the user was told
+  // storage and the profile row was already written, yet the user was told
   // "Failed to upload profile picture" — and callers that `catch` then skipped
   // their own post-upload refresh.
 
@@ -329,7 +274,7 @@ describe('a failed announcement post is not reported as a failed upload', () => 
     const { result, error } = await run(pngFile(), 'profile');
 
     expect(error).toBeUndefined();
-    expect(result).toMatch(/^https:\/\//);
+    expect(result).toMatch(/^alice-uuid\/avatars\//);
     expect(profileWrites).toHaveLength(1);
     expect(toastText()).toContain('Profile picture updated');
     expect(toastText()).not.toContain('Failed to upload');
@@ -386,7 +331,7 @@ describe('a failed profile write is not reported as success', () => {
 
     expect((error as PhotoUpdateError).stage).toBe('profile');
     expect((error as PhotoUpdateError).reason).toBeTruthy();
-    expect(String((error as PhotoUpdateError).message)).toMatch(/saving it to your profile failed/i);
+    expect(String((error as PhotoUpdateError).message)).toMatch(/profile picture image.*profile write rejected/i);
   });
 });
 
@@ -432,9 +377,9 @@ describe('bad input is rejected before anything is uploaded', () => {
   });
 });
 
-describe('gateway and auth failures are surfaced, not swallowed', () => {
-  it('reports a storage rejection with the gateway message attached', async () => {
-    installFetch({ ...TOTAL_UPLOAD_FAILURE, storageBody: { message: 'Cloudinary rejected the file' } });
+describe('dataClient and auth failures are surfaced, not swallowed', () => {
+  it('reports a storage rejection with the dataClient message attached', async () => {
+    installFetch({ storage: 500, storageBody: { message: 'Cloudinary rejected the file' } });
 
     const { error } = await run(pngFile(), 'profile');
 
@@ -443,13 +388,12 @@ describe('gateway and auth failures are surfaced, not swallowed', () => {
     expect(toastText()).toMatch(/Cloudinary rejected the file/);
   });
 
-  it('translates the platform body-cap rejection into a sentence', async () => {
-    // Reproduced live: a >4.5MB proxied upload answers with a bare
-    // `FUNCTION_PAYLOAD_TOO_LARGE` and no JSON body.
+  it('translates a platform body-cap rejection into a sentence', async () => {
+    // Direct storage answers a >4.5MB upload with a non-JSON 413 status line;
+    // the shim must surface that reason instead of a generic failure.
     installFetch({
-      cloudinary: 500,
       storage: 413,
-      storageRaw: 'Request Entity Too Large\n\nFUNCTION_PAYLOAD_TOO_LARGE\n\nlhr1::probe\n',
+      storageRaw: 'Request Entity Too Large\n\nFUNCTION_PAYLOAD_TOO_LARGE\n',
     });
 
     const { error } = await run(pngFile(), 'profile');
@@ -458,20 +402,19 @@ describe('gateway and auth failures are surfaced, not swallowed', () => {
     expect(toastText()).toMatch(/too large/i);
   });
 
-  it('falls back to the proxied upload when signing is unavailable', async () => {
-    installFetch({ sign: 500 });
-
+  it('uses the direct storage upload route (no signing hop)', async () => {
     const { result, error } = await run(pngFile(), 'profile');
 
     expect(error).toBeUndefined();
-    expect(result).toMatch(/^https:\/\//);
-    // Signed upload was never attempted; the gateway proxy was used instead.
+    expect(result).toMatch(/^alice-uuid\/avatars\//);
     expect(uploadPaths).toHaveLength(1);
     expect(uploadPaths[0]).toContain('/avatars/');
+    // No Gateway-era signing endpoint is involved.
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/storage/sign'))).toBe(false);
   });
 
   it('reports an unauthenticated request rather than a generic failure', async () => {
-    installFetch({ cloudinary: 401, storage: 401, storageBody: { message: 'Missing authorization header' } });
+    installFetch({ storage: 401, storageBody: { message: 'Missing authorization header' } });
 
     const { error } = await run(pngFile(), 'profile');
 
@@ -481,7 +424,7 @@ describe('gateway and auth failures are surfaced, not swallowed', () => {
   });
 
   it('always logs the underlying reason to the console', async () => {
-    installFetch({ ...TOTAL_UPLOAD_FAILURE, storageBody: { message: 'boom' } });
+    installFetch({ storage: 500, storageBody: { message: 'boom' } });
     await run(pngFile(), 'profile');
 
     const logged = (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls
@@ -525,13 +468,13 @@ describe('ownership', () => {
   it('only ever writes the caller\'s own profile row', async () => {
     await run(pngFile(), 'profile');
 
-    // The filter is the row id, in the URL — there is no body-carried id to
-    // tamper with, and no second row is addressed.
+    // The filter is the row id in the PostgREST URL — there is no body-carried
+    // id to tamper with, and no second row is addressed.
     const putUrls = fetchMock.mock.calls
-      .filter(([u, i]) => String(u) === PROFILE_URL && i?.method === 'PUT')
+      .filter(([u, i]) => new URL(String(u), MOCK_ORIGIN).pathname === PROFILES_PATH && i?.method === 'PATCH')
       .map(([u]) => String(u));
     expect(putUrls).toHaveLength(1);
-    expect(putUrls[0]).toBe(`${BASE}/api/v1/profiles/${USER}`);
+    expect(putUrls[0]).toBe(`${MOCK_ORIGIN}/rest/v1/profiles?id=eq.${USER}`);
 
     const postUsers = postBodies.map((b) => b.user_id);
     expect(postUsers).toEqual([USER]);
@@ -543,7 +486,7 @@ describe('ownership', () => {
     const storageCall = fetchMock.mock.calls.find(
       ([url, init]) => String(url).startsWith(STORAGE_PREFIX) && init?.method === 'POST'
     );
-    const headers = (storageCall?.[1]?.headers ?? {}) as Record<string, string>;
-    expect(headers.Authorization).toBe('Bearer test-token');
+    const authorization = new Headers(storageCall?.[1]?.headers).get('authorization');
+    expect(authorization).toBe('Bearer test-token');
   });
 });

@@ -65,30 +65,30 @@ describe('voicePlaybackUrl', () => {
     );
   });
 
-  it('keeps gateway fallback URLs when the browser can play the container', () => {
+  it('keeps dataClient fallback URLs when the browser can play the container', () => {
     vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue(
       'probably'
     );
-    const gateway =
+    const dataClient =
       'http://mock.test/api/storage/message_audios/message_audios/conv-1/msg-1.webm';
-    expect(voicePlaybackUrl(gateway, 'audio/webm;codecs=opus')).toBe(gateway);
+    expect(voicePlaybackUrl(dataClient, 'audio/webm;codecs=opus')).toBe(dataClient);
   });
 
-  it('asks the gateway for an MP3 redirect for unsupported containers on fallback URLs', () => {
-    // Legacy rows have no audio_url, so playback resolves to the gateway
+  it('asks the dataClient for an MP3 redirect for unsupported containers on fallback URLs', () => {
+    // Legacy rows have no audio_url, so playback resolves to the dataClient
     // /api/storage/* fallback. With an unplayable mime (Safari + WebM) the
-    // gateway's own redirect must serve f_mp3, requested via ?format=mp3.
-    const gateway =
+    // dataClient's own redirect must serve f_mp3, requested via ?format=mp3.
+    const dataClient =
       'http://mock.test/api/storage/message_audios/message_audios/conv-1/msg-1.webm';
-    expect(voicePlaybackUrl(gateway, 'audio/webm;codecs=opus')).toBe(
+    expect(voicePlaybackUrl(dataClient, 'audio/webm;codecs=opus')).toBe(
       'http://mock.test/api/storage/message_audios/message_audios/conv-1/msg-1.webm?format=mp3'
     );
   });
 
   it('appends format=mp3 with & when the fallback URL already has a query', () => {
-    const gateway =
+    const dataClient =
       'http://mock.test/api/storage/message_audios/a.webm?token=abc';
-    expect(voicePlaybackUrl(gateway, 'audio/webm;codecs=opus')).toBe(
+    expect(voicePlaybackUrl(dataClient, 'audio/webm;codecs=opus')).toBe(
       'http://mock.test/api/storage/message_audios/a.webm?token=abc&format=mp3'
     );
   });
@@ -102,9 +102,9 @@ describe('voicePlaybackUrl', () => {
   });
 
   it('never re-requests a conversion when the URL already carries format=', () => {
-    const gateway =
+    const dataClient =
       'http://mock.test/api/storage/message_audios/a.webm?format=mp3';
-    expect(voicePlaybackUrl(gateway, 'audio/webm;codecs=opus')).toBe(gateway);
+    expect(voicePlaybackUrl(dataClient, 'audio/webm;codecs=opus')).toBe(dataClient);
   });
 });
 
@@ -115,10 +115,10 @@ describe('toConvertedUrl (runtime retry path)', () => {
     );
   });
 
-  it('converts a gateway fallback URL via format=mp3', () => {
-    const gateway =
+  it('converts a dataClient fallback URL via format=mp3', () => {
+    const dataClient =
       'http://mock.test/api/storage/message_audios/message_audios/conv-1/msg-1.webm';
-    expect(toConvertedUrl(gateway)).toBe(
+    expect(toConvertedUrl(dataClient)).toBe(
       'http://mock.test/api/storage/message_audios/message_audios/conv-1/msg-1.webm?format=mp3'
     );
   });

@@ -18,7 +18,7 @@ import {
   X,
   Loader2
 } from 'lucide-react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { usersApi } from '@/api';
@@ -229,7 +229,7 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
       const fileExt = item.file.name.split('.').pop()?.toLowerCase() || 'bin';
       const fileName = `${user?.id || 'unknown'}/${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
 
-      gateway.storage
+      dataClient.storage
         .from(bucket)
         .upload(fileName, item.file, { contentType: item.file.type })
         .then(({ error, data }) => {
@@ -239,7 +239,7 @@ const NewPost = ({ onCreatePost, className, autoExpand, audience: externalAudien
             return;
           }
 
-          const publicUrl = data?.url || gateway.storage.from(bucket).getPublicUrl(fileName).data.publicUrl;
+          const publicUrl = data?.url || dataClient.storage.from(bucket).getPublicUrl(fileName).data.publicUrl;
           if (publicUrl) {
             setMediaItems(prev => prev.map(m => m.localUrl === item.localUrl ? { ...m, url: publicUrl, status: 'done' } : m));
           }

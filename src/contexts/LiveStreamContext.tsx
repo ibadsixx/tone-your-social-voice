@@ -3,10 +3,12 @@
 // This context keeps the existing Tone Live state model and UI contract while
 // replacing the old media-server transport with:
 //   - LivePeerManager: one RTCPeerConnection per remote participant
-//   - LiveSignalingClient: authenticated Gateway WebSocket signaling
+//   - LiveSignalingClient: authenticated Edge Function WebSocket signaling
 //
 // Private 1:1 calling (src/services/webrtc.ts) is NOT modified by this file.
 
+import { getEdgeBaseUrl } from '@/lib/supabase/edgeTransport';
+import { getCachedAccessToken } from '@/lib/supabase/sessionTokenProvider';
 import {
   createContext,
   useContext,
@@ -46,7 +48,7 @@ import {
   type SignalingConnectionState,
 } from '@/services/liveSignalingClient';
 
-const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL as string;
+const EDGE_BASE_URL = getEdgeBaseUrl();
 
 export type StreamRole = 'host' | 'moderator' | 'guest' | 'viewer';
 export type StreamType = 'video' | 'audio';
@@ -100,16 +102,7 @@ export interface LiveStreamContextType extends LiveStreamState {
 const LiveStreamContext = createContext<LiveStreamContextType | undefined>(undefined);
 
 function getAuthToken(): string | null {
-  try {
-    const sessionStr = localStorage.getItem('tone-auth-token');
-    if (sessionStr) {
-      const session = JSON.parse(sessionStr);
-      return session?.access_token ?? null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
+  return getCachedAccessToken();
 }
 
 const INITIAL_STATE: LiveStreamState = {
@@ -228,7 +221,7 @@ export const LiveStreamProvider = ({ children }: { children: React.ReactNode }) 
   const connectSignaling = useCallback(async (sessionId: string) => {
     signalingRef.current?.close();
     const client = new LiveSignalingClient({
-      gatewayUrl: GATEWAY_URL,
+      edgeBaseUrl: EDGE_BASE_URL,
       sessionId,
       getAuthToken,
       onMessage: handleSignalingMessage,
@@ -343,7 +336,7 @@ export const LiveStreamProvider = ({ children }: { children: React.ReactNode }) 
         console.warn('[LiveStream] host media init failed:', (mediaErr as Error).message);
       }
 
-      // Exactly one LIVE post per session (Gateway enforces idempotency too).
+      // Exactly one LIVE post per session (Edge Function enforces idempotency too).
       let livePostId: string | null = null;
       if (mediaStream && mediaStream.getTracks().length > 0 && !livePostCreatedRef.current) {
         livePostCreatedRef.current = true;
@@ -543,7 +536,7 @@ export const LiveStreamProvider = ({ children }: { children: React.ReactNode }) 
     publishParticipantState({ raisedHand: false });
   }, [user, publishParticipantState]);
 
-  // Host/moderator dismisses another participant's raised hand. The Gateway
+  // Host/moderator dismisses another participant's raised hand. The Edge Function
   // authorizes the moderation action; the client only reflects the result.
   const dismissHand = useCallback(async (userId: string) => {
     const stream = streamRef.current;
@@ -556,7 +549,7 @@ export const LiveStreamProvider = ({ children }: { children: React.ReactNode }) 
   }, []);
 
   // -------------------------------------------------------------------------
-  // Participant moderation — all role decisions are Gateway-authorized.
+  // Participant moderation — all role decisions are Edge Function-authorized.
   // -------------------------------------------------------------------------
   const addParticipant = useCallback(async (userId: string, role: 'moderator' | 'guest' | 'viewer') => {
     const stream = streamRef.current;

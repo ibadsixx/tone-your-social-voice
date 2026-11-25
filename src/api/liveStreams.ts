@@ -1,43 +1,18 @@
-import { gateway } from './client';
-import type { ApiResult } from './client';
+// Tone Live data access — direct Supabase only.
+//
+// Session/participant/comment/reaction data is read and written through the
+// registry-routed frontend client, so project RLS decides what a viewer may
+// see. Only short-lived signaling tickets and ICE configuration are delegated
+// to the narrow `live` and `realtime` Edge Functions; there is no Gateway and no
+// generic server-side CRUD proxy.
+//
+// Tables live in the registered `live_streams` domain: live_sessions,
+// live_participants, live_comments, live_reactions, live_recordings,
+// live_reports and live_events.
 
-const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
-
-function getToken(): string | null {
-  try {
-    const sessionStr = localStorage.getItem('tone-auth-token');
-    if (sessionStr) {
-      const session = JSON.parse(sessionStr);
-      return session?.access_token ?? null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-async function liveFetch(
-  path: string,
-  options: RequestInit = {}
-): Promise<Response> {
-  const token = getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> || {}),
-  };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return fetch(`${GATEWAY_URL}/api/live${path}`, { ...options, headers });
-}
-
-async function parseJson<T>(res: Response): Promise<T | null> {
-  const text = await res.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    return null;
-  }
-}
+import { dataClient } from '@/lib/supabase/dataClient';
+import type { ApiResult } from '@/lib/supabase/dataClient';
+import { getEdgeFunctionUrl } from '@/lib/supabase/edgeTransport';
 
 export interface LiveSession {
   id: string;
@@ -151,70 +126,67 @@ export interface UpdateSessionData {
   recording?: boolean;
 }
 
-// Sessions
+async function currentUserId(): Promise<string | null> {
+  const { data } = await dataClient.auth.getUser();
+  return (data?.user?.id as string | undefined) ?? null;
+}
+
+function notAuthenticated<T>(): ApiResult<T> {
+  return { data: null, error: { message: 'Authentication required' } };
+}
+
+/** URL used by LiveSignalingClient to trade the central Auth JWT for a ticket. */
+export function getLiveSignalingTicketUrl(sessionId: string): string {
+  return `${getEdgeFunctionUrl('live')}/sessions/${encodeURIComponent(sessionId)}/signaling-ticket`;
+}
+
+// --- Sessions ---------------------------------------------------------------
+
 export async function createLiveStream(data: CreateSessionData): Promise<ApiResult<LiveSession>> {
-  const res = await liveFetch('/sessions', { method: 'POST', body: JSON.stringify(data) });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string; error?: string }>(res);
-    return { data: null, error: { message: err?.message || err?.error || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveSession>(res);
-  return { data: json, error: null };
+  const hostId = await currentUserId();
+  if (!hostId) return notAuthenticated();
+  return dataClient.from('live_sessions').insert({
+    ...data,
+    host_id: hostId,
+    status: 'live',
+    viewer_count: 0,
+    started_at: new Date().toISOString(),
+  }).select().single() as Promise<ApiResult<LiveSession>>;
 }
 
 export async function getLiveStream(id: string): Promise<ApiResult<LiveSession>> {
-  const res = await liveFetch(`/sessions/${id}`);
-  if (!res.ok) {
-    if (res.status === 404) return { data: null, error: null };
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveSession>(res);
-  return { data: json, error: null };
+  return dataClient.from('live_sessions').select('*').eq('id', id).maybeSingle() as Promise<ApiResult<LiveSession>>;
 }
 
 export async function getActiveLiveStreams(): Promise<ApiResult<LiveSession[]>> {
-  const res = await liveFetch('/sessions');
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveSession[]>(res);
-  return { data: json || [], error: null };
+  return dataClient.from('live_sessions')
+    .select('*')
+    .eq('status', 'live')
+    .order('created_at', { ascending: false }) as Promise<ApiResult<LiveSession[]>>;
 }
 
 export async function updateLiveStream(
   id: string,
   data: UpdateSessionData
 ): Promise<ApiResult<LiveSession>> {
-  const res = await liveFetch(`/sessions/${id}`, { method: 'PUT', body: JSON.stringify(data) });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveSession>(res);
-  return { data: json, error: null };
+  return dataClient.from('live_sessions').update(data).eq('id', id).select().single() as Promise<ApiResult<LiveSession>>;
 }
 
 export async function endLiveStream(id: string): Promise<ApiResult<LiveSession>> {
-  const res = await liveFetch(`/sessions/${id}/end`, { method: 'POST' });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveSession>(res);
-  return { data: json, error: null };
+  return dataClient.from('live_sessions')
+    .update({ status: 'ended', ended_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single() as Promise<ApiResult<LiveSession>>;
 }
 
-// Participants
+// --- Participants -----------------------------------------------------------
+
 export async function getStreamParticipants(sessionId: string): Promise<ApiResult<LiveParticipant[]>> {
-  const res = await liveFetch(`/sessions/${sessionId}/participants`);
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveParticipant[]>(res);
-  return { data: json || [], error: null };
+  return dataClient.from('live_participants')
+    .select('*')
+    .eq('session_id', sessionId)
+    .is('left_at', null) as Promise<ApiResult<LiveParticipant[]>>;
 }
 
 export async function addStreamParticipant(
@@ -222,16 +194,10 @@ export async function addStreamParticipant(
   userId: string,
   role: 'moderator' | 'guest' | 'viewer'
 ): Promise<ApiResult<LiveParticipant>> {
-  const res = await liveFetch(`/sessions/${sessionId}/participants`, {
-    method: 'POST',
-    body: JSON.stringify({ role }),
-  });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveParticipant>(res);
-  return { data: json, error: null };
+  return dataClient.from('live_participants')
+    .upsert({ session_id: sessionId, user_id: userId, role, left_at: null }, { onConflict: 'session_id,user_id' })
+    .select()
+    .single() as Promise<ApiResult<LiveParticipant>>;
 }
 
 export async function updateStreamParticipant(
@@ -239,41 +205,38 @@ export async function updateStreamParticipant(
   userId: string,
   data: Partial<LiveParticipant>
 ): Promise<ApiResult<LiveParticipant>> {
-  const res = await liveFetch(`/sessions/${sessionId}/participants/${userId}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveParticipant>(res);
-  return { data: json, error: null };
+  const { role, is_muted, is_video_off, raised_hand } = data;
+  return dataClient.from('live_participants')
+    .update({ role, is_muted, is_video_off, raised_hand })
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .select()
+    .single() as Promise<ApiResult<LiveParticipant>>;
 }
 
 /** Leave the current authenticated user from a session. */
 export async function removeStreamParticipant(
   sessionId: string,
-  _userId: string
+  _userId?: string
 ): Promise<ApiResult<{ error: string | null }>> {
-  const res = await liveFetch(`/sessions/${sessionId}/leave`, { method: 'POST' });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
+  const userId = await currentUserId();
+  if (!userId) return notAuthenticated();
+  await dataClient.from('live_participants')
+    .update({ left_at: new Date().toISOString() })
+    .eq('session_id', sessionId)
+    .eq('user_id', userId);
   return { data: null, error: null };
 }
 
-/** Remove another participant (host/moderator authorization enforced by Gateway). */
+/** Remove another participant. RLS restricts this to host/moderator roles. */
 export async function removeStreamParticipantById(
   sessionId: string,
   userId: string
 ): Promise<ApiResult<{ error: string | null }>> {
-  const res = await liveFetch(`/sessions/${sessionId}/participants/${userId}`, { method: 'DELETE' });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
+  await dataClient.from('live_participants')
+    .update({ left_at: new Date().toISOString() })
+    .eq('session_id', sessionId)
+    .eq('user_id', userId);
   return { data: null, error: null };
 }
 
@@ -281,179 +244,155 @@ export async function raiseHand(
   sessionId: string,
   userId: string
 ): Promise<ApiResult<LiveParticipant>> {
-  const res = await liveFetch(`/sessions/${sessionId}/participants/${userId}/raise-hand`, {
-    method: 'POST',
-  });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveParticipant>(res);
-  return { data: json, error: null };
+  return dataClient.from('live_participants')
+    .update({ raised_hand: true })
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .select()
+    .single() as Promise<ApiResult<LiveParticipant>>;
 }
 
 export async function lowerHand(
   sessionId: string,
   userId: string
 ): Promise<ApiResult<LiveParticipant>> {
-  const res = await liveFetch(`/sessions/${sessionId}/participants/${userId}/lower-hand`, {
-    method: 'POST',
-  });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveParticipant>(res);
-  return { data: json, error: null };
+  return dataClient.from('live_participants')
+    .update({ raised_hand: false })
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .select()
+    .single() as Promise<ApiResult<LiveParticipant>>;
 }
 
-// Comments
+// --- Comments ---------------------------------------------------------------
+
 export async function getStreamComments(
   sessionId: string,
   offset: number,
   limit: number
 ): Promise<ApiResult<LiveComment[]>> {
-  const res = await liveFetch(`/sessions/${sessionId}/comments?offset=${offset}&limit=${limit}`);
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveComment[]>(res);
-  return { data: json || [], error: null };
+  return dataClient.from('live_comments')
+    .select('*')
+    .eq('session_id', sessionId)
+    .eq('is_hidden', false)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1) as Promise<ApiResult<LiveComment[]>>;
 }
 
 export async function sendComment(
   sessionId: string,
   content: string
 ): Promise<ApiResult<LiveComment>> {
-  const res = await liveFetch(`/sessions/${sessionId}/comments`, {
-    method: 'POST',
-    body: JSON.stringify({ content }),
-  });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveComment>(res);
-  return { data: json, error: null };
+  const userId = await currentUserId();
+  if (!userId) return notAuthenticated();
+  return dataClient.from('live_comments').insert({
+    session_id: sessionId,
+    user_id: userId,
+    content,
+  }).select().single() as Promise<ApiResult<LiveComment>>;
 }
 
 export async function hideComment(
   sessionId: string,
   commentId: string
 ): Promise<ApiResult<{ error: string | null }>> {
-  const res = await liveFetch(`/sessions/${sessionId}/comments/${commentId}`, {
-    method: 'DELETE',
-  });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
+  const userId = await currentUserId();
+  if (!userId) return notAuthenticated();
+  await dataClient.from('live_comments')
+    .update({ is_hidden: true, hidden_by: userId, hidden_at: new Date().toISOString() })
+    .eq('session_id', sessionId)
+    .eq('id', commentId);
   return { data: null, error: null };
 }
 
-// Reactions
+// --- Reactions --------------------------------------------------------------
+
 export async function getStreamReactions(sessionId: string): Promise<{
   data: { counts: Record<string, number>; reactions: LiveReaction[] } | null;
   error: { message: string; code?: string } | null;
 }> {
-  const res = await liveFetch(`/sessions/${sessionId}/reactions`);
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
+  const result = await dataClient.from('live_reactions')
+    .select('*')
+    .eq('session_id', sessionId) as ApiResult<LiveReaction[]>;
+  if (result.error) return { data: null, error: result.error };
+  const reactions = result.data ?? [];
+  const counts: Record<string, number> = {};
+  for (const reaction of reactions) {
+    counts[reaction.reaction_type] = (counts[reaction.reaction_type] ?? 0) + 1;
   }
-  const json = await parseJson<{ counts: Record<string, number>; reactions: LiveReaction[] }>(res);
-  return { data: json, error: null };
+  return { data: { counts, reactions }, error: null };
 }
 
 export async function sendReaction(
   sessionId: string,
   reactionType: string
 ): Promise<ApiResult<LiveReaction>> {
-  const res = await liveFetch(`/sessions/${sessionId}/reactions`, {
-    method: 'POST',
-    body: JSON.stringify({ reaction_type: reactionType }),
-  });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveReaction>(res);
-  return { data: json, error: null };
+  const userId = await currentUserId();
+  if (!userId) return notAuthenticated();
+  return dataClient.from('live_reactions').insert({
+    session_id: sessionId,
+    user_id: userId,
+    reaction_type: reactionType,
+  }).select().single() as Promise<ApiResult<LiveReaction>>;
 }
 
-// Recordings
+// --- Recordings -------------------------------------------------------------
+
 export async function getStreamRecordings(sessionId: string): Promise<ApiResult<LiveRecording[]>> {
-  const res = await liveFetch(`/sessions/${sessionId}/recording`);
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveRecording[]>(res);
-  return { data: json || [], error: null };
+  return dataClient.from('live_recordings')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('started_at', { ascending: false }) as Promise<ApiResult<LiveRecording[]>>;
 }
 
 export async function toggleRecording(
   sessionId: string,
   enabled: boolean
 ): Promise<ApiResult<LiveSession>> {
-  const res = await liveFetch(`/sessions/${sessionId}/recording`, {
-    method: 'POST',
-    body: JSON.stringify({ recording: enabled }),
-  });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveSession>(res);
-  return { data: json, error: null };
+  return dataClient.from('live_sessions')
+    .update({ recording: enabled })
+    .eq('id', sessionId)
+    .select()
+    .single() as Promise<ApiResult<LiveSession>>;
 }
 
-// Reports
+// --- Reports and events -----------------------------------------------------
+
 export async function submitReport(
   sessionId: string,
   data: { reported_user_id?: string; reason: string; description?: string }
 ): Promise<ApiResult<LiveReport>> {
-  const res = await liveFetch(`/sessions/${sessionId}/reports`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveReport>(res);
-  return { data: json, error: null };
+  const reporterId = await currentUserId();
+  if (!reporterId) return notAuthenticated();
+  return dataClient.from('live_reports').insert({
+    session_id: sessionId,
+    reporter_id: reporterId,
+    ...data,
+  }).select().single() as Promise<ApiResult<LiveReport>>;
 }
 
 export async function getStreamReports(sessionId: string): Promise<ApiResult<LiveReport[]>> {
-  const res = await liveFetch(`/sessions/${sessionId}/reports`);
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveReport[]>(res);
-  return { data: json || [], error: null };
+  return dataClient.from('live_reports')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: false }) as Promise<ApiResult<LiveReport[]>>;
 }
 
-// Events
 export async function recordStreamEvent(
   sessionId: string,
   data: { event_type: string; target_user_id?: string; metadata?: Record<string, unknown> }
 ): Promise<ApiResult<LiveEvent>> {
-  const res = await liveFetch(`/sessions/${sessionId}/events`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await parseJson<{ message?: string }>(res);
-    return { data: null, error: { message: err?.message || res.statusText, code: String(res.status) } };
-  }
-  const json = await parseJson<LiveEvent>(res);
-  return { data: json, error: null };
+  const actorId = await currentUserId();
+  if (!actorId) return notAuthenticated();
+  return dataClient.from('live_events').insert({
+    session_id: sessionId,
+    actor_id: actorId,
+    ...data,
+  }).select().single() as Promise<ApiResult<LiveEvent>>;
 }
 
-// Live post integration
+// --- Live post integration --------------------------------------------------
+
 export async function createLivePost(data: {
   host_id: string;
   title: string | null;
@@ -464,40 +403,28 @@ export async function createLivePost(data: {
   audience_list_id: string | null;
   live_session_id: string;
 }): Promise<ApiResult<{ id: string }>> {
-  console.log('[LiveStream] createLivePost called, sessionId:', data.live_session_id,
-    'streamType:', data.stream_type, 'audience:', data.audience_type);
-  return liveFetch(`/sessions/${data.live_session_id}/posts`, {
-    method: 'POST',
-    body: JSON.stringify({
-      ...data,
-      type: 'live',
-      status: 'live',
-      viewer_count: 0,
-    }),
-  }).then(async (res) => {
-    console.log('[LiveStream] createLivePost response status:', res.status,
-      'sessionId:', data.live_session_id);
-    if (!res.ok) {
-      const err = await parseJson<{ message?: string; error?: string }>(res);
-      console.warn('[LiveStream] createLivePost failed, status:', res.status,
-        'message:', err?.message || err?.error || res.statusText,
-        'sessionId:', data.live_session_id);
-      return { data: null, error: { message: err?.message || err?.error || res.statusText, code: String(res.status) } };
-    }
-    const json = await parseJson<{ id: string }>(res);
-    console.log('[LiveStream] createLivePost success, postId:', json?.id,
-      'sessionId:', data.live_session_id);
-    return { data: json, error: null };
-  });
+  return dataClient.from('posts').insert({
+    user_id: data.host_id,
+    content: data.title,
+    type: 'live',
+    status: 'live',
+    stream_type: data.stream_type,
+    audience_type: data.audience_type,
+    audience_user_ids: data.audience_user_ids,
+    audience_excluded_user_ids: data.audience_excluded_user_ids,
+    audience_list_id: data.audience_list_id,
+    live_session_id: data.live_session_id,
+    viewer_count: 0,
+  }).select('id').single() as Promise<ApiResult<{ id: string }>>;
 }
 
 export async function updateLivePostStatus(
   sessionId: string,
   status: 'live' | 'ended'
 ): Promise<ApiResult<null>> {
-  return gateway.from('posts').update({ status }).eq('live_session_id', sessionId);
+  return dataClient.from('posts').update({ status }).eq('live_session_id', sessionId) as Promise<ApiResult<null>>;
 }
 
 export async function getLivePostBySessionId(sessionId: string): Promise<ApiResult<{ id: string }>> {
-  return gateway.from('posts').select('id').eq('live_session_id', sessionId).maybeSingle();
+  return dataClient.from('posts').select('id').eq('live_session_id', sessionId).maybeSingle() as Promise<ApiResult<{ id: string }>>;
 }

@@ -1,4 +1,4 @@
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 /**
  * Extract unique hashtags from text
@@ -20,7 +20,7 @@ export const extractHashtags = (text: string): string[] => {
  * decides what to add and remove.
  */
 const resolveHashtagId = async (tag: string): Promise<string | null> => {
-  const { data: hashtagData, error: hashtagError } = await gateway
+  const { data: hashtagData, error: hashtagError } = await dataClient
     .from('hashtags')
     .upsert({ tag }, { onConflict: 'tag' })
     .select('id')
@@ -34,7 +34,7 @@ const resolveHashtagId = async (tag: string): Promise<string | null> => {
   // If upsert didn't return data, fetch the existing hashtag
   let hashtagId = (hashtagData as { id?: string } | null)?.id;
   if (!hashtagId) {
-    const { data: existingHashtag } = await gateway
+    const { data: existingHashtag } = await dataClient
       .from('hashtags')
       .select('id')
       .eq('tag', tag)
@@ -79,7 +79,7 @@ export const saveHashtags = async (
     // remove obsolete links as well as add new ones. Keyed on the same
     // (source_type, source_id, hashtag_id) triple the rows carry, so no `id`
     // column is involved.
-    const { data: existingLinks, error: existingError } = await gateway
+    const { data: existingLinks, error: existingError } = await dataClient
       .from('hashtag_links')
       .select('hashtag_id')
       .eq('source_type', sourceType)
@@ -107,7 +107,7 @@ export const saveHashtags = async (
     for (const hashtagId of existingIds) {
       if (desiredIds.has(hashtagId)) continue;
 
-      const { error: deleteError } = await gateway
+      const { error: deleteError } = await dataClient
         .from('hashtag_links')
         .delete()
         .eq('source_type', sourceType)
@@ -124,7 +124,7 @@ export const saveHashtags = async (
     for (const hashtagId of desiredIds) {
       if (existingIds.has(hashtagId)) continue;
 
-      const { error: linkError } = await gateway
+      const { error: linkError } = await dataClient
         .from('hashtag_links')
         .insert({
           source_type: sourceType,

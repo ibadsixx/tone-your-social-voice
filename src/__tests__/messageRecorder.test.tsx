@@ -47,8 +47,8 @@ const RECORDING: AudioRecording = {
 };
 
 describe('MessageRecorder (Messenger-style voice composer)', () => {
-  let onSendAudio: ReturnType<typeof vi.fn>;
-  let onCancel: ReturnType<typeof vi.fn>;
+  let onSendAudio: (recording: AudioRecording) => void;
+  let onCancel: () => void;
 
   beforeEach(() => {
     hoisted.hookState.isRecording = true;
@@ -61,8 +61,8 @@ describe('MessageRecorder (Messenger-style voice composer)', () => {
     hoisted.hookState.cancelRecording.mockReset();
     hoisted.hookOptions.length = 0;
 
-    onSendAudio = vi.fn();
-    onCancel = vi.fn();
+    onSendAudio = vi.fn() as unknown as (recording: AudioRecording) => void;
+    onCancel = vi.fn() as unknown as () => void;
 
     // jsdom does not implement these; the component uses them for the
     // finalized-clip lifecycle.

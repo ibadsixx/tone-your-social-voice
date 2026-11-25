@@ -1,4 +1,4 @@
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { createNotification } from '@/hooks/useNotifications';
 
 export type MessageRequestCategory = 'you_may_know' | 'spam';
@@ -13,7 +13,7 @@ export const hasAcceptedFriendship = async (
 ): Promise<boolean> => {
   if (!userId || !otherUserId || userId === otherUserId) return false;
   try {
-    const { data, error } = await gateway
+    const { data, error } = await dataClient
       .from('friends')
       .select('id')
       .or(`and(requester_id.eq.${userId},receiver_id.eq.${otherUserId}),and(requester_id.eq.${otherUserId},receiver_id.eq.${userId})`)
@@ -29,12 +29,12 @@ export const hasAcceptedFriendship = async (
 
 // Client-side fallback for the Maybe-you-know / Spam classification. The
 // AUTHORITATIVE source is now the Gateway: `POST /api/message_requests` is
-// intercepted by the gateway and the category is computed on the friends host
+// intercepted by the dataClient and the category is computed on the friends host
 // (friends and conversations live in separate projects, so client-side / DB
-// cross-project joins are not reliable — see `gateway/src/features/
+// cross-project joins are not reliable — see `dataClient/src/features/
 // messageRequestCategory.ts`). The client supplies a best guess so behavior is
-// correct even while a gateway without the feature is still deployed, but the
-// gateway always overrides.
+// correct even while a dataClient without the feature is still deployed, but the
+// dataClient always overrides.
 //
 // Exact messages.md semantics — the stored value is the DB enum 'you_may_know',
 // displayed as "Maybe you know":
@@ -51,7 +51,7 @@ export const determineMessageRequestCategory = async (
   }
 
   const acceptedFriends = async (userId: string): Promise<Set<string>> => {
-    const { data, error } = await gateway
+    const { data, error } = await dataClient
       .from('friends')
       .select('requester_id, receiver_id')
       .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`)
@@ -68,7 +68,7 @@ export const determineMessageRequestCategory = async (
 
   try {
     // Restricted users are always spam.
-    const { data: restricted } = await gateway
+    const { data: restricted } = await dataClient
       .from('restricted_users')
       .select('id')
       .eq('user_id', otherUserId)
@@ -144,7 +144,7 @@ export const ensureMessageRequest = async (params: {
   // column exists on the live host. The check deliberately does NOT filter by
   // status: an ACCEPTED request must short-circuit here so the pair is never
   // re-inserted (a second Message Request) after the recipient accepts.
-  const { data: existing } = await gateway
+  const { data: existing } = await dataClient
     .from('message_requests')
     .select('id, status')
     .eq('sender_id', senderId)
@@ -183,7 +183,7 @@ export const ensureMessageRequest = async (params: {
   //
   // An already-accepted/declined/blocked request is left untouched. Never throws.
   const insertRequest = (withConversationId: boolean) =>
-    gateway
+    dataClient
       .from('message_requests')
       .insert({
         sender_id: senderId,
@@ -199,7 +199,7 @@ export const ensureMessageRequest = async (params: {
   // schema-stable insert so messaging is never broken during a migration window.
   let insertResult = await insertRequest(Boolean(conversationId));
 
-  // The gateway historically masks insert failures with a generic `500
+  // The dataClient historically masks insert failures with a generic `500
   // {"error":"Internal server error"}` and never surfaces the underlying
   // Postgres 42703, so parsing the error text to detect the missing
   // `conversation_id` column is unreliable. Instead, whenever the first insert
@@ -220,7 +220,7 @@ export const ensureMessageRequest = async (params: {
   const reqError = insertResult.error;
 
   if (reqError) {
-    // The gateway client reports error.code as an HTTP status, so a duplicate
+    // The dataClient client reports error.code as an HTTP status, so a duplicate
     // (Postgres 23505 unique violation on sender_id/receiver_id or the pending
     // conversation_id index) surfaces as 409. A duplicate means another request
     // already exists — exactly what we want — so it is not an error.
@@ -258,7 +258,7 @@ export const resolveMessageRequestConversation = async (
   // conversation_participants. This preserves "open the same conversation" on
   // the schema that actually exists.
   try {
-    const { data: myParts } = await gateway
+    const { data: myParts } = await dataClient
       .from('conversation_participants')
       .select('conversation_id')
       .eq('user_id', senderId);
@@ -266,7 +266,7 @@ export const resolveMessageRequestConversation = async (
     const myIds = (myParts || []).map(p => p.conversation_id);
     if (myIds.length === 0) return undefined;
 
-    const { data: shared } = await gateway
+    const { data: shared } = await dataClient
       .from('conversation_participants')
       .select('conversation_id')
       .in('conversation_id', myIds)
@@ -275,7 +275,7 @@ export const resolveMessageRequestConversation = async (
     const sharedIds = [...new Set((shared || []).map(p => p.conversation_id))];
     if (sharedIds.length === 0) return undefined;
 
-    const { data: convs } = await gateway
+    const { data: convs } = await dataClient
       .from('conversations')
       .select('id, type')
       .in('id', sharedIds);

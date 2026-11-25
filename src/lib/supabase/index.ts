@@ -14,7 +14,6 @@ export {
   getCachedClientCount,
   isInfrastructureConfigured,
   loadInfrastructureProjects,
-  getInfrastructureProjectByDomain,
   clearRegistryCache,
   getInfrastructureInitError,
 } from './clientFactory';
@@ -38,4 +37,28 @@ export {
   getMyProfile,
   getFunctionUrl,
 } from './crossProject';
-export type { InfrastructureProject, DomainProjectConfig, InfrastructureState } from './types';
+export type {
+  InfrastructureProject,
+  DomainProjectConfig,
+  InfrastructureState,
+  InfrastructureConfigError,
+  OperationType,
+  ProjectRouteRequest,
+  ResolvedProjectRoute,
+} from './types';
+export {
+  resolveProjectRoute,
+  resolveTableRoute,
+  resolveRpcRoute,
+  domainForTable,
+  domainForRpc,
+} from './routing';
+export { dataClient } from './dataClient';
+export { callEdgeFunction } from './crossProject';
+export {
+  getCurrentAccessToken,
+  getCachedAccessToken,
+  setCurrentAccessToken,
+  clearCurrentAccessToken,
+} from './sessionTokenProvider';
+export { getEdgeBaseUrl, getEdgeFunctionUrl } from './edgeTransport';

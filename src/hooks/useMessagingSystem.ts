@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import { getOrCreateDM } from '@/api/conversations';
 import { ensureMessageRequest, hasAcceptedFriendship } from '@/lib/messageRequests';
@@ -21,7 +21,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
   // Check if user is blocked
   const checkIfBlocked = async (userId1: string, userId2: string): Promise<boolean> => {
     try {
-      const { data, error } = await gateway.rpc('is_blocked', {
+      const { data, error } = await dataClient.rpc('is_blocked', {
         user1_id: userId1,
         user2_id: userId2
       });
@@ -91,7 +91,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
         };
       }
 
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('messages')
         .insert({
           conversation_id: conversationId,
@@ -194,7 +194,7 @@ export const useMessagingSystem = (currentUserId?: string) => {
         };
       }
 
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('messages')
         .insert({
           conversation_id: conversationId,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -57,7 +57,7 @@ export const useStories = () => {
         return;
       }
 
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('stories')
         .select(`
           *,
@@ -147,18 +147,18 @@ export const useStories = () => {
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
       const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
 
-      const { error: uploadError } = await gateway.storage
+      const { error: uploadError } = await dataClient.storage
         .from('stories')
         .upload(fileName, file);
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = gateway.storage
+      const { data: { publicUrl } } = dataClient.storage
         .from('stories')
         .getPublicUrl(fileName);
 
       // Create story record
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('stories')
         .insert({
           user_id: user.id,
@@ -205,7 +205,7 @@ export const useStories = () => {
       // even when the viewer never reacts — do.md sections 5/6). The Gateway
       // recounts story_views and stores the total on stories.views itself, so
       // no viewer ever has to read another user's view rows/counts (section 8).
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('story_views')
         .insert({
           story_id: storyId,
@@ -223,7 +223,7 @@ export const useStories = () => {
 
   const deleteStory = async (storyId: string) => {
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('stories')
         .delete()
         .eq('id', storyId);
@@ -257,7 +257,7 @@ export const useStories = () => {
     fetchStories({ showLoading: true });
 
     // Real-time subscription (do NOT toggle global loading; it would unmount StoryViewer)
-    const channel = gateway
+    const channel = dataClient
       .channel('stories-changes')
       .on(
         'postgres_changes',
@@ -273,7 +273,7 @@ export const useStories = () => {
       .subscribe();
 
     return () => {
-      gateway.removeChannel(channel);
+      dataClient.removeChannel(channel);
     };
   }, [user]);
 

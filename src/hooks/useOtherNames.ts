@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -21,7 +21,7 @@ export const useOtherNames = (userId?: string) => {
   const { user } = useAuth();
 
   // Other Names on a profile are fetched for everyone, including guests: the
-  // gateway serves only rows the owner marked visibility='public' to a
+  // dataClient serves only rows the owner marked visibility='public' to a
   // logged-out visitor (do.md: guests see ALL public profile info), so the
   // fetch is safe and no longer 403s. The realtime subscription below stays
   // authenticated-only — live edits are pointless for a guest viewer.
@@ -29,7 +29,7 @@ export const useOtherNames = (userId?: string) => {
     if (!userId) return;
     
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('other_names')
         .select('*')
         .eq('user_id', userId)
@@ -50,7 +50,7 @@ export const useOtherNames = (userId?: string) => {
 
   const createOtherName = async (otherName: Omit<OtherName, 'id' | 'created_at' | 'updated_at'>) => {
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('other_names')
         .insert([otherName])
         .select()
@@ -76,7 +76,7 @@ export const useOtherNames = (userId?: string) => {
 
   const updateOtherName = async (id: string, updates: Partial<Omit<OtherName, 'id' | 'created_at' | 'updated_at'>>) => {
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('other_names')
         .update(updates)
         .eq('id', id)
@@ -103,7 +103,7 @@ export const useOtherNames = (userId?: string) => {
 
   const deleteOtherName = async (id: string) => {
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('other_names')
         .delete()
         .eq('id', id);
@@ -139,7 +139,7 @@ export const useOtherNames = (userId?: string) => {
   useEffect(() => {
     if (!user || !userId) return;
 
-    const channel = gateway
+    const channel = dataClient
       .channel('other-names-changes')
       .on(
         'postgres_changes',
@@ -156,7 +156,7 @@ export const useOtherNames = (userId?: string) => {
       .subscribe();
 
     return () => {
-      gateway.removeChannel(channel);
+      dataClient.removeChannel(channel);
     };
   }, [userId, user]);
 

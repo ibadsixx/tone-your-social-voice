@@ -3,7 +3,7 @@
 // activity (`latestActivityAt`), newest first — for Direct, Group, AND Channel
 // conversations alike.
 //
-// Drives the real gateway client + fetchConversationsDirectly against an
+// Drives the real dataClient client + fetchConversationsDirectly against an
 // in-memory model where the DB rows are seeded in a deliberately scrambled
 // array position (and with created_at/updated_at/id values that would produce a
 // DIFFERENT order) so the assertions prove the list is sorted ONLY by latest
@@ -17,25 +17,21 @@
 // Also asserts `sortConversationsByLatestActivity` is the mechanism that moves a
 // chat straight to the top on send / realtime receive (the "no refresh" path)
 // and that it always returns a fresh array so React state updates are detected.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, expect, beforeEach, it, vi } from 'vitest';
+import { clearCurrentAccessToken, setCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import {
+  applyPostgrestFilters,
+  applyPostgrestOrder,
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  jsonResponse,
+  postgrestTable,
+} from './infraFixtures';
 
 import { fetchConversationsDirectly, sortConversationsByLatestActivity, applyConversationActivityUpdate, type Conversation } from '@/hooks/useConversations';
 
 type Row = Record<string, unknown>;
 
-function applyServerFilter(rows: Row[], filter: string | undefined): Row[] {
-  if (!filter) return rows;
-  const eq = /^([^=]+)=eq\.(.+)$/.exec(filter);
-  if (eq) return rows.filter(r => String(r[eq[1]]) === eq[2]);
-  const neq = /^([^=]+)=neq\.(.+)$/.exec(filter);
-  if (neq) return rows.filter(r => String(r[neq[1]]) !== neq[2]);
-  const inM = /^([^=]+)=in\.\(([^)]*)\)$/.exec(filter);
-  if (inM) {
-    const vals = new Set(inM[2] ? inM[2].split(',') : []);
-    return rows.filter(r => vals.has(String(r[inM[1]])));
-  }
-  return rows;
-}
 
 const ME = 'me-uuid-0000';
 const ALICE = 'alice-uuid-0001';
@@ -46,7 +42,7 @@ const CHL_C = 'conv-channel-uuid';
 const EMPTY_C = 'conv-empty-uuid';
 
 function makeInMemoryDb() {
-  // Scrambled array position on purpose: CHL is the FIRST row the gateway
+  // Scrambled array position on purpose: CHL is the FIRST row the dataClient
   // returns, but it is NOT the most recently active chat.
   const conversations: Row[] = [
     { id: CHL_C, type: 'channel', name: 'Watercooler', description: null, group_image: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:09Z' },
@@ -86,50 +82,18 @@ function makeInMemoryDb() {
   ];
   const messageReads: Row[] = [];
 
-  const qs = (url: URL) => Object.fromEntries(url.searchParams.entries());
-
   return {
     handle(req: { url: string; method?: string }): { status: number; json: Row[] } {
-      const url = new URL(req.url, 'http://mock.test');
-      const path = url.pathname;
-      const params = qs(url);
+      const table = postgrestTable(req.url);
 
-      if (path === '/api/conversation_participants') {
-        let rows = participants.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      if (path === '/api/conversations') {
-        let rows = conversations.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      if (path === '/api/profiles') {
-        let rows = profiles.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      if (path === '/api/friends') {
-        let rows = friends.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      if (path === '/api/message_requests') {
-        let rows = messageRequests.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      if (path === '/api/messages') {
-        let rows = messages.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      if (path === '/api/message_reads') {
-        let rows = messageReads.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
-        return { status: 200, json: rows };
-      }
-      return { status: 404, json: [{ error: `no mock route for ${path}` }] };
+      if (table === 'conversation_participants') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(participants, req.url), req.url) };
+      if (table === 'conversations') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(conversations, req.url), req.url) };
+      if (table === 'profiles') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(profiles, req.url), req.url) };
+      if (table === 'friends') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(friends, req.url), req.url) };
+      if (table === 'message_requests') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(messageRequests, req.url), req.url) };
+      if (table === 'messages') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(messages, req.url), req.url) };
+      if (table === 'message_reads') return { status: 200, json: applyPostgrestOrder(applyPostgrestFilters(messageReads, req.url), req.url) };
+      return { status: 404, json: [{ error: `no mock route for ${table}` }] };
     },
   };
 }
@@ -137,25 +101,21 @@ function makeInMemoryDb() {
 let db: ReturnType<typeof makeInMemoryDb>;
 
 beforeEach(() => {
-  localStorage.clear();
-  localStorage.setItem(
-    'tone-auth-token',
-    JSON.stringify({ access_token: 'test-token', refresh_token: 'test-refresh' })
-  );
+  setCurrentAccessToken('test-token');
 
   db = makeInMemoryDb();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (isInfraRegistryRequest(input)) return infraRegistryResponse();
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method || 'GET';
     const resp = db.handle({ url, method });
-    return {
-      ok: resp.status < 400,
-      status: resp.status,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      json: async () => resp.json,
-    } as Response;
+    return jsonResponse(resp.status, resp.json);
   });
   (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock;
+});
+
+afterEach(() => {
+  clearCurrentAccessToken();
 });
 
 function orderOf(chats: { conversation_id: string }[]): string[] {
@@ -175,7 +135,7 @@ describe('Chats-list ordering by latest activity', () => {
     const chats = await fetchConversationsDirectly(ME);
     const order = orderOf(chats);
 
-    // CHL is row #1 from the gateway but 2nd by activity -> array position is irrelevant.
+    // CHL is row #1 from the dataClient but 2nd by activity -> array position is irrelevant.
     expect(order[0]).not.toBe(CHL_C);
     // DM's FIRST message (00:00:05) predates CHL's last (00:00:11) yet DM sorts above CHL
     // because DM's most-recent activity (00:00:10) is only slightly older -> first-message date is irrelevant.

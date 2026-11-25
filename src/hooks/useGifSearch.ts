@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 export interface GifItem {
   id: string;
@@ -25,7 +25,7 @@ export const useGifSearch = () => {
     setError(null);
 
     try {
-      const { data, error } = await gateway.functions.invoke('search-gifs', {
+      const { data, error } = await dataClient.functions.invoke('search-gifs', {
         body: { query, limit }
       });
 
@@ -54,7 +54,7 @@ export const useGifSearch = () => {
     setError(null);
 
     try {
-      const { data, error } = await gateway.functions.invoke('search-gifs', {
+      const { data, error } = await dataClient.functions.invoke('search-gifs', {
         body: { trending: true, limit }
       });
 

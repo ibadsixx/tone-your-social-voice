@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { CallType } from '@/services/webrtc';
 import { CallStatusDb } from './types';
 
@@ -12,7 +12,7 @@ export const useCallDatabase = () => {
     durationSeconds: number = 0
   ) => {
     try {
-      await gateway.rpc('log_call', {
+      await dataClient.rpc('log_call', {
         p_caller_id: callerId,
         p_receiver_id: receiverId,
         p_call_type: callType,

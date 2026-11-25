@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Search, UserPlus, Loader2, Users, Megaphone } from 'lucide-react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import { CreateGroupChatDialog } from './CreateGroupChatDialog';
 import { CreateChannelDialog } from './CreateChannelDialog';
@@ -71,7 +71,7 @@ export const NewConversationDialog: React.FC<NewConversationDialogProps> = ({
 
   const fetchFriends = async () => {
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('friends')
         .select(`
           requester_id,
@@ -111,7 +111,7 @@ export const NewConversationDialog: React.FC<NewConversationDialogProps> = ({
   const searchUsers = async () => {
     setLoading(true);
     try {
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .neq('id', currentUserId)

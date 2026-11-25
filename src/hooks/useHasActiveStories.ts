@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 export function useHasActiveStories(userId: string | undefined): boolean {
   const [hasStories, setHasStories] = useState(false);
@@ -11,7 +11,7 @@ export function useHasActiveStories(userId: string | undefined): boolean {
     }
 
     const check = async () => {
-      const { count } = await gateway
+      const { count } = await dataClient
         .from('stories')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', userId)
@@ -22,7 +22,7 @@ export function useHasActiveStories(userId: string | undefined): boolean {
 
     check();
 
-    const channel = gateway
+    const channel = dataClient
       .channel(`user-stories-${userId}`)
       .on(
         'postgres_changes',
@@ -37,7 +37,7 @@ export function useHasActiveStories(userId: string | undefined): boolean {
       .subscribe();
 
     return () => {
-      gateway.removeChannel(channel);
+      dataClient.removeChannel(channel);
     };
   }, [userId]);
 

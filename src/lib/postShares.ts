@@ -19,7 +19,7 @@
  * race-free, which is exactly why it is not the primary path.
  */
 
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 export interface RecordPostShareInput {
   postId: string;
@@ -44,7 +44,7 @@ export const recordPostShare = async ({
 }: RecordPostShareInput): Promise<RecordPostShareResult> => {
   const trimmed = message?.trim() || null;
 
-  const { error: shareError } = await gateway
+  const { error: shareError } = await dataClient
     .from('post_shares')
     .insert({
       post_id: postId,
@@ -55,18 +55,18 @@ export const recordPostShare = async ({
 
   if (shareError) return { ok: false, counterError: shareError.message };
 
-  const { error: rpcError } = await gateway.rpc('increment_post_share_counts', {
+  const { error: rpcError } = await dataClient.rpc('increment_post_share_counts', {
     p_post_id: postId,
   });
 
   if (rpcError) {
     console.warn('[SHARE] increment_post_share_counts unavailable, falling back:', rpcError.message);
-    const { data: postData } = await gateway
+    const { data: postData } = await dataClient
       .from('posts')
       .select('share_count, shares_count')
       .eq('id', postId)
       .single();
-    await gateway
+    await dataClient
       .from('posts')
       .update({
         share_count: (postData?.share_count || 0) + 1,
@@ -78,7 +78,7 @@ export const recordPostShare = async ({
   // A share with commentary is also re-shared onto the sharer's own timeline,
   // matching the `shared_post` row shape the post composer already writes.
   if (trimmed) {
-    await gateway.from('posts').insert({
+    await dataClient.from('posts').insert({
       user_id: userId,
       content: trimmed,
       type: 'shared_post',

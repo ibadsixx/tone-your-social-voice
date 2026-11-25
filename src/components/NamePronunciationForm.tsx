@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import { Eye, Users, Lock } from 'lucide-react';
 
@@ -48,7 +48,7 @@ export const NamePronunciationForm = ({
 
     setLoading(true);
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('profiles')
         .update({ 
           name_pronunciation: pronunciation.trim(),

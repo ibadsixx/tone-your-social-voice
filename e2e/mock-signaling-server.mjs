@@ -1,8 +1,8 @@
-// Test-only Gateway double for real-browser Tone Live P2P verification.
+// Test-only Edge Function double for real-browser Tone Live P2P verification.
 // It implements the same two endpoints the frontend uses:
 //   POST /api/live/sessions/:id/signaling-ticket
 //   WS   /api/live/signaling?ticket=...&after=...
-// It is deliberately in-memory; this is NOT part of the production Gateway.
+// It is deliberately in-memory; this is NOT part of the deployed Functions.
 
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
@@ -31,7 +31,7 @@ const server = http.createServer((req, res) => {
     return;
   }
   const url = new URL(req.url || '/', `http://localhost:${PORT}`);
-  const match = url.pathname.match(/^\/api\/live\/sessions\/([^/]+)\/signaling-ticket$/);
+  const match = url.pathname.match(/^\/functions\/v1\/live\/sessions\/([^/]+)\/signaling-ticket$/);
   if (req.method === 'POST' && match) {
     const auth = req.headers.authorization || '';
     const userId = auth.replace(/^Bearer\s+/i, '').trim();
@@ -52,12 +52,12 @@ const server = http.createServer((req, res) => {
     }));
     return;
   }
-  if (url.pathname === '/api/live/signaling') {
+  if (url.pathname === '/functions/v1/live/signaling') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ name: 'Tone Live mock signaling', ok: true }));
     return;
   }
-  const endMatch = url.pathname.match(/^\/api\/live\/sessions\/([^/]+)\/end$/);
+  const endMatch = url.pathname.match(/^\/functions\/v1\/live\/sessions\/([^/]+)\/end$/);
   if (req.method === 'POST' && endMatch) {
     const sessionKey = decodeURIComponent(endMatch[1]);
     const state = rooms.get(sessionKey);
@@ -65,10 +65,10 @@ const server = http.createServer((req, res) => {
       const ended = {
         id: randomUUID(),
         sessionId: sessionKey,
-        fromUserId: 'gateway',
+        fromUserId: 'live-function',
         type: 'session-ended',
         role: 'host',
-        gatewaySeq: ++state.seq,
+        sequence: ++state.seq,
         timestamp: new Date().toISOString(),
       };
       state.messages.push(ended);
@@ -102,10 +102,10 @@ wss.on('connection', (ws, req) => {
   send(ws, {
     id: randomUUID(),
     sessionId,
-    fromUserId: 'gateway',
+    fromUserId: 'live-function',
     type: 'connected',
     role: 'host',
-    gatewaySeq: state.seq,
+    sequence: state.seq,
     timestamp: new Date().toISOString(),
   });
 
@@ -115,7 +115,7 @@ wss.on('connection', (ws, req) => {
     fromUserId: userId,
     type: 'join',
     role: 'host',
-    gatewaySeq: ++state.seq,
+    sequence: ++state.seq,
     timestamp: new Date().toISOString(),
   };
   state.messages.push(join);
@@ -130,7 +130,7 @@ wss.on('connection', (ws, req) => {
       id: typeof frame.id === 'string' ? frame.id : randomUUID(),
       sessionId,
       fromUserId: userId,
-      gatewaySeq: ++state.seq,
+      sequence: ++state.seq,
       timestamp: new Date().toISOString(),
     };
     state.messages.push(message);
@@ -149,7 +149,7 @@ wss.on('connection', (ws, req) => {
       type: 'leave',
       role: 'host',
       state: { targetUserId: userId },
-      gatewaySeq: ++state.seq,
+      sequence: ++state.seq,
       timestamp: new Date().toISOString(),
     };
     for (const peer of state.sockets) send(peer, leave);

@@ -1,10 +1,12 @@
 // WebRTC Service for handling peer connections
-// Uses public Google STUN servers plus a TURN relay (served by the gateway's
-// /api/realtime/ice-servers endpoint) with ICE restart capability.
+// Uses public Google STUN servers plus a TURN relay (served by the dataClient's
+// /functions/v1/realtime/ice-servers endpoint) with ICE restart capability.
 
-import { gateway } from '@/lib/gateway';
+import { getCachedAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import { getEdgeBaseUrl } from '@/lib/supabase/edgeTransport';
+import { dataClient } from '@/lib/supabase/dataClient';
 
-const GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL;
+const EDGE_BASE_URL = getEdgeBaseUrl();
 
 export const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -15,16 +17,7 @@ export const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
 ];
 
 function getToken(): string | null {
-  try {
-    const sessionStr = localStorage.getItem('tone-auth-token');
-    if (sessionStr) {
-      const session = JSON.parse(sessionStr);
-      return session?.access_token ?? null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
+  return getCachedAccessToken();
 }
 
 const ICE_CACHE_TTL = 5 * 60 * 1000;
@@ -37,17 +30,17 @@ function loadIceServers(): Promise<RTCIceServer[]> {
   }
 
   iceServersCache = (async () => {
-    if (!GATEWAY_URL) return DEFAULT_ICE_SERVERS;
+    if (!EDGE_BASE_URL) return DEFAULT_ICE_SERVERS;
     try {
       let token = getToken();
-      let res = await fetch(`${GATEWAY_URL}/api/realtime/ice-servers`, {
+      let res = await fetch(`${EDGE_BASE_URL}/functions/v1/realtime/ice-servers`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (res.status === 401) {
-        await gateway.auth.refreshSession();
+        await dataClient.auth.refreshSession();
         token = getToken();
-        res = await fetch(`${GATEWAY_URL}/api/realtime/ice-servers`, {
+        res = await fetch(`${EDGE_BASE_URL}/functions/v1/realtime/ice-servers`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
       }
@@ -107,7 +100,7 @@ export class WebRTCService {
 
   constructor() {
     // Peer connection is created lazily (on first media/negotiation call) so
-    // it can use the ICE/TURN config fetched from the gateway.
+    // it can use the ICE/TURN config fetched from the dataClient.
   }
 
   private async ensurePeerConnection(): Promise<RTCPeerConnection> {

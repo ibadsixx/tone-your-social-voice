@@ -4,7 +4,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Camera, Image as ImageIcon, Move, Trash2, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import PhotoLibraryModal from './PhotoLibraryModal';
 import CoverRepositionModal from './CoverRepositionModal';
 import {
@@ -215,7 +215,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
     if (!user?.id) return;
 
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('profiles')
         .update({ 
           cover_pic: null,
@@ -345,7 +345,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
           if (!user?.id) return;
           
           try {
-            const { error } = await gateway
+            const { error } = await dataClient
               .from('profiles')
               .update({ 
                 cover_pic: photoUrl,
@@ -396,7 +396,7 @@ const CoverPhotoEditor = ({ profile, isOwnProfile, onProfileUpdate }: CoverPhoto
           if (!user?.id) return;
           
           try {
-            const { error } = await gateway
+            const { error } = await dataClient
               .from('profiles')
               .update({ cover_position_y: position })
               .eq('id', user.id);

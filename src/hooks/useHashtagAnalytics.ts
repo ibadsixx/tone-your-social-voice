@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 
 interface HashtagAnalytics {
   id: string;
@@ -41,7 +41,7 @@ export const useHashtagAnalytics = (tag: string) => {
       setLoading(true);
       try {
         // Fetch basic analytics from view
-        const { data: analyticsData } = await gateway
+        const { data: analyticsData } = await dataClient
           .from('hashtag_analytics' as any)
           .select('*')
           .eq('tag', tag.toLowerCase())
@@ -51,7 +51,7 @@ export const useHashtagAnalytics = (tag: string) => {
           setAnalytics(analyticsData as any);
 
           // Fetch top contributors
-          const { data: links } = await gateway
+          const { data: links } = await dataClient
             .from('hashtag_links' as any)
             .select(`
               source_id,
@@ -89,7 +89,7 @@ export const useHashtagAnalytics = (tag: string) => {
           }
 
           // Fetch time series data for the last 30 days
-          const { data: timeData } = await gateway
+          const { data: timeData } = await dataClient
             .from('hashtag_links' as any)
             .select('created_at')
             .eq('hashtag_id', (analyticsData as any).id)
@@ -110,7 +110,7 @@ export const useHashtagAnalytics = (tag: string) => {
           }
 
           // Fetch related hashtags (co-occurring hashtags)
-          const { data: relatedData } = await gateway
+          const { data: relatedData } = await dataClient
             .from('hashtag_links' as any)
             .select('source_id')
             .eq('hashtag_id', (analyticsData as any).id)
@@ -120,7 +120,7 @@ export const useHashtagAnalytics = (tag: string) => {
           if (relatedData && (relatedData as any[]).length > 0) {
             const postIds = (relatedData as any[]).map((r: any) => r.source_id);
             
-            const { data: coOccurring } = await gateway
+            const { data: coOccurring } = await dataClient
               .from('hashtag_links' as any)
               .select(`
                 hashtag_id,

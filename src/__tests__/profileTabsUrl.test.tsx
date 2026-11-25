@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 
 // ProfilePage pulls in the profile shell (header, tabs, sections) and the
-// gateway-backed API. These tests only care about URL <-> section behavior, so
+// dataClient-backed API. These tests only care about URL <-> section behavior, so
 // the heavy/network-dependent pieces are stubbed out.
 vi.mock('@/hooks/useAuth', () => {
   // Keep the auth value referentially stable; ProfilePage's fetch effect

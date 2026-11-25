@@ -14,8 +14,8 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 const postReactionUsers = vi.fn();
 const postReactionCount = vi.fn();
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     postReactionUsers: (...a: unknown[]) => postReactionUsers(...a),
     postReactionCount: (...a: unknown[]) => postReactionCount(...a),
     from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }),

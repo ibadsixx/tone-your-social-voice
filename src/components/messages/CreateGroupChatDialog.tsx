@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Search, UserPlus, Loader2, X, ShieldCheck, Shield } from 'lucide-react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -66,7 +66,7 @@ export const CreateGroupChatDialog: React.FC<CreateGroupChatDialogProps> = ({
 
   const fetchEligibleUsers = async () => {
     try {
-      const { data: friends } = await gateway
+      const { data: friends } = await dataClient
         .from('friends')
         .select('requester_id, receiver_id')
         .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
@@ -77,7 +77,7 @@ export const CreateGroupChatDialog: React.FC<CreateGroupChatDialogProps> = ({
         friendIds.add(f.requester_id === currentUserId ? f.receiver_id : f.requester_id);
       });
 
-      const { data: myPartRows } = await gateway
+      const { data: myPartRows } = await dataClient
         .from('conversation_participants')
         .select('conversation_id')
         .eq('user_id', currentUserId);
@@ -86,7 +86,7 @@ export const CreateGroupChatDialog: React.FC<CreateGroupChatDialogProps> = ({
 
       const chatPartnerIds = new Set<string>();
       if (convIds.length > 0) {
-        const { data: otherParts } = await gateway
+        const { data: otherParts } = await dataClient
           .from('conversation_participants')
           .select('user_id')
           .in('conversation_id', convIds)
@@ -123,14 +123,14 @@ export const CreateGroupChatDialog: React.FC<CreateGroupChatDialogProps> = ({
         return;
       }
       const query = searchQuery.trim();
-      const { data, error } = await gateway
+      const { data, error } = await dataClient
         .from('profiles')
         .select('id, username, display_name, profile_pic')
         .neq('id', currentUserId)
         .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`);
       if (error) throw error;
       const uniqueUsers = Array.from(
-        new Map((data || []).map(u => [u.id, u])).values()
+        new Map<string, User>(((data || []) as User[]).map(u => [u.id, u])).values()
       )
         .filter(u => eligibleUserIds.has(u.id) && !selectedIdsSet.has(u.id))
         .slice(0, 10);
@@ -179,7 +179,7 @@ export const CreateGroupChatDialog: React.FC<CreateGroupChatDialogProps> = ({
     setCreating(true);
     try {
       const adminList = [...adminIds];
-      const { data: created, error: convError } = await gateway
+      const { data: created, error: convError } = await dataClient
         .from('conversations')
         .insert({
           type: 'group',
@@ -200,7 +200,7 @@ export const CreateGroupChatDialog: React.FC<CreateGroupChatDialogProps> = ({
         })),
       ];
 
-      const { error: partError } = await gateway
+      const { error: partError } = await dataClient
         .from('conversation_participants')
         .insert(participantRows);
       if (partError) throw partError;

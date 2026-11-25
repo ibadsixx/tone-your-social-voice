@@ -5,7 +5,7 @@
 // existing Friends API / Gateway), exclude people already in the group, and
 // never fall back to a global user search, a follower list, or a pending
 // request. Frontend filtering is a convenience; the Gateway re-verifies the
-// friendship server-side (see gateway groupMembersTest.ts TEST 8c-8e).
+// friendship server-side (see dataClient groupMembersTest.ts TEST 8c-8e).
 //
 // Run: npx vitest run src/__tests__/inviteToGroupFriendsOnly.test.tsx
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

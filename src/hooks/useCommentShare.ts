@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 
@@ -18,7 +18,7 @@ export const useCommentShare = () => {
     if (!user) return;
 
     try {
-      const { error } = await gateway
+      const { error } = await dataClient
         .from('comment_shares')
         .insert({
           comment_id: commentId,
@@ -92,7 +92,7 @@ export const useCommentShare = () => {
 
   const getShareCount = async (commentId: string): Promise<number> => {
     try {
-      const { count, error } = await gateway
+      const { count, error } = await dataClient
         .from('comment_shares')
         .select('*', { count: 'exact', head: true })
         .eq('comment_id', commentId);

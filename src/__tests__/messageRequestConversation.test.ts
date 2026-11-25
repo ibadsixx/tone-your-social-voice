@@ -9,13 +9,24 @@
 //     conversation_id so a click opens the same conversation in Chat, and never
 //     creates a new one.
 //
-// This exercises the real gateway-client code paths (ensureMessageRequest insert
+// This exercises the real dataClient-client code paths (ensureMessageRequest insert
 // and resolveMessageRequestConversation read) against an in-memory model of
 // public.message_requests with the sender/receiver + pending-conversation
 // uniqueness guarantees.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, expect, beforeEach, it, vi } from 'vitest';
+import { clearCurrentAccessToken, setCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
+import {
+  applyPostgrestFilters,
+  applyPostgrestOrder,
+  infraRegistryResponse,
+  isInfraRegistryRequest,
+  jsonResponse,
+  postgrestTable,
+  prefersObjectResponse,
+  shapePostgrestRows,
+} from './infraFixtures';
 
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { ensureMessageRequest, resolveMessageRequestConversation } from '@/lib/messageRequests';
 
 export const __notifications: unknown[] = [];
@@ -30,17 +41,6 @@ const CONVERSATION = 'conversation-uuid-0001';
 
 let notificationRows: unknown[] = [];
 
-function applyServerFilter(rows: any[], filter: string | undefined): any[] {
-  if (!filter) return rows;
-  const eq = /^([^=]+)=eq\.(.+)$/.exec(filter);
-  if (eq) return rows.filter(r => String(r[eq[1]]) === eq[2]);
-  const inM = /^([^=]+)=in\.\(([^)]*)\)$/.exec(filter);
-  if (inM) {
-    const vals = new Set(inM[2] ? inM[2].split(',') : []);
-    return rows.filter(r => vals.has(String(r[inM[1]])));
-  }
-  return rows;
-}
 
 function makeInMemoryDb() {
   const messageRequests: any[] = [];
@@ -53,13 +53,11 @@ function makeInMemoryDb() {
   const conversations: any[] = [{ id: CONVERSATION, type: 'dm' }];
 
   return {
-    handle(req: { url: string; method?: string; body?: unknown }) {
-      const url = new URL(req.url, 'http://mock.test');
+    handle(req: { url: string; method?: string; body?: unknown; single?: boolean }) {
+      const table = postgrestTable(req.url);
       const method = req.method || 'GET';
-      const path = url.pathname;
-      const params = Object.fromEntries(url.searchParams.entries());
 
-      if (path === '/api/message_requests') {
+      if (table === 'message_requests') {
         if (method === 'GET') {
           return { status: 200, json: messageRequests };
         }
@@ -75,19 +73,19 @@ function makeInMemoryDb() {
         }
       }
 
-      if (path === '/api/conversation_participants') {
+      if (table === 'conversation_participants') {
         let rows = participants.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
+      rows = applyPostgrestOrder(applyPostgrestFilters(rows, req.url), req.url);
         return { status: 200, json: rows };
       }
 
-      if (path === '/api/conversations') {
+      if (table === 'conversations') {
         let rows = conversations.slice();
-        if (params['filter']) rows = applyServerFilter(rows, params['filter']);
+      rows = applyPostgrestOrder(applyPostgrestFilters(rows, req.url), req.url);
         return { status: 200, json: rows };
       }
 
-      return { status: 404, json: { error: `no mock route for ${method} ${path}` } };
+      return { status: 404, json: { error: `no mock route for ${method} ${table}` } };
     },
     messageRequests,
   };
@@ -95,27 +93,27 @@ function makeInMemoryDb() {
 
 beforeEach(() => {
   localStorage.clear();
-  localStorage.setItem('tone-auth-token', JSON.stringify({ access_token: 'test-token', refresh_token: 'test-refresh' }));
+  setCurrentAccessToken('test-token');
   notificationRows = [];
 
   const db = makeInMemoryDb();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (isInfraRegistryRequest(input)) return infraRegistryResponse();
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method || 'GET';
     let body: unknown = undefined;
     if (init?.body) body = JSON.parse(init.body as string);
-    const resp = db.handle({ url, method, body });
-    return {
-      ok: resp.status < 400,
-      status: resp.status,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      json: async () => resp.json,
-    } as Response;
+    const resp = db.handle({ url, method, body, single: prefersObjectResponse(init) });
+    return jsonResponse(resp.status, resp.json);
   });
   (globalThis as any).fetch = fetchMock;
 
   notificationRows = __notifications;
   __notifications.length = 0;
+});
+
+afterEach(() => {
+  clearCurrentAccessToken();
 });
 
 describe('message_request -> conversation resolution', () => {
@@ -137,28 +135,35 @@ describe('message_request -> conversation resolution', () => {
     // SENDER and RECEIVER have NO shared conversation (no participants row for
     // the pair), so resolution cannot find a DM to open.
     const onlySender = makeInMemoryDb();
-    onlySender.handle = (req: any) => {
-      const url = new URL(req.url, 'http://mock.test');
-      const path = url.pathname;
-      if (path === '/api/conversation_participants') {
+    onlySender.handle = (req: { url: string; method?: string; single?: boolean }) => {
+      const table = postgrestTable(req.url);
+      if (table === 'conversation_participants') {
         // Only SENDER participates, not RECEIVER -> no shared conversation.
-        return { status: 200, json: [{ conversation_id: CONVERSATION, user_id: SENDER }] };
+        return {
+          status: 200,
+          json: shapePostgrestRows(
+            applyPostgrestFilters([{ conversation_id: CONVERSATION, user_id: SENDER }], req.url),
+            req.single,
+          ),
+        };
       }
-      if (path === '/api/conversations') {
-        return { status: 200, json: [{ id: CONVERSATION, type: 'dm' }] };
+      if (table === 'conversations') {
+        return {
+          status: 200,
+          json: shapePostgrestRows(
+            applyPostgrestFilters([{ id: CONVERSATION, type: 'dm' }], req.url),
+            req.single,
+          ),
+        };
       }
       return { status: 404, json: {} };
     };
     (globalThis as any).fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (isInfraRegistryRequest(input)) return infraRegistryResponse();
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const method = init?.method || 'GET';
-      const resp = onlySender.handle({ url, method });
-      return {
-        ok: resp.status < 400,
-        status: resp.status,
-        headers: new Headers({ 'content-type': 'application/json' }),
-        json: async () => resp.json,
-      } as Response;
+      const resp = onlySender.handle({ url, method, single: prefersObjectResponse(init) });
+      return jsonResponse(resp.status, resp.json);
     });
     const conversationId = await resolveMessageRequestConversation(SENDER, RECEIVER);
     expect(conversationId).toBeUndefined();
@@ -178,7 +183,7 @@ describe('message_request -> conversation resolution', () => {
         category: 'spam',
       });
     }
-    const all = (await gateway.from('message_requests').select('*')).data || [];
+    const all = (await dataClient.from('message_requests').select('*')).data || [];
     expect(all).toHaveLength(1);
     expect(__notifications).toHaveLength(1);
   });

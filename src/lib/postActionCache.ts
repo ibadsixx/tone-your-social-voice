@@ -9,7 +9,7 @@
  * viewer. Both drive the *same* backend records (`reactions`, `comments`,
  * `saved_posts`), but each hook instance kept its own `useState`. Reacting on
  * the viewer therefore left the feed card showing the old state until it
- * happened to remount, and — because the gateway's `postgres_changes` shim
+ * happened to remount, and — because the dataClient's `postgres_changes` shim
  * stores callbacks without ever opening the stream — nothing pushed a
  * correction either. That is the "out of sync with the original Reel/post
  * buttons" symptom.

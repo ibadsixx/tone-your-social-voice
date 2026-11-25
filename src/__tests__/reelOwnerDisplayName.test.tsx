@@ -47,8 +47,8 @@ let profile: Record<string, unknown> = { ...MALAK };
     query the viewer issues, rather than asserting on its source text. */
 const db = vi.hoisted(() => ({ selects: [] as string[] }));
 
-vi.mock('@/lib/gateway', () => ({
-  gateway: {
+vi.mock('@/lib/supabase/dataClient', () => ({
+  dataClient: {
     from: (table: string) => {
       if (table === 'posts') {
         const self: Record<string, unknown> = {

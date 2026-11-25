@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
-import { gateway } from '@/lib/gateway';
+import { dataClient } from '@/lib/supabase/dataClient';
 import { blockingApi } from '@/api';
 import {
   Shield, User, Bell, AlertTriangle, CheckCircle, XCircle,
@@ -43,7 +43,7 @@ const SettingsLanding: React.FC = () => {
   };
 
   const fetchReportCount = async () => {
-    const { data, error } = await gateway
+    const { data, error } = await dataClient
       .from('profile_reports')
       .select('*', { count: 'exact' })
       .eq('reported_user_id', user?.id);
@@ -107,7 +107,7 @@ const SettingsLanding: React.FC = () => {
           <Separator />
           {statusError && (
             <p className="text-xs text-amber-600">
-              Couldn't load some account status from the gateway: {statusError}
+              Couldn't load some account status from the dataClient: {statusError}
             </p>
           )}
           <div className="grid grid-cols-2 gap-3">
