@@ -1,85 +1,26 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { useEffect, useState } from 'react';
 import { useProfile } from '@/hooks/useProfile';
 import { useOtherNames } from '@/hooks/useOtherNames';
-import { useFriends } from '@/hooks/useFriends';
 import { dataClient } from '@/lib/supabase/dataClient';
-import { buildSocialUrl } from '@/utils/socialLinks';
 import { normalizeVisibilityValue } from '@/utils/profileValidation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Building2, 
-  GraduationCap, 
-  MapPin, 
-  Mail, 
-  Phone, 
-  Calendar, 
-  Heart, 
-  Users,
-  User,
-  Eye,
-  Lock,
-  Globe,
-  Facebook,
-  Instagram,
-  Twitter,
-  Linkedin,
-  Youtube,
-  Github,
-  Send,
-  Music2,
-  Briefcase,
-  Newspaper,
-  Link2,
-  type LucideIcon
-} from 'lucide-react';
+import { MapPin, Users, User, Eye, Lock, Globe, type LucideIcon } from 'lucide-react';
+
+/**
+ * Phase 3G-N: this is a PUBLIC profile component.
+ *
+ * It must never read private columns from public.profiles. The old wildcard
+ * profiles read (`select('*')`) and all client-side visibility-gated private
+ * rows were removed: client-side visibility is not a database security boundary.
+ * Owner-only private overview details require the approved future secure
+ * owner-only read function and are explicitly marked as blocked below.
+ */
 
 interface OverviewSectionProps {
   profileId: string;
   isOwnProfile: boolean;
-}
-
-interface ExtendedProfile {
-  id: string;
-  username: string;
-  display_name: string;
-  bio: string | null;
-  email: string | null;
-  phone_country_code: string | null;
-  phone_number: string | null;
-  birthday: string | null;
-  birth_date: string | null;
-  birth_year: number | null;
-  function: string | null;
-  company_id: string | null;
-  college_id: string | null;
-  high_school_id: string | null;
-  relationship_status: string | null;
-  about_you: string | null;
-  gender: string | null;
-  pronouns: string | null;
-  current_city: string | null;
-  websites_social_links: { type: string; url: string; label?: string }[] | null;
-  // Visibility fields
-  email_visibility: string;
-  phone_visibility: string;
-  websites_visibility: string;
-  birth_date_visibility: string;
-  birth_year_visibility: string;
-  function_visibility: string;
-  company_visibility: string;
-  college_visibility: string;
-  high_school_visibility: string;
-  relationship_visibility: string;
-  about_you_visibility: string;
-  gender_visibility: string;
-  pronouns_visibility: string;
-  // Related data
-  companies?: { name: string; type: string };
-  colleges?: { name: string };
-  high_schools?: { name: string };
 }
 
 interface FamilyMember {
@@ -93,527 +34,157 @@ interface FamilyMember {
   };
 }
 
-const WEBSITE_TYPE_ICONS: Record<string, LucideIcon> = {
-  website: Globe,
-  facebook: Facebook,
-  instagram: Instagram,
-  twitter: Twitter,
-  x: Twitter,
-  linkedin: Linkedin,
-  youtube: Youtube,
-  tiktok: Music2,
-  github: Github,
-  telegram: Send,
-  portfolio: Briefcase,
-  blog: Newspaper,
-  other: Link2,
-};
-
-const getWebsiteIcon = (type: string): LucideIcon => WEBSITE_TYPE_ICONS[type.toLowerCase()] || Link2;
+interface OverviewItem {
+  icon: LucideIcon;
+  label: string;
+  value: React.ReactNode;
+}
 
 const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
-  const { user } = useAuth();
-  const { profile: basicProfile } = useProfile(profileId);
+  // Public six-column projection only.
+  const { profile } = useProfile(profileId);
   const { otherNames } = useOtherNames(profileId);
-  const { friends } = useFriends(user?.id);
-  const [extendedProfile, setExtendedProfile] = useState<ExtendedProfile | null>(null);
+  const [currentCity, setCurrentCity] = useState<string | null>(null);
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Check if current user is friends with profile owner
-  const isFriend = friends.some(friend => friend.id === profileId);
-  const currentUserId = user?.id;
-
   useEffect(() => {
-    const fetchExtendedProfile = async () => {
-      if (!profileId) return;
+    if (!profileId) return;
+    let cancelled = false;
 
+    const loadPublicExtras = async () => {
       try {
-        // Fetch extended profile data with related information
-        const { data: profile, error } = await dataClient
-          .from('profiles')
-          .select(`
-            *,
-            companies:company_id(name, type),
-            colleges:college_id(name),
-            high_schools:high_school_id(name)
-          `)
-          .eq('id', profileId)
-          .single();
-
-        if (error && error.code !== 'PGRST116') throw error;
-
-        if (profile) {
-          // Places (current city) live in profile_details, not profiles.
-          const { data: place, error: placeError } = await dataClient
+        // `profile_details` is a separate table, not a private profiles column.
+        const [{ data: place }, { data: family }] = await Promise.all([
+          dataClient
             .from('profile_details')
             .select('field_value')
             .eq('profile_id', profileId)
             .eq('section', 'places')
             .eq('field_name', 'current_city')
-            .maybeSingle();
+            .maybeSingle(),
+          dataClient
+            .from('family_relationships')
+            .select(`
+              id,
+              member_id,
+              relation_type,
+              visibility,
+              profiles!family_relationships_member_id_fkey(display_name, username)
+            `)
+            .eq('user_id', profileId),
+        ]);
 
-          if (placeError && placeError.code !== 'PGRST116') {
-            console.error('Error fetching current city:', placeError);
-          }
-
-          setExtendedProfile({
-            ...(profile as ExtendedProfile),
-            ...(place?.field_value ? { current_city: place.field_value } : {})
-          });
+        if (cancelled) return;
+        setCurrentCity(typeof place?.field_value === 'string' ? place.field_value : null);
+        setFamilyMembers((family ?? []) as FamilyMember[]);
+      } catch {
+        if (!cancelled) {
+          setCurrentCity(null);
+          setFamilyMembers([]);
         }
-
-        // Fetch family relationships
-        const { data: family, error: familyError } = await dataClient
-          .from('family_relationships')
-          .select(`
-            id,
-            member_id,
-            relation_type,
-            visibility,
-            profiles!family_relationships_member_id_fkey(display_name, username)
-          `)
-          .eq('user_id', profileId);
-
-        if (familyError) throw familyError;
-
-        setFamilyMembers(family || []);
-      } catch (error) {
-        console.error('Error fetching extended profile:', error);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    fetchExtendedProfile();
+    void loadPublicExtras();
+    return () => {
+      cancelled = true;
+    };
   }, [profileId]);
 
-  // Helper function to check if field should be visible based on visibility setting
-  const isFieldVisible = (visibility: string): boolean => {
-    if (isOwnProfile) return true; // Owner can always see their own data
-
-    // DB stores some visibility columns Title Case ("Public") and others
-    // lowercase ("public"); normalize before comparing.
+  // Visibility values for the separate family_relationships/other_names tables
+  // are presentation hints only; they are not a profile-column security gate.
+  const isVisible = (visibility: string): boolean => {
     const normalized = normalizeVisibilityValue(visibility);
-
-    switch (normalized) {
-      case 'public':
-        return true;
-      case 'friends':
-        return isFriend;
-      case 'only_me':
-        return false;
-      default:
-        return false;
-    }
+    return normalized === 'public';
   };
 
-  // Helper function to get visibility icon
-  const getVisibilityIcon = (visibility: string) => {
-    switch (visibility) {
-      case 'public':
-        return <Eye className="h-3 w-3" />;
-      case 'friends':
-        return <Users className="h-3 w-3" />;
-      case 'private':
-        return <Lock className="h-3 w-3" />;
-      default:
-        return <Eye className="h-3 w-3" />;
-    }
+  const visibilityIcon = (visibility: string) => {
+    const normalized = normalizeVisibilityValue(visibility);
+    return normalized === 'public' ? <Eye className="h-3 w-3" /> : <Lock className="h-3 w-3" />;
   };
 
-  // Helper function to format phone number
-  const formatPhoneNumber = (countryCode: string, number: string): string => {
-    return `${countryCode} ${number}`;
-  };
+  const sections: Array<{ title: string; items: OverviewItem[] }> = [];
 
-  // Helper function to format birth date (day + month only)
-  const formatBirthDate = (birthDate: string | null): string => {
-    if (birthDate) {
-      const date = new Date(birthDate);
-      return date.toLocaleDateString('en-US', { 
-        month: 'long', 
-        day: 'numeric'
-      });
-    }
-    return '';
-  };
-
-  // Helper function to format birth year
-  const formatBirthYear = (birthYear: number | null): string => {
-    if (birthYear) {
-      return birthYear.toString();
-    }
-    return '';
-  };
-
-  if (loading) {
-    return (
-      <Card>
-        <CardHeader className="p-4 md:p-6">
-          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-            <User className="h-5 w-5" />
-            Overview
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 md:p-6 pt-0 md:pt-0">
-          <div className="text-muted-foreground">Loading...</div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!extendedProfile) {
-    return (
-      <Card>
-        <CardHeader className="p-4 md:p-6">
-          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-            <User className="h-5 w-5" />
-            Overview
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 md:p-6 pt-0 md:pt-0">
-          <div className="text-muted-foreground">No information to show</div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const sections = [];
-
-  // Work and Education Section
-  const workEducationItems = [];
-  
-  if (extendedProfile.function && isFieldVisible(extendedProfile.function_visibility)) {
-    let workInfo = extendedProfile.function;
-    let currentVisibility = extendedProfile.function_visibility;
-    
-    if (extendedProfile.companies && isFieldVisible(extendedProfile.company_visibility)) {
-      workInfo += ` at ${extendedProfile.companies.name}`;
-      // Use company visibility if it's more restrictive
-      if (extendedProfile.company_visibility === 'private' || 
-          (extendedProfile.company_visibility === 'friends' && extendedProfile.function_visibility === 'public')) {
-        currentVisibility = extendedProfile.company_visibility;
-      }
-    }
-    
-    workEducationItems.push({
-      icon: <Building2 className="h-4 w-4" />,
-      label: 'Works as',
-      value: (
-        <div className="flex items-center gap-2">
-          <span>{workInfo}</span>
-          {getVisibilityIcon(currentVisibility)}
-        </div>
-      )
-    });
-  }
-
-  if (extendedProfile.colleges?.name && isFieldVisible(extendedProfile.college_visibility)) {
-    workEducationItems.push({
-      icon: <GraduationCap className="h-4 w-4" />,
-      label: 'Studied at',
-      value: (
-        <div className="flex items-center gap-2">
-          <span>{extendedProfile.colleges.name}</span>
-          {getVisibilityIcon(extendedProfile.college_visibility)}
-        </div>
-      )
-    });
-  }
-
-  if (extendedProfile.high_schools?.name && isFieldVisible(extendedProfile.high_school_visibility)) {
-    workEducationItems.push({
-      icon: <GraduationCap className="h-4 w-4" />,
-      label: 'Went to',
-      value: (
-        <div className="flex items-center gap-2">
-          <span>{extendedProfile.high_schools.name}</span>
-          {getVisibilityIcon(extendedProfile.high_school_visibility)}
-        </div>
-      )
-    });
-  }
-
-  if (workEducationItems.length > 0) {
+  // `bio` is one of the six approved public profile columns.
+  if (profile?.bio) {
     sections.push({
-      title: 'Work and Education',
-      items: workEducationItems
+      title: 'About',
+      items: [{ icon: User, label: 'Bio', value: <span>{profile.bio}</span> }],
     });
   }
 
-  // Contact and Basic Info Section
-  const contactItems = [];
-
-  // Current city (from profile_details "places" section; no privacy setting)
-  if (extendedProfile.current_city) {
-    contactItems.push({
-      icon: <MapPin className="h-4 w-4" />,
-      label: 'Current City',
-      value: (
-        <div className="flex items-center gap-2">
-          <span>{extendedProfile.current_city}</span>
-        </div>
-      )
-    });
-  }
-
-  const profileEmails: string[] = (() => {
-    const email = extendedProfile.email;
-    if (!email) return [];
-    if (Array.isArray(email)) return email;
-    try {
-      const parsed = JSON.parse(email);
-      if (Array.isArray(parsed)) return parsed;
-    } catch {}
-    return [email];
-  })();
-
-  if (profileEmails.length > 0) {
-    contactItems.push({
-      icon: <Mail className="h-4 w-4" />,
-      label: 'Email',
-      value: (
-        <div className="space-y-1">
-          {profileEmails.map((addr, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span className="break-all">{addr}</span>
-              {i === 0 && getVisibilityIcon(extendedProfile.email_visibility)}
-            </div>
-          ))}
-        </div>
-      )
-    });
-  }
-
-  if (extendedProfile.phone_number && isFieldVisible(extendedProfile.phone_visibility)) {
-    const phoneNumber = formatPhoneNumber(extendedProfile.phone_country_code || '', extendedProfile.phone_number);
-    contactItems.push({
-      icon: <Phone className="h-4 w-4" />,
-      label: 'Phone',
-      value: (
-        <div className="flex items-center gap-2">
-          <span>{phoneNumber}</span>
-          {getVisibilityIcon(extendedProfile.phone_visibility)}
-        </div>
-      )
-    });
-  }
-
-  // Add websites and social links if visible
-  const websiteLinks = Array.isArray(extendedProfile.websites_social_links)
-    ? extendedProfile.websites_social_links
-    : [];
-  if (websiteLinks.length > 0 && isFieldVisible(extendedProfile.websites_visibility)) {
-    contactItems.push({
-      icon: <Globe className="h-4 w-4" />,
-      label: 'Websites and Social Links',
-      value: (
-        <div className="flex flex-wrap gap-2">
-          {websiteLinks.map((link, index) => {
-            const Icon = getWebsiteIcon(link.type);
-            const isTone = link.type.toLowerCase() === 'tone';
-            return (
-              <a
-                key={index}
-                href={buildSocialUrl(link.type, link.url)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-primary"
-              >
-                {isTone && (
-                  <img src="/favicon.ico" alt="Tone" className="h-4 w-4 shrink-0 rounded-sm"  loading="eager" decoding="async" />
-                )}
-                {!isTone && <Icon className="h-4 w-4 shrink-0 text-primary" />}
-                <span>{link.label || link.type}</span>
-                {index === 0 && getVisibilityIcon(extendedProfile.websites_visibility)}
-              </a>
-            );
-          })}
-        </div>
-      )
-    });
-  }
-
-  // Add date of birth if visible (combines month/day with year, falling back
-  // to the legacy `birthday` column when `birth_date` is not populated).
-  const birthYearVisible = isFieldVisible(extendedProfile.birth_year_visibility);
-  const hasBirthDate = Boolean(extendedProfile.birth_date || extendedProfile.birthday);
-  if (hasBirthDate && isFieldVisible(extendedProfile.birth_date_visibility)) {
-    const birthDateSource = String(extendedProfile.birth_date || extendedProfile.birthday || '');
-    let birthText = formatBirthDate(birthDateSource);
-    const year = birthYearVisible
-      ? formatBirthYear(
-          extendedProfile.birth_year ||
-            (extendedProfile.birthday ? new Date(extendedProfile.birthday).getFullYear() : null)
-        )
-      : '';
-    if (year) birthText += `, ${year}`;
-    if (birthText) {
-      contactItems.push({
-        icon: <Calendar className="h-4 w-4" />,
-        label: 'Date of Birth',
-        value: (
-          <div className="flex items-center gap-2">
-            <span>{birthText}</span>
-            {getVisibilityIcon(extendedProfile.birth_date_visibility)}
-          </div>
-        )
-      });
-    }
-  }
-
-  // Add gender if visible
-  if (extendedProfile.gender && isFieldVisible(extendedProfile.gender_visibility)) {
-    contactItems.push({
-      icon: <User className="h-4 w-4" />,
-      label: 'Gender',
-      value: (
-        <div className="flex items-center gap-2">
-          <span>{extendedProfile.gender}</span>
-          {getVisibilityIcon(extendedProfile.gender_visibility)}
-        </div>
-      )
-    });
-  }
-
-  // Add pronouns if visible
-  if (extendedProfile.pronouns && isFieldVisible(extendedProfile.pronouns_visibility)) {
-    contactItems.push({
-      icon: <User className="h-4 w-4" />,
-      label: 'Pronouns',
-      value: (
-        <div className="flex items-center gap-2">
-          <span>{extendedProfile.pronouns}</span>
-          {getVisibilityIcon(extendedProfile.pronouns_visibility)}
-        </div>
-      )
-    });
-  }
-
-  if (contactItems.length > 0) {
+  if (currentCity) {
     sections.push({
       title: 'Contact and Basic Info',
-      items: contactItems
+      items: [
+        {
+          icon: MapPin,
+          label: 'Current City',
+          value: <span>{currentCity}</span>,
+        },
+      ],
     });
   }
 
-  // Family and Relationships Section
-  const relationshipItems = [];
-
-  if (extendedProfile.relationship_status && isFieldVisible(extendedProfile.relationship_visibility)) {
-    relationshipItems.push({
-      icon: <Heart className="h-4 w-4" />,
-      label: 'Relationship Status',
-      value: (
-        <div className="flex items-center gap-2">
-          <span>{extendedProfile.relationship_status}</span>
-          {getVisibilityIcon(extendedProfile.relationship_visibility)}
-        </div>
-      )
-    });
-  }
-
-  // Add visible family members
-  const visibleFamily = familyMembers.filter(member => 
-    isFieldVisible(member.visibility) && member.profiles
-  );
-
+  const visibleFamily = familyMembers.filter((member) => member.profiles && isVisible(member.visibility));
   if (visibleFamily.length > 0) {
-    relationshipItems.push({
-      icon: <Users className="h-4 w-4" />,
-      label: 'Family',
-      value: (
-        <div className="flex flex-wrap gap-1">
-          {visibleFamily.map(member => (
-            <div key={member.id} className="flex items-center gap-1">
-              <Badge variant="secondary" className="text-xs">
-                {member.relation_type}: {member.profiles?.display_name}
-              </Badge>
-              {getVisibilityIcon(member.visibility)}
-            </div>
-          ))}
-        </div>
-      )
-    });
-  }
-
-  if (relationshipItems.length > 0) {
     sections.push({
       title: 'Family and Relationships',
-      items: relationshipItems
-    });
-  }
-
-  // Details About You Section
-  const detailsItems = [];
-
-  if (extendedProfile.about_you && isFieldVisible(extendedProfile.about_you_visibility)) {
-    detailsItems.push({
-      icon: <User className="h-4 w-4" />,
-      label: 'About',
-      value: (
-        <div className="flex items-center gap-2">
-          <span>{extendedProfile.about_you}</span>
-          {getVisibilityIcon(extendedProfile.about_you_visibility)}
-        </div>
-      )
-    });
-  }
-
-  // Add visible other names
-  const visibleOtherNames = otherNames.filter(name => isFieldVisible(name.visibility));
-  if (visibleOtherNames.length > 0) {
-    detailsItems.push({
-      icon: <User className="h-4 w-4" />,
-      label: 'Other Names',
-      value: (
-        <div className="flex flex-wrap gap-1">
-          {visibleOtherNames.map(name => (
-            <div key={name.id} className="flex items-center gap-1">
-              <Badge variant="outline" className="text-xs">
-                {name.type}: {name.name}
-              </Badge>
-              {getVisibilityIcon(name.visibility)}
+      items: [
+        {
+          icon: Users,
+          label: 'Family',
+          value: (
+            <div className="flex flex-wrap gap-1">
+              {visibleFamily.map((member) => (
+                <div key={member.id} className="flex items-center gap-1">
+                  <Badge variant="secondary" className="text-xs">
+                    {member.relation_type}: {member.profiles?.display_name}
+                  </Badge>
+                  {visibilityIcon(member.visibility)}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )
+          ),
+        },
+      ],
     });
   }
 
-  if (detailsItems.length > 0) {
+  const visibleOtherNames = otherNames.filter((name) => isVisible(name.visibility));
+  if (visibleOtherNames.length > 0) {
     sections.push({
       title: 'Details About You',
-      items: detailsItems
+      items: [
+        {
+          icon: User,
+          label: 'Other Names',
+          value: (
+            <div className="flex flex-wrap gap-1">
+              {visibleOtherNames.map((name) => (
+                <div key={name.id} className="flex items-center gap-1">
+                  <Badge variant="outline" className="text-xs">
+                    {name.type}: {name.name}
+                  </Badge>
+                  {visibilityIcon(name.visibility)}
+                </div>
+              ))}
+            </div>
+          ),
+        },
+      ],
     });
   }
 
-  if (sections.length === 0) {
-    return (
-      <Card>
-        <CardHeader className="p-4 md:p-6">
-          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-            <User className="h-5 w-5" />
-            Overview
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 md:p-6 pt-0 md:pt-0">
-          <div className="text-muted-foreground">No information to show</div>
-        </CardContent>
-      </Card>
-    );
-  }
+  const renderBody = () => {
+    if (loading) return <div className="text-muted-foreground">Loading...</div>;
+    if (sections.length === 0) return <div className="text-muted-foreground">No information to show</div>;
 
-  return (
-    <Card>
-      <CardHeader className="p-4 md:p-6">
-        <CardTitle className="flex items-center gap-2">
-          <User className="h-5 w-5" />
-          Overview
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6 pt-0 md:pt-0">
+    return (
+      <div className="space-y-4 md:space-y-6">
         {sections.map((section, sectionIndex) => (
           <div key={section.title}>
             {sectionIndex > 0 && <Separator className="mb-4" />}
@@ -625,15 +196,11 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
                 {section.items.map((item, itemIndex) => (
                   <div key={itemIndex} className="flex items-start gap-2 md:gap-3">
                     <div className="mt-0.5 text-muted-foreground shrink-0">
-                      {item.icon}
+                      <item.icon className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs md:text-sm font-medium text-muted-foreground">
-                        {item.label}
-                      </div>
-                      <div className="text-xs md:text-sm text-foreground break-words">
-                        {item.value}
-                      </div>
+                      <div className="text-xs md:text-sm font-medium text-muted-foreground">{item.label}</div>
+                      <div className="text-xs md:text-sm text-foreground break-words">{item.value}</div>
                     </div>
                   </div>
                 ))}
@@ -641,7 +208,24 @@ const OverviewSection = ({ profileId, isOwnProfile }: OverviewSectionProps) => {
             </div>
           </div>
         ))}
-      </CardContent>
+        {isOwnProfile && (
+          <p className="text-xs text-muted-foreground">
+            Additional private overview details are awaiting the secure owner-only read implementation.
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <Card>
+      <CardHeader className="p-4 md:p-6">
+        <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+          <Globe className="h-5 w-5" />
+          Overview
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 md:p-6 pt-0 md:pt-0">{renderBody()}</CardContent>
     </Card>
   );
 };

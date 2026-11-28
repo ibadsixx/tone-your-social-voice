@@ -2,8 +2,14 @@ import { useState, useEffect } from 'react';
 import { dataClient } from '@/lib/supabase/dataClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { privateObjectPath, resolvePrivateStorageUrl } from '@/lib/privateStorage';
 
 export type ReportReason = 'fake_account' | 'harassment' | 'inappropriate_content' | 'other';
+
+/** Resolve a stored private evidence path to a short-lived signed URL. */
+export function resolveReportEvidenceUrl(value: string | null | undefined): Promise<string | null> {
+  return resolvePrivateStorageUrl(value, 'report-evidence');
+}
 
 interface ProfileReport {
   id: string;
@@ -11,6 +17,7 @@ interface ProfileReport {
   reporter_user_id: string;
   reason: ReportReason;
   description: string | null;
+  /** Stable private Storage object path, not a public URL. */
   image_url?: string | null;
   status: 'pending' | 'reviewed' | 'resolved';
   created_at: string;
@@ -34,11 +41,9 @@ export const useProfileReports = (reportedUserId?: string) => {
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = dataClient.storage
-        .from('report-evidence')
-        .getPublicUrl(fileName);
-
-      return publicUrl;
+      // Persist a stable private Storage path. Readers must resolve it with
+      // resolveReportEvidenceUrl(); a public URL is never stored or generated.
+      return privateObjectPath('report-evidence', fileName);
     } catch (error) {
       console.error('Error uploading evidence:', error);
       throw error;

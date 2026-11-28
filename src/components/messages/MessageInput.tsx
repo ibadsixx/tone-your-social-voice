@@ -222,10 +222,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       const fileName = `${uuidv4()}.${fileExtension}`;
       const filePath = `message_audios/${conversationId}/${fileName}`;
 
-      // Upload to Supabase Storage (through the Gateway); the response carries
-      // the Cloudinary CDN URL (data.url) which is persisted on the message row
-      // (audio_url) so playback works for the recipient too.
-      const { data: uploadData, error: uploadError } = await dataClient.storage
+      // Upload to the verified private `message_audios` bucket. No public URL
+      // is created or persisted: the message row keeps the stable object path
+      // and playback re-signs it with the recipient's authenticated session.
+      const { error: uploadError } = await dataClient.storage
         .from('message_audios')
         .upload(filePath, recording.blob, {
           cacheControl: '3600',
@@ -242,7 +242,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         duration: recording.duration,
         extension: fileExtension,
         path: filePath,
-        audioUrl: uploadData?.url,
       });
 
       // Create the voice message. The handler returns false (rather than
@@ -254,8 +253,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         filePath,
         recording.duration,
         recording.blob.type,
-        recording.blob.size,
-        uploadData?.url
+        recording.blob.size
       );
       if (sent === false) return;
 

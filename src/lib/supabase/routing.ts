@@ -1,11 +1,12 @@
 // Tone frontend — deterministic multi-project routing.
 //
 // A domain is not a project. This is the single resolver used by all direct
-// Supabase access. It never chooses by priority and never reads from an
-// arbitrary project: project_key and explicit routing metadata must identify
-// exactly one active destination.
+// Supabase access. Priority only orders registry results; it never selects a
+// destination. A route is accepted only when an explicit approved project key
+// or validated routing metadata identifies exactly one active project.
 
 import { getActiveProjectsByDomain, loadInfrastructureProjects } from './registry';
+import { knownProjectKeyForDomain } from './projects';
 import type {
   InfrastructureConfigError,
   InfrastructureProject,
@@ -31,13 +32,15 @@ const TABLE_DOMAIN_OVERRIDES: Record<string, string> = {
   live_reports: 'live_streams',
   live_sessions: 'live_streams',
   profile_photos: 'profiles',
+  restricted_users: 'blocking',
   user_blocks: 'blocking',
   user_restrictions: 'blocking',
 };
 
 /**
  * Explicit RPC ownership. Every RPC called by the frontend is listed here; a
- * missing mapping is an error, not a broadcast to projects sharing a domain.
+ * missing mapping is routed by its function name only when validated registry
+ * metadata exists for that domain.
  */
 const RPC_DOMAIN_OVERRIDES: Record<string, string> = {
   add_blocked_nickname: 'blocking',
@@ -60,12 +63,14 @@ const RPC_DOMAIN_OVERRIDES: Record<string, string> = {
   get_blocked_senders: 'blocked_message_senders',
   get_blocked_users: 'blocking',
   get_call_history: 'call_history',
+  get_profile_about_fields: 'profiles',
   get_channel_members: 'conversation_participants',
   get_channel_stats: 'conversations',
   get_channel_user_role: 'conversation_participants',
   get_encryption_details: 'user_encryption_keys',
   get_group_members: 'conversation_participants',
   get_message_poll: 'message_polls',
+  get_music_library_with_stats: 'music_library',
   get_mutual_friends_count: 'friends',
   get_my_advertisers: 'advertisers',
   get_my_contact_settings: 'user_contacts',
@@ -73,6 +78,7 @@ const RPC_DOMAIN_OVERRIDES: Record<string, string> = {
   get_my_export_requests: 'export_requests',
   get_my_search_history: 'search_history',
   get_other_user_read_receipts_enabled: 'conversation_settings',
+  get_or_create_dm: 'conversations',
   get_people_you_may_know: 'friends',
   get_restricted_users: 'blocking',
   get_trending_music: 'music',
@@ -111,6 +117,32 @@ export function domainForRpc(functionName: string): string {
   return RPC_DOMAIN_OVERRIDES[functionName] ?? functionName;
 }
 
+/**
+ * RPCs that only read data must use the project's `read_destination`. Everything
+ * else — including `get_or_create_dm`, which creates a conversation — stays on
+ * the write path. This is derived from the function contract, never from a
+ * project name or priority.
+ */
+export function rpcOperation(functionName: string): OperationType {
+  return /^(get_|is_)/.test(functionName) && functionName !== 'get_or_create_dm'
+    ? 'read'
+    : 'write';
+}
+
+/**
+ * Extract the Supabase project reference from a standard project URL. Returns
+ * null for custom domains or malformed hosts so identity checks fail closed.
+ */
+export function projectRefFromUrl(url: string): string | null {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    const match = host.match(/^([a-z0-9]{20})\.supabase\.co$/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
 function routeError(
   code: InfrastructureConfigError['code'],
   message: string,
@@ -122,62 +154,123 @@ function routeError(
   return error;
 }
 
-function hasMetadata(
+type DeclaredField =
+  | 'responsibility'
+  | 'partition_key'
+  | 'read_destination'
+  | 'write_destination';
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+function collectDeclaredStrings(
   projects: InfrastructureProject[],
-  field: keyof Pick<
-    InfrastructureProject,
-    'responsibility' | 'operation_types' | 'partition_key' | 'read_destination' | 'write_destination'
-  >
-): boolean {
-  return projects.some((project) => {
+  field: DeclaredField
+): string[] {
+  const values = new Set<string>();
+  for (const project of projects) {
     const value = project[field];
-    return Array.isArray(value) ? value.length > 0 : value != null && value !== '';
-  });
+    if (nonEmptyString(value)) values.add(value);
+  }
+  return [...values];
+}
+
+function declaredStrings(
+  projects: InfrastructureProject[],
+  field: DeclaredField,
+  domain: string
+): string[] {
+  const list = collectDeclaredStrings(projects, field);
+  if (list.length > 1) {
+    throw routeError(
+      'AMBIGUOUS_ROUTE',
+      `Conflicting ${field} declarations for domain ${domain}; routing refused`,
+      { field, values: list }
+    );
+  }
+  return list;
+}
+
+function destinationFieldFor(operation: OperationType): 'read_destination' | 'write_destination' {
+  return operation === 'write' || operation === 'sync' ? 'write_destination' : 'read_destination';
+}
+
+/** Attach an explicitly approved project key when the domain has one. */
+export function withKnownProjectKey(request: ProjectRouteRequest): ProjectRouteRequest {
+  if (request.projectKey) return request;
+  const projectKey = knownProjectKeyForDomain(request.domain);
+  return projectKey ? { ...request, projectKey } : request;
 }
 
 /**
  * Resolve exactly one active project for an operation.
  *
- * Priority is used only for stable registry ordering; it is never a selector.
- * When metadata is absent, a single active project for the domain is accepted.
- * More than one candidate without a distinguishing key/metadata fails loudly.
+ * A single active project is never enough by itself. The caller must supply an
+ * approved `projectKey`, or the extended registry metadata must identify one
+ * destination. Conflicting metadata, missing partition keys, and unresolved
+ * ambiguity all fail closed.
  */
 export async function resolveProjectRoute(
   request: ProjectRouteRequest
 ): Promise<ResolvedProjectRoute> {
   const projects = await loadInfrastructureProjects();
-  let candidates = getActiveProjectsByDomain(projects, request.domain);
+  const active = getActiveProjectsByDomain(projects, request.domain);
 
-  if (candidates.length === 0) {
+  if (active.length === 0) {
     throw routeError(
       'DOMAIN_NOT_FOUND',
       `No active infrastructure project registered for domain: ${request.domain}`
     );
   }
 
-  if (request.projectKey) {
-    candidates = candidates.filter((project) => project.project_key === request.projectKey);
+  let candidates = active;
+  const selectorsUsed: string[] = [];
+  const projectKey = request.projectKey;
+
+  if (projectKey) {
+    candidates = active.filter((project) => project.project_key === projectKey);
     if (candidates.length === 0) {
       throw routeError(
         'PROJECT_NOT_FOUND',
-        `No active project ${request.projectKey} for domain ${request.domain}`,
-        { projectKey: request.projectKey, domain: request.domain }
+        `No active project ${projectKey} for domain ${request.domain}`,
+        { projectKey, domain: request.domain }
       );
     }
-  } else {
-    const destinationField =
-      request.operation === 'write' || request.operation === 'sync'
-        ? 'write_destination'
-        : 'read_destination';
+    selectorsUsed.push('project_key');
+  }
 
-    if (hasMetadata(candidates, destinationField)) {
-      const destinationKey = candidates.find((project) => project[destinationField])?.[destinationField];
-      if (!destinationKey) {
-        throw routeError(
-          'INVALID_CONFIG',
-          `No ${destinationField} declared for domain ${request.domain}`
-        );
-      }
+  // A project reference is an identity check, never a Registry key. This is
+  // used by explicit resource routes (Storage buckets and confirmed channels)
+  // whose host was verified by the Phase 3B read-only probe.
+  if (request.expectedProjectRef) {
+    const identityMatches = candidates.filter(
+      (project) => projectRefFromUrl(project.project_url) === request.expectedProjectRef
+    );
+    if (identityMatches.length === 0) {
+      throw routeError(
+        'INVALID_CONFIG',
+        `Registry project for domain ${request.domain} does not match the verified project identity`,
+        { domain: request.domain, projectKey }
+      );
+    }
+    candidates = identityMatches;
+    selectorsUsed.push('project_ref');
+  }
+
+  // Operation-specific destination must agree with the selected project.
+  const destinationField = destinationFieldFor(request.operation);
+  const destinationValues = declaredStrings(candidates, destinationField, request.domain);
+  if (destinationValues.length > 0) {
+    const destinationKey = destinationValues[0];
+    if (projectKey && destinationKey !== projectKey) {
+      throw routeError(
+        'INVALID_CONFIG',
+        `${destinationField} ${destinationKey} does not match ${projectKey} for domain ${request.domain}`,
+        { destinationKey, projectKey }
+      );
+    }
+    if (!projectKey) {
       const destination = candidates.filter((project) => project.project_key === destinationKey);
       if (destination.length === 0) {
         throw routeError(
@@ -188,24 +281,33 @@ export async function resolveProjectRoute(
       }
       candidates = destination;
     }
+    selectorsUsed.push(destinationField);
   }
 
-  if (hasMetadata(candidates, 'responsibility')) {
-    const matched = request.responsibility
-      ? candidates.filter((project) => project.responsibility === request.responsibility)
-      : candidates.filter((project) => project.responsibility === request.domain);
+  if (request.responsibility) {
+    const matched = candidates.filter((project) => project.responsibility === request.responsibility);
     if (matched.length === 0) {
       throw routeError(
         'INVALID_CONFIG',
-        `No project for domain ${request.domain} has responsibility ${request.responsibility ?? request.domain}`,
-        { responsibility: request.responsibility ?? request.domain }
+        `No project for domain ${request.domain} has responsibility ${request.responsibility}`,
+        { responsibility: request.responsibility }
       );
     }
     candidates = matched;
+    selectorsUsed.push('responsibility');
+  } else {
+    const values = declaredStrings(candidates, 'responsibility', request.domain);
+    if (values.length > 0) {
+      candidates = candidates.filter((project) => project.responsibility === values[0]);
+      selectorsUsed.push('responsibility');
+    }
   }
 
-  if (hasMetadata(candidates, 'operation_types')) {
-    const allowed = candidates.filter((project) =>
+  const withOperationMetadata = candidates.filter(
+    (project) => Array.isArray(project.operation_types) && project.operation_types.length > 0
+  );
+  if (withOperationMetadata.length > 0) {
+    const allowed = withOperationMetadata.filter((project) =>
       (project.operation_types ?? []).includes(request.operation)
     );
     if (allowed.length === 0) {
@@ -216,9 +318,11 @@ export async function resolveProjectRoute(
       );
     }
     candidates = allowed;
+    selectorsUsed.push('operation_types');
   }
 
-  if (hasMetadata(candidates, 'partition_key')) {
+  const partitionValues = collectDeclaredStrings(candidates, 'partition_key');
+  if (partitionValues.length > 0) {
     if (!request.partitionKey) {
       throw routeError(
         'AMBIGUOUS_ROUTE',
@@ -227,8 +331,7 @@ export async function resolveProjectRoute(
       );
     }
     // A domain with partition metadata requires an exact ownership match.
-    // Unpartitioned projects are not silent fallbacks; that would make the
-    // destination depend on registry ordering.
+    // Unpartitioned projects are not silent fallbacks.
     const partitioned = candidates.filter(
       (project) => project.partition_key === request.partitionKey
     );
@@ -239,6 +342,7 @@ export async function resolveProjectRoute(
       );
     }
     candidates = partitioned;
+    selectorsUsed.push('partition_key');
   }
 
   const invalid = candidates.filter((project) => !project.project_url || !project.anon_key);
@@ -265,6 +369,14 @@ export async function resolveProjectRoute(
     );
   }
 
+  if (selectorsUsed.length === 0) {
+    throw routeError(
+      'AMBIGUOUS_ROUTE',
+      `Routing metadata is insufficient for domain ${request.domain}; supply projectKey or apply the extended registry metadata`,
+      { projectKeys: candidates.map((project) => project.project_key) }
+    );
+  }
+
   const project = candidates[0];
   return {
     project,
@@ -274,16 +386,25 @@ export async function resolveProjectRoute(
   };
 }
 
+/** Resolve a domain with any approved project identity applied automatically. */
+export function resolveDomainRoute(
+  domain: string,
+  operation: OperationType,
+  options: Pick<ProjectRouteRequest, 'projectKey' | 'responsibility' | 'partitionKey'> = {}
+): Promise<ResolvedProjectRoute> {
+  return resolveProjectRoute(withKnownProjectKey({ domain, operation, ...options }));
+}
+
 export function resolveTableRoute(
   table: string,
   operation: OperationType
 ): Promise<ResolvedProjectRoute> {
-  return resolveProjectRoute({ domain: domainForTable(table), operation });
+  return resolveDomainRoute(domainForTable(table), operation);
 }
 
 export function resolveRpcRoute(
   functionName: string,
-  operation: OperationType = 'write'
+  operation?: OperationType
 ): Promise<ResolvedProjectRoute> {
-  return resolveProjectRoute({ domain: domainForRpc(functionName), operation });
+  return resolveDomainRoute(domainForRpc(functionName), operation ?? rpcOperation(functionName));
 }

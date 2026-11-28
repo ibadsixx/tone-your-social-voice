@@ -7,14 +7,15 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
-  clearClientCache,
+  clearClientCache as clearFactoryClientCache,
   getClientForRoute,
   getProjectClient,
 } from './clientFactory';
 import { resolveRpcRoute, resolveTableRoute } from './routing';
+import { KNOWN_PROJECT_REFS, REGISTRY_PROJECT_KEYS } from './projects';
 import { callEdgeFunction } from './crossProject';
 import * as centralAuth from './centralAuth';
-import type { OperationType } from './types';
+import type { OperationType, ProjectRouteRequest } from './types';
 import type { UpdateUserOptions } from './centralAuth';
 
 export type ReactionContentType = 'post' | 'comment';
@@ -110,118 +111,11 @@ function normalizeError(error: unknown): QueryError {
   };
 }
 
-function parseTopLevelEntries(select: string): string[] {
-  const entries: string[] = [];
-  let depth = 0;
-  let current = '';
-  for (const ch of select) {
-    if (ch === '(') depth++;
-    else if (ch === ')') depth--;
-    else if (ch === ',' && depth === 0) {
-      entries.push(current.trim());
-      current = '';
-    } else current += ch;
-  }
-  if (current.trim()) entries.push(current.trim());
-  return entries;
-}
-
-function hasNestedJoins(select: string): boolean {
-  return /\w+!\w+\s*\(/.test(select) || /\w+:\w+\s*\(/.test(select) || /^\w+\s*\(/.test(select);
-}
-
-const FK_TARGETS: Record<string, string> = {
-  user_id: 'profiles',
-  post_id: 'posts',
-  shared_post_id: 'posts',
-  group_id: 'groups',
-  page_id: 'pages',
-  tagged_user_id: 'profiles',
-  tagged_by: 'profiles',
-  requester_id: 'profiles',
-  addressee_id: 'profiles',
-  actor_id: 'profiles',
-  sender_id: 'profiles',
-  receiver_id: 'profiles',
-  admin_id: 'profiles',
-  creator_id: 'profiles',
-  pinned_by: 'profiles',
-};
-
-function singularTable(table: string): string {
-  if (table === 'posts') return 'post';
-  if (table === 'group_posts') return 'group_post';
-  if (table === 'post_tags') return 'post_tag';
-  if (table === 'post_likes') return 'post_like';
-  if (table === 'conversation_participants') return 'conversation_participant';
-  if (table.endsWith('ies')) return `${table.slice(0, -3)}y`;
-  if (table.endsWith('ses') || table.endsWith('xes') || table.endsWith('ches') || table.endsWith('shes')) {
-    return table.slice(0, -2);
-  }
-  if (table.endsWith('s')) return table.slice(0, -1);
-  return table;
-}
-
-interface JoinSpec {
-  resultKey: string;
-  relatedTable: string;
-  localCol: string;
-  relatedCol: string;
-  columns: string;
-  kind: 'one' | 'many';
-}
-
-function parseJoinSpec(entry: string, currentTable: string): JoinSpec | null {
-  const parenIdx = entry.indexOf('(');
-  if (parenIdx === -1) return null;
-
-  const header = entry.slice(0, parenIdx).trim();
-  const columns = entry.slice(parenIdx + 1, -1).trim();
-
-  if (header.includes('!')) {
-    const fkIndex = header.indexOf('!');
-    let tablePart = header.slice(0, fkIndex).trim();
-    const fkName = header.slice(fkIndex + 1).trim();
-    let alias = '';
-    const colonIndex = tablePart.indexOf(':');
-    if (colonIndex !== -1) {
-      alias = tablePart.slice(0, colonIndex).trim();
-      tablePart = tablePart.slice(colonIndex + 1).trim();
-    }
-
-    const suffix = '_fkey';
-    const currentPrefix = `${currentTable}_`;
-    const relatedPrefix = `${tablePart}_`;
-
-    if (fkName.startsWith(currentPrefix)) {
-      let localCol = fkName.slice(currentPrefix.length);
-      if (localCol.endsWith(suffix)) localCol = localCol.slice(0, -suffix.length);
-      return { resultKey: alias || tablePart, relatedTable: tablePart, localCol, relatedCol: 'id', columns, kind: 'one' };
-    }
-    if (tablePart !== currentTable && fkName.startsWith(relatedPrefix)) {
-      let relatedCol = fkName.slice(relatedPrefix.length);
-      if (relatedCol.endsWith(suffix)) relatedCol = relatedCol.slice(0, -suffix.length);
-      return { resultKey: alias || tablePart, relatedTable: tablePart, localCol: 'id', relatedCol, columns, kind: 'many' };
-    }
-    let localCol = fkName;
-    if (localCol.endsWith(suffix)) localCol = localCol.slice(0, -suffix.length);
-    return { resultKey: alias || tablePart, relatedTable: tablePart, localCol, relatedCol: 'id', columns, kind: 'one' };
-  }
-
-  if (header.includes(':')) {
-    const colonIndex = header.indexOf(':');
-    const alias = header.slice(0, colonIndex).trim();
-    const colPart = header.slice(colonIndex + 1).trim();
-    const spaceIndex = colPart.indexOf(' ');
-    const localCol = spaceIndex === -1 ? colPart : colPart.slice(0, spaceIndex).trim();
-    const relatedTable = FK_TARGETS[localCol] || alias;
-    const isToOne = localCol.endsWith('_id') || FK_TARGETS[localCol] !== undefined;
-    return { resultKey: alias, relatedTable, localCol, relatedCol: 'id', columns, kind: isToOne ? 'one' : 'many' };
-  }
-
-  const fkCol = `${singularTable(currentTable)}_id`;
-  return { resultKey: header, relatedTable: header, localCol: 'id', relatedCol: fkCol, columns, kind: 'many' };
-}
+// Phase 3G-N: nested embeds are passed through to PostgREST untouched. The old
+// client-side join resolver re-read related tables with `select('*')` and then
+// deleted columns in JavaScript, which fetched private profile rows over the
+// network. PostgREST owns relationship resolution; every embedded profile
+// projection must be explicit at its call site.
 
 type FilterCall = { method: string; args: unknown[] };
 
@@ -358,10 +252,10 @@ class DirectQueryBuilder<T = any> implements Promise<any> {
       const operation: OperationType = this.method === 'select' ? 'read' : 'write';
       const route = await resolveTableRoute(this.table, operation);
       const client = await getClientForRoute(route);
-      const joins = this.selectRequested && hasNestedJoins(this.selectColumns);
-      const primarySelect = joins
-        ? parseTopLevelEntries(this.selectColumns).filter((entry) => !entry.includes('(')).join(',') || '*'
-        : this.selectColumns;
+      // Preserve the caller's select exactly, including embedded relations and
+      // their aliases. Narrowing is done by the caller, never by trimming rows
+      // after a full-table fetch.
+      const primarySelect = this.selectColumns;
 
       let builder: any = client.from(this.table);
 
@@ -416,12 +310,6 @@ class DirectQueryBuilder<T = any> implements Promise<any> {
       let data: any = result.data ?? null;
       if (this.offsetCount > 0 && Array.isArray(data)) data = data.slice(this.offsetCount);
 
-      if (joins && data != null) {
-        const rows = Array.isArray(data) ? data : [data];
-        await resolveJoins(rows, this.selectColumns, this.table, new Map());
-        data = Array.isArray(result.data) ? rows : rows[0] ?? null;
-      }
-
       return { data: data as T, error: null };
     } catch (error) {
       return { data: null, error: normalizeError(error) };
@@ -429,115 +317,115 @@ class DirectQueryBuilder<T = any> implements Promise<any> {
   }
 }
 
-async function resolveJoins(
-  rows: Record<string, any>[],
-  select: string,
-  currentTable: string,
-  memo: Map<string, Promise<Record<string, any>[]>>
-): Promise<Record<string, any>[]> {
-  if (rows.length === 0) return rows;
+// Phase 3B verified these bucket names and their public/private status on the
+// central Auth host. Buckets that were not found live are deliberately absent:
+// `from()` them still fails closed rather than inventing a project or bucket.
+type BucketPrivacy = 'public' | 'private';
 
-  const specs = parseTopLevelEntries(select)
-    .filter((entry) => entry.includes('('))
-    .map((entry) => parseJoinSpec(entry, currentTable))
-    .filter((spec): spec is JoinSpec => spec !== null);
-
-  await Promise.all(
-    specs.map(async (spec) => {
-      const keys = new Set<string>();
-      for (const row of rows) {
-        const value = row[spec.localCol];
-        if (value != null) keys.add(String(value));
-      }
-      if (keys.size === 0) return;
-
-      const memoKey = `${spec.relatedTable}:${spec.relatedCol}:${[...keys].sort().join(',')}`;
-      let pending = memo.get(memoKey);
-      if (!pending) {
-        pending = (async () => {
-          const route = await resolveTableRoute(spec.relatedTable, 'read');
-          const client = await getClientForRoute(route);
-          const columns = hasNestedJoins(spec.columns) ? '*' : '*';
-          const { data, error } = await client
-            .from(spec.relatedTable)
-            .select(columns)
-            .in(spec.relatedCol, [...keys]);
-          if (error || !Array.isArray(data)) {
-            console.warn('[dataClient] join read failed', spec.relatedTable, normalizeError(error)?.message);
-            return [];
-          }
-          const relatedRows = data as Record<string, any>[];
-          if (hasNestedJoins(spec.columns)) {
-            await resolveJoins(relatedRows, spec.columns, spec.relatedTable, memo);
-          } else if (spec.columns && spec.columns !== '*' && spec.columns !== 'count') {
-            const pickedColumns = parseTopLevelEntries(spec.columns);
-            if (!pickedColumns.includes(spec.relatedCol)) pickedColumns.push(spec.relatedCol);
-            for (const row of relatedRows) {
-              for (const key of Object.keys(row)) {
-                if (!pickedColumns.includes(key)) delete row[key];
-              }
-            }
-          }
-          return relatedRows;
-        })();
-        memo.set(memoKey, pending);
-      }
-
-      const relatedRows = await pending;
-      const byKey = new Map<string, Record<string, any>[]>();
-      for (const row of relatedRows) {
-        const value = row[spec.relatedCol];
-        if (value == null) continue;
-        const key = String(value);
-        const bucket = byKey.get(key) ?? [];
-        bucket.push(row);
-        byKey.set(key, bucket);
-      }
-
-      for (const row of rows) {
-        const value = row[spec.localCol];
-        if (value == null) continue;
-        const matches = byKey.get(String(value)) ?? [];
-        if (spec.columns.trim() === 'count') row[spec.resultKey] = [{ count: matches.length }];
-        else if (matches.length > 0) row[spec.resultKey] = spec.kind === 'many' ? matches : matches[0];
-      }
-    })
-  );
-
-  return rows;
+interface VerifiedBucketRoute {
+  domain: string;
+  projectKey: string;
+  expectedProjectRef: string;
+  privacy: BucketPrivacy;
 }
 
-const BUCKET_DOMAINS: Record<string, string> = {
-  avatars: 'profiles',
-  covers: 'profiles',
-  profile_photos: 'profiles',
-  editor_videos: 'editor_projects',
-  message_attachments: 'messages',
-  stories: 'stories',
-  reels: 'posts',
+const VERIFIED_BUCKET_ROUTE: Omit<VerifiedBucketRoute, 'privacy'> = {
+  domain: 'users',
+  projectKey: REGISTRY_PROJECT_KEYS.users,
+  expectedProjectRef: KNOWN_PROJECT_REFS.centralAuth,
 };
 
-function bucketDomain(bucket: string): string {
-  return BUCKET_DOMAINS[bucket] ?? bucket;
+const VERIFIED_BUCKETS: Readonly<Record<string, BucketPrivacy>> = Object.freeze({
+  editor_videos: 'public',
+  chat_media: 'public',
+  group_covers: 'public',
+  stories: 'public',
+  avatars: 'public',
+  covers: 'public',
+  stickers: 'public',
+  message_audios: 'private',
+  'report-evidence': 'private',
+});
+
+function storageBucketRoute(bucket: string): VerifiedBucketRoute {
+  const privacy = VERIFIED_BUCKETS[bucket];
+  if (!privacy) {
+    throw new Error(
+      `No verified Storage owner for bucket "${bucket}". Phase 3B did not confirm this bucket on a registered host; routing refused.`
+    );
+  }
+  return { ...VERIFIED_BUCKET_ROUTE, privacy };
+}
+
+function storageRouteRequest(bucket: string, operation: OperationType): ProjectRouteRequest {
+  const route = storageBucketRoute(bucket);
+  return {
+    domain: route.domain,
+    operation,
+    projectKey: route.projectKey,
+    expectedProjectRef: route.expectedProjectRef,
+  };
+}
+
+export interface SignedUrlData {
+  signedUrl: string;
+  expiresAt: string;
+  expiresIn: number;
+}
+
+const DEFAULT_SIGNED_URL_TTL_SECONDS = 10 * 60;
+const MIN_SIGNED_URL_TTL_SECONDS = 60;
+const MAX_SIGNED_URL_TTL_SECONDS = 60 * 60;
+const SIGNED_URL_REFRESH_SKEW_MS = 30 * 1000;
+
+function normalizeSignedUrlTtl(expiresIn: number | undefined): number {
+  const ttl = expiresIn ?? DEFAULT_SIGNED_URL_TTL_SECONDS;
+  if (!Number.isInteger(ttl) || ttl < MIN_SIGNED_URL_TTL_SECONDS || ttl > MAX_SIGNED_URL_TTL_SECONDS) {
+    throw new Error(
+      `Signed URL expiry must be an integer between ${MIN_SIGNED_URL_TTL_SECONDS} and ${MAX_SIGNED_URL_TTL_SECONDS} seconds`
+    );
+  }
+  return ttl;
+}
+
+function signedUrlIsFresh(cached: SignedUrlData, now = Date.now()): boolean {
+  if (!cached.signedUrl.includes('/object/sign/')) return false;
+  const expiresAt = Date.parse(cached.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt - SIGNED_URL_REFRESH_SKEW_MS > now;
+}
+
+// Cache bucket clients and resolved base URLs so a `.upload()` followed by a
+// `.getPublicUrl()` — the dominant app pattern — always uses the same project.
+// A bucket that has never been resolved fails closed instead of emitting a bare
+// path that no browser can load.
+const storageBuckets = new Map<string, DirectStorageBucket>();
+const storageBaseUrls = new Map<string, string>();
+
+function clearStorageCache(): void {
+  storageBuckets.clear();
+  storageBaseUrls.clear();
 }
 
 class DirectStorageBucket {
-  private clientPromise: Promise<{ client: SupabaseClient; baseUrl: string }> | null = null;
+  private readonly clientPromises = new Map<OperationType, Promise<{ client: SupabaseClient; baseUrl: string }>>();
   private resolvedBaseUrl: string | null = null;
 
   constructor(private readonly bucket: string) {}
 
-  private getClient(): Promise<{ client: SupabaseClient; baseUrl: string }> {
-    if (!this.clientPromise) {
-      this.clientPromise = getProjectClient({
-        domain: bucketDomain(this.bucket),
-        operation: 'write',
-      }).then(({ route, client }) => {
-        this.resolvedBaseUrl = route.project.project_url.replace(/\/$/, '');
-        return { client, baseUrl: this.resolvedBaseUrl };
-      });
+  private getClient(operation: OperationType): Promise<{ client: SupabaseClient; baseUrl: string }> {
+    let promise = this.clientPromises.get(operation);
+    if (!promise) {
+      promise = getProjectClient(storageRouteRequest(this.bucket, operation)).then(
+        ({ route, client }) => {
+          const baseUrl = route.project.project_url.replace(/\/$/, '');
+          this.resolvedBaseUrl = baseUrl;
+          storageBaseUrls.set(this.bucket, baseUrl);
+          return { client, baseUrl };
+        }
+      );
+      this.clientPromises.set(operation, promise);
     }
-    return this.clientPromise;
+    return promise;
   }
 
   async upload(
@@ -545,7 +433,7 @@ class DirectStorageBucket {
     file: File | Blob,
     options?: { contentType?: string; upsert?: boolean; cacheControl?: string }
   ): Promise<QueryResult<{ path: string; url?: string }>> {
-    const { client } = await this.getClient();
+    const { client } = await this.getClient('write');
     const { data, error } = await client.storage
       .from(this.bucket)
       .upload(path, file, {
@@ -554,64 +442,187 @@ class DirectStorageBucket {
         cacheControl: options?.cacheControl ?? '3600',
       });
     if (error) return { data: null, error: normalizeError(error) };
+    // Never hand a public URL back for a private bucket; callers must sign it.
     return { data: { path: data?.path ?? path, url: undefined }, error: null };
   }
 
   async list(path?: string, options?: { limit?: number; offset?: number; sortBy?: { column: string; order: string } }): Promise<QueryResult<any[]>> {
-    const { client } = await this.getClient();
+    const { client } = await this.getClient('write');
     const { data, error } = await client.storage.from(this.bucket).list(path, options);
     if (error) return { data: null, error: normalizeError(error) };
     return { data: data ?? [], error: null };
   }
 
   async remove(paths: string[]): Promise<QueryResult<any[]>> {
-    const { client } = await this.getClient();
+    const { client } = await this.getClient('write');
     const { data, error } = await client.storage.from(this.bucket).remove(paths);
     if (error) return { data: null, error: normalizeError(error) };
     return { data: data ?? [], error: null };
   }
 
+  private objectPath(path: string): string {
+    // Some persisted paths already include the bucket name. Do not emit a
+    // doubled /message_audios/message_audios/... segment.
+    return path.startsWith(`${this.bucket}/`) ? path : `${this.bucket}/${path}`;
+  }
+
+  private publicUrl(base: string, path: string): string {
+    return `${base}/storage/v1/object/public/${this.objectPath(path)}`;
+  }
+
+  private assertPublicBucket(): void {
+    const route = storageBucketRoute(this.bucket);
+    if (route.privacy === 'private') {
+      throw new Error(
+        `Storage bucket ${this.bucket} is private. Use getSignedUrlAsync() with the authenticated session; public URLs are refused.`
+      );
+    }
+  }
+
   getPublicUrl(path: string): { data: { publicUrl: string } } {
-    const base = this.resolvedBaseUrl ?? '';
-    return {
-      data: {
-        publicUrl: base
-          ? `${base}/storage/v1/object/public/${this.bucket}/${path}`
-          : path,
-      },
-    };
+    this.assertPublicBucket();
+    const base = this.resolvedBaseUrl ?? storageBaseUrls.get(this.bucket);
+    if (!base) {
+      // Returning the bare path silently sent browsers to a relative URL that
+      // never resolved. Fail loudly until this bucket has been routed once.
+      throw new Error(
+        `Storage bucket ${this.bucket} has not been routed yet; resolve it with upload/list/remove before building a public URL`
+      );
+    }
+    return { data: { publicUrl: this.publicUrl(base, path) } };
+  }
+
+  /**
+   * Resolve a public URL for a path loaded from the database or props, where no
+   * upload/list/remove has routed this bucket during the session. Routing is
+   * registry-driven and fail-closed, using the same verified bucket host as
+   * upload/list/remove; the cached URL from an earlier routed operation is
+   * reused when available. Private buckets never use this path.
+   */
+  async getPublicUrlAsync(path: string): Promise<{ data: { publicUrl: string } }> {
+    this.assertPublicBucket();
+    let base = this.resolvedBaseUrl ?? storageBaseUrls.get(this.bucket);
+    if (!base) {
+      ({ baseUrl: base } = await this.getClient('read'));
+    }
+    return { data: { publicUrl: this.publicUrl(base, path) } };
+  }
+
+  /**
+   * Create (or refresh) a signed URL for a private bucket using the routed
+   * client's authenticated session. Storage RLS decides whether the signed URL
+   * is issued; missing objects and authorization failures are returned as
+   * errors and never fall back to a public URL.
+   */
+  async createSignedUrlAsync(
+    path: string,
+    options: { expiresIn?: number; cached?: SignedUrlData } = {}
+  ): Promise<{ data: SignedUrlData | null; error: QueryErrorInfo | null }> {
+    try {
+      const route = storageBucketRoute(this.bucket);
+      if (route.privacy !== 'private') {
+        throw new Error(
+          `Storage bucket ${this.bucket} is public; use getPublicUrl()/getPublicUrlAsync() instead of a signed URL`
+        );
+      }
+      const expiresIn = normalizeSignedUrlTtl(options.expiresIn);
+      if (options.cached && signedUrlIsFresh(options.cached)) {
+        return { data: options.cached, error: null };
+      }
+
+      const { client } = await this.getClient('read');
+      const { data, error } = await client.storage
+        .from(this.bucket)
+        .createSignedUrl(this.objectPath(path), expiresIn);
+      if (error) {
+        const normalized = normalizeError(error) ?? { message: 'Signed URL request failed' };
+        return {
+          data: null,
+          error: {
+            ...normalized,
+            message: `Signed URL unavailable for private bucket ${this.bucket}: ${normalized.message}`,
+          },
+        };
+      }
+      if (!data?.signedUrl) {
+        return {
+          data: null,
+          error: { message: `Storage returned no signed URL for private bucket ${this.bucket}` },
+        };
+      }
+      return {
+        data: {
+          signedUrl: data.signedUrl,
+          expiresIn,
+          expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
+        },
+        error: null,
+      };
+    } catch (error) {
+      return { data: null, error: normalizeError(error) };
+    }
   }
 }
 
 class DirectStorage {
   from(bucket: string): DirectStorageBucket {
-    return new DirectStorageBucket(bucket);
+    let bucketClient = storageBuckets.get(bucket);
+    if (!bucketClient) {
+      bucketClient = new DirectStorageBucket(bucket);
+      storageBuckets.set(bucket, bucketClient);
+    }
+    return bucketClient;
   }
 }
 
-const CHANNEL_DOMAINS: Record<string, string> = {
-  'profile-changes': 'profiles',
-  'other-names-changes': 'other_names',
-  'friends-changes': 'friends',
-  'followers-changes': 'followers',
-  'notifications-changes': 'notifications',
-  'comments_realtime': 'comments',
-  'stories-changes': 'stories',
-  'highlights-changes': 'story_highlights',
-  'mentions-changes': 'mentions',
-  'followed-hashtags-posts': 'posts',
-};
+interface VerifiedChannelRoute {
+  domain: string;
+  projectKey?: string;
+  expectedProjectRef?: string;
+}
 
-function channelDomain(name: string): string {
-  if (CHANNEL_DOMAINS[name]) return CHANNEL_DOMAINS[name];
-  const prefix = name.split('-')[0];
-  if (prefix === 'user' && name.includes('stories')) return 'stories';
-  if (prefix === 'message') return 'messages';
-  if (prefix === 'reactions') return 'reactions';
-  if (prefix === 'story') return 'stories';
-  if (prefix === 'poll') return 'message_polls';
-  if (prefix === 'other') return 'conversation_settings';
-  throw new Error(`No registered realtime domain for channel: ${name}`);
+// Exact channels only. Phase 3B did not justify any broad prefix mapping.
+const VERIFIED_CHANNEL_ROUTES: Readonly<Record<string, VerifiedChannelRoute>> = Object.freeze({
+  // Confirmed Registry row and approved identity; publication is still unverified.
+  'profile-changes': {
+    domain: 'profiles',
+    projectKey: REGISTRY_PROJECT_KEYS.profiles,
+    expectedProjectRef: KNOWN_PROJECT_REFS.profiles,
+  },
+  // The real trigger table is on hashtags-1-3, not posts-1. No project key is
+  // asserted because the Realtime publication itself was not verified.
+  'followed-hashtags-posts': { domain: 'hashtag_links' },
+  'other-names-changes': { domain: 'other_names' },
+  'friends-changes': { domain: 'friends' },
+  'followers-changes': { domain: 'followers' },
+  'notifications-changes': { domain: 'notifications' },
+  'comments_realtime': { domain: 'comments' },
+  'stories-changes': { domain: 'stories' },
+  'highlights-changes': { domain: 'story_highlights' },
+  'mentions-changes': { domain: 'mentions' },
+  'message-requests-changes': { domain: 'message_requests' },
+});
+
+const VERIFIED_CHANNEL_PATTERNS: ReadonlyArray<{
+  pattern: RegExp;
+  route: VerifiedChannelRoute;
+}> = Object.freeze([
+  { pattern: /^user-stories-[^/]+$/, route: { domain: 'stories' } },
+  { pattern: /^story-reactions-[^/]+$/, route: { domain: 'story_reactions' } },
+  { pattern: /^message-reactions-[^/]+$/, route: { domain: 'message_reactions' } },
+  { pattern: /^poll-votes-[^/]+$/, route: { domain: 'message_poll_votes' } },
+  { pattern: /^other-read-receipts-[^/]+$/, route: { domain: 'conversation_settings' } },
+  { pattern: /^reactions-[^/]+$/, route: { domain: 'reactions' } },
+]);
+
+function channelRoute(name: string): VerifiedChannelRoute {
+  const exact = VERIFIED_CHANNEL_ROUTES[name];
+  if (exact) return exact;
+  const matched = VERIFIED_CHANNEL_PATTERNS.find((entry) => entry.pattern.test(name));
+  if (matched) return matched.route;
+  throw new Error(
+    `No verified Realtime route for channel "${name}"; ownership/publication is not proven, so the subscription is refused`
+  );
 }
 
 // Realtime payload shapes differ per channel; callers own the narrow types.
@@ -627,7 +638,8 @@ export class DirectChannel {
   private listeners: ChannelListener[] = [];
   private broadcasts: Array<{ event: string; callback: RealtimePayloadCallback }> = [];
   private realChannel: any = null;
-  private subscribeCallback: ((status: string) => void) | null = null;
+  private subscribeCallback: ((status: string, error?: QueryErrorInfo | null) => void) | null = null;
+  private failure: QueryErrorInfo | null = null;
   private readonly ready: Promise<void>;
 
   constructor(private readonly name: string, private readonly config: Record<string, unknown> = {}) {
@@ -636,10 +648,21 @@ export class DirectChannel {
     this.ready = this.initialize();
   }
 
+  get lastError(): QueryErrorInfo | null {
+    return this.failure;
+  }
+
   private async initialize(): Promise<void> {
     try {
-      const domain = typeof this.config.domain === 'string' ? this.config.domain : channelDomain(this.name);
-      const { client } = await getProjectClient({ domain, operation: 'read' });
+      const route: VerifiedChannelRoute =
+        typeof this.config.domain === 'string'
+          ? { domain: this.config.domain }
+          : channelRoute(this.name);
+      const request: ProjectRouteRequest = { domain: route.domain, operation: 'read' };
+      if (route.projectKey) request.projectKey = route.projectKey;
+      if (route.expectedProjectRef) request.expectedProjectRef = route.expectedProjectRef;
+
+      const { client } = await getProjectClient(request);
       this.realChannel = client.channel(this.name, this.config as never);
 
       for (const listener of this.listeners) {
@@ -653,8 +676,13 @@ export class DirectChannel {
         this.subscribeCallback?.(status);
       });
     } catch (error) {
-      console.warn('[dataClient] realtime channel unavailable', this.name, normalizeError(error)?.message);
-      this.subscribeCallback?.('CHANNEL_ERROR');
+      this.failure = normalizeError(error);
+      console.warn(
+        '[dataClient] realtime channel unavailable',
+        this.name,
+        this.failure?.message
+      );
+      this.subscribeCallback?.('CHANNEL_ERROR', this.failure);
     }
   }
 
@@ -672,10 +700,13 @@ export class DirectChannel {
     return this;
   }
 
-  subscribe(callback?: (status: string) => void): this {
+  subscribe(callback?: (status: string, error?: QueryErrorInfo | null) => void): this {
     this.subscribeCallback = callback ?? null;
     if (this.realChannel) {
       this.realChannel.subscribe((status: string) => callback?.(status));
+    } else if (callback && this.failure) {
+      // A failed route must not look like a silent disconnected channel.
+      callback('CHANNEL_ERROR', this.failure);
     }
     return this;
   }
@@ -732,7 +763,7 @@ class DirectClient {
   // Compatibility boundary: RPC payload shapes are owned by each caller.
   async rpc<T = any>(functionName: string, params?: Record<string, unknown>): Promise<QueryResult<T>> {
     try {
-      const route = await resolveRpcRoute(functionName, 'write');
+      const route = await resolveRpcRoute(functionName);
       const client = await getClientForRoute(route);
       const { data, error } = await client.rpc(functionName, params ?? {});
       if (error) return { data: null, error: normalizeError(error) };
@@ -807,5 +838,10 @@ class DirectClient {
 
 export const dataClient = new DirectClient();
 
-export { clearClientCache };
+/** Clear routed Supabase clients and their cached Storage project URLs. */
+export function clearClientCache(): void {
+  clearFactoryClientCache();
+  clearStorageCache();
+}
+
 export type { DirectChannel as GatewayChannel };

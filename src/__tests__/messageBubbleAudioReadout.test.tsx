@@ -1,30 +1,21 @@
-// Regression tests for the voice-message time readout (do.md):
-//  1. Renders exactly ONE readout (no duplicate/adjacent display) in the
-//     required format `current / duration`, e.g. `0:00 / 0:05`.
-//  2. Duration falls back to the recorded message.audio_duration while the
-//     <audio> metadata is still loading (00:00 / 0:05-style initial state).
-//  3. timeupdate advances the current-time half (`0:01 / 0:05` while playing).
-//  4. The readout never contains Infinity/NaN regardless of element state.
-//
-// The dataClient client is mocked so loadAudioUrl resolves to a dataClient fallback
-// URL (the legacy-row path exercises the same readout); jsdom's media element
-// never loads metadata, which is exactly the "duration not available yet"
-// scenario the spec asks to cover.
+// Regression tests for voice-message playback after the Phase 3C private
+// Storage fix. The dataClient mock asserts that message audio is loaded through
+// a signed URL, never through a public URL builder. jsdom's media element never
+// loads metadata, which also covers the "duration not available yet" case.
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 
 import { MessageBubble, type Message } from '@/components/messages/MessageBubble';
 
+const { createSignedUrlAsync } = vi.hoisted(() => ({
+  createSignedUrlAsync: vi.fn(),
+}));
+
 vi.mock('@/lib/supabase/dataClient', () => ({
   dataClient: {
     storage: {
-      from: () => ({
-        getPublicUrl: (path: string) => ({
-          data: { publicUrl: `http://mock.test/api/storage/message_audios/${path}` },
-          error: null,
-        }),
-      }),
+      from: () => ({ createSignedUrlAsync }),
     },
   },
 }));
@@ -41,7 +32,23 @@ const LEGACY_VOICE: Message = {
 
 const READOUT_RE = /^\d+:\d{2} \/ \d+:\d{2}$/;
 
+function signedResult(suffix = 'one') {
+  return {
+    data: {
+      signedUrl: `http://mock.test/storage/v1/object/sign/message_audios/conv-1/msg-1.webm?token=${suffix}`,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      expiresIn: 600,
+    },
+    error: null,
+  };
+}
+
 describe('MessageBubble voice time readout', () => {
+  beforeEach(() => {
+    createSignedUrlAsync.mockReset();
+    createSignedUrlAsync.mockResolvedValue(signedResult());
+  });
+
   afterEach(() => {
     cleanup();
   });
@@ -49,16 +56,14 @@ describe('MessageBubble voice time readout', () => {
   it('renders a single `current / duration` readout (0:00 / 0:05 before playback)', async () => {
     render(<MessageBubble message={LEGACY_VOICE} currentUserId="u2" />);
 
-    // loadAudioUrl resolves via the mocked dataClient; the recorded duration is
-    // shown while jsdom's element has no metadata yet.
     await waitFor(() => {
       expect(screen.getByText('0:00 / 0:05')).toBeTruthy();
     });
 
-    // Exactly one readout exists — never two adjacent time values.
+    expect(createSignedUrlAsync).toHaveBeenCalledWith('message_audios/conv-1/msg-1.webm', {
+      expiresIn: 600,
+    });
     expect(screen.getAllByText(READOUT_RE)).toHaveLength(1);
-
-    // And no invalid numeric artifact anywhere.
     const bubbleText = document.body.textContent || '';
     expect(bubbleText).not.toMatch(/Infinity|NaN/);
   });
@@ -91,6 +96,39 @@ describe('MessageBubble voice time readout', () => {
 
     await waitFor(() => {
       expect(screen.getByText('0:00 / 0:00')).toBeTruthy();
+    });
+  });
+
+  it('re-signs once when a playback URL fails instead of falling back to a public URL', async () => {
+    createSignedUrlAsync
+      .mockResolvedValueOnce(signedResult('expired'))
+      .mockResolvedValueOnce(signedResult('fresh'));
+
+    render(<MessageBubble message={LEGACY_VOICE} currentUserId="u2" />);
+
+    // Wait for the signed URL to be rendered into the <audio> element; firing
+    // the error before the element's effect has attached its listener would
+    // race the re-sign path under test.
+    await waitFor(() => {
+      expect(document.querySelector('audio')?.getAttribute('src')).toContain('token=expired');
+    });
+    const audio = document.querySelector('audio');
+    expect(audio).not.toBeNull();
+    fireEvent(audio!, new Event('error'));
+
+    await waitFor(() => expect(createSignedUrlAsync).toHaveBeenCalledTimes(2));
+  });
+
+  it('surfaces signed URL authorization failures', async () => {
+    createSignedUrlAsync.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'storage: RLS denied' },
+    });
+
+    render(<MessageBubble message={LEGACY_VOICE} currentUserId="u2" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/RLS denied/)).toBeTruthy();
     });
   });
 });

@@ -175,7 +175,6 @@ const BUTTON_TYPES = [
   { value: 'buy_now', label: 'Buy now', icon: ShoppingCart, needsLink: true },
   { value: 'message', label: 'Message', icon: Send, needsLink: false },
   { value: 'call', label: 'Call', icon: PhoneCall, needsLink: false },
-  { value: 'email', label: 'Email', icon: Mail, needsLink: false },
   { value: 'group', label: 'Group', icon: Users, needsLink: false },
 ] as const;
 
@@ -279,11 +278,6 @@ const PageDetail = () => {
           username: adminProfile.username || '',
           profilePic: adminProfile.profile_pic || undefined,
         }, 'voice');
-        break;
-      }
-      case 'email': {
-        const email = adminProfile?.email;
-        if (email) window.location.href = `mailto:${email}`;
         break;
       }
       case 'group': {
@@ -414,7 +408,9 @@ const PageDetail = () => {
     (async () => {
       const { data } = await dataClient
         .from('profiles')
-        .select('id, display_name, username, profile_pic, email')
+        // Phase 3G-N: page admins are other users; email is a private profiles
+        // column and must not be fetched for public page presentation.
+        .select('id, display_name, username, profile_pic')
         .eq('id', page.admin_id)
         .maybeSingle();
       setAdminProfile(data);

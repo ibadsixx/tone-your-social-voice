@@ -63,7 +63,10 @@ export const DefaultPrivacySelector = ({ className }: DefaultPrivacySelectorProp
   const { profile, updateProfile, loading } = useProfile();
   const { toast } = useToast();
 
-  const currentPrivacy = (profile?.privacy as PrivacyOption) || 'public';
+  // Phase 3G-N: `privacy` is a private owner-only profile column. The public
+  // useProfile() boundary does not provide it; a safe default is shown until
+  // the approved secure owner-only read function is available.
+  const currentPrivacy: PrivacyOption = 'public';
 
   const handlePrivacyChange = async (newPrivacy: PrivacyOption) => {
     try {

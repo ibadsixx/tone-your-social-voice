@@ -30,7 +30,8 @@ interface Profile {
   profile_pic: string | null;
   cover_pic: string | null;
   cover_position_y?: number;
-  created_at: string;
+  /** Not part of the approved public projection; omitted on public profile pages. */
+  created_at?: string;
 }
 
 interface ProfileHeaderProps {
@@ -357,7 +358,7 @@ const ProfileHeader = ({
               </div>
               
               {subtitle ?? <p className="text-muted-foreground">@{profile.username}</p>}
-              {!hideJoined && (
+              {!hideJoined && profile.created_at && (
                 <p className="text-xs text-muted-foreground">
                   Joined {new Date(profile.created_at).toLocaleDateString()}
                 </p>

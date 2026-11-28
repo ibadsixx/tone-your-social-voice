@@ -249,14 +249,17 @@ describe('Home Feed data path', () => {
     expect(requested).toEqual([]);
   });
 
-  it('fails closed when the posts domain is ambiguous', async () => {
+  it('uses the approved posts project when another active row shares the domain', async () => {
     registryProjects = ambiguousPostsRegistry();
 
     const result = await getFeedTimeline();
 
-    expect(result.data).toBeNull();
-    expect(result.feedErrorCode).toBe('FEED_ROUTE_AMBIGUOUS');
-    expect(postsRequests).toHaveLength(0);
+    // The posts project key is an explicit route selector; an extra active row
+    // with a different key cannot turn that into an ambiguous domain read.
+    expect(result.error).toBeNull();
+    expect(result.data?.map((post) => post.id)).toEqual(['public-2', 'public-1']);
+    expect(postsRequests).toHaveLength(1);
+    expect(postsRequests[0].url.origin).toBe(POSTS_ORIGIN);
   });
 
   it('distinguishes an RLS denial from a query failure for guest reads', async () => {

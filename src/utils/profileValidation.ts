@@ -39,9 +39,21 @@ export const sanitizeVisibility = (value: any): Visibility => {
   return normalized ?? "friends"; // default to friends if invalid
 };
 
+// Columns whose live CHECK constraint accepts the canonical lowercase value.
+// `relationship_visibility` was added with
+// CHECK (public, friends, private), so writing the legacy `only_me` spelling
+// there would fail the constraint. Other legacy spellings keep their existing
+// DB formatting; the canonical three-value contract is preserved in the UI.
+const CANONICAL_PRIVATE_FIELDS = new Set<string>([
+  "relationship_visibility",
+]);
+
 // Format a normalized visibility value for the DB column casing
 export const formatVisibilityForDb = (field: string, value: any): string => {
   const normalized = normalizeVisibilityValue(value) ?? "only_me"; // default safe value
+  if (CANONICAL_PRIVATE_FIELDS.has(field)) {
+    return normalized === "only_me" ? "private" : normalized;
+  }
   if (UPPERCASE_FIELDS.has(field)) {
     // Title case expected by DB CHECK constraint
     if (normalized === "public") return "Public";

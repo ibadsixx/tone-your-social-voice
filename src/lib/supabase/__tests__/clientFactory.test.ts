@@ -11,7 +11,11 @@ import {
   createClientForProject,
   clearClientCache,
   getCachedClientCount,
+  getProjectClient,
 } from '@/lib/supabase/clientFactory';
+import { resetInfrastructureClient } from '@/lib/supabase/infrastructureClient';
+import { KNOWN_PROJECT_REFS, REGISTRY_PROJECT_KEYS } from '@/lib/supabase/projects';
+import { getCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
 import type { InfrastructureProject } from '@/lib/supabase/types';
 
 vi.mock('@supabase/supabase-js', () => ({
@@ -29,6 +33,11 @@ const mockProject: InfrastructureProject = {
   priority: 1,
   region: 'us-east',
   health_status: 'online',
+  responsibility: 'music',
+  operation_types: ['read', 'write', 'sync', 'auth'],
+  read_destination: 'music_1',
+  write_destination: 'music_1',
+  partition_key: null,
 };
 
 const mockClient: any = {
@@ -42,6 +51,7 @@ const mockChain = {
 };
 
 beforeEach(() => {
+  resetInfrastructureClient();
   clearClientCache();
   mockCreateClient.mockReset();
   mockCreateClient.mockImplementation(() => ({
@@ -77,6 +87,32 @@ describe('createClientForProject', () => {
   it('returns undefined for uncached client', () => {
     expect(getCachedClient('https://unknown.supabase.co', 'unknown-key')).toBeUndefined();
   });
+
+  it('forwards the central Auth token provider to created clients', () => {
+    createClientForProject('https://users.supabase.co', 'users-anon-key');
+
+    expect(mockCreateClient).toHaveBeenCalledWith(
+      'https://users.supabase.co',
+      'users-anon-key',
+      expect.objectContaining({
+        auth: expect.objectContaining({ persistSession: false, autoRefreshToken: false }),
+        accessToken: getCurrentAccessToken,
+      })
+    );
+  });
+
+  it('caches clients by project identity rather than URL alone', () => {
+    const url = 'https://shared.supabase.co';
+    const anonKey = 'shared-anon-key';
+
+    const usersClient = createClientForProject(url, anonKey, REGISTRY_PROJECT_KEYS.users);
+    const postsClient = createClientForProject(url, anonKey, REGISTRY_PROJECT_KEYS.posts);
+
+    expect(usersClient).not.toBe(postsClient);
+    expect(getCachedClientCount()).toBe(2);
+    expect(getCachedClient(url, anonKey)).toBe(postsClient);
+    expect(createClientForProject(url, anonKey, REGISTRY_PROJECT_KEYS.users)).toBe(usersClient);
+  });
 });
 
 describe('getDomainSupabaseClient', () => {
@@ -103,6 +139,37 @@ describe('getDomainSupabaseClient', () => {
     await expect(getDomainSupabaseClient('nonexistent')).rejects.toThrow(
       'No active infrastructure project registered for domain: nonexistent'
     );
+  });
+
+  it('selects the confirmed users project from 13-column registry data', async () => {
+    const usersProject: InfrastructureProject = {
+      project_key: REGISTRY_PROJECT_KEYS.users,
+      domain: 'users',
+      project_url: `https://${KNOWN_PROJECT_REFS.centralAuth}.supabase.co`,
+      anon_key: 'users-anon',
+      status: 'active',
+      priority: 1,
+      region: null,
+      health_status: 'online',
+      responsibility: 'users',
+      operation_types: ['read', 'write', 'sync', 'auth'],
+      read_destination: REGISTRY_PROJECT_KEYS.users,
+      write_destination: REGISTRY_PROJECT_KEYS.users,
+      partition_key: null,
+    };
+    mockCreateClient.mockImplementation(() => ({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          order: vi.fn().mockResolvedValue({ data: [usersProject], error: null }),
+        }),
+      })),
+    }));
+
+    const { route, client } = await getProjectClient({ domain: 'users', operation: 'read' });
+
+    expect(route.projectKey).toBe(REGISTRY_PROJECT_KEYS.users);
+    expect(route.project.project_key).toBe(REGISTRY_PROJECT_KEYS.users);
+    expect(client).toBeDefined();
   });
 });
 

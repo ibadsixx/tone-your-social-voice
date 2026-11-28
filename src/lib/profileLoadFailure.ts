@@ -39,8 +39,18 @@ const ROUTING_CODES = new Set([
   'NO_PROJECTS',
 ]);
 
-const AUTH_CODES = new Set(['401', 'UNAUTHORIZED', 'NO_SESSION', 'SESSION_EXPIRED']);
-const ACCESS_CODES = new Set(['42501', '403', 'FORBIDDEN', 'PGRST301']);
+// PostgREST PGRST301 means the JWT could not be decoded or is invalid. It is an
+// authentication failure, not proof that a row exists but is hidden by RLS.
+const AUTH_CODES = new Set([
+  '401',
+  'UNAUTHORIZED',
+  'NO_SESSION',
+  'SESSION_EXPIRED',
+  'PGRST301',
+  'PGRST302',
+  'PGRST303',
+]);
+const ACCESS_CODES = new Set(['42501', '403', 'FORBIDDEN']);
 const SAFE_CODE = /^[A-Za-z0-9_-]{1,40}$/;
 
 const MESSAGES: Record<ProfileLoadFailureKind, string> = {

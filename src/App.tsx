@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -55,6 +56,12 @@ import NotificationsPage from "@/pages/NotificationsPage";
 import StoryEditor from "@/pages/StoryEditor";
 
 const queryClient = new QueryClient();
+
+// TEMPORARY dev-only probe. The dynamic import is created only in development,
+// so the production build has no route and no probe chunk.
+const DevCentralAuthProbe = import.meta.env.DEV
+  ? lazy(() => import("@/pages/DevCentralAuthProbe"))
+  : null;
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -122,6 +129,16 @@ const App = () => (
             <ActiveCallWindow />
             <Routes>
               <Route path="/auth" element={<ErrorBoundary><Auth /></ErrorBoundary>} />
+              {import.meta.env.DEV && DevCentralAuthProbe ? (
+                <Route
+                  path="/dev/central-auth-probe"
+                  element={
+                    <Suspense fallback={null}>
+                      <DevCentralAuthProbe />
+                    </Suspense>
+                  }
+                />
+              ) : null}
               {/* Fullscreen reel viewer - outside Layout for true fullscreen */}
               <Route path="/reels/:id" element={<ReelViewer />} />
               {/* Fullscreen media viewer - media links point at /media/<id> */}

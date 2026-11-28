@@ -149,10 +149,10 @@ const Settings = () => {
     if (!user?.id) return;
 
     try {
-      // Get profile data
+      // Phase 3G-N: this screen only needs approved public profile columns.
       const { data: profile, error: profileError } = await dataClient
         .from('profiles')
-        .select('*')
+        .select('id, username, display_name, profile_pic, cover_pic, bio')
         .eq('id', user.id)
         .single();
 

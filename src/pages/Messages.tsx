@@ -567,7 +567,8 @@ const Messages = () => {
             .eq('id', activeConversationId)
             .maybeSingle(),
           dataClient.from('profiles')
-            .select('id, username, display_name, profile_pic, last_seen_at')
+            // Phase 3G-N: last_seen_at is private; other users' presence is not read here.
+            .select('id, username, display_name, profile_pic')
             .eq('id', otherId)
             .maybeSingle(),
         ]);
@@ -583,7 +584,6 @@ const Messages = () => {
             username: profileData.username,
             display_name: profileData.display_name,
             profile_pic: profileData.profile_pic,
-            last_seen_at: profileData.last_seen_at,
           } : undefined,
         });
       } catch {

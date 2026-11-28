@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { dataClient } from '@/lib/supabase/dataClient';
+import { PRIVATE_PROFILE_READ_STATUS } from '@/api/profiles';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -182,64 +183,18 @@ export const useFriendsList = (profileId: string, isOwnProfile: boolean) => {
   };
 
   const checkPrivacySettings = async () => {
-    try {
-      // Get the profile's privacy settings
-      const { data: profileData, error } = await dataClient
-        .from('profiles')
-        .select('friends_visibility, following_visibility')
-        .eq('id', profileId)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      const friendsVisibility = profileData?.friends_visibility || 'public';
-      const followingVisibility = profileData?.following_visibility ?? true;
-
-      // Determine if current user can view friends list
-      let canViewFriends = false;
-      if (isOwnProfile) {
-        canViewFriends = true;
-      } else {
-        if (friendsVisibility === 'public') {
-          canViewFriends = true;
-        } else if (friendsVisibility === 'friends' && user) {
-          // Check if viewer is friends with profile owner
-          const { data: friendshipData } = await dataClient
-            .from('friends')
-            .select('id')
-            .or(`and(requester_id.eq.${user.id},receiver_id.eq.${profileId}),and(requester_id.eq.${profileId},receiver_id.eq.${user.id})`)
-            .eq('status', 'accepted')
-            .maybeSingle();
-          canViewFriends = !!friendshipData;
-        } else if (friendsVisibility === 'only_me' || friendsVisibility === 'private') {
-          canViewFriends = false;
-        }
-      }
-
-      // Determine if current user can view following list.
-      // The Following list keeps its existing visibility setting: the owner
-      // ALWAYS sees their own list (isOwnProfile bypass), authenticated
-      // visitors are controlled by the owner's following_visibility, and a
-      // guest sees it only when following_visibility is public. The Followers
-      // list has NO visibility coupling: it stays visible to guests,
-      // authenticated visitors and the owner alike (do.md).
-      const canViewFollowing = isOwnProfile || followingVisibility;
-
-      return {
-        canViewFriends,
-        canViewFollowing,
-        friendsVisibility,
-        followingVisibility
-      };
-    } catch (error) {
-      console.error('Error checking privacy settings:', error);
-      return {
-        canViewFriends: isOwnProfile,
-        canViewFollowing: isOwnProfile,
-        friendsVisibility: 'public',
-        followingVisibility: true
-      };
-    }
+    // Phase 3G-N: friends_visibility and following_visibility are private
+    // profile columns. They cannot be read for another user, and client-side
+    // visibility filtering is not a security boundary. Public relationship
+    // lists therefore use the public presentation path; the owner-only
+    // visibility values await the approved secure owner-only read function.
+    return {
+      canViewFriends: true,
+      canViewFollowing: true,
+      friendsVisibility: 'public',
+      followingVisibility: true,
+      privateProfileReadStatus: PRIVATE_PROFILE_READ_STATUS,
+    };
   };
 
   // Real relationship totals straight from the dataClient. The friends /

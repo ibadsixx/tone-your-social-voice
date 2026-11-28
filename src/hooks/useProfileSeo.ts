@@ -16,7 +16,7 @@
 // large majority that never set the option - until a request came back.
 import { useEffect, useState } from 'react';
 import { getProfileSearchEngineIndexing } from '@/api/profiles';
-import type { Profile } from '@/api/profiles';
+import type { PublicProfile } from '@/api/profiles';
 import {
   applyProfilePendingSeo,
   applyProfileSeo,
@@ -29,7 +29,7 @@ import {
 // indistinguishable again, which is the conflation this change exists to undo.
 type IndexingState = boolean | null;
 
-export function useProfileSeo(username: string | undefined, profile: Profile | null): void {
+export function useProfileSeo(username: string | undefined, profile: PublicProfile | null): void {
   // Starts null and is reset to null on every username change, so a previous
   // profile's answer can never carry over to the next one - in particular an
   // explicit OFF cannot keep withholding the profile the visitor moved to.

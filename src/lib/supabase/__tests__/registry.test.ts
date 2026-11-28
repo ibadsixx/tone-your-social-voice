@@ -97,23 +97,39 @@ describe('loadInfrastructureProjects', () => {
   });
 
   it('falls back to base fields when routing metadata columns are absent', async () => {
-    const order = vi.fn()
-      .mockResolvedValueOnce({
-        data: null,
-        error: { message: 'column projects.responsibility does not exist', code: '42703' },
-      })
-      .mockResolvedValueOnce({ data: mockProjects, error: null });
-    const select = vi.fn().mockReturnValue({ order });
-    const from = vi.fn().mockReturnValue({ select });
-    mockGetInfrastructureClient.mockReturnValue({ from });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    try {
+      const order = vi.fn()
+        .mockResolvedValueOnce({
+          data: null,
+          error: { message: 'column projects.responsibility does not exist', code: '42703' },
+        })
+        .mockResolvedValueOnce({ data: mockProjects, error: null })
+        .mockResolvedValueOnce({ data: mockProjects, error: null });
+      const select = vi.fn().mockReturnValue({ order });
+      const from = vi.fn().mockReturnValue({ select });
+      mockGetInfrastructureClient.mockReturnValue({ from });
 
-    const projects = await loadInfrastructureProjects();
+      const projects = await loadInfrastructureProjects();
 
-    expect(projects).toEqual(mockProjects);
-    expect(select).toHaveBeenCalledTimes(2);
-    expect(select.mock.calls[1][0]).toBe(
-      'project_key, domain, project_url, anon_key, status, priority, region, health_status'
-    );
+      expect(projects).toEqual(mockProjects);
+      expect(select).toHaveBeenCalledTimes(2);
+      expect(select.mock.calls[1][0]).toBe(
+        'project_key, domain, project_url, anon_key, status, priority, region, health_status'
+      );
+
+      // The base schema mode is remembered; a later cache miss must not repeat
+      // the extended query that already failed.
+      vi.setSystemTime(new Date('2026-01-01T00:06:00Z'));
+      await loadInfrastructureProjects();
+      expect(select).toHaveBeenCalledTimes(3);
+      expect(select.mock.calls[2][0]).toBe(
+        'project_key, domain, project_url, anon_key, status, priority, region, health_status'
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('throws when the registry query fails', async () => {
@@ -128,21 +144,21 @@ describe('loadInfrastructureProjects', () => {
     await expect(loadInfrastructureProjects()).rejects.toThrow('DB error');
   });
 
-  it('throws when the view is missing', async () => {
-    mockGetInfrastructureClient.mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({
-            data: null,
-            error: { message: 'relation "infrastructure_projects_public" does not exist', code: '42P01' },
-          }),
-        }),
+  it('throws when the view is missing without retrying a base-column query', async () => {
+    const select = vi.fn().mockReturnValue({
+      order: vi.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'relation "infrastructure_projects_public" does not exist', code: '42P01' },
       }),
+    });
+    mockGetInfrastructureClient.mockReturnValue({
+      from: vi.fn().mockReturnValue({ select }),
     });
 
     await expect(loadInfrastructureProjects()).rejects.toThrow(
       /Infrastructure registry view not found/
     );
+    expect(select).toHaveBeenCalledTimes(1);
   });
 
   it('throws when RLS denies access', async () => {
@@ -201,5 +217,122 @@ describe('getActiveProjectsByDomain', () => {
     const result = getActiveProjectsByDomain(projectsWithInactive, 'posts');
     expect(result.every((project) => project.status === 'active')).toBe(true);
     expect(result.map((project) => project.project_key)).not.toContain('posts_inactive');
+  });
+});
+
+describe('Phase 3F registry view contract', () => {
+  const confirmedRows = (): InfrastructureProject[] => [
+    {
+      project_key: 'users-1',
+      domain: 'users',
+      project_url: 'https://ojdhztcetykgvrcwlwen.supabase.co',
+      anon_key: 'users-anon',
+      status: 'active',
+      priority: 1,
+      region: null,
+      health_status: 'online',
+      responsibility: 'users',
+      operation_types: ['read', 'write', 'sync', 'auth'],
+      read_destination: 'users-1',
+      write_destination: 'users-1',
+      partition_key: null,
+    },
+    {
+      project_key: 'posts-1',
+      domain: 'posts',
+      project_url: 'https://qxvvjsamqzrwcsnoiwkl.supabase.co',
+      anon_key: 'posts-anon',
+      status: 'active',
+      priority: 1,
+      region: null,
+      health_status: 'online',
+      responsibility: 'posts',
+      operation_types: ['read', 'write', 'sync'],
+      read_destination: 'posts-1',
+      write_destination: 'posts-1',
+      partition_key: null,
+    },
+  ];
+
+  function mockQuery(
+    data: unknown[],
+    error: { code?: string; message: string } | null = null
+  ) {
+    const order = vi.fn().mockResolvedValue({ data, error });
+    const select = vi.fn().mockReturnValue({ order });
+    const from = vi.fn().mockReturnValue({ select });
+    mockGetInfrastructureClient.mockReturnValue({ from });
+    return { select };
+  }
+
+  function baseOnlyRows(): Record<string, unknown>[] {
+    return confirmedRows().map((row) => ({
+      project_key: row.project_key,
+      domain: row.domain,
+      project_url: row.project_url,
+      anon_key: row.anon_key,
+      status: row.status,
+      priority: row.priority,
+      region: row.region,
+      health_status: row.health_status,
+    }));
+  }
+
+  it('requests and validates the full 13-column contract', async () => {
+    const { select } = mockQuery(confirmedRows());
+
+    const projects = await loadInfrastructureProjects();
+
+    expect(select).toHaveBeenCalledWith(
+      'project_key, domain, project_url, anon_key, status, priority, region, health_status,responsibility, operation_types, read_destination, write_destination, partition_key'
+    );
+    expect(projects).toHaveLength(2);
+    expect(projects[0]).toMatchObject({
+      project_key: 'users-1',
+      responsibility: 'users',
+      operation_types: ['read', 'write', 'sync', 'auth'],
+      read_destination: 'users-1',
+      write_destination: 'users-1',
+      partition_key: null,
+    });
+    expect(projects[1]).toMatchObject({
+      project_key: 'posts-1',
+      responsibility: 'posts',
+      operation_types: ['read', 'write', 'sync'],
+      read_destination: 'posts-1',
+      write_destination: 'posts-1',
+      partition_key: null,
+    });
+  });
+
+  it('rejects malformed operation_types from the extended view', async () => {
+    mockQuery([{ ...confirmedRows()[0], operation_types: 'read' }]);
+
+    await expect(loadInfrastructureProjects()).rejects.toThrow(/invalid operation_types/);
+  });
+
+  it('leaves metadata undefined when falling back to the 8-column view', async () => {
+    const order = vi.fn()
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: '42703', message: 'column responsibility does not exist' },
+      })
+      .mockResolvedValueOnce({ data: baseOnlyRows(), error: null });
+    const select = vi.fn().mockReturnValue({ order });
+    const from = vi.fn().mockReturnValue({ select });
+    mockGetInfrastructureClient.mockReturnValue({ from });
+
+    const projects = await loadInfrastructureProjects();
+
+    expect(select).toHaveBeenCalledTimes(2);
+    expect(select.mock.calls[1][0]).toBe(
+      'project_key, domain, project_url, anon_key, status, priority, region, health_status'
+    );
+    expect(projects).toHaveLength(2);
+    expect(projects[0].responsibility).toBeUndefined();
+    expect(projects[0].operation_types).toBeUndefined();
+    expect(projects[0].read_destination).toBeUndefined();
+    expect(projects[0].write_destination).toBeUndefined();
+    expect(projects[0].partition_key).toBeUndefined();
   });
 });

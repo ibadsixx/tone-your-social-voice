@@ -523,20 +523,15 @@ describe('7. a broken clock is reported, not silently swapped for a new symptom'
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('is called from the reader round, on the values it already extracted', () => {
-    // No extra request and no second pass: it reads the values out of the map
-    // this round already built, inside the same `if (profiles)` block.
+  it('is no longer called from the reader round after the private read was removed', () => {
+    // Phase 3G-N: the reader used to extract other users' `last_seen_at` and
+    // call reportClockSkew on those values. Skew diagnosis is still unit-tested
+    // above, but the conversation reader must not run it because it no longer
+    // performs a cross-user presence read.
     const code = stripComments(read('hooks/useConversations.ts'));
-    expect(code).toMatch(/reportClockSkew\(\[\.\.\.lastSeenMap\.values\(\)\]\)/);
-    const at = code.indexOf('reportClockSkew(');
-    // Matched by the binding, not the constructor: the map carries an explicit
-    // type argument, so `new Map(` no longer appears and an assertion written
-    // against it would silently stop finding anything at all.
-    const mapAt = code.indexOf('const lastSeenMap =');
-    expect(mapAt).toBeGreaterThan(-1);
-    // After the map is built, and inside the guard that proves `profiles` exists.
-    expect(mapAt).toBeLessThan(at);
-    expect(code.slice(code.lastIndexOf('if (profiles)', at), at)).not.toMatch(/await|fetch|from\(/);
+    expect(code).not.toMatch(/reportClockSkew/);
+    expect(code).not.toMatch(/lastSeenMap/);
+    expect(code).not.toMatch(/\.from\('profiles'\)[\s\S]{0,200}\.select\([^)]*last_seen_at/);
   });
 });
 
@@ -587,13 +582,13 @@ describe('8. nothing new was introduced', () => {
     expect(list).toMatch(/presenceTick/);
   });
 
-  it('the privacy gate still gates the dot, and the reader still refuses a null', () => {
-    // A null `last_seen_at` is the dataClient's REDACTION shape for a non-friend
-    // with a pending request, and overwriting the held value with it would leak
-    // presence. That guard is why the sign-out marker had to be the epoch rather
-    // than null, and it is untouched.
+  it('the privacy gate still gates the dot, and the reader no longer copies presence', () => {
+    // Phase 3G-N: the null-preserving guard is gone with the cross-user read.
+    // The display-side privacy gate remains; public conversation identity rows
+    // simply carry no `last_seen_at` value now.
     const code = stripComments(read('hooks/useConversations.ts'));
-    expect(code).toMatch(/if \(!newLastSeen \|\| newLastSeen === conv\.other_user\.last_seen_at\) return conv;/);
+    expect(code).not.toMatch(/newLastSeen/);
+    expect(code).not.toMatch(/otherProfile\.last_seen_at/);
     const item = stripComments(read('components/messages/ConversationList.tsx'));
     expect(item).toMatch(/isPresenceHidden/);
   });

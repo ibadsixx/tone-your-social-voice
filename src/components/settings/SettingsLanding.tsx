@@ -51,7 +51,10 @@ const SettingsLanding: React.FC = () => {
     setReportCount(Number(data) || 0);
   };
 
-  const birthdaySet = !!profile?.birthday;
+  // Phase 3G-N: birthday is a private owner-only profile column and is not
+  // present on the public profile object. The completion state awaits the
+  // approved secure owner-only read function.
+  const birthdaySet = false;
   const emailVerified = !!user?.email_confirmed_at;
   const mfaEnabled = (user?.factors || []).some((f) => f?.status === 'verified');
 

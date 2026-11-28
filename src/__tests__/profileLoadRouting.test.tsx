@@ -5,12 +5,13 @@
 // denial were all indistinguishable from "no such username". These tests pin
 // the separation while preserving the genuine missing-profile 404.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
 const authState = vi.hoisted(() => ({
   user: null as { id: string } | null,
   token: null as string | null,
+  loading: false,
 }));
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authState }));
@@ -87,14 +88,20 @@ const PROFILE = {
   created_at: '2026-01-01T00:00:00Z',
 };
 
+function ProfileRoutes() {
+  return (
+    <Routes>
+      <Route path="/profile/:username" element={<ProfilePage />} />
+      <Route path="/profile/:username/:section" element={<ProfilePage />} />
+      <Route path="/404" element={<div data-testid="notfound">not found</div>} />
+    </Routes>
+  );
+}
+
 function renderProfile(path = '/profile/Ada') {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/profile/:username" element={<ProfilePage />} />
-        <Route path="/profile/:username/:section" element={<ProfilePage />} />
-        <Route path="/404" element={<div data-testid="notfound">not found</div>} />
-      </Routes>
+      <ProfileRoutes />
     </MemoryRouter>
   );
 }
@@ -115,6 +122,7 @@ async function expectFailure(expectedMessage: string) {
 beforeEach(() => {
   authState.user = null;
   authState.token = null;
+  authState.loading = false;
   vi.clearAllMocks();
   profileApi.getProfileByUsername.mockResolvedValue({ data: PROFILE, error: null });
   profileApi.getProfileById.mockResolvedValue({ data: PROFILE, error: null });
@@ -155,6 +163,31 @@ describe('profile lookup outcomes', () => {
 
     expect((await screen.findByTestId('profile-header')).getAttribute('data-own')).toBe('false');
     expect(screen.queryByTestId('profile-load-error')).toBeNull();
+  });
+
+  it('waits for central Auth initialization instead of treating a signed-in viewer as a guest', async () => {
+    authState.loading = true;
+    authState.user = { id: 'viewer-1' };
+    authState.token = 'central-session-token';
+
+    const view = renderProfile();
+
+    expect(profileApi.getProfileByUsername).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('notfound')).toBeNull();
+    expect(screen.queryByTestId('profile-load-error')).toBeNull();
+
+    act(() => {
+      authState.loading = false;
+    });
+    view.rerender(
+      <MemoryRouter initialEntries={['/profile/Ada']}>
+        <ProfileRoutes />
+      </MemoryRouter>
+    );
+
+    expect((await screen.findByTestId('profile-header')).textContent).toContain('@Ada');
+    expect(profileApi.getProfileByUsername).toHaveBeenCalledWith('Ada');
+    expect(screen.queryByTestId('notfound')).toBeNull();
   });
 
   it('keeps an RLS denial distinct from a missing profile and logs sanitized diagnostics', async () => {
@@ -286,6 +319,26 @@ describe('profile lookup outcomes', () => {
 
     await expectFailure('The profile service is not configured correctly.');
     expect(profileApi.ensureProfile).not.toHaveBeenCalled();
+  });
+
+  it('does not turn a failed profile creation into a 404', async () => {
+    authState.user = { id: 'viewer-1' };
+    authState.token = 'central-session-token';
+    profileApi.getProfileByUsername.mockResolvedValue({ data: null, error: null });
+    profileApi.findAuthUserByUsernameResult.mockResolvedValue({
+      data: {
+        id: 'viewer-1',
+        email: 'viewer@example.test',
+        raw_user_meta_data: { username: 'viewer' },
+      },
+      error: null,
+    });
+    profileApi.ensureProfile.mockResolvedValue(null);
+
+    renderProfile();
+
+    await expectFailure('We could not load this profile. Please try again later.');
+    expect(screen.queryByTestId('notfound')).toBeNull();
   });
 
   it('can retry a transient failure without leaving the profile route', async () => {

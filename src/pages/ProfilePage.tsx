@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useMatch } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { profilesApi } from '@/api';
-import type { Profile } from '@/api/profiles';
+import type { PublicProfile } from '@/api/profiles';
 import { Card } from '@/components/ui/card';
 import ProfileHeader from '@/components/ProfileHeader';
 import ProfileTabs from '@/components/ProfileTabs';
@@ -34,10 +34,10 @@ import { useProfileSeo } from '@/hooks/useProfileSeo';
 
 const ProfilePage = () => {
   const { username, section } = useParams<{ username: string; section?: string }>();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<ProfileLoadFailure | null>(null);
@@ -58,6 +58,12 @@ const ProfilePage = () => {
   };
 
   const fetchProfile = async () => {
+    // Central Auth is initialized asynchronously. Issuing the profile read
+    // while `user` is still null makes a signed-in viewer look like a guest;
+    // a readable empty result would then become a false 404 before auth can
+    // resolve. Wait for auth, then run exactly one lookup.
+    if (authLoading) return;
+
     const requestId = ++requestIdRef.current;
     const isCurrent = () => requestId === requestIdRef.current;
     setLoading(true);
@@ -133,12 +139,17 @@ const ProfilePage = () => {
             user_metadata: authUser.raw_user_meta_data,
           });
           if (!isCurrent()) return;
-          if (created?.username) {
-            const retried = await profilesApi.getProfileByUsername(created.username);
-            if (!isCurrent()) return;
-            data = retried.data;
-            error = retried.error;
+          if (!created?.username) {
+            // `null` here means the profile could not be verified or created.
+            // It is a load failure, never evidence that the username is absent.
+            fail(classifyProfileLoadFailure({ code: 'PROFILE_CREATE_FAILED' }));
+            return;
           }
+
+          const retried = await profilesApi.getProfileByUsername(created.username);
+          if (!isCurrent()) return;
+          data = retried.data;
+          error = retried.error;
         }
       }
 
@@ -168,7 +179,7 @@ const ProfilePage = () => {
 
   useEffect(() => {
     void fetchProfile();
-  }, [username, user?.id]);
+  }, [username, user?.id, authLoading]);
 
   // The active profile tab is derived from the URL, so deep links, refresh and
   // browser back/forward all stay in sync. Unknown segments are redirected:

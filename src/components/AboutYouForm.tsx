@@ -1,12 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { dataClient } from '@/lib/supabase/dataClient';
 import { useToast } from '@/hooks/use-toast';
-import { Eye, Users, Lock } from 'lucide-react';
+import { ProfileFieldVisibilitySelector } from '@/components/profile/ProfileFieldVisibilitySelector';
+import {
+  normalizeProfileVisibility,
+  type ProfileVisibility,
+} from '@/lib/profileAboutPrivacy';
 
 interface AboutYouFormProps {
   isOpen: boolean;
@@ -17,24 +20,26 @@ interface AboutYouFormProps {
   onUpdate: () => void;
 }
 
-const visibilityOptions = [
-  { value: 'public', label: 'Public', icon: Eye },
-  { value: 'friends', label: 'Friends', icon: Users },
-  { value: 'private', label: 'Private', icon: Lock },
-];
-
-export const AboutYouForm = ({ 
-  isOpen, 
-  onClose, 
-  profileId, 
-  initialValue = '', 
-  initialVisibility = 'friends',
-  onUpdate 
+export const AboutYouForm = ({
+  isOpen,
+  onClose,
+  profileId,
+  initialValue = '',
+  initialVisibility = 'private',
+  onUpdate
 }: AboutYouFormProps) => {
   const [aboutYou, setAboutYou] = useState(initialValue);
-  const [visibility, setVisibility] = useState(initialVisibility);
+  const [visibility, setVisibility] = useState<ProfileVisibility>(
+    normalizeProfileVisibility(initialVisibility) ?? 'private'
+  );
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setAboutYou(initialValue);
+    setVisibility(normalizeProfileVisibility(initialVisibility) ?? 'private');
+  }, [isOpen, initialValue, initialVisibility]);
 
   const handleSave = async () => {
     if (aboutYou.length > 500) {
@@ -50,18 +55,14 @@ export const AboutYouForm = ({
     try {
       const { error } = await dataClient
         .from('profiles')
-        .update({ 
+        .update({
           about_you: aboutYou.trim(),
           about_you_visibility: visibility
         })
         .eq('id', profileId);
 
       if (error) throw error;
-
-      toast({
-        title: 'Success',
-        description: 'About you updated successfully'
-      });
+      toast({ title: 'Success', description: 'About you updated successfully' });
       onUpdate();
       onClose();
     } catch (error: any) {
@@ -77,7 +78,7 @@ export const AboutYouForm = ({
 
   const handleClose = () => {
     setAboutYou(initialValue);
-    setVisibility(initialVisibility);
+    setVisibility(normalizeProfileVisibility(initialVisibility) ?? 'private');
     onClose();
   };
 
@@ -87,7 +88,7 @@ export const AboutYouForm = ({
         <DialogHeader>
           <DialogTitle>About You</DialogTitle>
         </DialogHeader>
-        
+
         <div className="space-y-4">
           <div>
             <Label htmlFor="about-you">Tell people about yourself</Label>
@@ -99,47 +100,23 @@ export const AboutYouForm = ({
               className="mt-2 min-h-[120px] resize-none"
               maxLength={500}
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              {aboutYou.length}/500 characters
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">{aboutYou.length}/500 characters</p>
           </div>
 
-          <div>
+          <div className="flex items-center justify-between">
             <Label>Who can see this?</Label>
-            <Select value={visibility} onValueChange={setVisibility}>
-              <SelectTrigger className="mt-2">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-popover z-50">
-                {visibilityOptions.map((option) => {
-                  const Icon = option.icon;
-                  return (
-                    <SelectItem key={option.value} value={option.value}>
-                      <div className="flex items-center gap-2">
-                        <Icon className="h-4 w-4" />
-                        {option.label}
-                      </div>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+            <ProfileFieldVisibilitySelector
+              fieldKey="about_you_visibility"
+              value={visibility}
+              onChange={setVisibility}
+            />
           </div>
 
           <div className="flex gap-2 pt-4">
-            <Button 
-              variant="outline" 
-              onClick={handleClose}
-              disabled={loading}
-              className="flex-1"
-            >
+            <Button variant="outline" onClick={handleClose} disabled={loading} className="flex-1">
               Cancel
             </Button>
-            <Button 
-              onClick={handleSave} 
-              disabled={loading}
-              className="flex-1"
-            >
+            <Button onClick={handleSave} disabled={loading} className="flex-1">
               {loading ? 'Saving...' : 'Save'}
             </Button>
           </div>

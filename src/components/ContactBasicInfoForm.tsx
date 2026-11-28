@@ -7,11 +7,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/hooks/useAuth';
 import { dataClient } from '@/lib/supabase/dataClient';
-import { Plus, X, Save, Globe, Users, Lock } from 'lucide-react';
+import { Plus, X, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { validateProfileVisibility, sanitizeProfilePayload, formatVisibilityForDb, normalizeVisibilityValue } from '@/utils/profileValidation';
+import { sanitizeProfilePayload } from '@/utils/profileValidation';
+import {
+  loadSecureAboutFields,
+  type AboutSecureDataStatus,
+} from '@/api/profileAbout';
+import { normalizeProfileVisibility } from '@/lib/profileAboutPrivacy';
+import { ProfileFieldVisibilitySelector } from '@/components/profile/ProfileFieldVisibilitySelector';
 
 interface ContactBasicInfoFormProps {
   profileId: string;
@@ -23,7 +28,7 @@ interface ProfileData {
   email?: string;
   phone_country_code?: string;
   phone_number?: string;
-  websites_social_links?: any;
+  websites_social_links?: WebsiteLink[];
   gender?: string;
   pronouns?: string;
   birth_date?: string;
@@ -43,11 +48,15 @@ interface WebsiteLink {
   label: string;
 }
 
-const PRIVACY_OPTIONS = [
-  { value: 'public', label: 'Public', icon: Globe, description: 'Anyone on Tone' },
-  { value: 'friends', label: 'Friends', icon: Users, description: 'Your friends only' },
-  { value: 'only_me', label: 'Only Me', icon: Lock, description: 'Only you can see this' }
-];
+const OWNER_VISIBILITY_COLUMNS = [
+  'email_visibility',
+  'phone_visibility',
+  'websites_visibility',
+  'gender_visibility',
+  'pronouns_visibility',
+  'birth_date_visibility',
+  'birth_year_visibility',
+] as const;
 
 const COUNTRY_CODES = [
   { code: '+1', country: 'US', flag: '🇺🇸', name: 'United States' },
@@ -72,207 +81,133 @@ const COUNTRY_CODES = [
   { code: '+7', country: 'RU', flag: '🇷🇺', name: 'Russia' }
 ];
 
-const GENDER_OPTIONS = [
-  'Male',
-  'Female', 
-  'Other',
-  'Prefer not to say'
-];
-
-const PRONOUN_OPTIONS = [
-  'He/Him',
-  'She/Her',
-  'They/Them',
-  'Custom'
-];
-
+const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'];
+const PRONOUN_OPTIONS = ['He/Him', 'She/Her', 'They/Them', 'Custom'];
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-const PrivacySelector = ({ 
-  value, 
-  onChange, 
-  size = "sm" 
-}: { 
-  value: string; 
-  onChange: (value: string) => void;
-  size?: "sm" | "default";
-}) => {
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className={cn("w-auto", size === "sm" && "h-14 w-14 border-0")}>
-        <SelectValue>
-          {PRIVACY_OPTIONS.find(opt => opt.value === value)?.icon && (
-            <div className="flex items-center gap-1">
-              {React.createElement(PRIVACY_OPTIONS.find(opt => opt.value === value)!.icon, { 
-                className: "w-3 h-3" 
-              })}
-              <span className="hidden md:inline text-xs">{PRIVACY_OPTIONS.find(opt => opt.value === value)?.label}</span>
-            </div>
-          )}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {PRIVACY_OPTIONS.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            <div className="flex items-center gap-2">
-              <option.icon className="w-4 h-4" />
-              <div>
-                <div className="font-medium">{option.label}</div>
-                <div className="text-xs text-muted-foreground">{option.description}</div>
-              </div>
-            </div>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-};
+function asWebsiteLinks(value: unknown): WebsiteLink[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry): WebsiteLink[] => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const link = entry as Record<string, unknown>;
+    if (typeof link.url !== 'string') return [];
+    return [{
+      type: typeof link.type === 'string' ? link.type : 'website',
+      url: link.url,
+      label: typeof link.label === 'string' ? link.label : link.url,
+    }];
+  });
+}
 
-export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({ 
-  profileId, 
-  isOwnProfile, 
-  onSave 
+function asEmail(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    const addresses = value.filter((entry): entry is string => typeof entry === 'string');
+    return addresses.length > 0 ? addresses.join(', ') : undefined;
+  }
+  return undefined;
+}
+
+function SecureDataNotice({ status }: { status: AboutSecureDataStatus }) {
+  if (status !== 'unavailable' && status !== 'denied') return null;
+  const unavailable = status === 'unavailable';
+  return (
+    <div
+      data-testid={unavailable ? 'contact-secure-data-unavailable' : 'contact-secure-data-denied'}
+      className="mb-4 rounded-md border border-muted bg-muted/40 px-4 py-3 text-xs text-muted-foreground"
+    >
+      {unavailable
+        ? 'Contact and basic details are unavailable until the secure field-level read is approved and installed. This does not mean they are empty.'
+        : 'Some contact and basic details are not visible to you.'}
+    </div>
+  );
+}
+
+export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
+  profileId,
+  isOwnProfile,
+  onSave
 }) => {
-  const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<ProfileData>({});
   const [websites, setWebsites] = useState<WebsiteLink[]>([]);
   const [newWebsite, setNewWebsite] = useState({ type: 'website', url: '', label: '' });
   const [birthDateParts, setBirthDateParts] = useState<{ day: string; month: string }>({ day: '', month: '' });
-  const [viewerCanSeeFriend, setViewerCanSeeFriend] = useState(false);
+  const [secureStatus, setSecureStatus] = useState<AboutSecureDataStatus>('loading');
+  const [visibleFields, setVisibleFields] = useState<ReadonlySet<string>>(new Set());
+  const [visibilitySettings, setVisibilitySettings] = useState<Record<string, string | null>>({});
+
+  const canWriteSecureFields = secureStatus === 'ready';
 
   useEffect(() => {
-    loadProfileData();
-    if (!isOwnProfile) {
-      checkFriendshipStatus();
-    }
+    let active = true;
+    const load = async () => {
+      setSecureStatus('loading');
+      const secure = await loadSecureAboutFields(profileId);
+      if (!active) return;
+
+      setSecureStatus(secure.status);
+      setVisibleFields(new Set(secure.visibleFields));
+      setVisibilitySettings({ ...secure.visibilitySettings });
+      setFormData({
+        email: asEmail(secure.fields.email),
+        phone_country_code: typeof secure.fields.phone_country_code === 'string'
+          ? secure.fields.phone_country_code
+          : undefined,
+        phone_number: typeof secure.fields.phone_number === 'string'
+          ? secure.fields.phone_number
+          : undefined,
+        websites_social_links: asWebsiteLinks(secure.fields.websites_social_links),
+        gender: typeof secure.fields.gender === 'string' ? secure.fields.gender : undefined,
+        pronouns: typeof secure.fields.pronouns === 'string' ? secure.fields.pronouns : undefined,
+        birth_date: typeof secure.fields.birth_date === 'string'
+          ? secure.fields.birth_date
+          : typeof secure.fields.birthday === 'string'
+            ? secure.fields.birthday
+            : undefined,
+        birth_year: typeof secure.fields.birth_year === 'number' ? secure.fields.birth_year : undefined,
+      });
+      setWebsites(asWebsiteLinks(secure.fields.websites_social_links));
+    };
+    void load();
+    return () => { active = false; };
   }, [profileId, isOwnProfile]);
 
-  const checkFriendshipStatus = async () => {
-    if (!user?.id || isOwnProfile) {
-      setViewerCanSeeFriend(false);
-      return;
-    }
+  const visibilityValue = (column: (typeof OWNER_VISIBILITY_COLUMNS)[number]) =>
+    normalizeProfileVisibility(visibilitySettings[column]) ?? 'private';
 
-    try {
-      const { data, error } = await dataClient
-        .from('friends')
-        .select('status')
-        .or(`and(requester_id.eq.${user.id},receiver_id.eq.${profileId}),and(requester_id.eq.${profileId},receiver_id.eq.${user.id})`)
-        .eq('status', 'accepted')
-        .maybeSingle();
-
-      if (error) throw error;
-      setViewerCanSeeFriend(!!data);
-    } catch (error) {
-      console.error('Error checking friendship:', error);
-      setViewerCanSeeFriend(false);
-    }
-  };
-
-  const loadProfileData = async () => {
-    try {
-      const { data: profile, error } = await dataClient
-        .from('profiles')
-        .select(`
-          email,
-          phone_country_code,
-          phone_number,
-          websites_social_links,
-          gender,
-          pronouns,
-          birth_date,
-          birth_year,
-          email_visibility,
-          phone_visibility,
-          websites_visibility,
-          gender_visibility,
-          pronouns_visibility,
-          birth_date_visibility,
-          birth_year_visibility
-        `)
-        .eq('id', profileId)
-        .single();
-
-      if (error) throw error;
-
-      const profileData = {
-        ...profile,
-        email: user?.email || profile.email,
-        // Normalize visibility values on load
-        email_visibility: normalizeVisibilityValue(profile.email_visibility) || 'public',
-        phone_visibility: normalizeVisibilityValue(profile.phone_visibility) || 'public',
-        websites_visibility: normalizeVisibilityValue(profile.websites_visibility) || 'public',
-        gender_visibility: normalizeVisibilityValue(profile.gender_visibility) || 'public',
-        pronouns_visibility: normalizeVisibilityValue(profile.pronouns_visibility) || 'public',
-        birth_date_visibility: normalizeVisibilityValue(profile.birth_date_visibility) || 'public',
-        birth_year_visibility: normalizeVisibilityValue(profile.birth_year_visibility) || 'public'
-      };
-
-      setFormData(profileData);
-      const websitesData = profile.websites_social_links;
-      setWebsites(
-        Array.isArray(websitesData) 
-          ? (websitesData as unknown as WebsiteLink[]).filter((item) => item && item.type && item.url && item.label)
-          : []
-      );
-      const { day, month } = formatBirthDate(profile.birth_date || undefined);
-      setBirthDateParts({ day, month });
-    } catch (error) {
-      console.error('Error loading profile data:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load profile data',
-        variant: 'destructive'
-      });
-    }
-  };
+  const isFieldVisible = (key: string) => secureStatus === 'ready' && visibleFields.has(key);
 
   const handleSave = async () => {
-    if (!isOwnProfile) return;
+    if (!isOwnProfile || !canWriteSecureFields) return;
 
     setLoading(true);
     try {
-      // Build the update data using the sanitizer.
-      // Only editable fields are sent back: email is read-only and is never
-      // written to avoid clobbering the account's linked email column.
-      const updateData = {
+      const updateData: Record<string, unknown> = {
         phone_country_code: formData.phone_number?.trim() ? formData.phone_country_code : null,
         phone_number: formData.phone_number?.trim() || null,
-        websites_social_links: websites as any,
+        websites_social_links: websites,
         gender: formData.gender,
         pronouns: formData.pronouns,
         birth_date: formData.birth_date,
         birth_year: formData.birth_year,
-        // Visibility settings
-        email_visibility: formData.email_visibility,
-        phone_visibility: formData.phone_visibility,
-        websites_visibility: formData.websites_visibility,
-        gender_visibility: formData.gender_visibility,
-        pronouns_visibility: formData.pronouns_visibility,
-        birth_date_visibility: formData.birth_date_visibility,
-        birth_year_visibility: formData.birth_year_visibility,
       };
+      for (const column of OWNER_VISIBILITY_COLUMNS) {
+        updateData[column] = visibilityValue(column);
+      }
 
-      // Apply sanitization which handles the proper casing for each field
       const sanitizedData = sanitizeProfilePayload(updateData);
-
       const { error } = await dataClient
         .from('profiles')
         .update(sanitizedData)
         .eq('id', profileId);
-
       if (error) throw error;
 
-      toast({
-        title: 'Success',
-        description: 'Contact and basic info updated successfully!'
-      });
-
+      toast({ title: 'Success', description: 'Contact and basic info updated successfully!' });
       onSave?.();
     } catch (error: any) {
       toast({
@@ -299,22 +234,22 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
   const formatBirthDate = (birthDate?: string) => {
     if (!birthDate) return { day: '', month: '' };
     const date = new Date(birthDate);
+    if (Number.isNaN(date.getTime())) return { day: '', month: '' };
     return {
-      day: date.getDate().toString(),
-      month: MONTHS[date.getMonth()]
+      day: date.getUTCDate().toString(),
+      month: MONTHS[date.getUTCMonth()]
     };
   };
 
   const setBirthDate = (day: string, month: string) => {
-    // Keep partial selections so the Day/Month selects don't snap back.
     setBirthDateParts({ day, month });
     if (day && month) {
       const monthIndex = MONTHS.indexOf(month);
       if (monthIndex !== -1) {
         const date = new Date(Date.UTC(2000, monthIndex, parseInt(day)));
-        setFormData(prev => ({ 
-          ...prev, 
-          birth_date: date.toISOString().split('T')[0] 
+        setFormData(prev => ({
+          ...prev,
+          birth_date: date.toISOString().split('T')[0]
         }));
         return;
       }
@@ -322,151 +257,90 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
     setFormData(prev => ({ ...prev, birth_date: undefined }));
   };
 
-  const birthDateData = formatBirthDate(formData.birth_date);
+  const displayBirthDate = formatBirthDate(formData.birth_date);
+  const ready = secureStatus === 'ready';
 
-  const canViewField = (visibility: string) => {
-    if (isOwnProfile) return true;
-    if (visibility === 'public') return true;
-    if (visibility === 'friends') return viewerCanSeeFriend;
-    if (visibility === 'only_me') return false;
-    return true; // Default to true for public if visibility is not set
+  const fieldValue = (
+    key: string,
+    label: string,
+    value: React.ReactNode,
+    hasValue: boolean
+  ) => {
+    if (!isFieldVisible(key)) {
+      if (!ready) return null;
+      return (
+        <div key={key} className="text-xs md:text-sm text-muted-foreground">
+          {label} is not visible to you.
+        </div>
+      );
+    }
+    if (!hasValue) {
+      return (
+        <div key={key} className="text-xs md:text-sm text-muted-foreground">
+          {label} has not been provided.
+        </div>
+      );
+    }
+    return (
+      <div key={key} className="text-xs md:text-sm text-foreground font-medium">
+        {value}
+      </div>
+    );
   };
-
-  const getPrivacyLabel = (visibility: string) => {
-    const option = PRIVACY_OPTIONS.find(opt => opt.value === visibility);
-    return option ? `Visible to ${option.label === 'Public' ? 'Everyone' : option.label === 'Only Me' ? 'You Only' : option.label}` : '';
-  };
-
-  const hasAnyContactInfo = formData.email || (formData.phone_number && formData.phone_country_code) || websites.length > 0;
-  const hasAnyBasicInfo = formData.gender || formData.pronouns || formData.birth_date || formData.birth_year;
 
   if (!isOwnProfile) {
-    // Display mode for viewing other profiles
     return (
       <div className="space-y-4 md:space-y-6">
-        {/* Contact Information */}
+        <SecureDataNotice status={secureStatus} />
         <Card>
           <CardHeader className="p-4 md:p-6">
             <CardTitle className="text-base md:text-lg">Contact Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 md:space-y-4 p-4 md:p-6 pt-0 md:pt-0">
-            {formData.email && canViewField(formData.email_visibility || 'public') ? (
-              <div>
-                <div className="text-xs md:text-sm text-foreground font-medium">Email: {formData.email}</div>
-                <div className="text-xs text-muted-foreground">{getPrivacyLabel(formData.email_visibility || 'public')}</div>
-              </div>
-            ) : !canViewField(formData.email_visibility || 'public') && formData.email ? (
-              <div className="text-xs md:text-sm text-muted-foreground">Email is private</div>
-            ) : (
-              <div className="text-xs md:text-sm text-muted-foreground">Add your email</div>
+            {fieldValue('email', 'Email', formData.email, Boolean(formData.email))}
+            {fieldValue(
+              'phone',
+              'Phone',
+              `${formData.phone_country_code || ''} ${formData.phone_number || ''}`.trim(),
+              Boolean(formData.phone_country_code && formData.phone_number)
             )}
-            
-            {formData.phone_number && formData.phone_country_code && canViewField(formData.phone_visibility || 'public') ? (
-              <div>
-                <div className="text-xs md:text-sm text-foreground font-medium">
-                  Phone: {formData.phone_country_code} {formData.phone_number}
-                </div>
-                <div className="text-xs text-muted-foreground">{getPrivacyLabel(formData.phone_visibility || 'public')}</div>
-              </div>
-            ) : !canViewField(formData.phone_visibility || 'public') && formData.phone_number && formData.phone_country_code ? (
-              <div className="text-xs md:text-sm text-muted-foreground">Phone number is private</div>
-            ) : (
-              <div className="text-xs md:text-sm text-muted-foreground">Add your phone number</div>
-            )}
-
-            {websites.length > 0 && canViewField(formData.websites_visibility || 'public') ? (
-              <div>
-                <div className="text-xs md:text-sm text-foreground font-medium mb-1 md:mb-2">Websites and Social Links:</div>
-                <div className="space-y-1 md:space-y-2">
-                  {websites.map((website, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {website.type}
-                      </Badge>
-                      <a 
-                        href={website.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-xs md:text-sm text-primary hover:underline break-all"
-                      >
-                        {website.label}
-                      </a>
-                    </div>
-                  ))}
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">{getPrivacyLabel(formData.websites_visibility || 'public')}</div>
-              </div>
-            ) : !canViewField(formData.websites_visibility || 'public') && websites.length > 0 ? (
-              <div className="text-xs md:text-sm text-muted-foreground">Websites and social links are private</div>
-            ) : (
-              <div className="text-xs md:text-sm text-muted-foreground">Add your websites and social links</div>
-            )}
-
-            {(!hasAnyContactInfo || (!canViewField(formData.email_visibility || 'public') && !canViewField(formData.phone_visibility || 'public') && !canViewField(formData.websites_visibility || 'public'))) && (
-              <div className="text-xs md:text-sm text-muted-foreground italic">
-                Add information to your contact and basic info section
-              </div>
+            {fieldValue(
+              'websites_social_links',
+              'Websites and social links',
+              <div className="space-y-1 md:space-y-2">
+                {websites.map((website, index) => (
+                  <div key={`${website.url}-${index}`} className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">{website.type}</Badge>
+                    <a
+                      href={website.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs md:text-sm text-primary hover:underline break-all"
+                    >
+                      {website.label}
+                    </a>
+                  </div>
+                ))}
+              </div>,
+              websites.length > 0
             )}
           </CardContent>
         </Card>
 
-        {/* Basic Information */}
         <Card>
           <CardHeader className="p-4 md:p-6">
             <CardTitle className="text-base md:text-lg">Basic Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 md:space-y-4 p-4 md:p-6 pt-0 md:pt-0">
-            {formData.gender && canViewField(formData.gender_visibility || 'public') ? (
-              <div>
-                <div className="text-xs md:text-sm text-foreground font-medium">Gender: {formData.gender}</div>
-                <div className="text-xs text-muted-foreground">{getPrivacyLabel(formData.gender_visibility || 'public')}</div>
-              </div>
-            ) : !canViewField(formData.gender_visibility || 'public') && formData.gender ? (
-              <div className="text-xs md:text-sm text-muted-foreground">Gender is private</div>
-            ) : (
-              <div className="text-xs md:text-sm text-muted-foreground">Add your gender</div>
+            {fieldValue('gender', 'Gender', formData.gender, Boolean(formData.gender))}
+            {fieldValue('pronouns', 'System pronouns', formData.pronouns, Boolean(formData.pronouns))}
+            {fieldValue(
+              'birth_date',
+              'Birth date',
+              `${displayBirthDate.day} ${displayBirthDate.month}`.trim(),
+              Boolean(displayBirthDate.day && displayBirthDate.month)
             )}
-
-            {formData.pronouns && canViewField(formData.pronouns_visibility || 'public') ? (
-              <div>
-                <div className="text-xs md:text-sm text-foreground font-medium">System pronouns: {formData.pronouns}</div>
-                <div className="text-xs text-muted-foreground">{getPrivacyLabel(formData.pronouns_visibility || 'public')}</div>
-              </div>
-            ) : !canViewField(formData.pronouns_visibility || 'public') && formData.pronouns ? (
-              <div className="text-xs md:text-sm text-muted-foreground">Pronouns are private</div>
-            ) : (
-              <div className="text-xs md:text-sm text-muted-foreground">Add your pronouns</div>
-            )}
-
-            {formData.birth_date && canViewField(formData.birth_date_visibility || 'public') ? (
-              <div>
-                <div className="text-xs md:text-sm text-foreground font-medium">
-                  Birth Date: {birthDateData.day} {birthDateData.month}
-                </div>
-                <div className="text-xs text-muted-foreground">{getPrivacyLabel(formData.birth_date_visibility || 'public')}</div>
-              </div>
-            ) : !canViewField(formData.birth_date_visibility || 'public') && formData.birth_date ? (
-              <div className="text-xs md:text-sm text-muted-foreground">Birth date is private</div>
-            ) : (
-              <div className="text-xs md:text-sm text-muted-foreground">Add your birth date</div>
-            )}
-
-            {formData.birth_year && canViewField(formData.birth_year_visibility || 'public') ? (
-              <div>
-                <div className="text-xs md:text-sm text-foreground font-medium">Birth Year: {formData.birth_year}</div>
-                <div className="text-xs text-muted-foreground">{getPrivacyLabel(formData.birth_year_visibility || 'public')}</div>
-              </div>
-            ) : !canViewField(formData.birth_year_visibility || 'public') && formData.birth_year ? (
-              <div className="text-xs md:text-sm text-muted-foreground">Birth year is private</div>
-            ) : (
-              <div className="text-xs md:text-sm text-muted-foreground">Add your birth year</div>
-            )}
-
-            {(!hasAnyBasicInfo || (!canViewField(formData.gender_visibility || 'public') && !canViewField(formData.pronouns_visibility || 'public') && !canViewField(formData.birth_date_visibility || 'public') && !canViewField(formData.birth_year_visibility || 'public'))) && (
-              <div className="text-xs md:text-sm text-muted-foreground italic">
-                Add information to your contact and basic info section
-              </div>
-            )}
+            {fieldValue('birth_year', 'Birth year', formData.birth_year, Boolean(formData.birth_year))}
           </CardContent>
         </Card>
       </div>
@@ -475,18 +349,19 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
 
   return (
     <div className="space-y-4 md:space-y-6">
-      {/* Contact Information */}
+      <SecureDataNotice status={secureStatus} />
       <Card>
         <CardHeader className="p-4 md:p-6">
           <CardTitle className="text-base md:text-lg">Contact Information</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 md:space-y-6 p-4 md:p-6 pt-0 md:pt-0">
-          {/* Email Field */}
           <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs md:text-sm">Email</Label>
-              <PrivacySelector
-                value={formData.email_visibility || 'public'}
+              <ProfileFieldVisibilitySelector
+                fieldKey="email_visibility"
+                value={visibilitySettings.email_visibility}
+                disabled={!canWriteSecureFields}
                 onChange={(value) => setFormData(prev => ({ ...prev, email_visibility: value }))}
               />
             </div>
@@ -503,18 +378,19 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
             </p>
           </div>
 
-          {/* Phone Field */}
           <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs md:text-sm">Phone</Label>
-              <PrivacySelector
-                value={formData.phone_visibility || 'public'}
+              <ProfileFieldVisibilitySelector
+                fieldKey="phone_visibility"
+                value={visibilitySettings.phone_visibility}
+                disabled={!canWriteSecureFields}
                 onChange={(value) => setFormData(prev => ({ ...prev, phone_visibility: value }))}
               />
             </div>
             <div className="flex gap-1.5 md:gap-2">
-              <Select 
-                value={formData.phone_country_code || '+1'} 
+              <Select
+                value={formData.phone_country_code || '+1'}
                 onValueChange={(value) => setFormData(prev => ({ ...prev, phone_country_code: value }))}
               >
                 <SelectTrigger className="w-14 md:w-32 h-14 border-0">
@@ -524,7 +400,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {COUNTRY_CODES.map((country) => (
+                  {COUNTRY_CODES.map(country => (
                     <SelectItem key={country.code} value={country.code}>
                       <div className="flex items-center gap-2">
                         <span>{country.flag}</span>
@@ -544,42 +420,29 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
             </div>
           </div>
 
-          {/* Websites and Social Links */}
           <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs md:text-sm">Websites and Social Links</Label>
-              <PrivacySelector
-                value={formData.websites_visibility || 'public'}
+              <ProfileFieldVisibilitySelector
+                fieldKey="websites_visibility"
+                value={visibilitySettings.websites_visibility}
+                disabled={!canWriteSecureFields}
                 onChange={(value) => setFormData(prev => ({ ...prev, websites_visibility: value }))}
               />
             </div>
-            
-            {/* Existing Websites */}
             {websites.length > 0 && (
               <div className="space-y-1 md:space-y-2">
                 {websites.map((website, index) => (
-                  <div key={index} className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 p-2 border rounded-md">
+                  <div key={`${website.url}-${index}`} className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 p-2 border rounded-md">
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {website.type}
-                      </Badge>
+                      <Badge variant="outline" className="text-xs">{website.type}</Badge>
                       <span className="text-xs md:text-sm flex-1">{website.label}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <a 
-                        href={website.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-xs text-primary hover:underline truncate flex-1"
-                      >
+                      <a href={website.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline truncate flex-1">
                         {website.url}
                       </a>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeWebsite(index)}
-                        className="h-6 w-6 p-0 shrink-0"
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => removeWebsite(index)} className="h-6 w-6 p-0 shrink-0">
                         <X className="h-3 w-3" />
                       </Button>
                     </div>
@@ -587,27 +450,14 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                 ))}
               </div>
             )}
-
-            {/* Add New Website */}
             <div className="space-y-2 p-2 md:p-3 border-2 border-dashed rounded-md">
               <div className="flex flex-col md:flex-row gap-1.5 md:gap-2">
-                <Select
-                  value={newWebsite.type}
-                  onValueChange={(value) => setNewWebsite(prev => ({ ...prev, type: value }))}
-                >
-                  <SelectTrigger className="w-full md:w-32 h-14 border-0">
-                    <SelectValue />
-                  </SelectTrigger>
+                <Select value={newWebsite.type} onValueChange={(value) => setNewWebsite(prev => ({ ...prev, type: value }))}>
+                  <SelectTrigger className="w-full md:w-32 h-14 border-0"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="website">Website</SelectItem>
-                    <SelectItem value="facebook">Facebook</SelectItem>
-                    <SelectItem value="twitter">Twitter</SelectItem>
-                    <SelectItem value="instagram">Instagram</SelectItem>
-                    <SelectItem value="linkedin">LinkedIn</SelectItem>
-                    <SelectItem value="youtube">YouTube</SelectItem>
-                    <SelectItem value="tiktok">TikTok</SelectItem>
-                    <SelectItem value="tone">Tone</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
+                    {['website', 'facebook', 'twitter', 'instagram', 'linkedin', 'youtube', 'tiktok', 'tone', 'other'].map(type => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Input
@@ -622,7 +472,7 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
                   placeholder="URL (https://...)"
                   value={newWebsite.url}
                   onChange={(e) => setNewWebsite(prev => ({ ...prev, url: e.target.value }))}
-                  className="flex-1 h-14 border-0"
+                  className="h-14 border-0"
                 />
                 <Button onClick={addWebsite} size="sm" className="h-14 border-0">
                   <Plus className="h-4 w-4" />
@@ -633,67 +483,53 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
         </CardContent>
       </Card>
 
-      {/* Basic Information */}
       <Card>
         <CardHeader className="p-4 md:p-6">
           <CardTitle className="text-base md:text-lg">Basic Information</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 md:space-y-6 p-4 md:p-6 pt-0 md:pt-0">
-          {/* Gender */}
           <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs md:text-sm">Gender</Label>
-              <PrivacySelector
-                value={formData.gender_visibility || 'public'}
+              <ProfileFieldVisibilitySelector
+                fieldKey="gender_visibility"
+                value={visibilitySettings.gender_visibility}
+                disabled={!canWriteSecureFields}
                 onChange={(value) => setFormData(prev => ({ ...prev, gender_visibility: value }))}
               />
             </div>
-            <Select
-              value={formData.gender || ''}
-              onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}
-            >
-              <SelectTrigger className="h-14 border-0">
-                <SelectValue placeholder="Select your gender" />
-              </SelectTrigger>
+            <Select value={formData.gender || ''} onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}>
+              <SelectTrigger className="h-14 border-0"><SelectValue placeholder="Select your gender" /></SelectTrigger>
               <SelectContent>
-                {GENDER_OPTIONS.map((gender) => (
-                  <SelectItem key={gender} value={gender}>
-                    {gender}
-                  </SelectItem>
-                ))}
+                {GENDER_OPTIONS.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
 
-          {/* Pronouns */}
           <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs md:text-sm">Pronouns</Label>
-              <PrivacySelector
-                value={formData.pronouns_visibility || 'public'}
+              <ProfileFieldVisibilitySelector
+                fieldKey="pronouns_visibility"
+                value={visibilitySettings.pronouns_visibility}
+                disabled={!canWriteSecureFields}
                 onChange={(value) => setFormData(prev => ({ ...prev, pronouns_visibility: value }))}
               />
             </div>
             <div className="flex flex-col md:flex-row gap-1.5 md:gap-2">
               <Select
                 value={formData.pronouns || ''}
-                onValueChange={(value) => setFormData(prev => ({ 
-                  ...prev, 
-                  pronouns: value === 'Custom' ? '' : value 
+                onValueChange={(value) => setFormData(prev => ({
+                  ...prev,
+                  pronouns: value === 'Custom' ? '' : value
                 }))}
               >
-                <SelectTrigger className="w-full md:flex-1 h-14 border-0">
-                  <SelectValue placeholder="Select pronouns" />
-                </SelectTrigger>
+                <SelectTrigger className="w-full md:flex-1 h-14 border-0"><SelectValue placeholder="Select pronouns" /></SelectTrigger>
                 <SelectContent>
-                  {PRONOUN_OPTIONS.map((pronoun) => (
-                    <SelectItem key={pronoun} value={pronoun}>
-                      {pronoun}
-                    </SelectItem>
-                  ))}
+                  {PRONOUN_OPTIONS.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}
                 </SelectContent>
               </Select>
-              {(formData.pronouns === '' || !PRONOUN_OPTIONS.includes(formData.pronouns || '')) && (
+              {(!formData.pronouns || !PRONOUN_OPTIONS.includes(formData.pronouns)) && (
                 <Input
                   placeholder="Custom pronouns"
                   value={formData.pronouns || ''}
@@ -704,55 +540,41 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
             </div>
           </div>
 
-          {/* Birth Date */}
           <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs md:text-sm">Birth Date</Label>
-              <PrivacySelector
-                value={formData.birth_date_visibility || 'public'}
+              <ProfileFieldVisibilitySelector
+                fieldKey="birth_date_visibility"
+                value={visibilitySettings.birth_date_visibility}
+                disabled={!canWriteSecureFields}
                 onChange={(value) => setFormData(prev => ({ ...prev, birth_date_visibility: value }))}
               />
             </div>
             <div className="flex gap-1.5 md:gap-2">
-              <Select
-                value={birthDateParts.day}
-                onValueChange={(value) => setBirthDate(value, birthDateParts.month)}
-              >
-                <SelectTrigger className="w-14 md:w-20 h-14 border-0">
-                  <SelectValue placeholder="Day" />
-                </SelectTrigger>
+              <Select value={birthDateParts.day} onValueChange={(value) => setBirthDate(value, birthDateParts.month)}>
+                <SelectTrigger className="w-14 md:w-20 h-14 border-0"><SelectValue placeholder="Day" /></SelectTrigger>
                 <SelectContent>
-                  {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                    <SelectItem key={day} value={day.toString()}>
-                      {day}
-                    </SelectItem>
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                    <SelectItem key={day} value={day.toString()}>{day}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Select
-                value={birthDateParts.month}
-                onValueChange={(value) => setBirthDate(birthDateParts.day, value)}
-              >
-                <SelectTrigger className="flex-1 h-14 border-0">
-                  <SelectValue placeholder="Month" />
-                </SelectTrigger>
+              <Select value={birthDateParts.month} onValueChange={(value) => setBirthDate(birthDateParts.day, value)}>
+                <SelectTrigger className="flex-1 h-14 border-0"><SelectValue placeholder="Month" /></SelectTrigger>
                 <SelectContent>
-                  {MONTHS.map((month) => (
-                    <SelectItem key={month} value={month}>
-                      {month}
-                    </SelectItem>
-                  ))}
+                  {MONTHS.map(month => <SelectItem key={month} value={month}>{month}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          {/* Birth Year */}
           <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs md:text-sm">Birth Year (Optional)</Label>
-              <PrivacySelector
-                value={formData.birth_year_visibility || 'public'}
+              <ProfileFieldVisibilitySelector
+                fieldKey="birth_year_visibility"
+                value={visibilitySettings.birth_year_visibility}
+                disabled={!canWriteSecureFields}
                 onChange={(value) => setFormData(prev => ({ ...prev, birth_year_visibility: value }))}
               />
             </div>
@@ -762,27 +584,19 @@ export const ContactBasicInfoForm: React.FC<ContactBasicInfoFormProps> = ({
               min="1900"
               max={new Date().getFullYear()}
               value={formData.birth_year || ''}
-              onChange={(e) => setFormData(prev => ({ 
-                ...prev, 
-                birth_year: e.target.value ? parseInt(e.target.value) : undefined 
+              onChange={(e) => setFormData(prev => ({
+                ...prev,
+                birth_year: e.target.value ? parseInt(e.target.value, 10) : undefined
               }))}
-              className="h-14 border-0"
+              className={cn('h-14 border-0')}
             />
           </div>
         </CardContent>
       </Card>
 
-      {/* Save Button */}
       <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={loading} className="h-14 border-0">
-          {loading ? (
-            <>Loading...</>
-          ) : (
-            <>
-              <Save className="h-4 w-4 mr-2" />
-              Save Changes
-            </>
-          )}
+        <Button onClick={handleSave} disabled={loading || !canWriteSecureFields} className="h-14 border-0">
+          {loading ? 'Loading...' : 'Save Changes'}
         </Button>
       </div>
     </div>

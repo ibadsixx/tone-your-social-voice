@@ -1,33 +1,22 @@
 import { useState, useEffect } from 'react';
 import { dataClient } from '@/lib/supabase/dataClient';
 import { profilesApi } from '@/api';
+import type { PublicProfile } from '@/api/profiles';
 import { useAuth } from '@/hooks/useAuth';
 import { validateProfileVisibility, sanitizeProfilePayload } from '@/utils/profileValidation';
 
-interface Profile {
-  id: string;
-  username: string;
-  display_name: string;
-  profile_pic: string | null;
-  cover_pic: string | null;
-  bio: string | null;
-  email: string | null;
-  friends_visibility?: string | null;
-  following_visibility?: boolean | null;
-  privacy?: string | null;
-  birthday: string | null;
-  relationship: string | null;
-  about_you?: string | null;
-  about_you_visibility?: string | null;
-  name_pronunciation?: string | null;
-  name_pronunciation_visibility?: string | null;
-  created_at: string;
-  updated_at: string;
-}
+/**
+ * Phase 3G-N: this hook is a PUBLIC profile read boundary. It deliberately
+ * exposes only the six approved columns. Private owner-only values require the
+ * future approved secure owner-only read function and must not be inferred
+ * from this object. Writes remain allowed through the existing owner-scoped
+ * API; they do not widen this read contract.
+ */
+type ProfileUpdate = Record<string, unknown>;
 
 export const useProfile = (profileId?: string) => {
   const { user } = useAuth();
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
   
   const userId = profileId || user?.id;
@@ -46,7 +35,8 @@ export const useProfile = (profileId?: string) => {
         return;
       }
 
-      setProfile(data as unknown as Profile);
+      // `getProfileById` already selects exactly the six public columns.
+      setProfile(data);
     } catch (error) {
       console.error('Error fetching profile:', error);
     } finally {
@@ -74,7 +64,9 @@ export const useProfile = (profileId?: string) => {
         },
         (payload) => {
           if (payload.eventType === 'UPDATE') {
-            setProfile(payload.new as Profile);
+            // Do not copy payload.new into state: a broad role could include
+            // private columns. Re-read through the public projection instead.
+            void fetchProfile();
           }
         }
       )
@@ -96,7 +88,7 @@ export const useProfile = (profileId?: string) => {
     };
   }, [user?.id, profileId]);
 
-  const updateProfile = async (updates: Partial<Profile>) => {
+  const updateProfile = async (updates: ProfileUpdate) => {
     if (!user?.id) throw new Error('User not authenticated');
     
     try {

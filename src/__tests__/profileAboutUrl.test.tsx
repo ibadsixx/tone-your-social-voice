@@ -145,6 +145,29 @@ describe('About subsection URL navigation', () => {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
     expect(getProfileByUsername).toHaveBeenCalledTimes(1);
+    expect(getProfileByUsername).toHaveBeenCalledWith('test');
+  });
+
+  it('loads the profile named in the About URL, not the signed-in viewer', async () => {
+    getProfileByUsername.mockResolvedValue({
+      data: { ...profile, id: 'p-alice', username: 'alice', display_name: 'Alice' },
+      error: null,
+    });
+
+    renderProfile('/profile/alice/about/contactInformation');
+
+    await findTestId('about-contact');
+    expect(screen.getByTestId('path').textContent).toBe('/profile/alice/about/contactInformation');
+    expect(getProfileByUsername).toHaveBeenCalledTimes(1);
+    expect(getProfileByUsername).toHaveBeenCalledWith('alice');
+  });
+
+  it('marks private About fields unavailable instead of showing placeholder values', async () => {
+    renderProfile('/profile/test/about/contactInformation');
+
+    await findTestId('about-contact');
+    expect(screen.getByTestId('about-secure-data-unavailable')).toBeTruthy();
+    expect(screen.queryByText('Add your email')).toBeNull();
   });
 
   it('changes the URL and only the About content, without refetching', async () => {

@@ -24,15 +24,17 @@ import type { College } from '@/hooks/useColleges';
 import { HighSchoolAutocomplete } from './HighSchoolAutocomplete';
 import type { HighSchool } from '@/hooks/useHighSchools';
 import { ContactBasicInfoForm } from './ContactBasicInfoForm';
-import { PrivacySelector } from './PrivacySelector';
-import { sanitizeProfilePayload, normalizeVisibilityValue } from '@/utils/profileValidation';
+import { ProfileFieldVisibilitySelector } from './profile/ProfileFieldVisibilitySelector';
+import { sanitizeProfilePayload } from '@/utils/profileValidation';
+import { normalizeProfileVisibility } from '@/lib/profileAboutPrivacy';
 import { FamilyAndRelationships } from './FamilyAndRelationships';
 import { LifeEventsSection } from './LifeEventsSection';
 import { DetailsAboutYouSection } from './DetailsAboutYouSection';
-import { useProfile } from '@/hooks/useProfile';
 import OverviewSection from './OverviewSection';
 import { ABOUT_SECTIONS } from '@/lib/profileAbout';
 import type { AboutSectionId } from '@/lib/profileAbout';
+import { loadSecureAboutFields, type AboutSecureDataStatus } from '@/api/profileAbout';
+import { getCompanyById, getCollegeById, getHighSchoolById } from '@/api/users';
 
 interface AboutSectionProps {
   profileId: string;
@@ -65,20 +67,25 @@ type EditFormValue = string | number | Date | SocialLink[];
 type EditFormState = Record<string, EditFormValue>;
 
 interface ProfileData {
-  email?: string;
+  about_you?: string;
+  name_pronunciation?: string;
+  email?: string[] | string;
   phone_country_code?: string;
   phone_number?: string;
   websites_social_links?: SocialLink[];
   gender?: string;
   pronouns?: string;
+  birthday?: string;
   birth_date?: string;
   birth_year?: number;
-  phone_visibility?: string;
-  websites_visibility?: string;
-  gender_visibility?: string;
-  pronouns_visibility?: string;
-  birth_date_visibility?: string;
-  birth_year_visibility?: string;
+  function?: string;
+  company_id?: string;
+  college_id?: string;
+  college?: string;
+  high_school_id?: string;
+  high_school?: string;
+  relationship_status?: string;
+  relationship?: string;
 }
 
 const jobFunctions = [
@@ -106,10 +113,28 @@ const jobFunctions = [
   'Other'
 ];
 
+// The live email column is TEXT[]; the edit form and this legacy display use a
+// single string. Normalize at the boundary instead of widening EditFormValue.
+function emailAsString(value: string[] | string | undefined): string {
+  if (Array.isArray(value)) {
+    return value.filter((entry): entry is string => typeof entry === 'string').join(', ');
+  }
+  return typeof value === 'string' ? value : '';
+}
+
+// These sections include values from private `public.profiles` columns. Until
+// the approved field-level database read exists, they cannot show real data.
+const SECTIONS_WITH_PRIVATE_PROFILE_FIELDS: ReadonlySet<AboutSectionId> = new Set([
+  'work_education',
+  'contact',
+  'family',
+  'life_events',
+  'details',
+]);
+
 const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSection, onSectionChange }: AboutSectionProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { profile, refetch: refetchProfile } = useProfile(profileId);
   const [profileDetails, setProfileDetails] = useState<ProfileDetail[]>([]);
   const [profileData, setProfileData] = useState<ProfileData>({});
   const [editingSection, setEditingSection] = useState<string | null>(null);
@@ -120,8 +145,14 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
   const [selectedHighSchool, setSelectedHighSchool] = useState<HighSchool | null>(null);
   const [customFunction, setCustomFunction] = useState('');
   const [loading, setLoading] = useState(true);
+  const [secureAboutStatus, setSecureAboutStatus] = useState<AboutSecureDataStatus>('loading');
+  const [secureVisibilitySettings, setSecureVisibilitySettings] = useState<Record<string, string | null>>({});
   const [internalSection, setInternalSection] = useState<AboutSectionId>('overview');
   const activeSection = controlledSection ?? internalSection;
+  // Visibility values come only from the secure owner read. If that read is not
+  // ready, the controls stay visible but disabled so a save cannot silently
+  // overwrite an unknown saved setting with a default.
+  const visibilityControlsDisabled = secureAboutStatus !== 'ready';
 
   const handleSectionChange = (section: AboutSectionId) => {
     setInternalSection(section);
@@ -130,11 +161,12 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
 
   useEffect(() => {
     fetchProfileDetails();
-  }, [profileId]);
+  }, [profileId, isOwnProfile]);
 
   const fetchProfileDetails = async () => {
+    setSecureAboutStatus('loading');
     try {
-      // Fetch profile_details
+      // Fetch profile_details (a separate table, not private profiles columns).
       const { data: details, error: detailsError } = await dataClient
         .from('profile_details')
         .select('*')
@@ -142,137 +174,32 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
 
       if (detailsError) throw detailsError;
 
-      // Fetch complete profile data including new fields
-      const { data: profile, error: profileError } = await dataClient
-        .from('profiles')
-        .select(`
-          email,
-          function,
-          company_id,
-          college_id,
-          high_school_id,
-          phone_country_code,
-          phone_number,
-          websites_social_links,
-          gender,
-          pronouns,
-          birth_date,
-          birth_year,
-          function_visibility,
-          company_visibility,
-          college_visibility,
-          high_school_visibility,
-          phone_visibility,
-          websites_visibility,
-          gender_visibility,
-          pronouns_visibility,
-          birth_date_visibility,
-          birth_year_visibility,
-          companies(name, type),
-          colleges(name),
-          high_schools(name)
-        `)
-        .eq('id', profileId)
-        .single();
+      // Phase 3G-N/3G-Q: email, phone, birth, work/education IDs, gender,
+      // pronouns and all *_visibility fields are private profile columns. No
+      // direct SELECT (owner or viewer) is retained as a fallback. The
+      // fail-closed adapter reports whether an approved field-level read is
+      // available; it never sends a browser-supplied viewer id.
+      const secureFields = await loadSecureAboutFields(profileId);
+      setSecureAboutStatus(secureFields.status);
+      const secureProfile = secureFields.fields as ProfileData;
+      setProfileData(secureProfile);
+      setSecureVisibilitySettings({ ...secureFields.visibilitySettings });
 
-      if (profileError && profileError.code !== 'PGRST116') throw profileError;
-
-      // Set profile data for new fields
-      if (profile) {
-        setProfileData({
-          email: user?.email || '', // Get email from auth
-          phone_country_code: profile.phone_country_code,
-          phone_number: profile.phone_number,
-          websites_social_links: (profile.websites_social_links as unknown as SocialLink[]) || [],
-          gender: profile.gender,
-          pronouns: profile.pronouns,
-          birth_date: profile.birth_date,
-          birth_year: profile.birth_year,
-          // Normalize visibility values on load to handle legacy "Only Me" → "private"
-          phone_visibility: normalizeVisibilityValue(profile.phone_visibility) || 'public',
-          websites_visibility: normalizeVisibilityValue(profile.websites_visibility) || 'public',
-          gender_visibility: normalizeVisibilityValue(profile.gender_visibility) || 'public',
-          pronouns_visibility: normalizeVisibilityValue(profile.pronouns_visibility) || 'public',
-          birth_date_visibility: normalizeVisibilityValue(profile.birth_date_visibility) || 'public',
-          birth_year_visibility: normalizeVisibilityValue(profile.birth_year_visibility) || 'public'
-        });
-      }
-
-      const allDetails = details || [];
-
-      // Add work_education details from profiles table
-      if (profile) {
-        if (profile.function) {
-          allDetails.push({
-            id: 'function',
-            section: 'work_education',
-            field_name: 'job_function',
-            field_value: profile.function,
-            profile_id: profileId,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-        }
-        
-        if (profile.companies) {
-          const company = profile.companies as { name: string; type: string } | null;
-          allDetails.push({
-            id: 'company',
-            section: 'work_education',
-            field_name: 'job_company',
-            field_value: `${company.name} (${company.type})`,
-            profile_id: profileId,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-          
-          // Set selected company for editing
-          setSelectedCompany({
-            id: profile.company_id,
-            name: company.name,
-            type: company.type
-          });
-        }
-
-        if (profile.colleges?.name) {
-          allDetails.push({
-            id: 'college',
-            section: 'work_education',
-            field_name: 'college',
-            field_value: profile.colleges.name,
-            profile_id: profileId,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-          
-          // Set selected college for editing
-          setSelectedCollege({
-            id: profile.college_id,
-            name: profile.colleges.name
-          });
-        }
-
-        if (profile.high_schools?.name) {
-          allDetails.push({
-            id: 'high_school',
-            section: 'work_education',
-            field_name: 'high_school',
-            field_value: profile.high_schools.name,
-            profile_id: profileId,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-          
-          // Set selected high school for editing
-          setSelectedHighSchool({
-            id: profile.high_school_id,
-            name: profile.high_schools.name
-          });
-        }
-      }
-
-      setProfileDetails(allDetails);
+      // Labels are restored only after the DB returned the corresponding
+      // authorized ID. A failed label lookup leaves the label empty; it never
+      // exposes a row the field read did not authorize.
+      const [company, college, highSchool] = await Promise.all([
+        secureProfile.company_id ? getCompanyById(secureProfile.company_id) : Promise.resolve(null),
+        secureProfile.college_id ? getCollegeById(secureProfile.college_id) : Promise.resolve(null),
+        secureProfile.high_school_id ? getHighSchoolById(secureProfile.high_school_id) : Promise.resolve(null),
+      ]);
+      setSelectedCompany(company && !company.error ? company.data ?? null : null);
+      setSelectedCollege(college && !college.error ? college.data ?? null : null);
+      setSelectedHighSchool(highSchool && !highSchool.error ? highSchool.data ?? null : null);
+      setProfileDetails(details || []);
     } catch {
+      setSecureAboutStatus('unavailable');
+      setSecureVisibilitySettings({});
       toast({
         title: 'Error',
         description: 'Failed to load profile details',
@@ -288,6 +215,8 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
   };
 
   const handleEditSection = async (section: string) => {
+    // Private profile fields and their visibility settings are owner-only.
+    if (!isOwnProfile) return;
     const sectionDetails = getDetailsBySection(section);
     const formData: EditFormState = {};
     const visibilityData: Record<string, string> = {};
@@ -299,7 +228,7 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
     
     // Handle contact section with profile data
     if (section === 'contact') {
-      formData.email = profileData.email || '';
+      formData.email = emailAsString(profileData.email);
       formData.phone_country_code = profileData.phone_country_code || '+1';
       formData.phone_number = profileData.phone_number || '';
       formData.websites_social_links = profileData.websites_social_links || [];
@@ -308,30 +237,31 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
       formData.birth_date = profileData.birth_date ? new Date(profileData.birth_date) : null;
       formData.birth_year = profileData.birth_year || '';
       
-      // Normalize visibility values on load  
-      visibilityData.phone_visibility = normalizeVisibilityValue(profileData.phone_visibility) || 'public';
-      visibilityData.websites_visibility = normalizeVisibilityValue(profileData.websites_visibility) || 'public';
-      visibilityData.gender_visibility = normalizeVisibilityValue(profileData.gender_visibility) || 'public';
-      visibilityData.pronouns_visibility = normalizeVisibilityValue(profileData.pronouns_visibility) || 'public';
-      visibilityData.birth_date_visibility = normalizeVisibilityValue(profileData.birth_date_visibility) || 'public';
-      visibilityData.birth_year_visibility = normalizeVisibilityValue(profileData.birth_year_visibility) || 'public';
+      // Saved visibility values come only from the secure owner read. Unknown
+      // or unavailable values stay private; they are never widened by default.
+      for (const column of [
+        'email_visibility',
+        'phone_visibility',
+        'websites_visibility',
+        'gender_visibility',
+        'pronouns_visibility',
+        'birth_date_visibility',
+        'birth_year_visibility',
+      ]) {
+        visibilityData[column] =
+          normalizeProfileVisibility(secureVisibilitySettings[column]) ?? 'private';
+      }
     }
     
-    // Load current visibility settings from profile for work_education
+    // Private visibility values await the secure owner-only read function.
+    // Use safe editing defaults; no direct private profile SELECT is performed.
     if (section === 'work_education') {
-      const { data: profile } = await dataClient
-        .from('profiles')
-        .select('function_visibility, company_visibility, college_visibility, high_school_visibility')
-        .eq('id', profileId)
-        .single();
-        
-      if (profile) {
-        // Normalize visibility values on load to handle legacy values
-        visibilityData.function_visibility = normalizeVisibilityValue(profile.function_visibility) || 'public';
-        visibilityData.company_visibility = normalizeVisibilityValue(profile.company_visibility) || 'public';
-        visibilityData.college_visibility = normalizeVisibilityValue(profile.college_visibility) || 'public';
-        visibilityData.high_school_visibility = normalizeVisibilityValue(profile.high_school_visibility) || 'public';
-      }
+      if (profileData.function) formData.job_function = profileData.function;
+
+      visibilityData.function_visibility = normalizeProfileVisibility(secureVisibilitySettings.function_visibility) ?? 'private';
+      visibilityData.company_visibility = normalizeProfileVisibility(secureVisibilitySettings.company_visibility) ?? 'private';
+      visibilityData.college_visibility = normalizeProfileVisibility(secureVisibilitySettings.college_visibility) ?? 'private';
+      visibilityData.high_school_visibility = normalizeProfileVisibility(secureVisibilitySettings.high_school_visibility) ?? 'private';
 
       // If the saved function isn't one of the preset options, pre-select
       // "Other" and pre-fill the custom job-title field so it stays editable.
@@ -356,6 +286,10 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
 
   const handleSaveSection = async (section: string) => {
     if (!isOwnProfile || !user?.id) return;
+    const canWriteVisibility = secureAboutStatus === 'ready';
+    // Never write private profile values while the authoritative owner read is
+    // unavailable; an edit loaded from empty defaults could overwrite real data.
+    if (section === 'work_education' && !canWriteVisibility) return;
 
     try {
       if (section === 'work_education') {
@@ -383,10 +317,10 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
         }
 
         // Add visibility settings to update data
-        if (visibilityForm.function_visibility) updateData.function_visibility = visibilityForm.function_visibility;
-        if (visibilityForm.company_visibility) updateData.company_visibility = visibilityForm.company_visibility;
-        if (visibilityForm.college_visibility) updateData.college_visibility = visibilityForm.college_visibility;
-        if (visibilityForm.high_school_visibility) updateData.high_school_visibility = visibilityForm.high_school_visibility;
+        if (canWriteVisibility && visibilityForm.function_visibility) updateData.function_visibility = visibilityForm.function_visibility;
+        if (canWriteVisibility && visibilityForm.company_visibility) updateData.company_visibility = visibilityForm.company_visibility;
+        if (canWriteVisibility && visibilityForm.college_visibility) updateData.college_visibility = visibilityForm.college_visibility;
+        if (canWriteVisibility && visibilityForm.high_school_visibility) updateData.high_school_visibility = visibilityForm.high_school_visibility;
 
         // Apply sanitization for proper casing
         const sanitizedData = sanitizeProfilePayload(updateData);
@@ -415,12 +349,12 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
         if (editForm.birth_year) updateData.birth_year = parseInt(String(editForm.birth_year), 10) || null;
         
         // Add visibility settings to update data
-        if (visibilityForm.phone_visibility) updateData.phone_visibility = visibilityForm.phone_visibility;
-        if (visibilityForm.websites_visibility) updateData.websites_visibility = visibilityForm.websites_visibility;
-        if (visibilityForm.gender_visibility) updateData.gender_visibility = visibilityForm.gender_visibility;
-        if (visibilityForm.pronouns_visibility) updateData.pronouns_visibility = visibilityForm.pronouns_visibility;
-        if (visibilityForm.birth_date_visibility) updateData.birth_date_visibility = visibilityForm.birth_date_visibility;
-        if (visibilityForm.birth_year_visibility) updateData.birth_year_visibility = visibilityForm.birth_year_visibility;
+        if (canWriteVisibility && visibilityForm.phone_visibility) updateData.phone_visibility = visibilityForm.phone_visibility;
+        if (canWriteVisibility && visibilityForm.websites_visibility) updateData.websites_visibility = visibilityForm.websites_visibility;
+        if (canWriteVisibility && visibilityForm.gender_visibility) updateData.gender_visibility = visibilityForm.gender_visibility;
+        if (canWriteVisibility && visibilityForm.pronouns_visibility) updateData.pronouns_visibility = visibilityForm.pronouns_visibility;
+        if (canWriteVisibility && visibilityForm.birth_date_visibility) updateData.birth_date_visibility = visibilityForm.birth_date_visibility;
+        if (canWriteVisibility && visibilityForm.birth_year_visibility) updateData.birth_year_visibility = visibilityForm.birth_year_visibility;
 
         // Apply sanitization for proper casing
         const sanitizedData = sanitizeProfilePayload(updateData);
@@ -547,9 +481,8 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
     if (section === 'details') {
       return (
         <DetailsAboutYouSection
-          profile={profile}
+          profileId={profileId}
           isOwnProfile={isOwnProfile}
-          onProfileUpdate={refetchProfile}
         />
       );
     }
@@ -565,6 +498,10 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
               variant="outline"
               size="sm"
               onClick={() => handleEditSection(section)}
+              disabled={
+                SECTIONS_WITH_PRIVATE_PROFILE_FIELDS.has(section as AboutSectionId) &&
+                secureAboutStatus !== 'ready'
+              }
             >
               <Edit className="h-4 w-4 mr-1" />
               Edit
@@ -600,7 +537,15 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
             <div className="space-y-4">
               {/* Email Field - Read Only */}
               <div>
-                <Label>Email</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Email</Label>
+                  <ProfileFieldVisibilitySelector
+                    fieldKey="email_visibility"
+                    value={visibilityForm.email_visibility}
+                    disabled={visibilityControlsDisabled}
+                    onChange={(value) => setVisibilityForm(prev => ({ ...prev, email_visibility: value }))}
+                  />
+                </div>
                 <div className="flex items-center gap-2">
                   <Input
                     value={editText('email')}
@@ -616,8 +561,10 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
               <div>
                 <div className="flex items-center justify-between">
                   <Label>Phone Number</Label>
-                  <PrivacySelector
-                    value={visibilityForm.phone_visibility || 'public'}
+                  <ProfileFieldVisibilitySelector
+                    fieldKey="phone_visibility"
+                    disabled={visibilityControlsDisabled}
+                    value={visibilityForm.phone_visibility}
                     onChange={(value) => setVisibilityForm(prev => ({ ...prev, phone_visibility: value }))}
                   />
                 </div>
@@ -639,8 +586,10 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <Label>Websites and Social Links</Label>
-                  <PrivacySelector
-                    value={visibilityForm.websites_visibility || 'public'}
+                  <ProfileFieldVisibilitySelector
+                    fieldKey="websites_visibility"
+                    disabled={visibilityControlsDisabled}
+                    value={visibilityForm.websites_visibility}
                     onChange={(value) => setVisibilityForm(prev => ({ ...prev, websites_visibility: value }))}
                   />
                 </div>
@@ -660,8 +609,10 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
               <div>
                 <div className="flex items-center justify-between">
                   <Label>Gender</Label>
-                  <PrivacySelector
-                    value={visibilityForm.gender_visibility || 'public'}
+                  <ProfileFieldVisibilitySelector
+                    fieldKey="gender_visibility"
+                    disabled={visibilityControlsDisabled}
+                    value={visibilityForm.gender_visibility}
                     onChange={(value) => setVisibilityForm(prev => ({ ...prev, gender_visibility: value }))}
                   />
                 </div>
@@ -681,8 +632,10 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
               <div>
                 <div className="flex items-center justify-between">
                   <Label>Pronouns</Label>
-                  <PrivacySelector
-                    value={visibilityForm.pronouns_visibility || 'public'}
+                  <ProfileFieldVisibilitySelector
+                    fieldKey="pronouns_visibility"
+                    disabled={visibilityControlsDisabled}
+                    value={visibilityForm.pronouns_visibility}
                     onChange={(value) => setVisibilityForm(prev => ({ ...prev, pronouns_visibility: value }))}
                   />
                 </div>
@@ -703,8 +656,10 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
               <div>
                 <div className="flex items-center justify-between">
                   <Label>Birth Date</Label>
-                  <PrivacySelector
-                    value={visibilityForm.birth_date_visibility || 'public'}
+                  <ProfileFieldVisibilitySelector
+                    fieldKey="birth_date_visibility"
+                    disabled={visibilityControlsDisabled}
+                    value={visibilityForm.birth_date_visibility}
                     onChange={(value) => setVisibilityForm(prev => ({ ...prev, birth_date_visibility: value }))}
                   />
                 </div>
@@ -731,8 +686,10 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
               <div>
                 <div className="flex items-center justify-between">
                   <Label>Birth Year</Label>
-                  <PrivacySelector
-                    value={visibilityForm.birth_year_visibility || 'public'}
+                  <ProfileFieldVisibilitySelector
+                    fieldKey="birth_year_visibility"
+                    disabled={visibilityControlsDisabled}
+                    value={visibilityForm.birth_year_visibility}
                     onChange={(value) => setVisibilityForm(prev => ({ ...prev, birth_year_visibility: value }))}
                   />
                 </div>
@@ -762,6 +719,13 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
       );
     }
     
+    const workVisibilityColumns: Record<string, string> = {
+      job_function: 'function_visibility',
+      job_company: 'company_visibility',
+      college: 'college_visibility',
+      high_school: 'high_school_visibility',
+    };
+
     return (
       <div className="space-y-4">
         {fields.map(field => (
@@ -842,6 +806,20 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
                 )}
               </>
             )}
+            {workVisibilityColumns[field.name] && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Who can see this</span>
+                <ProfileFieldVisibilitySelector
+                  fieldKey={workVisibilityColumns[field.name]}
+                  value={visibilityForm[workVisibilityColumns[field.name]]}
+                  disabled={visibilityControlsDisabled}
+                  onChange={(value) => setVisibilityForm(prev => ({
+                    ...prev,
+                    [workVisibilityColumns[field.name]]: value,
+                  }))}
+                />
+              </div>
+            )}
           </div>
         ))}
         <div className="flex gap-2 pt-4">
@@ -859,6 +837,23 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
   };
 
   const renderDisplayContent = (section: string, details: ProfileDetail[]) => {
+    // A missing secure result is not evidence that private fields are empty.
+    // Keep the section explicitly unavailable/denied until the database speaks.
+    if (SECTIONS_WITH_PRIVATE_PROFILE_FIELDS.has(section as AboutSectionId) && secureAboutStatus === 'unavailable') {
+      return (
+        <div data-testid="about-section-secure-data-unavailable" className="text-center text-muted-foreground py-8">
+          Private details are unavailable until the secure field-level read is approved and installed. This does not mean they are empty.
+        </div>
+      );
+    }
+    if (SECTIONS_WITH_PRIVATE_PROFILE_FIELDS.has(section as AboutSectionId) && secureAboutStatus === 'denied') {
+      return (
+        <div data-testid="about-section-secure-data-denied" className="text-center text-muted-foreground py-8">
+          Some private details are not visible to you.
+        </div>
+      );
+    }
+
     if (details.length === 0) {
       return (
         <div className="text-center text-muted-foreground py-8">
@@ -872,10 +867,10 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
 
     // Special formatting for work_education section
     if (section === 'work_education') {
-      const jobFunction = details.find(d => d.field_name === 'job_function')?.field_value;
-      const jobCompany = details.find(d => d.field_name === 'job_company')?.field_value;
-      const college = details.find(d => d.field_name === 'college')?.field_value;
-      const highSchool = details.find(d => d.field_name === 'high_school')?.field_value;
+      const jobFunction = details.find(d => d.field_name === 'job_function')?.field_value || profileData.function;
+      const jobCompany = details.find(d => d.field_name === 'job_company')?.field_value || selectedCompany?.name;
+      const college = details.find(d => d.field_name === 'college')?.field_value || selectedCollege?.name || profileData.college;
+      const highSchool = details.find(d => d.field_name === 'high_school')?.field_value || selectedHighSchool?.name || profileData.high_school;
 
       return (
         <div className="space-y-4 md:space-y-6">
@@ -908,7 +903,8 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
 
     // Special formatting for contact section
     if (section === 'contact') {
-      const hasContactInfo = profileData.email || 
+      const emailDisplay = emailAsString(profileData.email);
+      const hasContactInfo = emailDisplay || 
         (profileData.phone_country_code && profileData.phone_number) ||
         (profileData.websites_social_links && profileData.websites_social_links.length > 0);
       
@@ -933,11 +929,11 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
             <div>
               <h4 className="font-semibold text-base md:text-lg mb-2 md:mb-3">Contact Information</h4>
               <div className="space-y-2 md:space-y-3">
-                {profileData.email && (
+                {emailDisplay && (
                   <div className="flex flex-col md:flex-row md:items-center gap-0 md:gap-3">
                     <span className="text-xs md:text-sm font-medium text-muted-foreground md:w-20">Email:</span>
                     <div className="flex items-center gap-1 md:gap-2">
-                      <span className="text-sm">{profileData.email}</span>
+                      <span className="text-sm">{emailDisplay}</span>
                       <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
                       <span className="text-xs text-muted-foreground">(From account)</span>
                     </div>
@@ -1114,6 +1110,27 @@ const AboutSection = ({ profileId, isOwnProfile, activeSection: controlledSectio
 
         {/* Content Area */}
         <div className="flex-1">
+          {SECTIONS_WITH_PRIVATE_PROFILE_FIELDS.has(activeSection) &&
+            secureAboutStatus === 'unavailable' && (
+              <div
+                data-testid="about-secure-data-unavailable"
+                className="mb-4 rounded-md border border-muted bg-muted/40 px-4 py-3 text-xs text-muted-foreground"
+              >
+                Private About details are unavailable until the secure field-level read is approved and installed. This does not mean they are empty.
+              </div>
+            )}
+          {SECTIONS_WITH_PRIVATE_PROFILE_FIELDS.has(activeSection) &&
+            secureAboutStatus === 'denied' && (
+              <div
+                data-testid="about-secure-data-denied"
+                className="mb-4 rounded-md border border-muted bg-muted/40 px-4 py-3 text-xs text-muted-foreground"
+              >
+                Some private About details are not visible to you.
+              </div>
+            )}
+          {loading && secureAboutStatus === 'loading' && (
+            <div data-testid="about-secure-data-loading" className="sr-only">Loading About details</div>
+          )}
           {renderSectionContent(activeSection)}
         </div>
       </div>

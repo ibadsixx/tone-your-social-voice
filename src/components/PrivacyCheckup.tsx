@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { profilesApi, blockingApi, usersApi } from '@/api';
+import { PRIVATE_PROFILE_READ_STATUS } from '@/api/profiles';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -139,24 +140,25 @@ const PrivacyCheckup = () => {
     setLoading(true);
 
     try {
-      const [profileRes, settingsRes] = await Promise.all([
-        profilesApi.getProfileById(user.id),
-        usersApi.getPrivacySettingsByUser(user.id),
-      ]);
+      const settingsRes = await usersApi.getPrivacySettingsByUser(user.id);
 
-      if (profileRes.error) throw profileRes.error;
       if (settingsRes.error) throw settingsRes.error;
 
+      // Phase 3G-N: email, birthday, relationship and their visibility flags are
+      // private owner-only profile columns. The public profile API deliberately
+      // does not return them, and no direct private SELECT is used as a
+      // fallback. Keep the existing safe defaults until the approved secure
+      // owner-only read function is available.
       setProfileData({
-        email: (profileRes.data?.email as string) || '',
-        birthday: (profileRes.data?.birthday as string) || '',
-        relationship: (profileRes.data?.relationship as string) || '',
-        email_visibility: ((profileRes.data?.email_visibility as string) || 'only_me').toLowerCase(),
-        birth_date_visibility: ((profileRes.data?.birth_date_visibility as string) || 'public').toLowerCase(),
-        birth_year_visibility: ((profileRes.data?.birth_year_visibility as string) || 'public').toLowerCase(),
-        relationship_visibility: (profileRes.data?.relationship_visibility as string) || 'friends',
-        friends_visibility: (profileRes.data?.friends_visibility as string) || 'only_me',
-        following_visibility: String(profileRes.data?.following_visibility ?? 'only_me'),
+        email: '',
+        birthday: '',
+        relationship: '',
+        email_visibility: 'only_me',
+        birth_date_visibility: 'public',
+        birth_year_visibility: 'public',
+        relationship_visibility: 'friends',
+        friends_visibility: 'only_me',
+        following_visibility: 'only_me',
       });
 
       const settingsObject = (settingsRes.data ?? []).reduce((acc: Record<string, string>, setting) => {
@@ -1003,6 +1005,12 @@ const PrivacyCheckup = () => {
           We&apos;ll guide you through key controls so you can tailor the right privacy choices for your account.
           Which area would you like to start with?
         </p>
+        {PRIVATE_PROFILE_READ_STATUS === 'AWAITING_SECURE_OWNER_ONLY_FUNCTION' && (
+          <p className="text-xs text-muted-foreground mb-6">
+            Private profile values and their visibility settings are awaiting the secure owner-only read
+            implementation. Safe defaults are shown until that read is available.
+          </p>
+        )}
 
         <div className="grid grid-cols-2 gap-4 mb-4">
           {cards.slice(0, 2).map(card => (

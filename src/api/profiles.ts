@@ -44,6 +44,34 @@ export interface Profile {
   [key: string]: unknown;
 }
 
+/**
+ * The exact public projection. Public profile screens must use this type, not
+ * the broad `Profile` type below, so TypeScript rejects any attempt to read a
+ * private column from a public response.
+ */
+export interface PublicProfile {
+  id: string;
+  username: string;
+  display_name: string;
+  profile_pic: string | null;
+  cover_pic: string | null;
+  bio: string | null;
+}
+
+/** Narrower public projection used by search and identity lookup lists. */
+export type PublicProfileIdentity = Pick<PublicProfile, 'id' | 'username' | 'display_name' | 'profile_pic'>;
+
+/**
+ * Owner-only private profile data is deliberately NOT exposed by this public
+ * API. The approved follow-up is a secure database function that reads only
+ * auth.uid()'s row. No RPC name is invented here, and no direct private SELECT
+ * is provided as a fallback. Settings screens that need these values must stay
+ * explicitly marked as awaiting that secure owner-only read implementation.
+ */
+export type PrivateProfileReadStatus = 'AWAITING_SECURE_OWNER_ONLY_FUNCTION';
+
+export const PRIVATE_PROFILE_READ_STATUS: PrivateProfileReadStatus = 'AWAITING_SECURE_OWNER_ONLY_FUNCTION';
+
 export interface DisplayPreferences {
   font_scale: 'small' | 'normal' | 'large';
   reduce_motion: boolean;
@@ -51,18 +79,38 @@ export interface DisplayPreferences {
   high_contrast: boolean;
 }
 
-const DISPLAY_COLUMNS = 'font_scale, reduce_motion, reduce_transparency, high_contrast';
+/**
+ * The only profile columns a normal display read may request. Do not add
+ * private fields here: a narrower `select` is the frontend's last line of
+ * defence even when a project role can technically read the whole table.
+ */
+export const PUBLIC_PROFILE_COLUMNS = 'id, username, display_name, profile_pic, cover_pic, bio';
 
-export async function getDisplayPreferences(userId: string): Promise<ApiResult<DisplayPreferences>> {
-  return dataClient.from('profiles').select(DISPLAY_COLUMNS).eq('id', userId).maybeSingle() as Promise<ApiResult<DisplayPreferences>>;
+export async function getDisplayPreferences(_userId: string): Promise<ApiResult<DisplayPreferences>> {
+  // Phase 3G-N: display preferences are private owner-only profile columns.
+  // They await the approved secure owner-only read function; no direct private
+  // SELECT is retained as a fallback. Callers keep their local defaults.
+  return {
+    data: {
+      font_scale: 'normal',
+      reduce_motion: false,
+      reduce_transparency: false,
+      high_contrast: false,
+    },
+    error: null,
+  };
 }
 
 export async function updateDisplayPreferences(userId: string, data: Partial<DisplayPreferences>): Promise<ApiResult<null>> {
   return dataClient.from('profiles').update(data).eq('id', userId) as Promise<ApiResult<null>>;
 }
 
-export async function getProfileById(id: string): Promise<ApiResult<Profile>> {
-  return dataClient.from('profiles').select('*').eq('id', id).maybeSingle() as Promise<ApiResult<Profile>>;
+export async function getProfileById(id: string): Promise<ApiResult<PublicProfile>> {
+  return dataClient
+    .from('profiles')
+    .select(PUBLIC_PROFILE_COLUMNS)
+    .eq('id', id)
+    .maybeSingle() as Promise<ApiResult<PublicProfile>>;
 }
 
 // PostgREST LIKE/ILIKE treats these as wildcards; usernames are literals here.
@@ -79,27 +127,36 @@ function escapeLikeLiteral(value: string): string {
  * reported as ambiguity rather than picking a row: a lookup must never depend
  * on registry/query ordering, and an ambiguous identity is not a 404.
  */
-export async function getProfileByUsername(username: string): Promise<ApiResult<Profile>> {
+export async function getProfileByUsername(username: string): Promise<ApiResult<PublicProfile>> {
   const parsed = parseProfileRouteUsername(username);
   if (!parsed.valid || !parsed.username) {
     return { data: null, error: { message: 'Invalid profile route', code: 'INVALID_ROUTE' } };
   }
 
+  // `maybeSingle()` reports the live duplicate `test` rows as a generic
+  // PGRST116 query error. Ask for at most two rows so an exact duplicate is
+  // classified as AMBIGUOUS_USERNAME instead of a misleading load failure.
   const exact = await dataClient
     .from('profiles')
-    .select('*')
+    .select(PUBLIC_PROFILE_COLUMNS)
     .eq('username', parsed.username)
-    .maybeSingle() as ApiResult<Profile>;
-  if (exact.error || exact.data) return exact;
+    .limit(2) as ApiResult<PublicProfile[]>;
+  if (exact.error) return { data: null, error: exact.error };
+
+  const exactMatches = exact.data ?? [];
+  if (exactMatches.length > 1) {
+    return { data: null, error: { message: 'Ambiguous username', code: 'AMBIGUOUS_USERNAME' } };
+  }
+  if (exactMatches.length === 1) return { data: exactMatches[0], error: null };
 
   const { data: candidates, error } = await dataClient
     .from('profiles')
-    .select('*')
+    .select(PUBLIC_PROFILE_COLUMNS)
     .ilike('username', escapeLikeLiteral(parsed.username))
     .limit(2);
   if (error) return { data: null, error };
 
-  const matches = (candidates ?? []) as Profile[];
+  const matches = (candidates ?? []) as PublicProfile[];
   if (matches.length > 1) {
     return { data: null, error: { message: 'Ambiguous username', code: 'AMBIGUOUS_USERNAME' } };
   }
@@ -111,32 +168,31 @@ export async function getProfileByUsername(username: string): Promise<ApiResult<
  *
  * The Privacy Checkup answer lives in `privacy_settings`, which is not a
  * guest-readable domain and has no foreign key to `profiles`, so it cannot ride
- * along on `getProfileByUsername`'s `select('*')`. The Gateway reads it
- * server-side and answers with a single boolean - see
- * dataClient/src/features/profileIndexing.ts.
+ * along on the public profile read. The Edge Function reads it server-side and
+ * answers with a single boolean; that is an SEO sidecar, not a dependency of
+ * profile display.
  *
- * TRUSTED ANSWER, WITHHELD BY DEFAULT. This is no longer "return true only on an
- * explicit `{ search_engine_indexing: true }`", because the Gateway now resolves
- * the default itself: a profile with no stored preference comes back as
- * `{ search_engine_indexing: true }`. So a 200 body is authoritative and is
- * passed through as-is.
+ * TRUSTED ANSWER, WITHHELD BY DEFAULT. This is not "return true only on an
+ * explicit `{ search_engine_indexing: true }`": the indexing sidecar resolves
+ * the default itself, so a profile with no stored preference answers
+ * `{ search_engine_indexing: true }`. A 200 body is authoritative.
  *
  * Everything that is NOT an authoritative 200 is `false`:
  *
- *   - no dataClient configured, network failure, any non-2xx (including the 404
- *     for a username that does not exist), an unparseable body, a missing field,
- *     or a non-boolean value all resolve to `false`.
+ *   - no sidecar URL configured, network failure, any non-2xx (including the
+ *     404 for a username that does not exist), an unparseable body, a missing
+ *     field, or a non-boolean value all resolve to `false`.
  *
  * That stays fail-closed on error even though the product default is now
  * permissive, and the reason is that the two cases are different facts. "The
  * owner never answered" is answered by the default; "we could not reach the
  * answer" is not, and the owner it failed to answer for may be one of the people
- * who explicitly turned indexing off. Publishing them because the Gateway was
+ * who explicitly turned indexing off. Publishing them because the sidecar was
  * briefly unreachable is not a recoverable mistake - they cannot see it happen -
  * whereas a profile that is withheld is withheld, and the next crawl fixes it.
  *
- * The asymmetry is the same one the Gateway makes, one layer up: the permissive
- * rule applies to an absent *preference*, never to an unavailable *read*.
+ * The permissive rule applies to an absent *preference*, never to an
+ * unavailable *read*.
  */
 export async function getProfileSearchEngineIndexing(username: string): Promise<boolean> {
   if (!username) return false;
@@ -161,19 +217,19 @@ export async function updateProfile(id: string, data: Partial<Profile>): Promise
   return dataClient.from('profiles').update(data).eq('id', id) as Promise<ApiResult<null>>;
 }
 
-export async function searchProfiles(query: string, excludeUserId?: string): Promise<ApiResult<Profile[]>> {
+export async function searchProfiles(query: string, excludeUserId?: string): Promise<ApiResult<PublicProfileIdentity[]>> {
   const term = query.trim().replace(/^@/, '');
   let q = dataClient
     .from('profiles')
     .select('id, username, display_name, profile_pic')
     .or(`username.ilike.%${term}%,display_name.ilike.%${term}%`);
   if (excludeUserId) q = q.neq('id', excludeUserId);
-  return q.limit(20) as Promise<ApiResult<Profile[]>>;
+  return q.limit(20) as Promise<ApiResult<PublicProfileIdentity[]>>;
 }
 
-export async function getProfilesByIds(ids: string[]): Promise<ApiResult<Profile[]>> {
+export async function getProfilesByIds(ids: string[]): Promise<ApiResult<PublicProfileIdentity[]>> {
   if (ids.length === 0) return { data: [], error: null };
-  return dataClient.from('profiles').select('id, username, display_name, profile_pic').in('id', ids) as Promise<ApiResult<Profile[]>>;
+  return dataClient.from('profiles').select('id, username, display_name, profile_pic').in('id', ids) as Promise<ApiResult<PublicProfileIdentity[]>>;
 }
 
 /**
@@ -250,7 +306,7 @@ function sanitizeUsername(value: string): string {
  * re-reads if a concurrent tab wins the race. Never overwrites an existing
  * row. Returns the profile (created or pre-existing) or `null` on failure.
  */
-export async function ensureProfile(user: EnsureProfileUser): Promise<Profile | null> {
+export async function ensureProfile(user: EnsureProfileUser): Promise<PublicProfile | null> {
   if (!user?.id) return null;
 
   const { data: existing, error: lookupError } = await getProfileById(user.id);
@@ -269,7 +325,7 @@ export async function ensureProfile(user: EnsureProfileUser): Promise<Profile | 
   const { data: created, error: insertError } = await dataClient
     .from('profiles')
     .insert({ id: user.id, username, display_name: displayName })
-    .select('*')
+    .select(PUBLIC_PROFILE_COLUMNS)
     .maybeSingle();
 
   if (insertError) {

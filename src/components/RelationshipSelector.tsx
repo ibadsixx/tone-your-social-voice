@@ -1,14 +1,15 @@
 import React from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { VisibilitySelector, Visibility } from '@/components/VisibilitySelector';
 import { Label } from '@/components/ui/label';
 import { Heart } from 'lucide-react';
+import { ProfileFieldVisibilitySelector } from '@/components/profile/ProfileFieldVisibilitySelector';
+import type { ProfileVisibility } from '@/lib/profileAboutPrivacy';
 
 interface RelationshipSelectorProps {
   value: string;
-  visibility: Visibility;
+  visibility: ProfileVisibility;
   onValueChange: (value: string) => void;
-  onVisibilityChange: (visibility: Visibility) => void;
+  onVisibilityChange: (visibility: ProfileVisibility) => void;
   className?: string;
 }
 
@@ -34,25 +35,24 @@ export const RelationshipSelector: React.FC<RelationshipSelectorProps> = ({
         <Heart className="h-4 w-4 text-primary" />
         Relationship Status
       </Label>
-      <div className="flex gap-1.5 md:gap-2">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center">
         <Select value={value} onValueChange={onValueChange}>
           <SelectTrigger className="flex-1 h-14 border-0">
             <SelectValue placeholder="Select relationship status">
-              {relationshipOptions.find(opt => opt.value === value)?.label}
+              {relationshipOptions.find(option => option.value === value)?.label}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {relationshipOptions.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
+            {relationshipOptions.map(option => (
+              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <VisibilitySelector
+        <ProfileFieldVisibilitySelector
+          fieldKey="relationship_visibility"
           value={visibility}
           onChange={onVisibilityChange}
-          className="w-[80px] md:w-[140px] h-14 border-0"
+          compact={false}
         />
       </div>
     </div>

@@ -55,7 +55,13 @@ export interface DomainProjectConfig {
 export interface ProjectRouteRequest {
   domain: string;
   operation: OperationType;
+  /** Registry-local project_key, never a Supabase project reference. */
   projectKey?: string;
+  /**
+   * Optional non-secret project identity check. When present, the selected
+   * Registry row's project_url host must belong to this Supabase project ref.
+   */
+  expectedProjectRef?: string;
   responsibility?: string;
   partitionKey?: string;
 }

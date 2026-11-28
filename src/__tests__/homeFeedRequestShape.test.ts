@@ -418,13 +418,16 @@ describe('B. direct-Supabase feed requests', () => {
     expect(requested.filter((table) => table !== 'registry')).toEqual(['posts']);
   });
 
-  it('fails closed when the posts domain has more than one active project', async () => {
+  it('uses the approved posts project when another active row shares the domain', async () => {
     registryProjects = ambiguousPostsRegistry();
 
     const res = await runFeedQuery();
 
-    expect(res.data).toBeNull();
-    expect(res.error?.configCode).toBe('AMBIGUOUS_ROUTE');
-    expect(postsRequests).toHaveLength(0);
+    // The approved project key is an explicit selector, so a second active row
+    // with a different key is not an ambiguous route. Priority and row order
+    // still play no part in the choice.
+    expect(res.error).toBeNull();
+    expect(postsRequests).toHaveLength(1);
+    expect(postsRequests[0].url.origin).toBe(POSTS_ORIGIN);
   });
 });

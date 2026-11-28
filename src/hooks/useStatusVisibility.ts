@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTheme } from 'next-themes';
 import { dataClient } from '@/lib/supabase/dataClient';
+import { PRIVATE_PROFILE_READ_STATUS } from '@/api/profiles';
 import { useAuth } from '@/hooks/useAuth';
 import { setNotificationSoundEnabled, setDoNotDisturbUntil } from '@/lib/notificationSounds';
 
@@ -54,8 +55,11 @@ export function useStatusVisibility() {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const [profileRes, visibleRes, hiddenRes] = await Promise.all([
-        dataClient.from('profiles').select('manual_status, notification_sounds, do_not_disturb_until, dark_mode, show_read_indicator, check_keys_in_conversations, remember_browser, disable_auto_uploads, vault_pin, vault_recovery_code, preview_mode, security_warnings').eq('id', user.id).single(),
+      // Phase 3G-N: manual status, DND, security and vault values are private
+      // owner-only profile columns. The approved secure owner-only read function
+      // is not deployed yet, so no direct SELECT is performed as a fallback.
+      // Existing owner-scoped writes are preserved; UI state keeps safe defaults.
+      const [visibleRes, hiddenRes] = await Promise.all([
         dataClient
           .from('status_visibility')
           .select('target_user_id, profiles!status_visibility_target_user_id_fkey(id, display_name, username, profile_pic)')
@@ -67,26 +71,6 @@ export function useStatusVisibility() {
           .eq('user_id', user.id)
           .eq('visibility', 'hidden'),
       ]);
-
-      if (profileRes.data) {
-        setManualStatusState(profileRes.data.manual_status);
-        setNotificationSoundsState(profileRes.data.notification_sounds ?? true);
-        const dndUntil = profileRes.data.do_not_disturb_until;
-        setDoNotDisturbUntilState(dndUntil);
-        setNotificationSoundEnabled(profileRes.data.notification_sounds ?? true);
-        setDoNotDisturbUntil(dndUntil);
-        const dbDarkMode = profileRes.data.dark_mode ?? false;
-        setDarkModeState(dbDarkMode);
-        setTheme(dbDarkMode ? 'dark' : 'light');
-        setShowReadIndicatorState(profileRes.data.show_read_indicator ?? true);
-        setCheckKeysInConversationsState(profileRes.data.check_keys_in_conversations ?? false);
-        setRememberBrowserState(profileRes.data.remember_browser ?? false);
-        setDisableAutoUploadsState(profileRes.data.disable_auto_uploads ?? false);
-        setPreviewModeState(profileRes.data.preview_mode ?? true);
-        setSecurityWarningsState(profileRes.data.security_warnings ?? true);
-        setVaultPinState(profileRes.data.vault_pin ?? null);
-        setVaultRecoveryCodeState(profileRes.data.vault_recovery_code ?? null);
-      }
 
       if (visibleRes.data) {
         setVisibleTo(
@@ -298,6 +282,7 @@ export function useStatusVisibility() {
     securityWarnings,
     vaultPin,
     vaultRecoveryCode,
+    privateProfileReadStatus: PRIVATE_PROFILE_READ_STATUS,
     setManualStatus,
     setNotificationSounds,
     setDoNotDisturbDuration,

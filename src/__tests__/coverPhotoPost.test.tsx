@@ -14,6 +14,7 @@ import {
   isInfraRegistryRequest,
   jsonResponse,
   MOCK_ORIGIN,
+  MOCK_STORAGE_ORIGIN,
   postgrestTable,
   prefersObjectResponse,
   shapePostgrestRows,
@@ -31,7 +32,8 @@ vi.mock('@/hooks/use-toast', () => ({
 import CoverPhotoEditor from '@/components/cover/CoverPhotoEditor';
 import { POST_CREATED_EVENT } from '@/hooks/useHomeFeed';
 
-const STORAGE_PREFIX = `${MOCK_ORIGIN}/storage/v1/object/covers/`;
+const STORAGE_PREFIX = `${MOCK_STORAGE_ORIGIN}/storage/v1/object/covers/`;
+const publicCoverUrl = (path: string) => `${MOCK_STORAGE_ORIGIN}/storage/v1/object/public/covers/${path}`;
 const POSTS_PATH = new URL(`${MOCK_ORIGIN}/rest/v1/posts`).pathname;
 const PROFILES_PATH = new URL(`${MOCK_ORIGIN}/rest/v1/profiles`).pathname;
 
@@ -134,7 +136,7 @@ describe('CoverPhotoEditor automatic cover-photo-change post', () => {
     expect(postBodies[0]).toEqual({
       user_id: 'alice-uuid',
       content: '',
-      media_url: coverPaths[0],
+      media_url: publicCoverUrl(coverPaths[0]),
       type: 'cover_photo_update',
     });
     expect(coverPaths[0]).toContain('/covers/');

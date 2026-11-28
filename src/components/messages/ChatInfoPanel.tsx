@@ -271,7 +271,8 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
           }
           const { data: profilesData } = await dataClient
             .from('profiles')
-            .select('id, username, display_name, profile_pic, last_seen_at')
+            // Phase 3G-N: last_seen_at is private and is not read for other members.
+            .select('id, username, display_name, profile_pic')
             .in('id', userIds);
           // The dataClient aggregates a domain read across every readable project
           // and flattens the results, so the SAME profile can be returned once
@@ -283,7 +284,6 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
             display_name: string;
             username: string;
             profile_pic?: string;
-            last_seen_at?: string;
             role?: string;
           }>();
           for (const p of (profilesData || []) as Array<{
@@ -291,7 +291,6 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
             username: string;
             display_name: string;
             profile_pic?: string | null;
-            last_seen_at?: string | null;
           }>) {
             if (!p || typeof p.id !== 'string' || memberMap.has(p.id)) continue;
             memberMap.set(p.id, {
@@ -299,7 +298,6 @@ export const ChatInfoPanel: React.FC<ChatInfoPanelProps> = ({
               display_name: p.display_name,
               username: p.username,
               profile_pic: p.profile_pic ?? undefined,
-              last_seen_at: p.last_seen_at ?? undefined,
               role: roleMap.get(p.id),
             });
           }

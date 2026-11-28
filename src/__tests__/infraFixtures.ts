@@ -5,10 +5,17 @@
 // global fetch must answer that registry read too, otherwise routing fails
 // before the domain request they actually care about is issued.
 //
-// One active project per domain keeps the resolver deterministic without any
-// routing metadata; all project URLs point at the test's fetch mock.
+// One active project per domain is still explicitly identified. Approved
+// domains use their real project keys; other test-only domains declare
+// complete routing metadata. All URLs point at the test's fetch mock.
+
+import { DOMAIN_PROJECT_KEYS, KNOWN_PROJECT_REFS } from '@/lib/supabase/projects';
 
 export const MOCK_ORIGIN = 'http://mock.test';
+// Storage routing validates the verified Supabase project identity from the
+// Registry URL. Fixtures therefore give the `users` row a realistic host while
+// every request is still intercepted by the test's fetch mock.
+export const MOCK_STORAGE_ORIGIN = `https://${KNOWN_PROJECT_REFS.centralAuth}.supabase.co`;
 export const MOCK_ANON_KEY = 'test-anon-key';
 
 export function jsonResponse(status: number, body: unknown): Response {
@@ -39,21 +46,24 @@ const DOMAINS = [
   'user_restrictions', 'users',
 ];
 
-export const INFRA_PROJECTS = DOMAINS.map((domain) => ({
-  project_key: `project-${domain}`,
-  domain,
-  project_url: MOCK_ORIGIN,
-  anon_key: MOCK_ANON_KEY,
-  status: 'active',
-  priority: 1,
-  region: 'test',
-  health_status: 'healthy',
-  responsibility: null,
-  operation_types: null,
-  read_destination: null,
-  write_destination: null,
-  partition_key: null,
-}));
+export const INFRA_PROJECTS = DOMAINS.map((domain) => {
+  const projectKey = DOMAIN_PROJECT_KEYS[domain] ?? `project-${domain}`;
+  return {
+    project_key: projectKey,
+    domain,
+    project_url: domain === 'users' ? MOCK_STORAGE_ORIGIN : MOCK_ORIGIN,
+    anon_key: MOCK_ANON_KEY,
+    status: 'active',
+    priority: 1,
+    region: 'test',
+    health_status: 'healthy',
+    responsibility: domain,
+    operation_types: ['read', 'write', 'sync', 'auth'],
+    read_destination: projectKey,
+    write_destination: projectKey,
+    partition_key: null,
+  };
+});
 
 /** True for the infrastructure registry read, which is not a domain query. */
 export function isInfraRegistryRequest(input: RequestInfo | URL | string): boolean {

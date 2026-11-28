@@ -364,8 +364,8 @@ describe('no leakage', () => {
   });
 
   it('copies no gated profile field into metadata a crawler archives', () => {
-    // getProfileByUsername selects `*`, so these arrive on the client whether or
-    // not the SEO layer wants them. A meta description is the most archived piece
+    // Public profile reads now select only the six approved columns, but a
+    // meta description is the most archived piece
     // of a page, so nothing with a `*_visibility` column may end up in one. This
     // matters more than it did before: with a default-ON rule there are far more
     // pages a crawler will actually keep, so the blast radius of a leak grew.

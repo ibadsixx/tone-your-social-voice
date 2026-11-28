@@ -4,8 +4,6 @@ import { ChevronRight, Loader2, X } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAdPreferences } from '@/hooks/useAdPreferences';
-import { useAuth } from '@/hooks/useAuth';
-import { profilesApi } from '@/api';
 
 const AdPreferences = () => {
   const [activeTab, setActiveTab] = useState('customize');
@@ -20,30 +18,25 @@ const AdPreferences = () => {
     updateTopicPreference,
   } = useAdPreferences();
 
-  const { user } = useAuth();
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [partnerDataOpen, setPartnerDataOpen] = useState(false);
   const [audienceBasedOpen, setAudienceBasedOpen] = useState(false);
   const [adsAboutToneOpen, setAdsAboutToneOpen] = useState(false);
   const [socialInteractionsOpen, setSocialInteractionsOpen] = useState(false);
   const [adsFromPartnersOpen, setAdsFromPartnersOpen] = useState(false);
-  const [profileData, setProfileData] = useState({ birth_year: 0, country: '' });
 
-  useEffect(() => {
-    if (!categoriesOpen || !user) return;
-    profilesApi.getProfileById(user.id).then(({ data }) => {
-      if (data) setProfileData({ birth_year: (data.birth_year as number) || 0, country: (data.country as string) || '' });
-    });
-  }, [categoriesOpen, user]);
-
-  const ageRange = profileData.birth_year
-    ? `${new Date().getFullYear() - profileData.birth_year - 4}-${new Date().getFullYear() - profileData.birth_year} years old`
-    : 'Not set';
+  // Birth year and country are private owner-only profile fields. They are not
+  // part of the approved six-column public projection, so they are no longer
+  // read here. This panel is awaiting the secure owner-only read function; it
+  // previously showed "Not set" in practice because getProfileById already
+  // narrowed its select to public columns.
+  const ageRange = 'Not set';
+  const country = 'Not set';
 
   const categories = [
     { label: 'Age range', value: ageRange },
     { label: 'Language', value: 'Arabic speaker' },
-    { label: 'Country', value: profileData.country || 'Not set' },
+    { label: 'Country', value: country },
     { label: 'Interests', value: `${adTopics.filter(t => t.preference === 'interested').length} topics selected` },
     { label: 'Device type', value: 'Not set' },
   ];

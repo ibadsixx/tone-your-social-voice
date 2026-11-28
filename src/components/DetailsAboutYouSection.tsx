@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,65 +18,46 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-interface Profile {
-  id: string;
-  about_you?: string;
-  about_you_visibility?: string;
-  name_pronunciation?: string;
-  name_pronunciation_visibility?: string;
-}
+import { loadSecureAboutFields, type AboutSecureDataStatus } from '@/api/profileAbout';
+import { normalizeProfileVisibility } from '@/lib/profileAboutPrivacy';
 
 interface DetailsAboutYouSectionProps {
-  profile: Profile;
+  // Use the routed profileId directly. The public useProfile() result can be
+  // null while About is still loading, and this section only ever needed the
+  // id for its secure reads and writes.
+  profileId: string;
   isOwnProfile: boolean;
-  onProfileUpdate: () => void;
 }
 
 const getVisibilityIcon = (visibility: string) => {
-  switch (visibility) {
-    case 'public':
-      return Eye;
-    case 'friends':
-      return Users;
-    case 'private':
-      return Lock;
-    default:
-      return Eye;
-  }
+  const normalized = normalizeProfileVisibility(visibility);
+  if (normalized === 'public') return Eye;
+  if (normalized === 'friends') return Users;
+  if (normalized === 'private') return Lock;
+  return Lock;
 };
 
 const getVisibilityLabel = (visibility: string) => {
-  switch (visibility) {
-    case 'public':
-      return 'Public';
-    case 'friends':
-      return 'Friends';
-    case 'private':
-      return 'Private';
-    default:
-      return 'Public';
-  }
+  const normalized = normalizeProfileVisibility(visibility);
+  if (normalized === 'public') return 'Public';
+  if (normalized === 'friends') return 'Friends';
+  if (normalized === 'private') return 'Private';
+  return 'Private';
 };
 
 const formatNameType = (type: string) => {
   switch (type) {
-    case 'birth_name':
-      return 'Birth name';
-    case 'married_name':
-      return 'Married name';
-    case 'nickname':
-      return 'Nickname';
-    case 'other':
-      return 'Other';
-    default:
-      return type;
+    case 'birth_name': return 'Birth name';
+    case 'married_name': return 'Married name';
+    case 'nickname': return 'Nickname';
+    case 'other': return 'Other';
+    default: return type;
   }
 };
 
-export const DetailsAboutYouSection = ({ 
-  profile, 
-  isOwnProfile, 
-  onProfileUpdate 
+export const DetailsAboutYouSection = ({
+  profileId,
+  isOwnProfile
 }: DetailsAboutYouSectionProps) => {
   const [aboutYouFormOpen, setAboutYouFormOpen] = useState(false);
   const [pronunciationFormOpen, setPronunciationFormOpen] = useState(false);
@@ -84,27 +65,52 @@ export const DetailsAboutYouSection = ({
   const [editingOtherName, setEditingOtherName] = useState<any>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [otherNameToDelete, setOtherNameToDelete] = useState<string | null>(null);
+  const [secureStatus, setSecureStatus] = useState<AboutSecureDataStatus>('loading');
+  const [visibleFields, setVisibleFields] = useState<ReadonlySet<string>>(new Set());
+  const [secureFields, setSecureFields] = useState<Record<string, unknown>>({});
+  const [visibilitySettings, setVisibilitySettings] = useState<Record<string, string | null>>({});
 
-  const { otherNames, loading, createOtherName, updateOtherName, deleteOtherName } = useOtherNames(profile.id);
+  const { otherNames, loading, createOtherName, updateOtherName, deleteOtherName } = useOtherNames(profileId);
+
+  const loadSecureFields = async () => {
+    setSecureStatus('loading');
+    const result = await loadSecureAboutFields(profileId);
+    setSecureStatus(result.status);
+    setVisibleFields(new Set(result.visibleFields));
+    setSecureFields({ ...result.fields });
+    setVisibilitySettings({ ...result.visibilitySettings });
+  };
+
+  useEffect(() => {
+    void loadSecureFields();
+  }, [profileId, isOwnProfile]);
+
+  const ready = secureStatus === 'ready';
+  const isVisible = (key: string) => ready && visibleFields.has(key);
+  const secureText = (key: string): string => {
+    const value = secureFields[key];
+    return typeof value === 'string' ? value : '';
+  };
+  const visibilityFor = (column: string) =>
+    normalizeProfileVisibility(visibilitySettings[column]) ?? 'private';
+
+  const refreshAfterEdit = () => {
+    void loadSecureFields();
+  };
 
   const handleOtherNameSave = async (data: any) => {
     if (editingOtherName) {
       const result = await updateOtherName(editingOtherName.id, {
         ...data,
-        user_id: profile.id
+        user_id: profileId
       });
       if (result.success) {
         setEditingOtherName(null);
         setOtherNamesFormOpen(false);
       }
     } else {
-      const result = await createOtherName({
-        ...data,
-        user_id: profile.id
-      });
-      if (result.success) {
-        setOtherNamesFormOpen(false);
-      }
+      const result = await createOtherName({ ...data, user_id: profileId });
+      if (result.success) setOtherNamesFormOpen(false);
     }
   };
 
@@ -131,6 +137,24 @@ export const DetailsAboutYouSection = ({
     setEditingOtherName(null);
   };
 
+  const renderPrivateText = (key: string, value: string, emptyLabel: string) => {
+    if (!isVisible(key)) {
+      if (secureStatus === 'unavailable') {
+        return (
+          <p data-testid="details-secure-data-unavailable" className="text-xs md:text-sm text-muted-foreground">
+            Unavailable until the secure field-level read is approved and installed.
+          </p>
+        );
+      }
+      if (!ready) return <p className="text-xs md:text-sm text-muted-foreground">Loading...</p>;
+      return <p className="text-xs md:text-sm text-muted-foreground">Not visible to you.</p>;
+    }
+    if (!value) {
+      return <p className="text-xs md:text-sm text-muted-foreground">{emptyLabel}</p>;
+    }
+    return <p className="text-xs md:text-sm text-foreground whitespace-pre-wrap">{value}</p>;
+  };
+
   return (
     <>
       <Card>
@@ -138,104 +162,67 @@ export const DetailsAboutYouSection = ({
           <CardTitle className="text-base md:text-lg">Details About You</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6 pt-0 md:pt-0">
-          {/* About You Section */}
           <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
               <h4 className="text-sm md:text-base font-medium">About You</h4>
-              {profile.about_you && (
-                <div className="flex items-center gap-1">
-                  {(() => {
-                    const Icon = getVisibilityIcon(profile.about_you_visibility || 'friends');
-                    return <Icon className="h-3 w-3 text-muted-foreground" />;
-                  })()}
-                </div>
-              )}
-            </div>
-            
-            {profile.about_you ? (
-              <div className="space-y-1 md:space-y-2">
-                <p className="text-xs md:text-sm text-foreground">{profile.about_you}</p>
-                {isOwnProfile && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setAboutYouFormOpen(true)}
-                  >
-                    <Edit2 className="h-3 w-3 mr-1" />
-                    Edit
-                  </Button>
-                )}
-              </div>
-            ) : (
-              isOwnProfile && (
+              {isOwnProfile && ready && (
                 <Button
-                  variant="ghost"
-                  className="text-left justify-start p-0 h-auto font-normal text-xs md:text-sm text-muted-foreground hover:text-foreground"
+                  variant="outline"
+                  size="sm"
                   onClick={() => setAboutYouFormOpen(true)}
                 >
-                  Write some details about yourself
+                  <Edit2 className="h-3 w-3 mr-1" />
+                  Edit
                 </Button>
-              )
+              )}
+            </div>
+            {isOwnProfile && !ready ? (
+              <p data-testid="details-secure-data-unavailable" className="text-xs md:text-sm text-muted-foreground">
+                About You is unavailable until the secure field-level read is approved and installed.
+              </p>
+            ) : isOwnProfile ? (
+              renderPrivateText('about_you', secureText('about_you'), 'Write some details about yourself')
+            ) : (
+              renderPrivateText('about_you', secureText('about_you'), 'No about-you details shared')
             )}
           </div>
 
-          {/* Name Pronunciation Section */}
           <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
               <h4 className="text-sm md:text-base font-medium">Name Pronunciation</h4>
-              {profile.name_pronunciation && (
-                <div className="flex items-center gap-1">
-                  {(() => {
-                    const Icon = getVisibilityIcon(profile.name_pronunciation_visibility || 'friends');
-                    return <Icon className="h-3 w-3 text-muted-foreground" />;
-                  })()}
-                </div>
-              )}
-            </div>
-            
-            {profile.name_pronunciation ? (
-              <div className="space-y-1 md:space-y-2">
-                <p className="text-xs md:text-sm text-foreground">{profile.name_pronunciation}</p>
-                {isOwnProfile && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPronunciationFormOpen(true)}
-                  >
-                    <Edit2 className="h-3 w-3 mr-1" />
-                    Edit
-                  </Button>
-                )}
-              </div>
-            ) : (
-              isOwnProfile && (
+              {isOwnProfile && ready && (
                 <Button
-                  variant="ghost"
-                  className="text-left justify-start p-0 h-auto font-normal text-xs md:text-sm text-muted-foreground hover:text-foreground"
+                  variant="outline"
+                  size="sm"
                   onClick={() => setPronunciationFormOpen(true)}
                 >
-                  Add a pronunciation of your name
+                  <Edit2 className="h-3 w-3 mr-1" />
+                  Edit
                 </Button>
-              )
+              )}
+            </div>
+            {isOwnProfile && !ready ? (
+              <p className="text-xs md:text-sm text-muted-foreground">
+                Name pronunciation is unavailable until the secure field-level read is approved and installed.
+              </p>
+            ) : isOwnProfile ? (
+              renderPrivateText('name_pronunciation', secureText('name_pronunciation'), 'Add a pronunciation of your name')
+            ) : (
+              renderPrivateText('name_pronunciation', secureText('name_pronunciation'), 'No name pronunciation shared')
             )}
           </div>
 
-          {/* Other Names Section */}
           <div className="space-y-1 md:space-y-2">
             <div className="flex items-center justify-between">
               <h4 className="text-sm md:text-base font-medium">Other Names</h4>
               {isOwnProfile && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setOtherNamesFormOpen(true)}
-                >
+                <Button variant="outline" size="sm" onClick={() => setOtherNamesFormOpen(true)}>
                   <Plus className="h-3 w-3 mr-1" />
                   Add
                 </Button>
               )}
             </div>
-            
+
             {otherNames.length > 0 ? (
               <div className="space-y-1 md:space-y-2">
                 {otherNames.map((otherName) => (
@@ -243,13 +230,9 @@ export const DetailsAboutYouSection = ({
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs md:text-sm font-medium">{otherName.name}</span>
-                        <Badge variant="secondary" className="text-xs">
-                          {formatNameType(otherName.type)}
-                        </Badge>
+                        <Badge variant="secondary" className="text-xs">{formatNameType(otherName.type)}</Badge>
                         {otherName.show_at_top && (
-                          <Badge variant="outline" className="text-xs">
-                            Top
-                          </Badge>
+                          <Badge variant="outline" className="text-xs">Top</Badge>
                         )}
                       </div>
                       <div className="flex items-center gap-1">
@@ -266,23 +249,12 @@ export const DetailsAboutYouSection = ({
                         })()}
                       </div>
                     </div>
-                    
                     {isOwnProfile && (
                       <div className="flex gap-1 shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditOtherName(otherName)}
-                          className="h-8 w-8 p-0"
-                        >
+                        <Button variant="ghost" size="sm" onClick={() => handleEditOtherName(otherName)} className="h-8 w-8 p-0">
                           <Edit2 className="h-3 w-3" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteClick(otherName.id)}
-                          className="h-8 w-8 p-0"
-                        >
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteClick(otherName.id)} className="h-8 w-8 p-0">
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
@@ -307,47 +279,37 @@ export const DetailsAboutYouSection = ({
         </CardContent>
       </Card>
 
-      {/* Forms */}
       <AboutYouForm
         isOpen={aboutYouFormOpen}
         onClose={() => setAboutYouFormOpen(false)}
-        profileId={profile.id}
-        initialValue={profile.about_you || ''}
-        initialVisibility={profile.about_you_visibility || 'friends'}
-        onUpdate={onProfileUpdate}
+        profileId={profileId}
+        initialValue={secureText('about_you')}
+        initialVisibility={visibilitySettings.about_you_visibility ?? 'private'}
+        onUpdate={refreshAfterEdit}
       />
-
       <NamePronunciationForm
         isOpen={pronunciationFormOpen}
         onClose={() => setPronunciationFormOpen(false)}
-        profileId={profile.id}
-        initialValue={profile.name_pronunciation || ''}
-        initialVisibility={profile.name_pronunciation_visibility || 'friends'}
-        onUpdate={onProfileUpdate}
+        profileId={profileId}
+        initialValue={secureText('name_pronunciation')}
+        initialVisibility={visibilitySettings.name_pronunciation_visibility ?? 'private'}
+        onUpdate={refreshAfterEdit}
       />
-
       <OtherNamesForm
         isOpen={otherNamesFormOpen}
         onClose={handleCloseOtherNamesForm}
-        onSave={handleOtherNameSave}
         initialData={editingOtherName}
-        loading={loading}
+        onSave={handleOtherNameSave}
       />
-
-      {/* Delete Confirmation */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Other Name</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this other name? This action cannot be undone.
-            </AlertDialogDescription>
+            <AlertDialogTitle>Delete other name?</AlertDialogTitle>
+            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDelete}>
-              Delete
-            </AlertDialogAction>
+            <AlertDialogCancel onClick={() => setOtherNameToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete}>Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

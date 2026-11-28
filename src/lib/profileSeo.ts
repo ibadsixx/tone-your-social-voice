@@ -82,8 +82,8 @@ const SITE_NAME = 'Tone';
 // bio has no `bio_visibility` column at all, so it is not a gated field. Fields
 // that DO have a `*_visibility` column - about_you, email, birth_date, company,
 // college, gender, relationship_status and the rest - are deliberately not read
-// here, even though the row carries them, because `getProfileByUsername` selects
-// `*` and they arrive on the client regardless. A meta description is the single
+// here. Public profile reads request only the six approved columns, so those
+// fields do not arrive on the client at all. A meta description is the single
 // most archived piece of a page: Google keeps it, and it shows up in the SERP and
 // in any preview. Putting a company name or a birth year there because the RLS
 // column happened to be public to this particular viewer would be a new leak

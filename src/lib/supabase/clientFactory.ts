@@ -12,7 +12,7 @@ import {
   refreshRegistry,
 } from './registry';
 import { getInfrastructureInitError } from './infrastructureClient';
-import { resolveProjectRoute } from './routing';
+import { resolveProjectRoute, withKnownProjectKey } from './routing';
 import { getCurrentAccessToken } from './sessionTokenProvider';
 import type {
   DomainProjectConfig,
@@ -30,13 +30,20 @@ export {
 };
 
 const clientCache = new Map<string, SupabaseClient>();
+const cacheKeyByUrlAnon = new Map<string, string>();
+
+function urlAnonKey(url: string, anonKey: string): string {
+  return `${url}:${anonKey}`;
+}
 
 function cacheKey(url: string, anonKey: string, projectKey?: string): string {
-  return projectKey ? `project:${projectKey}` : `${url}:${anonKey}`;
+  return projectKey ? `project:${projectKey}` : urlAnonKey(url, anonKey);
 }
 
 export function getCachedClient(url: string, anonKey: string): SupabaseClient | undefined {
-  return clientCache.get(cacheKey(url, anonKey));
+  const urlKey = urlAnonKey(url, anonKey);
+  const key = cacheKeyByUrlAnon.get(urlKey) ?? urlKey;
+  return clientCache.get(key);
 }
 
 export function createClientForProject(
@@ -54,19 +61,31 @@ export function createClientForProject(
   });
 
   clientCache.set(key, client);
+  // Route-created clients are keyed by project identity; keep a secondary
+  // index so URL/anon-key lookups find them too.
+  cacheKeyByUrlAnon.set(urlAnonKey(projectUrl, projectAnonKey), key);
   return client;
+}
+
+function clearProjectClients(): void {
+  clientCache.clear();
+  cacheKeyByUrlAnon.clear();
 }
 
 async function resolveWithRefresh(
   request: ProjectRouteRequest
 ): Promise<ResolvedProjectRoute> {
+  const resolvedRequest = withKnownProjectKey(request);
   try {
-    return await resolveProjectRoute(request);
+    return await resolveProjectRoute(resolvedRequest);
   } catch (error) {
     const code = (error as { configCode?: string })?.configCode;
     if (code === 'DOMAIN_NOT_FOUND' || code === 'PROJECT_NOT_FOUND') {
       refreshRegistry();
-      return resolveProjectRoute(request);
+      // A stale registry cache can also leave a stale client cached under the
+      // same project key. Drop clients before the single retry.
+      clearProjectClients();
+      return resolveProjectRoute(resolvedRequest);
     }
     throw error;
   }
@@ -125,7 +144,7 @@ export async function getDomainSupabaseClient(
 }
 
 export function clearClientCache(): void {
-  clientCache.clear();
+  clearProjectClients();
   clearRegistryCache();
 }
 

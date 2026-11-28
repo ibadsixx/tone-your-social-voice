@@ -18,6 +18,7 @@ import {
   isInfraRegistryRequest,
   jsonResponse,
   MOCK_ORIGIN,
+  MOCK_STORAGE_ORIGIN,
   postgrestTable,
   prefersObjectResponse,
   shapePostgrestRows,
@@ -36,7 +37,8 @@ import PageCoverPhotoEditor from '@/components/PageCoverPhotoEditor';
 import { POST_CREATED_EVENT } from '@/hooks/useHomeFeed';
 
 const PAGE_ID = 'page-uuid';
-const STORAGE_PREFIX = `${MOCK_ORIGIN}/storage/v1/object/covers/`;
+const STORAGE_PREFIX = `${MOCK_STORAGE_ORIGIN}/storage/v1/object/covers/`;
+const publicCoverUrl = (path: string) => `${MOCK_STORAGE_ORIGIN}/storage/v1/object/public/covers/${path}`;
 const POSTS_PATH = new URL(`${MOCK_ORIGIN}/rest/v1/posts`).pathname;
 const PAGE_POSTS_PATH = new URL(`${MOCK_ORIGIN}/rest/v1/page_posts`).pathname;
 const PAGES_PATH = new URL(`${MOCK_ORIGIN}/rest/v1/pages`).pathname;
@@ -167,7 +169,7 @@ describe('PageCoverPhotoEditor automatic cover-photo-change post', () => {
     expect(postBodies[0]).toEqual({
       user_id: 'admin-uuid',
       content: '',
-      media_url: coverPaths[0],
+      media_url: publicCoverUrl(coverPaths[0]),
       media_type: 'image',
       type: 'cover_photo_update',
       audience_type: 'public',
@@ -232,7 +234,7 @@ describe('PageCoverPhotoEditor automatic cover-photo-change post', () => {
     uploadCover(container);
 
     // The cover update is preserved even though the post failed (do.md §3).
-    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith(coverPaths[0]));
+    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith(publicCoverUrl(coverPaths[0])));
     expect(storageUploads).toBe(1);
     expect(pageUpdates).toBe(1);
     expect(postBodies).toHaveLength(0);
@@ -261,7 +263,7 @@ describe('PageCoverPhotoEditor automatic cover-photo-change post', () => {
     );
     uploadCover(container);
 
-    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith(coverPaths[0]));
+    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith(publicCoverUrl(coverPaths[0])));
     await waitFor(() => expect(toastSpy).toHaveBeenCalled());
     expect(postBodies).toHaveLength(1);
     expect(linkBodies).toHaveLength(0);

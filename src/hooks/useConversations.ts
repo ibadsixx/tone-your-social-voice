@@ -17,7 +17,7 @@ import { parseCallLog, callLogLabel, formatCallDuration } from '@/lib/callLog';
 import { subscribeToMessages, getMessageRealtime } from '@/lib/messageRealtime';
 import { ensureMessageRequest, hasAcceptedFriendship } from '@/lib/messageRequests';
 import { notifyConversationRead } from '@/lib/unreadBadgeBus';
-import { isOnline, reportClockSkew, POLL_INTERVAL_MS as PRESENCE_POLL_INTERVAL_MS } from '@/hooks/usePresence';
+import { POLL_INTERVAL_MS as PRESENCE_POLL_INTERVAL_MS } from '@/hooks/usePresence';
 import { logVoiceInsert } from '@/lib/voiceDiagnostics';
 
 // Call-log messages store a JSON envelope in `content`; show a readable label
@@ -93,9 +93,9 @@ export const VOICE_MESSAGE_SELECT = `
 // (42P01) — the same class of monolith-era chat RPC that can no longer run
 // against the split conversation/message database. Inserting with a
 // `.select()` returns the created row in one round trip, so no separate reload
-// is needed. The optional audioUrl is the Cloudinary CDN URL returned by the
-// upload response; persisting it (audio_url) makes playback work for both
-// sides without re-resolving the storage path.
+// is needed. New sends persist only the private Storage object path; the
+// optional audioUrl field exists solely for legacy rows that already carry an
+// external URL. Playback of private objects always resolves a signed URL.
 export async function insertVoiceMessageRow(params: {
   conversationId: string;
   senderId: string;
@@ -117,8 +117,8 @@ export async function insertVoiceMessageRow(params: {
     content: null,
     attachment_url: null,
     audio_path: audioPath,
-    // Cloudinary CDN URL from the upload response: persisted on the row so
-    // playback works without re-resolving the path (MessageBubble prefers it).
+    // Legacy external URL only. New private-bucket uploads leave this null;
+    // MessageBubble signs audio_path instead of consuming a public URL.
     audio_url: audioUrl ?? null,
     audio_duration: duration,
     audio_mime: mimeType,
@@ -366,41 +366,14 @@ export async function assertCanSendMessage(
   return !(await isReadOnlyPendingConversation(conversationId, currentUserId));
 }
 
-// Group Chat presence: returns a map of group conversation_id → number of
-// OTHER members currently online. Only group members (from
-// `conversation_participants`) count, the current user is excluded, and a
-// member is online only when their `profiles.last_seen_at` is fresh (the same
-// `isOnline` source DMs use).
+// Phase 3G-N: `last_seen_at` is a private profile column. Reading it for other
+// conversation members is a cross-user private read, so group online counts
+// are no longer derived from it. The writer remains owner/session scoped.
 async function fetchGroupOnlineCounts(
-  groupConvIds: string[],
-  userId: string
+  _groupConvIds: string[],
+  _userId: string
 ): Promise<Map<string, number>> {
-  const counts = new Map<string, number>();
-  if (groupConvIds.length === 0) return counts;
-
-  const { data: groupParts } = await dataClient
-    .from('conversation_participants')
-    .select('conversation_id, user_id')
-    .in('conversation_id', groupConvIds)
-    .neq('user_id', userId);
-
-  const groupMemberIds = [...new Set((groupParts || []).map(p => p.user_id))];
-  let profileMap = new Map<string, string | undefined>();
-  if (groupMemberIds.length > 0) {
-    const { data: groupProfiles } = await dataClient
-      .from('profiles')
-      .select('id, last_seen_at')
-      .in('id', groupMemberIds);
-    profileMap = new Map((groupProfiles || []).map(p => [p.id, p.last_seen_at]));
-  }
-
-  (groupParts || []).forEach(p => {
-    const lastSeen = profileMap.get(p.user_id);
-    if (lastSeen && isOnline(lastSeen)) {
-      counts.set(p.conversation_id, (counts.get(p.conversation_id) || 0) + 1);
-    }
-  });
-  return counts;
+  return new Map<string, number>();
 }
 
 // Per-user unread counts for a set of conversations, reusing the existing
@@ -554,7 +527,7 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
   const [profilesRes, messagesRes, groupOnlineCounts, unreadMap] = await Promise.all([
     dataClient
       .from('profiles')
-      .select('id, username, display_name, profile_pic, last_seen_at')
+      .select('id, username, display_name, profile_pic')
       .in('id', otherUserIds),
     dataClient
       .from('messages')
@@ -562,8 +535,8 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
       .in('conversation_id', convIds2)
       .order('created_at', { ascending: false })
       .limit(200),
-    // Group Chat presence: count OTHER online group members (current user
-    // excluded) using the same `profiles.last_seen_at` online source as DMs.
+    // Group Chat presence awaits an approved privacy-enforcing presence source;
+    // no private profile column is read for other members.
     fetchGroupOnlineCounts(groupConvIds, userId),
     // Per-user unread counts for EVERY chat type (DM, group, channel), reusing
     // the existing read-state architecture (`message_reads`): UNREAD = messages
@@ -604,7 +577,6 @@ export async function fetchConversationsDirectly(userId: string): Promise<Conver
         username: otherProfile.username,
         display_name: otherProfile.display_name,
         profile_pic: otherProfile.profile_pic,
-        last_seen_at: otherProfile.last_seen_at,
       } : undefined,
       online_count: conv.type === 'group' ? (groupOnlineCounts.get(conv.id) || 0) : undefined,
       last_message: lastMsg ? {
@@ -644,7 +616,7 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
   const otherUserIds = [...new Set(firstOtherPerConv.values())];
   const { data: profilesData } = await dataClient
     .from('profiles')
-    .select('id, username, display_name, profile_pic, last_seen_at')
+    .select('id, username, display_name, profile_pic')
     .in('id', otherUserIds);
 
   const profileMap = new Map<string, NonNullable<Conversation['other_user']>>(
@@ -699,7 +671,6 @@ async function fetchPageConversationsDirectly(pageId: string, userId: string): P
         username: otherProfile.username,
         display_name: otherProfile.display_name,
         profile_pic: otherProfile.profile_pic,
-        last_seen_at: otherProfile.last_seen_at,
       } : undefined,
       last_message: lastMsg ? {
         content: previewMessageRow(lastMsg, userId),
@@ -1956,46 +1927,8 @@ export const useConversations = (currentUserId?: string) => {
       const allConvs = conversationsDataRef.current;
       if (allConvs.length === 0) return;
 
-      const userIds = [...new Set(allConvs.map(c => c.other_user?.id).filter(Boolean))];
-      const { data: profiles } = await dataClient
-        .from('profiles')
-        .select('id, last_seen_at')
-        .in('id', userIds);
-
-      if (profiles) {
-        // Annotated because the dataClient client's `select()` is untyped and infers
-        // the row literal `[p.id, p.last_seen_at]` as a union, which made this
-        // Map a `Map<unknown, unknown>` and leaked `unknown` into every consumer -
-        // including the value written onto `other_user.last_seen_at`, where
-        // `Conversation['other_user']['last_seen_at']` is `string | undefined`.
-        const lastSeenMap = new Map<string, string | null | undefined>(
-          profiles.map(p => [p.id, p.last_seen_at])
-        );
-        // Diagnose an unreadable clock once, here, where the full set of partner
-        // timestamps is in hand. A reader whose system clock is behind the
-        // dataClient's gets every dot refused by `isOnline`'s lower bound, and
-        // without this the only symptom is "everyone is gray" - a fresh bug
-        // report with nothing pointing at the cause. Reads the values out of the
-        // map this round already built, so it adds no request, no state change
-        // and no second pass over `profiles`.
-        reportClockSkew([...lastSeenMap.values()]);
-        setConversations(prev => prev.map(conv => {
-          if (!conv.other_user) return conv;
-          const newLastSeen = lastSeenMap.get(conv.other_user.id);
-          // A null/absent `last_seen_at` is kept rather than written through:
-          // that is the shape the dataClient returns for a partner whose presence
-          // it has redacted (non-friend with a pending message request), and
-          // overwriting with null would be correct only by accident.
-          if (!newLastSeen || newLastSeen === conv.other_user.last_seen_at) return conv;
-          return {
-            ...conv,
-            other_user: {
-              ...conv.other_user,
-              last_seen_at: newLastSeen,
-            }
-          };
-        }));
-      }
+      // Phase 3G-N: no cross-user `last_seen_at` read. Presence UI awaits an
+      // approved privacy-enforcing presence source.
 
       // Refresh Group Chat presence (2+ other members online = group Online).
       const groupConvIds = allConvs.filter(c => c.type === 'group').map(c => c.conversation_id);

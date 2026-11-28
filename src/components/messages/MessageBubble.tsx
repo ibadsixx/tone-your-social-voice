@@ -50,6 +50,7 @@ import { mediaAppUrl } from '@/lib/mediaUrl';
 import { parseGroupShareContent } from '@/lib/groupShare';
 import { MessageLinkPreview } from './MessageLinkPreview';
 import { voicePlaybackUrl, toConvertedUrl, audioCanPlay, formatAudioTime } from '@/lib/audioPlayback';
+import { privateStoragePath } from '@/lib/privateStorage';
 import {
   logVoicePlayback,
   logVoicePlaybackError,
@@ -205,17 +206,24 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [audioError, setAudioError] = useState<string | null>(null);
   const [showActions, setShowActions] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  // Private-bucket URLs are short-lived. Keep the object path and a one-shot
+  // refresh guard so an expired/failed URL can be re-signed without ever
+  // falling back to a public URL.
+  const audioPathRef = useRef<string | null>(null);
+  const signedUrlRefreshRef = useRef(0);
   // One automatic retry per message: if play() rejects with NotSupportedError
   // even though the browser claims WebM/Opus support (Chrome/Brave), re-point
   // the same asset at Cloudinary's f_mp3 conversion and try again.
   const retriedConvertedRef = useRef(false);
 
-  // Load audio URL when component mounts
+  // Load a fresh signed URL when the message's private Storage source changes.
   useEffect(() => {
-    if (message.audio_path && !audioUrl && !loadingAudio) {
-      loadAudioUrl();
+    signedUrlRefreshRef.current = 0;
+    setAudioUrl(null);
+    if ((message.audio_path || message.audio_url) && !loadingAudio) {
+      void loadAudioUrl();
     }
-  }, [message.audio_path]);
+  }, [message.audio_path, message.audio_url]);
 
   // Audio event handlers
   useEffect(() => {
@@ -263,6 +271,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         mime: message.audio_mime,
       });
       setIsPlaying(false);
+      // A signed URL can expire between render and playback. Re-sign once from
+      // the same authenticated session; never reuse a public URL fallback.
+      if (signedUrlRefreshRef.current === 0 && audioPathRef.current) {
+        signedUrlRefreshRef.current += 1;
+        setAudioUrl(null);
+        void loadAudioUrl();
+        return;
+      }
       setAudioError(`Failed to load audio (${label})`);
     };
 
@@ -288,34 +304,28 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     };
   }, [audioUrl, message.audio_mime]);
 
-  const loadAudioUrl = () => {
-    if (!message.audio_path) return;
+  const loadAudioUrl = async () => {
+    const path = message.audio_path ?? privateStoragePath(message.audio_url, 'message_audios');
+    if (!path) {
+      setAudioError('Voice message has no private Storage path');
+      return;
+    }
 
     setLoadingAudio(true);
     setAudioError(null);
     retriedConvertedRef.current = false;
+    audioPathRef.current = path;
 
-    // The dataClient uploads media to Cloudinary and its client exposes NO
-    // createSignedUrl (that API is Supabase-storage-only), so the previous call
-    // threw TypeError and playback always surfaced "Failed to load audio". Use
-    // the same resolution every other upload in the app uses (getPublicUrl):
-    // prefer the Cloudinary CDN URL persisted on the row at send time
-    // (audio_url), otherwise getPublicUrl() — which returns the exact CDN URL
-    // cached from this session's own upload, or the dataClient
-    // /api/storage/message_audios/* URL that the dataClient's existing GET route
-    // 302-redirects to the reconstructed Cloudinary asset. That covers the
-    // sender, receivers, refreshes and legacy rows that have no audio_url.
-    // voicePlaybackUrl additionally asks for an MP3 conversion of the same
-    // asset when this browser cannot play the recorded container (e.g.
-    // WebM/Opus in Safari/iOS): it rewrites direct Cloudinary URLs to an
-    // f_mp3 delivery, and appends ?format=mp3 to dataClient fallback URLs so the
-    // dataClient redirects to the converted asset too — so play() works instead
-    // of rejecting with NotSupportedError.
+    // Private buckets must be resolved through a signed URL created with the
+    // user's authenticated session. There is no public URL fallback.
     try {
-      const { data } = dataClient.storage
+      const { data, error } = await dataClient.storage
         .from('message_audios')
-        .getPublicUrl(message.audio_path);
-      const sourceUrl = message.audio_url || data.publicUrl;
+        .createSignedUrlAsync(path, { expiresIn: 10 * 60 });
+      if (error || !data) {
+        throw new Error(error?.message ?? 'Signed URL unavailable');
+      }
+      const sourceUrl = data.signedUrl;
       const finalUrl = voicePlaybackUrl(sourceUrl, message.audio_mime);
       setAudioUrl(finalUrl);
       logVoicePlayback({
@@ -341,7 +351,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       });
     } catch (error) {
       console.error('Error loading audio:', error);
-      setAudioError('Failed to load audio');
+      setAudioError(
+        error instanceof Error ? error.message : 'Failed to create a private audio URL'
+      );
     } finally {
       setLoadingAudio(false);
     }

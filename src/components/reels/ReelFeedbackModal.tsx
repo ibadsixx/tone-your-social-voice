@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { dataClient } from '@/lib/supabase/dataClient';
+import { privateObjectPath } from '@/lib/privateStorage';
 import { useToast } from '@/hooks/use-toast';
 
 interface ReelFeedbackModalProps {
@@ -106,10 +107,9 @@ const ReelFeedbackModal = ({
         if (uploadError) {
           console.error('Attachment upload error:', uploadError);
         } else {
-          const { data: urlData } = dataClient.storage
-            .from('report-evidence')
-            .getPublicUrl(fileName);
-          attachmentUrl = urlData.publicUrl;
+          // Private bucket: persist the stable object path, never a public URL.
+          // Readers resolve it through resolvePrivateStorageUrl().
+          attachmentUrl = privateObjectPath('report-evidence', fileName);
         }
       }
 

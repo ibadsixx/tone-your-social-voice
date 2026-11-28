@@ -18,7 +18,7 @@ import { getCurrentAccessToken } from '@/lib/supabase/sessionTokenProvider';
 // failure into one generic message. `.single()` errors on an empty result, and
 // registry/routing/auth failures were indistinguishable from a missing row.
 const Profile = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [failure, setFailure] = useState<ProfileLoadFailure | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,6 +31,10 @@ const Profile = () => {
   };
 
   const resolve = useCallback(async () => {
+    // The own-profile shortcut has no route param, so it must not report
+    // NO_SESSION before the central Auth init effect has resolved.
+    if (authLoading) return;
+
     const requestId = ++requestIdRef.current;
     const isCurrent = () => requestId === requestIdRef.current;
     setLoading(true);
@@ -82,7 +86,7 @@ const Profile = () => {
     } finally {
       if (isCurrent()) setLoading(false);
     }
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   useEffect(() => {
     void resolve();

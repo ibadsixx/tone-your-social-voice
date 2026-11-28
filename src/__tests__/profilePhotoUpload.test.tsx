@@ -21,6 +21,7 @@ import {
   isInfraRegistryRequest,
   jsonResponse,
   MOCK_ORIGIN,
+  MOCK_STORAGE_ORIGIN,
   postgrestTable,
   prefersObjectResponse,
   shapePostgrestRows,
@@ -38,7 +39,7 @@ import {
 } from '@/hooks/usePhotoUpload';
 
 const USER = 'alice-uuid';
-const STORAGE_PREFIX = `${MOCK_ORIGIN}/storage/v1/object/`;
+const STORAGE_PREFIX = `${MOCK_STORAGE_ORIGIN}/storage/v1/object/`;
 const PROFILES_PATH = new URL(`${MOCK_ORIGIN}/rest/v1/profiles`).pathname;
 const POSTS_PATH = new URL(`${MOCK_ORIGIN}/rest/v1/posts`).pathname;
 
@@ -162,7 +163,7 @@ describe('profile picture: add and replace both work end to end', () => {
   it('uploads, persists the returned media path, and announces it', async () => {
     const { result } = await run(pngFile(), 'profile');
 
-    expect(result).toMatch(/^alice-uuid\/avatars\//);
+    expect(result).toContain('/storage/v1/object/public/avatars/alice-uuid/');
     expect(uploadCalls()).toBe(1);
     expect(profileWrites).toHaveLength(1);
     expect(profileWrites[0].profile_pic).toBe(result);
@@ -232,7 +233,7 @@ describe('cover photo: add and replace both work end to end', () => {
   it('uploads, persists cover_pic, resets the crop offset, and announces it', async () => {
     const { result } = await run(pngFile('cover.png'), 'cover');
 
-    expect(result).toMatch(/^alice-uuid\/covers\//);
+    expect(result).toContain('/storage/v1/object/public/covers/alice-uuid/');
     expect(profileWrites[0].cover_pic).toBe(result);
     expect(profileWrites[0].cover_position_y).toBe(0);
     expect(postBodies).toHaveLength(1);
@@ -274,7 +275,7 @@ describe('a failed announcement post is not reported as a failed upload', () => 
     const { result, error } = await run(pngFile(), 'profile');
 
     expect(error).toBeUndefined();
-    expect(result).toMatch(/^alice-uuid\/avatars\//);
+    expect(result).toContain('/storage/v1/object/public/avatars/alice-uuid/');
     expect(profileWrites).toHaveLength(1);
     expect(toastText()).toContain('Profile picture updated');
     expect(toastText()).not.toContain('Failed to upload');
@@ -406,7 +407,7 @@ describe('dataClient and auth failures are surfaced, not swallowed', () => {
     const { result, error } = await run(pngFile(), 'profile');
 
     expect(error).toBeUndefined();
-    expect(result).toMatch(/^alice-uuid\/avatars\//);
+    expect(result).toContain('/storage/v1/object/public/avatars/alice-uuid/');
     expect(uploadPaths).toHaveLength(1);
     expect(uploadPaths[0]).toContain('/avatars/');
     // No Gateway-era signing endpoint is involved.

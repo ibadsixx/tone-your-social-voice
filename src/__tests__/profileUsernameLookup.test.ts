@@ -14,7 +14,7 @@ const query = vi.hoisted(() => ({
 }));
 
 const responses = vi.hoisted(() => ({
-  exact: null as ApiResult<Profile> | null,
+  exact: null as ApiResult<Profile[]> | null,
   ilike: null as ApiResult<Profile[]> | null,
 }));
 
@@ -31,9 +31,13 @@ vi.mock('@/lib/supabase/dataClient', () => {
     },
     limit: (...args: unknown[]) => {
       query.limit(...args);
-      return Promise.resolve(responses.ilike ?? { data: [], error: null });
+      // The exact lookup and the case-insensitive fallback both use limit;
+      // distinguish them by whether the ilike branch has been entered.
+      return query.ilike.mock.calls.length > 0
+        ? Promise.resolve(responses.ilike ?? { data: [], error: null })
+        : Promise.resolve(responses.exact ?? { data: [], error: null });
     },
-    maybeSingle: () => Promise.resolve(responses.exact ?? { data: null, error: null }),
+    maybeSingle: () => Promise.resolve({ data: null, error: null }),
   };
   return {
     dataClient: {
@@ -78,7 +82,7 @@ const profile = (username: string): Profile => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  responses.exact = { data: profile('Ada'), error: null };
+  responses.exact = { data: [profile('Ada')], error: null };
   responses.ilike = { data: [], error: null };
 });
 
@@ -92,6 +96,17 @@ describe('getProfileByUsername', () => {
     expect(query.ilike).not.toHaveBeenCalled();
   });
 
+  it('reports duplicate exact usernames as ambiguity, not a generic query error', async () => {
+    responses.exact = { data: [profile('test'), profile('test')], error: null };
+
+    const result = await getProfileByUsername('test');
+
+    expect(result.data).toBeNull();
+    expect(result.error?.code).toBe('AMBIGUOUS_USERNAME');
+    expect(query.limit).toHaveBeenCalledWith(2);
+    expect(query.ilike).not.toHaveBeenCalled();
+  });
+
   it('rejects an unusable segment without querying or fabricating a 404 row', async () => {
     const result = await getProfileByUsername('   ');
 
@@ -101,7 +116,7 @@ describe('getProfileByUsername', () => {
   });
 
   it('falls back to a single case-insensitive match when exact lookup finds nothing', async () => {
-    responses.exact = { data: null, error: null };
+    responses.exact = { data: [], error: null };
     responses.ilike = { data: [profile('ada')], error: null };
 
     const result = await getProfileByUsername('Ada');
@@ -111,7 +126,7 @@ describe('getProfileByUsername', () => {
   });
 
   it('escapes LIKE wildcards in a literal username', async () => {
-    responses.exact = { data: null, error: null };
+    responses.exact = { data: [], error: null };
     responses.ilike = { data: [profile('a_da')], error: null };
 
     await getProfileByUsername('a_da');
@@ -120,7 +135,7 @@ describe('getProfileByUsername', () => {
   });
 
   it('reports a case-folded collision as ambiguity instead of picking a row', async () => {
-    responses.exact = { data: null, error: null };
+    responses.exact = { data: [], error: null };
     responses.ilike = { data: [profile('Ada'), profile('ada')], error: null };
 
     const result = await getProfileByUsername('ada');

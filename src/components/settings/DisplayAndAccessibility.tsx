@@ -115,6 +115,9 @@ const DisplayAndAccessibility: React.FC = () => {
         <p className="text-muted-foreground">
           Customize how Tone looks and behaves for you.
         </p>
+        <p className="text-xs text-muted-foreground mt-2">
+          Saved profile display preferences await the secure owner-only read implementation; local settings remain available.
+        </p>
       </div>
 
       <Card className="border-border/50">

@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useToast } from '@/hooks/use-toast';
 import { dataClient } from '@/lib/supabase/dataClient';
+import { PRIVATE_PROFILE_READ_STATUS } from '@/api/profiles';
 
 type SubView = 'main' | 'contact' | 'contact-email' | 'birthday' | 'profile-detail' | 'display-name' | 'username';
 
@@ -49,17 +50,11 @@ const ProfilesAndPersonalDetails: React.FC = () => {
 
   useEffect(() => {
     if (profile) {
-      setEmail(user?.email || profile.email || '');
-      if (profile.birthday) {
-        const d = new Date(profile.birthday);
-        if (!isNaN(d.getTime())) {
-          setBirthDay(d.getDate().toString());
-          setBirthMonth(MONTHS[d.getMonth()]);
-          setBirthYear(d.getFullYear().toString());
-        }
-      } else {
-        setBirthDay(''); setBirthMonth(''); setBirthYear('');
-      }
+      // Phase 3G-N: email/birthday are private owner-only profile columns. The
+      // public useProfile() boundary does not provide them; auth email is the
+      // only safe prefill. Birthday awaits the secure owner-only read function.
+      setEmail(user?.email || '');
+      setBirthDay(''); setBirthMonth(''); setBirthYear('');
       setUsername(profile.username || '');
       const parts = (profile.display_name || '').split(' ');
       setFirstName(parts[0] || '');
@@ -448,16 +443,11 @@ const ProfilesAndPersonalDetails: React.FC = () => {
   const [addingEmail, setAddingEmail] = useState(false);
   const [newEmail, setNewEmail] = useState('');
 
-  const parseEmails = (val: unknown): string[] => {
-    if (Array.isArray(val)) return val as string[];
-    if (typeof val === 'string') {
-      try { const p = JSON.parse(val); if (Array.isArray(p)) return p; } catch {}
-      return [val];
-    }
-    return [];
-  };
-
-  const profileEmails = parseEmails(profile?.email);
+  // Phase 3G-N: `email` is a private owner-only profile column. The public
+  // useProfile() boundary does not provide it, so additional-email management
+  // is blocked until the approved secure owner-only read function exists.
+  // The auth email below is the only safe prefill.
+  const profileEmails: string[] = [];
 
   const allEmails = [...new Set([user?.email, ...profileEmails].filter(Boolean))];
 
@@ -542,13 +532,16 @@ const ProfilesAndPersonalDetails: React.FC = () => {
               <Button variant="outline" className="flex-1" onClick={() => { setAddingEmail(false); setNewEmail(''); }}>
                 Cancel
               </Button>
-              <Button className="flex-1" onClick={handleSendEmail} disabled={!newEmail.trim()}>
+              <Button className="flex-1" onClick={handleSendEmail} disabled>
                 Add
               </Button>
             </div>
           </>
         ) : (
           <>
+            <p className="text-xs text-muted-foreground mb-3">
+              Additional saved email addresses await the secure owner-only read implementation.
+            </p>
             <div className="border rounded-lg border-border/50 overflow-hidden">
               {allEmails.length > 0 ? allEmails.map((addr, idx) => (
                 <div key={addr} className={`flex items-center gap-3 px-4 py-3 ${idx < allEmails.length - 1 ? 'border-b border-border/50' : ''}`}>
@@ -573,7 +566,7 @@ const ProfilesAndPersonalDetails: React.FC = () => {
               )}
             </div>
 
-            <button onClick={() => setAddingEmail(true)} className="text-sm font-medium text-primary hover:underline flex items-center gap-1 px-1">
+            <button disabled className="text-sm font-medium text-muted-foreground flex items-center gap-1 px-1 cursor-not-allowed">
               <Plus className="w-4 h-4" />
               Add another
             </button>
@@ -683,6 +676,11 @@ const ProfilesAndPersonalDetails: React.FC = () => {
         <p className="text-muted-foreground">
           Review the profiles and personal details you've added to this account. Add more profiles by adding your accounts.
         </p>
+        {PRIVATE_PROFILE_READ_STATUS === 'AWAITING_SECURE_OWNER_ONLY_FUNCTION' && (
+          <p className="text-xs text-muted-foreground mt-2">
+            Private personal details await the secure owner-only read implementation; safe defaults are shown.
+          </p>
+        )}
       </div>
 
       <div className="space-y-3">
